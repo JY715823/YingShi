@@ -5,9 +5,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 private val ColorWhite = Color(0xFFFFFFFF)
+private val AppSpacing = YingShiSpacing()
+private val AppRadius = YingShiRadius()
 
 private val DarkColorScheme = darkColorScheme(
     primary = YingShiBlueLight,
@@ -20,7 +23,7 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = ColorWhite,
     surfaceVariant = YingShiBlueDark,
     onSurfaceVariant = YingShiNightMuted,
-    outline = YingShiNightMuted,
+    outline = YingShiNightDivider,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -30,11 +33,11 @@ private val LightColorScheme = lightColorScheme(
     onSecondary = ColorWhite,
     background = YingShiBackground,
     onBackground = YingShiInk,
-    surface = YingShiSurface,
+    surface = YingShiSurfaceRaised,
     onSurface = YingShiInk,
     surfaceVariant = YingShiMist,
     onSurfaceVariant = YingShiMuted,
-    outline = YingShiBlueGray,
+    outline = YingShiDivider,
 )
 
 @Composable
@@ -48,9 +51,15 @@ fun YingShiTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    CompositionLocalProvider(
+        LocalYingShiSpacing provides AppSpacing,
+        LocalYingShiRadius provides AppRadius,
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = yingShiShapes(AppRadius),
+            content = content,
+        )
+    }
 }
