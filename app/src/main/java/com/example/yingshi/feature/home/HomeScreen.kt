@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.yingshi.ui.components.PlaceholderBlock
 import com.example.yingshi.ui.components.PlaceholderPage
+import com.example.yingshi.ui.components.ShellPage
 import com.example.yingshi.ui.theme.YingShiTheme
 
 private val homeSections = listOf(
@@ -25,11 +26,18 @@ private val homeSections = listOf(
 
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier) {
-    PlaceholderPage(
+    ShellPage(
         title = "主页",
-        summary = "用于承接后续总览与轻入口。当前只放 Stage 0 占位内容。",
-        blocks = homeSections,
+        summary = "用于承接后续总览与轻入口。当前重点是保持页面气质稳定、结构简洁。",
         modifier = modifier.fillMaxSize(),
+        content = {
+            PlaceholderPage(
+                title = "首页壳层",
+                summary = "Stage 1 先统一视觉基线，不扩展真实业务逻辑。",
+                blocks = homeSections,
+                showHero = false,
+            )
+        },
     )
 }
 

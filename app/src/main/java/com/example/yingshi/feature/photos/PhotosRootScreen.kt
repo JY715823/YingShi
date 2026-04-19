@@ -1,13 +1,19 @@
 package com.example.yingshi.feature.photos
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.ui.components.PlaceholderBlock
 import com.example.yingshi.ui.components.PlaceholderPage
+import com.example.yingshi.ui.components.TitleTabs
 import com.example.yingshi.ui.theme.YingShiTheme
+import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 private val photoFeedBlocks = listOf(
     PlaceholderBlock("全局媒体流", "照片页只代表 app 内容体系内的全局媒体流。"),
@@ -43,60 +51,86 @@ private val trashBlocks = listOf(
 
 @Composable
 fun PhotosRootScreen(modifier: Modifier = Modifier) {
+    val spacing = YingShiThemeTokens.spacing
     var selectedSectionName by rememberSaveable {
         mutableStateOf(PhotosTopDestination.PHOTOS.name)
     }
     val selectedSection = PhotosTopDestination.valueOf(selectedSectionName)
 
-    Column(modifier = modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = selectedSection.ordinal) {
-            PhotosTopDestination.entries.forEach { section ->
-                Tab(
-                    selected = section == selectedSection,
-                    onClick = { selectedSectionName = section.name },
-                    text = { Text(text = section.label) },
-                )
-            }
-        }
+    val blocks = when (selectedSection) {
+        PhotosTopDestination.PHOTOS -> photoFeedBlocks
+        PhotosTopDestination.ALBUMS -> albumBlocks
+        PhotosTopDestination.TRASH -> trashBlocks
+    }
 
-        val blocks = when (selectedSection) {
-            PhotosTopDestination.PHOTOS -> photoFeedBlocks
-            PhotosTopDestination.ALBUMS -> albumBlocks
-            PhotosTopDestination.TRASH -> trashBlocks
-        }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        PhotoTopBar(
+            selectedSection = selectedSection,
+            onSelected = { selectedSectionName = PhotosTopDestination.entries[it].name },
+        )
 
         PlaceholderPage(
-            title = "照片模块",
-            summary = "Stage 0 先建立二级导航、工具入口位置和占位页面结构。",
+            title = selectedSection.headline,
+            summary = selectedSection.supporting,
             blocks = blocks,
-            modifier = Modifier.fillMaxSize(),
-            headerContent = {
-                if (selectedSection == PhotosTopDestination.PHOTOS) {
-                    PhotoToolsRow()
-                }
-                com.example.yingshi.ui.components.PlaceholderCard(
-                    block = PlaceholderBlock(
-                        title = selectedSection.headline,
-                        summary = selectedSection.supporting,
-                    ),
-                )
-            }
+            modifier = Modifier.weight(1f),
         )
     }
 }
 
 @Composable
-private fun PhotoToolsRow() {
+private fun PhotoTopBar(
+    selectedSection: PhotosTopDestination,
+    onSelected: (Int) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 4.dp),
+            .padding(top = spacing.xxs),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
     ) {
-        OutlinedButton(onClick = { }) {
-            Text(text = "系统媒体")
-        }
-        TextButton(onClick = { }) {
-            Text(text = "通知")
+        TitleTabs(
+            tabs = PhotosTopDestination.entries.map { it.label },
+            selectedIndex = selectedSection.ordinal,
+            modifier = Modifier.weight(1f),
+            onSelected = onSelected,
+        )
+
+        Spacer(modifier = Modifier.width(spacing.sm))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(radius.capsule),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.30f),
+                ),
+            ) {
+                OutlinedButton(
+                    onClick = { },
+                    border = null,
+                ) {
+                    Text(text = "系统媒体")
+                }
+            }
+
+            TextButton(onClick = { }) {
+                Text(text = "铃铛")
+            }
         }
     }
 }

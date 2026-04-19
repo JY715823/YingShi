@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.yingshi.ui.components.PlaceholderBlock
 import com.example.yingshi.ui.components.PlaceholderPage
+import com.example.yingshi.ui.components.ShellPage
 import com.example.yingshi.ui.theme.YingShiTheme
 
 private val lifeEntries = listOf(
@@ -25,11 +26,18 @@ private val lifeEntries = listOf(
 
 @Composable
 fun LifeScreen(modifier: Modifier = Modifier) {
-    PlaceholderPage(
+    ShellPage(
         title = "生活",
-        summary = "生活模块当前仅保留三张平权入口卡的占位结构。",
-        blocks = lifeEntries,
+        summary = "生活模块在当前阶段更适合作为温和、克制的入口页，而不是复杂功能页。",
         modifier = modifier.fillMaxSize(),
+        content = {
+            PlaceholderPage(
+                title = "生活入口卡占位",
+                summary = "保留纪念日、记账、聊天记录查看器三类入口，不接真实能力。",
+                blocks = lifeEntries,
+                showHero = false,
+            )
+        },
     )
 }
 
