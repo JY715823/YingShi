@@ -16,13 +16,13 @@ enum class PhotosTopDestination(
 ) {
     PHOTOS(
         label = "照片",
-        headline = "全局媒体流占位",
-        supporting = "照片页只保留全局媒体流的壳层，不接真实媒体、不接真实 Viewer。",
+        headline = "全局媒体流",
+        supporting = "按媒体时间浏览 app 内容体系内的去重媒体，不显示帖子卡语义。",
     ),
     ALBUMS(
         label = "相册",
         headline = "相册与帖子目录占位",
-        supporting = "后续再接帖子卡片、相册分组和帖子详情。",
+        supporting = "后续在这里承接相册分组、帖子卡片和帖子详情入口。",
     ),
     TRASH(
         label = "回收站",

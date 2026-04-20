@@ -16,11 +16,11 @@ private val lifeEntries = listOf(
     ),
     PlaceholderBlock(
         title = "记账",
-        summary = "当前不实现真实能力，只预留信息架构位置。",
+        summary = "当前不实现真实功能，只预留信息架构位置。",
     ),
     PlaceholderBlock(
         title = "聊天记录查看器",
-        summary = "未来是否保留、如何呈现，留到后续阶段再定。",
+        summary = "是否保留以及如何呈现，留到后续阶段再定。",
     ),
 )
 
@@ -32,7 +32,7 @@ fun LifeScreen(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         content = {
             PlaceholderPage(
-                title = "生活入口卡占位",
+                title = "生活入口占位",
                 summary = "保留纪念日、记账、聊天记录查看器三类入口，不接真实能力。",
                 blocks = lifeEntries,
                 showHero = false,
