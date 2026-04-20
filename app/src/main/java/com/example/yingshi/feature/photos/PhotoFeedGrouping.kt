@@ -20,6 +20,55 @@ internal fun buildPhotoFeedBlocks(
     }
 }
 
+internal fun buildPhotoFeedScrubberAnchors(
+    blocks: List<PhotoFeedBlock>,
+    density: PhotoFeedDensity,
+    leadingItemCount: Int,
+): List<PhotoFeedScrubberAnchor> {
+    return blocks.mapIndexedNotNull { index, block ->
+        when {
+            density.columns <= 4 && block is PhotoFeedDayHeader -> {
+                PhotoFeedScrubberAnchor(
+                    blockKey = block.key,
+                    itemIndex = leadingItemCount + index,
+                    label = block.title,
+                )
+            }
+
+            density.columns == 8 && block is PhotoFeedSectionHeader -> {
+                PhotoFeedScrubberAnchor(
+                    blockKey = block.key,
+                    itemIndex = leadingItemCount + index,
+                    label = block.title,
+                )
+            }
+
+            density.columns == 16 && block is PhotoFeedSectionHeader -> {
+                PhotoFeedScrubberAnchor(
+                    blockKey = block.key,
+                    itemIndex = leadingItemCount + index,
+                    label = block.title,
+                )
+            }
+
+            else -> null
+        }
+    }
+}
+
+internal fun resolveCurrentScrubberAnchorIndex(
+    itemIndex: Int,
+    anchors: List<PhotoFeedScrubberAnchor>,
+): Int {
+    if (anchors.isEmpty()) return 0
+
+    val matchedIndex = anchors.indexOfLast { anchor ->
+        anchor.itemIndex <= itemIndex
+    }
+
+    return if (matchedIndex >= 0) matchedIndex else 0
+}
+
 private fun buildMonthAndDayBlocks(
     items: List<PhotoFeedItem>,
     columns: Int,
