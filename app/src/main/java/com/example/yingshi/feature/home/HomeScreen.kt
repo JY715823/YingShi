@@ -12,15 +12,15 @@ import com.example.yingshi.ui.theme.YingShiTheme
 private val homeSections = listOf(
     PlaceholderBlock(
         title = "首页总览占位",
-        summary = "Stage 0 只保留结构入口，不承载真实业务数据。",
+        summary = "当前只保留结构入口，不承载真实业务数据。",
     ),
     PlaceholderBlock(
-        title = "后续可接入共享记忆摘要",
-        summary = "未来再决定主页是聚合信息页，还是更轻的欢迎页。",
+        title = "共享记忆摘要",
+        summary = "后续再决定首页更偏聚合概览，还是更轻的欢迎页。",
     ),
     PlaceholderBlock(
-        title = "当前重点仍是照片模块壳层",
-        summary = "主页先作为稳定底部导航的一部分存在。",
+        title = "全局壳层稳定区",
+        summary = "现阶段首页主要承担一级导航中的稳定入口角色。",
     ),
 )
 
@@ -32,8 +32,8 @@ fun HomeScreen(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         content = {
             PlaceholderPage(
-                title = "首页壳层",
-                summary = "Stage 1 先统一视觉基线，不扩展真实业务逻辑。",
+                title = "主页壳层",
+                summary = "当前先维持统一视觉基线，不扩展真实业务逻辑。",
                 blocks = homeSections,
                 showHero = false,
             )
