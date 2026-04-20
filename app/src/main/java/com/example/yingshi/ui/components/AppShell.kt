@@ -40,6 +40,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 fun AppShellScaffold(
     selectedDestination: RootDestination,
     onDestinationSelected: (RootDestination) -> Unit,
+    showBottomBar: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -47,10 +48,12 @@ fun AppShellScaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            FloatingBottomBar(
-                selectedDestination = selectedDestination,
-                onDestinationSelected = onDestinationSelected,
-            )
+            if (showBottomBar) {
+                FloatingBottomBar(
+                    selectedDestination = selectedDestination,
+                    onDestinationSelected = onDestinationSelected,
+                )
+            }
         },
     ) { innerPadding ->
         Box(
