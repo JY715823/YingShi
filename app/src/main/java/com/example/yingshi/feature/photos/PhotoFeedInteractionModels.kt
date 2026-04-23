@@ -37,9 +37,18 @@ data class PhotoFeedScrubberAnchor(
 )
 
 @Immutable
-data class PhotoViewerPlaceholderRoute(
-    val mediaId: String,
-    val mediaPosition: Int,
-    val mediaCount: Int,
-    val densityLabel: String,
+data class PhotoViewerRoute(
+    val mediaItems: List<PhotoFeedItem>,
+    val initialIndex: Int,
+    val sourceLabel: String,
+    val showPostSegments: Boolean = false,
+)
+
+@Immutable
+data class PhotoViewerOverlayUiModel(
+    val sourceLabel: String,
+    val pageLabel: String,
+    val commentCountLabel: String,
+    val timeLabel: String,
+    val relatedPostsLabel: String?,
 )

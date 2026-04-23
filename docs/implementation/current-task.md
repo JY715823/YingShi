@@ -1,25 +1,26 @@
-# Current Task - Stage 2.2 Photo Feed Interactions
+# Current Task - Stage 3.1 Viewer Shell v1
 
 ## Goal
-Refine the current Stage 2.2 interaction shell so the photo page feels closer to the confirmed media-flow behavior:
-- a lightweight Time Scrubber with a follow bubble
-- a clearer multi-select context shell
-- a placeholder entry route into viewer
+Build the first real viewer shell for media opened from the photo page.
 
 ## Scope
 This stage covers:
-- Time Scrubber v1 refinement
-- multi-select mode shell refinement
-- click-to-viewer placeholder route
+- viewer route / screen for photo-page media flow
+- open viewer from current selected media
+- immersive dark viewer shell
+- horizontal swipe across the global media feed
+- overlay placeholders:
+  - comment entry
+  - time capsule
+  - load original placeholder
+  - related posts placeholder
 - minimal related doc updates
-- recording the next-stage back behavior requirements without fully implementing them
 
 ## Product intent
-- The photo page is still a global media stream, not a tool panel.
-- Interactions should stay light and should not overpower media itself.
-- The scrubber should feel like a right-side positioning aid, not a floating tool widget.
-- Long press enters multi-select mode.
-- Tap enters media-flow viewer context.
+- This viewer is entered from the photo page, so it belongs to the global media-flow context.
+- It should feel immersive, quiet, dark, and image-first.
+- It is not the post-detail page and not the in-post viewer.
+- From this entry path, no segmented white bars should appear.
 
 ## Current shell assumption
 Use the latest confirmed navigation structure:
@@ -28,38 +29,22 @@ Use the latest confirmed navigation structure:
 - right: 系统媒体 + 铃铛
 - right-side actions visible in all three secondary pages
 
-## Refinement points in this round
-- Time Scrubber uses a fuller right-side vertical interaction column.
-- The date bubble follows the current scrubber position instead of staying fixed in the middle.
-- Multi-select mode switches the photo top bar into a context bar: `取消` + `已选 x 项`.
-- Multi-select actions appear in an extra bar above the global bottom navigation.
-- Exiting multi-select restores the regular top bar and regular bottom shell.
-
-## Back behavior note for later stages
-- Future formal behavior: system back should exit the current transient state first.
-- Examples:
-  - viewer -> photo feed
-  - multi-select mode -> normal photo feed state
-- App exit should not happen too easily.
-- Future target: first back gives a light prompt, second back exits.
-- This stage only records that requirement and allows minimal state-flow fixes when clearly needed.
-
 ## Do not do in this stage
-- no real viewer implementation
-- no comment system
-- no real delete / export flow
-- no real system media integration
+- no real comment system
+- no real comment preview layer
+- no real full comment sheet
+- no real original-image loading
+- no real related-post navigation
+- no in-post viewer
 - no backend / Room / Retrofit
-- no final pinch-to-zoom density switching
-- no full back system redesign
 
 ## Done when
-- Time Scrubber stays lightweight, is hidden by default, and fades out after interaction
-- Time Scrubber date bubble follows the current scrubber position
-- Time Scrubber interaction area is a fuller right-side vertical column
-- Long press enters multi-select mode
-- Multi-select switches the top bar into context mode
-- Multi-select shows a lightweight action bar above the global bottom nav
-- Tap enters a viewer placeholder route
-- Related docs are minimally synchronized with the current interaction rules
+- Tapping media from the photo page opens a real viewer shell
+- Viewer opens based on the current global media set and tapped position
+- Viewer swipes across the global media flow
+- Viewer has immersive dark structure and light edge overlays
+- Viewer has the first edge action shell: left comment entry, right time/original/related-post placeholders
+- Photo-page viewer does not show post-segment white bars
+- System back exits the current viewer state first
 - App builds and runs
+- Docs are minimally synchronized

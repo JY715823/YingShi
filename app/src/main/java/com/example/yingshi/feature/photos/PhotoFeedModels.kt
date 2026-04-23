@@ -26,6 +26,7 @@ data class PhotoFeedItem(
     val displayYear: Int,
     val displayMonth: Int,
     val displayDay: Int,
+    val commentCount: Int,
     val postIds: List<String>,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float = 1f,

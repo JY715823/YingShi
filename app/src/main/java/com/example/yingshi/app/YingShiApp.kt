@@ -10,8 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
-import com.example.yingshi.feature.photos.PhotoViewerPlaceholderRoute
-import com.example.yingshi.feature.photos.PhotoViewerPlaceholderScreen
+import com.example.yingshi.feature.photos.PhotoViewerRoute
+import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
@@ -23,7 +23,7 @@ fun YingShiApp() {
         mutableStateOf(RootDestination.PHOTOS.name)
     }
     var photoViewerRoute by remember {
-        mutableStateOf<PhotoViewerPlaceholderRoute?>(null)
+        mutableStateOf<PhotoViewerRoute?>(null)
     }
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
 
@@ -40,7 +40,7 @@ fun YingShiApp() {
     ) {
         if (photoViewerRoute != null) {
             photoViewerRoute?.let { route ->
-                PhotoViewerPlaceholderScreen(
+                PhotoViewerScreen(
                     route = route,
                     onBack = { photoViewerRoute = null },
                 )
