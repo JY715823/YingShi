@@ -1,14 +1,18 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -16,30 +20,45 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,6 +67,116 @@ private val ViewerNightTop = Color(0xFF07111C)
 private val ViewerNightBottom = Color(0xFF03070E)
 private val ViewerNightMiddle = Color(0xFF102032)
 private val ViewerSurface = Color(0xFFFFFFFF)
+private val ViewerCanvasTopPadding = 100.dp
+private val ViewerCanvasBottomPadding = 230.dp
+private val ViewerCommentPreviewHeight = 152.dp
+private const val ViewerCommentSheetHeightFraction = 0.74f
+private const val MinViewerScale = 1f
+private const val MaxViewerScale = 4f
+private const val ViewerZoomResetThreshold = 1.02f
+
+private class ViewerZoomState {
+    var scale by mutableStateOf(MinViewerScale)
+        private set
+    var offset by mutableStateOf(Offset.Zero)
+        private set
+
+    val isZoomed: Boolean
+        get() = scale > ViewerZoomResetThreshold
+
+    fun applyTransform(
+        zoomChange: Float,
+        panChange: Offset,
+        containerSize: IntSize,
+    ) {
+        val nextScale = (scale * zoomChange).coerceIn(MinViewerScale, MaxViewerScale)
+        if (nextScale <= ViewerZoomResetThreshold) {
+            reset()
+            return
+        }
+
+        scale = nextScale
+        offset = clampOffset(offset + panChange, nextScale, containerSize)
+    }
+
+    fun panBy(
+        panChange: Offset,
+        containerSize: IntSize,
+    ) {
+        if (!isZoomed) return
+        offset = clampOffset(offset + panChange, scale, containerSize)
+    }
+
+    fun reset() {
+        scale = MinViewerScale
+        offset = Offset.Zero
+    }
+
+    private fun clampOffset(
+        value: Offset,
+        currentScale: Float,
+        containerSize: IntSize,
+    ): Offset {
+        val maxX = containerSize.width * (currentScale - MinViewerScale) / 2f
+        val maxY = containerSize.height * (currentScale - MinViewerScale) / 2f
+        return Offset(
+            x = value.x.coerceIn(-maxX, maxX),
+            y = value.y.coerceIn(-maxY, maxY),
+        )
+    }
+}
+
+private fun Modifier.viewerZoomGesture(zoomState: ViewerZoomState): Modifier = pointerInput(zoomState) {
+    awaitEachGesture {
+        while (true) {
+            val event = awaitPointerEvent()
+            val activeChanges = event.changes.filter { it.pressed }
+            if (activeChanges.isEmpty()) break
+
+            if (activeChanges.size >= 2) {
+                val currentCentroid = activeChanges.centroid(usePrevious = false)
+                val previousCentroid = activeChanges.centroid(usePrevious = true)
+                val currentDistance = activeChanges.averageDistanceTo(currentCentroid, usePrevious = false)
+                val previousDistance = activeChanges.averageDistanceTo(previousCentroid, usePrevious = true)
+                val zoomChange = if (previousDistance > 0f) {
+                    currentDistance / previousDistance
+                } else {
+                    MinViewerScale
+                }
+
+                zoomState.applyTransform(
+                    zoomChange = zoomChange,
+                    panChange = currentCentroid - previousCentroid,
+                    containerSize = size,
+                )
+                activeChanges.forEach { it.consume() }
+            } else if (zoomState.isZoomed) {
+                zoomState.panBy(
+                    panChange = activeChanges.first().positionChange(),
+                    containerSize = size,
+                )
+                activeChanges.forEach { it.consume() }
+            }
+        }
+    }
+}
+
+private fun List<PointerInputChange>.centroid(usePrevious: Boolean): Offset {
+    val total = fold(Offset.Zero) { sum, change ->
+        sum + if (usePrevious) change.previousPosition else change.position
+    }
+    return total / size.toFloat()
+}
+
+private fun List<PointerInputChange>.averageDistanceTo(
+    centroid: Offset,
+    usePrevious: Boolean,
+): Float {
+    return sumOf { change ->
+        val position = if (usePrevious) change.previousPosition else change.position
+        (position - centroid).getDistance().toDouble()
+    }.toFloat() / size
+}
 
 @Composable
 fun PhotoViewerScreen(
@@ -66,6 +195,11 @@ fun PhotoViewerScreen(
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val initialPage = route.initialIndex.coerceIn(0, route.mediaItems.lastIndex)
+    val zoomState = remember { ViewerZoomState() }
+    val originalLoadStates = remember(route.mediaItems) {
+        mutableStateMapOf<String, ViewerOriginalLoadState>()
+    }
+    var showCommentSheet by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { route.mediaItems.size },
@@ -76,12 +210,25 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = route.mediaItems[currentIndex]
-    val overlayUiModel = remember(route.sourceLabel, currentIndex, route.mediaItems.size, currentItem) {
+    val currentOriginalState = originalLoadStates[currentItem.mediaId]
+        ?: ViewerOriginalLoadState.NotLoaded
+    val previewComments = remember(currentItem.mediaId, currentItem.commentCount) {
+        fakeViewerPreviewComments(currentItem)
+    }
+    val overlayUiModel = remember(
+        route.sourceLabel,
+        currentIndex,
+        route.mediaItems.size,
+        currentItem,
+        currentOriginalState,
+        previewComments,
+    ) {
         PhotoViewerOverlayUiModel(
             sourceLabel = route.sourceLabel,
             pageLabel = "${currentIndex + 1} / ${route.mediaItems.size}",
             commentCountLabel = currentItem.commentCount.toString(),
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
+            originalLoadState = currentOriginalState,
             relatedPostsLabel = if (currentItem.postIds.isNotEmpty()) {
                 if (currentItem.postIds.size > 1) {
                     "所属帖子 ${currentItem.postIds.size}"
@@ -91,7 +238,22 @@ fun PhotoViewerScreen(
             } else {
                 null
             },
+            previewComments = previewComments,
         )
+    }
+
+    LaunchedEffect(currentIndex) {
+        zoomState.reset()
+        showCommentSheet = false
+    }
+    LaunchedEffect(currentItem.mediaId, currentOriginalState) {
+        if (currentOriginalState == ViewerOriginalLoadState.Loading) {
+            delay(900)
+            originalLoadStates[currentItem.mediaId] = ViewerOriginalLoadState.Loaded
+        }
+    }
+    BackHandler(enabled = zoomState.isZoomed) {
+        zoomState.reset()
     }
 
     Box(
@@ -112,11 +274,12 @@ fun PhotoViewerScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = 1,
-            userScrollEnabled = route.mediaItems.size > 1,
+            userScrollEnabled = route.mediaItems.size > 1 && !zoomState.isZoomed,
             key = { page -> route.mediaItems[page].mediaId },
         ) { page ->
             PhotoViewerCanvas(
                 media = route.mediaItems[page],
+                zoomState = if (page == currentIndex) zoomState else null,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -128,12 +291,14 @@ fun PhotoViewerScreen(
                 .height(148.dp),
         )
 
-        ViewerBottomScrim(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(236.dp),
-        )
+        if (!zoomState.isZoomed) {
+            ViewerBottomScrim(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(236.dp),
+            )
+        }
 
         PhotoViewerTopBar(
             sourceLabel = overlayUiModel.sourceLabel,
@@ -144,25 +309,59 @@ fun PhotoViewerScreen(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = spacing.lg, vertical = spacing.sm),
+            overlayAlpha = if (zoomState.isZoomed) 0.42f else 1f,
         )
 
-        PhotoViewerEdgeActions(
-            overlayUiModel = overlayUiModel,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = spacing.lg, vertical = spacing.lg),
-            onOpenComments = {
-                Toast.makeText(context, "评论系统将在后续阶段接入", Toast.LENGTH_SHORT).show()
-            },
-            onOpenOriginal = {
-                Toast.makeText(context, "原图 / 原件加载将在后续阶段接入", Toast.LENGTH_SHORT).show()
-            },
-            onOpenRelatedPosts = {
-                Toast.makeText(context, "所属帖子跳转将在后续阶段接入", Toast.LENGTH_SHORT).show()
-            },
-        )
+        if (!zoomState.isZoomed) {
+            if (overlayUiModel.previewComments.isNotEmpty()) {
+                ViewerCommentPreviewLayer(
+                    comments = overlayUiModel.previewComments,
+                    onOpenComment = { showCommentSheet = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .navigationBarsPadding()
+                        .padding(start = spacing.lg, bottom = 108.dp),
+                )
+            }
+
+            PhotoViewerEdgeActions(
+                overlayUiModel = overlayUiModel,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = spacing.lg, vertical = spacing.lg),
+                onOpenComments = {
+                    showCommentSheet = true
+                },
+                onOpenOriginal = {
+                    when (currentOriginalState) {
+                        ViewerOriginalLoadState.NotLoaded -> {
+                            originalLoadStates[currentItem.mediaId] = ViewerOriginalLoadState.Loading
+                            Toast.makeText(context, "开始加载原图占位", Toast.LENGTH_SHORT).show()
+                        }
+
+                        ViewerOriginalLoadState.Loading -> {
+                            Toast.makeText(context, "原图占位加载中", Toast.LENGTH_SHORT).show()
+                        }
+
+                        ViewerOriginalLoadState.Loaded -> {
+                            Toast.makeText(context, "已加载原图占位", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onOpenRelatedPosts = {
+                    Toast.makeText(context, "所属帖子跳转将在后续阶段接入", Toast.LENGTH_SHORT).show()
+                },
+            )
+        }
+
+        if (showCommentSheet) {
+            PhotoViewerCommentSheet(
+                comments = overlayUiModel.previewComments,
+                onDismiss = { showCommentSheet = false },
+            )
+        }
     }
 }
 
@@ -233,11 +432,12 @@ private fun PhotoViewerTopBar(
     pageLabel: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    overlayAlpha: Float = 1f,
 ) {
     val spacing = YingShiThemeTokens.spacing
 
     Row(
-        modifier = modifier,
+        modifier = modifier.alpha(overlayAlpha),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -268,20 +468,39 @@ private fun PhotoViewerTopBar(
 @Composable
 private fun PhotoViewerCanvas(
     media: PhotoFeedItem,
+    zoomState: ViewerZoomState?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val canvasAspectRatio = media.aspectRatio.coerceIn(0.75f, 1.35f)
+    val zoomModifier = if (zoomState != null) {
+        Modifier
+            .graphicsLayer {
+                scaleX = zoomState.scale
+                scaleY = zoomState.scale
+                translationX = zoomState.offset.x
+                translationY = zoomState.offset.y
+            }
+            .viewerZoomGesture(zoomState)
+    } else {
+        Modifier
+    }
 
     Box(
-        modifier = modifier.padding(horizontal = spacing.xl, vertical = spacing.xxl),
-        contentAlignment = Alignment.Center,
+        modifier = modifier.padding(
+            start = spacing.xl,
+            top = ViewerCanvasTopPadding,
+            end = spacing.xl,
+            bottom = ViewerCanvasBottomPadding,
+        ),
+        contentAlignment = Alignment.TopCenter,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(canvasAspectRatio)
+                .then(zoomModifier)
                 .clip(RoundedCornerShape(radius.xl))
                 .background(
                     brush = Brush.linearGradient(
@@ -370,10 +589,13 @@ private fun PhotoViewerEdgeActions(
             ViewerCapsule(
                 text = overlayUiModel.timeLabel,
                 emphasized = false,
+                surfaceAlpha = 0.06f,
+                contentAlpha = 0.78f,
             )
             ViewerCapsule(
-                text = "原图 / 原件",
-                emphasized = false,
+                text = overlayUiModel.originalLoadState.label,
+                emphasized = overlayUiModel.originalLoadState == ViewerOriginalLoadState.Loaded,
+                enabled = overlayUiModel.originalLoadState != ViewerOriginalLoadState.Loading,
                 onClick = onOpenOriginal,
             )
             overlayUiModel.relatedPostsLabel?.let { relatedPostsLabel ->
@@ -414,10 +636,12 @@ private fun ViewerCommentEntry(
             )
         }
 
-        ViewerCapsule(
-            text = commentCountLabel,
-            emphasized = true,
-        )
+        if (commentCountLabel != "0") {
+            ViewerCapsule(
+                text = commentCountLabel,
+                emphasized = true,
+            )
+        }
     }
 }
 
@@ -426,6 +650,9 @@ private fun ViewerCapsule(
     text: String,
     emphasized: Boolean,
     modifier: Modifier = Modifier,
+    surfaceAlpha: Float = if (emphasized) 0.14f else 0.10f,
+    contentAlpha: Float = 0.94f,
+    enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -436,17 +663,17 @@ private fun ViewerCapsule(
         modifier = modifier
             .clip(shape)
             .then(
-                if (onClick != null) {
+                if (onClick != null && enabled) {
                     Modifier.clickable(onClick = onClick)
                 } else {
                     Modifier
                 },
             ),
         shape = shape,
-        color = ViewerSurface.copy(alpha = if (emphasized) 0.14f else 0.10f),
-        border = androidx.compose.foundation.BorderStroke(
+        color = ViewerSurface.copy(alpha = if (enabled) surfaceAlpha else 0.07f),
+        border = BorderStroke(
             width = 1.dp,
-            color = ViewerSurface.copy(alpha = if (emphasized) 0.18f else 0.10f),
+            color = ViewerSurface.copy(alpha = if (enabled) surfaceAlpha + 0.04f else 0.08f),
         ),
     ) {
         Text(
@@ -457,7 +684,121 @@ private fun ViewerCapsule(
             } else {
                 MaterialTheme.typography.labelLarge
             },
-            color = ViewerSurface.copy(alpha = 0.94f),
+            color = ViewerSurface.copy(alpha = if (enabled) contentAlpha else 0.58f),
+        )
+    }
+}
+
+@Composable
+private fun ViewerCommentPreviewLayer(
+    comments: List<ViewerPreviewCommentUiModel>,
+    onOpenComment: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth(0.78f)
+            .widthIn(max = 340.dp)
+            .height(ViewerCommentPreviewHeight)
+            .clip(RoundedCornerShape(radius.lg))
+            .background(Color.Black.copy(alpha = 0.34f))
+            .clickable(onClick = onOpenComment)
+            .padding(horizontal = spacing.md, vertical = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        comments.take(3).forEach { comment ->
+            Text(
+                text = "${comment.author}：${comment.body}",
+                style = MaterialTheme.typography.bodySmall,
+                color = ViewerSurface.copy(alpha = 0.86f),
+                maxLines = 2,
+            )
+        }
+        if (comments.size > 3) {
+            Text(
+                text = "还有 ${comments.size - 3} 条轻预览",
+                style = MaterialTheme.typography.labelSmall,
+                color = ViewerSurface.copy(alpha = 0.58f),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PhotoViewerCommentSheet(
+    comments: List<ViewerPreviewCommentUiModel>,
+    onDismiss: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ViewerNightTop,
+        contentColor = ViewerSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(ViewerCommentSheetHeightFraction)
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            Text(
+                text = "媒体评论",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = ViewerSurface.copy(alpha = 0.94f),
+            )
+            if (comments.isEmpty()) {
+                Text(
+                    text = "还没有评论，正式评论区将在后续阶段接入。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ViewerSurface.copy(alpha = 0.68f),
+                )
+            } else {
+                comments.forEach { comment ->
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                        Text(
+                            text = comment.author,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = ViewerSurface.copy(alpha = 0.88f),
+                        )
+                        Text(
+                            text = comment.body,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ViewerSurface.copy(alpha = 0.78f),
+                        )
+                    }
+                }
+                Text(
+                    text = "评论输入、编辑和真实列表将在后续评论系统阶段接入。",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ViewerSurface.copy(alpha = 0.50f),
+                )
+            }
+        }
+    }
+}
+
+private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<ViewerPreviewCommentUiModel> {
+    if (media.commentCount <= 0) return emptyList()
+
+    val bodies = listOf(
+        "这张的光很温柔，像那天刚好慢下来了一点。",
+        "我记得这里，当时风特别轻。",
+        "这个角度好像比现场更安静。",
+        "先留一条占位评论，后面接真实媒体评论。",
+    )
+    return List(media.commentCount.coerceAtMost(4)) { index ->
+        ViewerPreviewCommentUiModel(
+            id = "${media.mediaId}-preview-$index",
+            author = if (index % 2 == 0) "我" else "你",
+            body = bodies[index % bodies.size],
         )
     }
 }
