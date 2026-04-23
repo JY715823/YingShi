@@ -75,6 +75,10 @@ private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
 
+private data class ViewerCommentPanelState(
+    val selectedCommentId: String? = null,
+)
+
 private class ViewerZoomState {
     var scale by mutableStateOf(MinViewerScale)
         private set
@@ -199,7 +203,8 @@ fun PhotoViewerScreen(
     val originalLoadStates = remember(route.mediaItems) {
         mutableStateMapOf<String, ViewerOriginalLoadState>()
     }
-    var showCommentSheet by remember { mutableStateOf(false) }
+    var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
+    var showRelatedPostsSheet by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { route.mediaItems.size },
@@ -215,6 +220,9 @@ fun PhotoViewerScreen(
     val previewComments = remember(currentItem.mediaId, currentItem.commentCount) {
         fakeViewerPreviewComments(currentItem)
     }
+    val relatedPosts = remember(currentItem.postIds) {
+        fakeViewerRelatedPosts(currentItem)
+    }
     val overlayUiModel = remember(
         route.sourceLabel,
         currentIndex,
@@ -222,6 +230,7 @@ fun PhotoViewerScreen(
         currentItem,
         currentOriginalState,
         previewComments,
+        relatedPosts,
     ) {
         PhotoViewerOverlayUiModel(
             sourceLabel = route.sourceLabel,
@@ -238,13 +247,15 @@ fun PhotoViewerScreen(
             } else {
                 null
             },
+            relatedPosts = relatedPosts,
             previewComments = previewComments,
         )
     }
 
     LaunchedEffect(currentIndex) {
         zoomState.reset()
-        showCommentSheet = false
+        commentPanelState = null
+        showRelatedPostsSheet = false
     }
     LaunchedEffect(currentItem.mediaId, currentOriginalState) {
         if (currentOriginalState == ViewerOriginalLoadState.Loading) {
@@ -254,6 +265,12 @@ fun PhotoViewerScreen(
     }
     BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
+    }
+    BackHandler(enabled = commentPanelState != null) {
+        commentPanelState = null
+    }
+    BackHandler(enabled = showRelatedPostsSheet) {
+        showRelatedPostsSheet = false
     }
 
     Box(
@@ -316,7 +333,9 @@ fun PhotoViewerScreen(
             if (overlayUiModel.previewComments.isNotEmpty()) {
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
-                    onOpenComment = { showCommentSheet = true },
+                    onOpenComment = { commentId ->
+                        commentPanelState = ViewerCommentPanelState(selectedCommentId = commentId)
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .navigationBarsPadding()
@@ -332,7 +351,7 @@ fun PhotoViewerScreen(
                     .navigationBarsPadding()
                     .padding(horizontal = spacing.lg, vertical = spacing.lg),
                 onOpenComments = {
-                    showCommentSheet = true
+                    commentPanelState = ViewerCommentPanelState()
                 },
                 onOpenOriginal = {
                     when (currentOriginalState) {
@@ -351,15 +370,36 @@ fun PhotoViewerScreen(
                     }
                 },
                 onOpenRelatedPosts = {
-                    Toast.makeText(context, "所属帖子跳转将在后续阶段接入", Toast.LENGTH_SHORT).show()
+                    if (overlayUiModel.relatedPosts.size > 1) {
+                        showRelatedPostsSheet = true
+                    } else {
+                        val post = overlayUiModel.relatedPosts.firstOrNull()
+                        Toast.makeText(
+                            context,
+                            post?.let { "将进入「${it.title}」（占位）" } ?: "当前媒体暂无所属帖子",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
                 },
             )
         }
 
-        if (showCommentSheet) {
+        commentPanelState?.let { panelState ->
             PhotoViewerCommentSheet(
                 comments = overlayUiModel.previewComments,
-                onDismiss = { showCommentSheet = false },
+                selectedCommentId = panelState.selectedCommentId,
+                onDismiss = { commentPanelState = null },
+            )
+        }
+
+        if (showRelatedPostsSheet) {
+            ViewerRelatedPostsSheet(
+                posts = overlayUiModel.relatedPosts,
+                onSelectPost = { post ->
+                    showRelatedPostsSheet = false
+                    Toast.makeText(context, "将进入「${post.title}」（占位）", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showRelatedPostsSheet = false },
             )
         }
     }
@@ -692,7 +732,7 @@ private fun ViewerCapsule(
 @Composable
 private fun ViewerCommentPreviewLayer(
     comments: List<ViewerPreviewCommentUiModel>,
-    onOpenComment: () -> Unit,
+    onOpenComment: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -705,13 +745,16 @@ private fun ViewerCommentPreviewLayer(
             .height(ViewerCommentPreviewHeight)
             .clip(RoundedCornerShape(radius.lg))
             .background(Color.Black.copy(alpha = 0.34f))
-            .clickable(onClick = onOpenComment)
             .padding(horizontal = spacing.md, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
         comments.take(3).forEach { comment ->
             Text(
                 text = "${comment.author}：${comment.body}",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(radius.sm))
+                    .clickable { onOpenComment(comment.id) }
+                    .padding(horizontal = spacing.xs, vertical = spacing.xs),
                 style = MaterialTheme.typography.bodySmall,
                 color = ViewerSurface.copy(alpha = 0.86f),
                 maxLines = 2,
@@ -731,6 +774,7 @@ private fun ViewerCommentPreviewLayer(
 @Composable
 private fun PhotoViewerCommentSheet(
     comments: List<ViewerPreviewCommentUiModel>,
+    selectedCommentId: String?,
     onDismiss: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -754,6 +798,13 @@ private fun PhotoViewerCommentSheet(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
+            if (selectedCommentId != null) {
+                Text(
+                    text = "已定位到预览评论，占位高亮如下",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ViewerSurface.copy(alpha = 0.58f),
+                )
+            }
             if (comments.isEmpty()) {
                 Text(
                     text = "还没有评论，正式评论区将在后续阶段接入。",
@@ -762,7 +813,17 @@ private fun PhotoViewerCommentSheet(
                 )
             } else {
                 comments.forEach { comment ->
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    val isSelected = comment.id == selectedCommentId
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.md))
+                            .background(
+                                ViewerSurface.copy(alpha = if (isSelected) 0.10f else 0.00f),
+                            )
+                            .padding(horizontal = spacing.sm, vertical = spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                    ) {
                         Text(
                             text = comment.author,
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -785,6 +846,66 @@ private fun PhotoViewerCommentSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ViewerRelatedPostsSheet(
+    posts: List<ViewerRelatedPostUiModel>,
+    onSelectPost: (ViewerRelatedPostUiModel) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ViewerNightTop,
+        contentColor = ViewerSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.42f)
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "选择所属帖子",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = ViewerSurface.copy(alpha = 0.94f),
+            )
+            Text(
+                text = "当前为占位入口，正式跳转将在帖子详情阶段接入。",
+                style = MaterialTheme.typography.labelMedium,
+                color = ViewerSurface.copy(alpha = 0.58f),
+            )
+            posts.forEach { post ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(radius.lg))
+                        .background(ViewerSurface.copy(alpha = 0.08f))
+                        .clickable { onSelectPost(post) }
+                        .padding(horizontal = spacing.md, vertical = spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    Text(
+                        text = post.title,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = ViewerSurface.copy(alpha = 0.88f),
+                    )
+                    Text(
+                        text = post.subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ViewerSurface.copy(alpha = 0.58f),
+                    )
+                }
+            }
+        }
+    }
+}
+
 private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<ViewerPreviewCommentUiModel> {
     if (media.commentCount <= 0) return emptyList()
 
@@ -800,6 +921,38 @@ private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<ViewerPreviewC
             author = if (index % 2 == 0) "我" else "你",
             body = bodies[index % bodies.size],
         )
+    }
+}
+
+private fun fakeViewerRelatedPosts(media: PhotoFeedItem): List<ViewerRelatedPostUiModel> {
+    return media.postIds.mapIndexed { index, postId ->
+        ViewerRelatedPostUiModel(
+            id = postId,
+            title = placeholderPostTitle(postId),
+            subtitle = if (media.postIds.size == 1) {
+                "单个所属帖子 · 占位跳转"
+            } else {
+                "可选所属帖子 ${index + 1} / ${media.postIds.size}"
+            },
+        )
+    }
+}
+
+private fun placeholderPostTitle(postId: String): String {
+    return when (postId) {
+        "post-night-walk" -> "夜晚散步"
+        "post-april-window" -> "四月窗边"
+        "post-sunday-brunch" -> "周日早午餐"
+        "post-flower-table" -> "花桌小记"
+        "post-morning-metro" -> "早班地铁"
+        "post-late-return" -> "晚归路上"
+        "post-river-night" -> "河边夜色"
+        "post-new-year" -> "新年第一刻"
+        "post-fireworks" -> "烟花倒影"
+        else -> postId
+            .removePrefix("post-")
+            .split("-")
+            .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
     }
 }
 

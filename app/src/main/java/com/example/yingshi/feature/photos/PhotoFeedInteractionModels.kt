@@ -52,6 +52,7 @@ data class PhotoViewerOverlayUiModel(
     val timeLabel: String,
     val originalLoadState: ViewerOriginalLoadState,
     val relatedPostsLabel: String?,
+    val relatedPosts: List<ViewerRelatedPostUiModel>,
     val previewComments: List<ViewerPreviewCommentUiModel>,
 )
 
@@ -68,4 +69,11 @@ data class ViewerPreviewCommentUiModel(
     val id: String,
     val author: String,
     val body: String,
+)
+
+@Immutable
+data class ViewerRelatedPostUiModel(
+    val id: String,
+    val title: String,
+    val subtitle: String,
 )
