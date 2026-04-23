@@ -50,5 +50,22 @@ data class PhotoViewerOverlayUiModel(
     val pageLabel: String,
     val commentCountLabel: String,
     val timeLabel: String,
+    val originalLoadState: ViewerOriginalLoadState,
     val relatedPostsLabel: String?,
+    val previewComments: List<ViewerPreviewCommentUiModel>,
+)
+
+enum class ViewerOriginalLoadState(
+    val label: String,
+) {
+    NotLoaded(label = "加载原图"),
+    Loading(label = "加载中"),
+    Loaded(label = "已加载原图"),
+}
+
+@Immutable
+data class ViewerPreviewCommentUiModel(
+    val id: String,
+    val author: String,
+    val body: String,
 )

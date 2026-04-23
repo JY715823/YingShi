@@ -14,7 +14,7 @@ data class PhotoThumbnailPalette(
 data class PhotoFeedSourceEntry(
     val mediaId: String,
     val mediaDisplayTimeMillis: Long,
-    val postId: String,
+    val postId: String?,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float = 1f,
 )

@@ -21,7 +21,7 @@ object FakePhotoFeedRepository {
                     displayMonth = parts.month,
                     displayDay = parts.day,
                     commentCount = placeholderCommentCount(latestEntry.mediaId),
-                    postIds = entries.map { it.postId }.distinct(),
+                    postIds = entries.mapNotNull { it.postId }.distinct(),
                     palette = latestEntry.palette,
                     aspectRatio = latestEntry.aspectRatio,
                 )
@@ -37,7 +37,8 @@ object FakePhotoFeedRepository {
     private fun fakeSourceEntries(): List<PhotoFeedSourceEntry> {
         return buildList {
             feedSeeds.forEach { seed ->
-                seed.postIds.forEach { postId ->
+                val postIds = seed.postIds.ifEmpty { listOf(null) }
+                postIds.forEach { postId ->
                     add(
                         PhotoFeedSourceEntry(
                             mediaId = seed.mediaId,
@@ -133,6 +134,7 @@ object FakePhotoFeedRepository {
     )
 
     private val feedSeeds = listOf(
+        FeedSeed("media-2026-04-20-a", 2026, 4, 20, 10, 6, emptyList(), rainSlate, aspectRatio = 0.8f),
         FeedSeed("media-2026-04-18-a", 2026, 4, 18, 21, 12, listOf("post-night-walk", "post-april-window"), blueMist),
         FeedSeed("media-2026-04-18-b", 2026, 4, 18, 20, 44, listOf("post-night-walk"), twilightLavender),
         FeedSeed("media-2026-04-18-c", 2026, 4, 18, 18, 16, listOf("post-april-window"), teaBrown),
