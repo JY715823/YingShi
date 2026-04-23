@@ -58,7 +58,7 @@ private val PhotoSelectionActionBarPadding = 88.dp
 @Composable
 fun PhotosRootScreen(
     modifier: Modifier = Modifier,
-    onOpenViewer: (PhotoViewerPlaceholderRoute) -> Unit = { },
+    onOpenViewer: (PhotoViewerRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current

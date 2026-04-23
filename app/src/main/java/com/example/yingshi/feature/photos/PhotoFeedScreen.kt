@@ -71,7 +71,7 @@ fun PhotoFeedScreen(
     selectionState: PhotoFeedSelectionState = PhotoFeedSelectionState(),
     bottomOverlayPadding: Dp = 0.dp,
     onSelectionStateChange: (PhotoFeedSelectionState) -> Unit = { },
-    onOpenViewer: (PhotoViewerPlaceholderRoute) -> Unit = { },
+    onOpenViewer: (PhotoViewerRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
     val feedItems = remember { FakePhotoFeedRepository.getPhotoFeed() }
@@ -166,13 +166,12 @@ fun PhotoFeedScreen(
                                 if (selectionState.isInSelectionMode) {
                                     selectionState.toggle(item.mediaId)
                                 } else {
-                                    val mediaPosition = (mediaPositionLookup[item.mediaId] ?: 0) + 1
                                     onOpenViewer(
-                                        PhotoViewerPlaceholderRoute(
-                                            mediaId = item.mediaId,
-                                            mediaPosition = mediaPosition,
-                                            mediaCount = feedItems.size,
-                                            densityLabel = density.label,
+                                        PhotoViewerRoute(
+                                            mediaItems = feedItems,
+                                            initialIndex = mediaPositionLookup[item.mediaId] ?: 0,
+                                            sourceLabel = "照片页全局媒体流",
+                                            showPostSegments = false,
                                         ),
                                     )
                                     selectionState

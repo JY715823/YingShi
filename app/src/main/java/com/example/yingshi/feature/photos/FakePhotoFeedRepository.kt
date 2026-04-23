@@ -3,6 +3,7 @@ package com.example.yingshi.feature.photos
 import androidx.compose.ui.graphics.Color
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.absoluteValue
 
 object FakePhotoFeedRepository {
     fun getPhotoFeed(): List<PhotoFeedItem> {
@@ -19,12 +20,18 @@ object FakePhotoFeedRepository {
                     displayYear = parts.year,
                     displayMonth = parts.month,
                     displayDay = parts.day,
+                    commentCount = placeholderCommentCount(latestEntry.mediaId),
                     postIds = entries.map { it.postId }.distinct(),
                     palette = latestEntry.palette,
                     aspectRatio = latestEntry.aspectRatio,
                 )
             }
             .sortedByDescending { it.mediaDisplayTimeMillis }
+    }
+
+    private fun placeholderCommentCount(mediaId: String): Int {
+        val rawValue = mediaId.hashCode().absoluteValue % 9
+        return if (rawValue <= 1) 0 else rawValue + 1
     }
 
     private fun fakeSourceEntries(): List<PhotoFeedSourceEntry> {
