@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,21 +54,84 @@ fun PostDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spacing = YingShiThemeTokens.spacing
     val detail = remember(route.postId) {
         FakeAlbumRepository.getPostDetail(route)
     }
+    var inPostViewerInitialPage by rememberSaveable(route.postId) {
+        mutableStateOf<Int?>(null)
+    }
+    var mediaCommentPage by rememberSaveable(route.postId) {
+        mutableStateOf<Int?>(null)
+    }
+
+    BackHandler(enabled = mediaCommentPage != null) {
+        mediaCommentPage = null
+    }
+    BackHandler(enabled = inPostViewerInitialPage != null) {
+        inPostViewerInitialPage = null
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        val viewerInitialPage = inPostViewerInitialPage
+        if (viewerInitialPage != null) {
+            InPostViewerPlaceholder(
+                detail = detail,
+                initialPage = viewerInitialPage,
+                onBack = { inPostViewerInitialPage = null },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            PostDetailContent(
+                detail = detail,
+                onBack = onBack,
+                onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
+                onOpenMediaComments = { page -> mediaCommentPage = page },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            mediaCommentPage?.let { page ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.18f))
+                        .clickable { mediaCommentPage = null },
+                )
+                MediaCommentPlaceholderSheet(
+                    media = detail.mediaItems[page.coerceIn(0, detail.mediaItems.lastIndex)],
+                    onClose = { mediaCommentPage = null },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                        .padding(bottom = YingShiThemeTokens.spacing.lg),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostDetailContent(
+    detail: PostDetailUiModel,
+    onBack: () -> Unit,
+    onOpenMediaViewer: (Int) -> Unit,
+    onOpenMediaComments: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val context = LocalContext.current
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
-    val currentMedia = detail.mediaItems[pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)]
-    var originalLoaded by remember(route.postId, currentMedia.id) { mutableStateOf(false) }
-    val context = LocalContext.current
+    val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
+    val currentMedia = detail.mediaItems[currentPage]
+    var originalLoaded by remember(detail.postId, currentMedia.id) { mutableStateOf(false) }
 
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg)
@@ -85,31 +150,35 @@ fun PostDetailScreen(
 
         PostMediaArea(
             detail = detail,
-            pagerStateCurrentPage = pagerState.currentPage,
+            currentPage = currentPage,
             modifier = Modifier.fillMaxWidth(),
-            onOpenMedia = {
-                Toast.makeText(context, "帖子内查看态占位", Toast.LENGTH_SHORT).show()
-            },
+            onOpenMedia = { onOpenMediaViewer(currentPage) },
         ) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(360.dp),
+                    .height(372.dp),
+                beyondViewportPageCount = 1,
                 key = { page -> detail.mediaItems[page].id },
             ) { page ->
-                PostMediaCard(
-                    media = detail.mediaItems[page],
-                    onClick = {
-                        Toast.makeText(context, "帖子内查看态占位", Toast.LENGTH_SHORT).show()
-                    },
-                )
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PostMediaCard(
+                        media = detail.mediaItems[page],
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onOpenMediaViewer(page) },
+                    )
+                }
             }
         }
 
         PostMediaInfoRow(
             media = currentMedia,
             originalLoaded = originalLoaded,
+            onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
                 originalLoaded = true
                 Toast.makeText(context, "加载原图占位", Toast.LENGTH_SHORT).show()
@@ -156,7 +225,7 @@ private fun PostDetailTopBar(
 @Composable
 private fun PostMediaArea(
     detail: PostDetailUiModel,
-    pagerStateCurrentPage: Int,
+    currentPage: Int,
     modifier: Modifier = Modifier,
     onOpenMedia: () -> Unit,
     pager: @Composable () -> Unit,
@@ -189,7 +258,7 @@ private fun PostMediaArea(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "${pagerStateCurrentPage + 1} / ${detail.mediaItems.size}",
+                text = "${currentPage + 1} / ${detail.mediaItems.size}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -207,14 +276,14 @@ private fun PostMediaArea(
 @Composable
 private fun PostMediaCard(
     media: PostDetailMediaUiModel,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .aspectRatio(media.aspectRatio.coerceIn(0.86f, 1.18f))
             .clip(RoundedCornerShape(radius.lg))
             .clickable(onClick = onClick)
@@ -248,6 +317,7 @@ private fun PostMediaCard(
 private fun PostMediaInfoRow(
     media: PostDetailMediaUiModel,
     originalLoaded: Boolean,
+    onCommentClick: () -> Unit,
     onOriginalClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -259,7 +329,7 @@ private fun PostMediaInfoRow(
     ) {
         PostMetaCapsule(text = formatPostTime(media.displayTimeMillis))
         Spacer(modifier = Modifier.weight(1f))
-        PostMetaCapsule(text = "评")
+        PostActionChip(text = "评", onClick = onCommentClick)
         PostMetaCapsule(text = media.commentCount.toString())
         PostActionChip(
             text = if (originalLoaded) "已加载原图" else "加载原图",
@@ -367,6 +437,230 @@ private fun PostCommentSection(comments: List<PostCommentUiModel>) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun MediaCommentPlaceholderSheet(
+    media: PostDetailMediaUiModel,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val fakeCount = media.commentCount.coerceAtMost(3)
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        shadowElevation = 8.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "媒体评论占位",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "只属于当前媒体，不混入帖子评论区",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                PostActionChip(text = "关闭", onClick = onClose)
+            }
+
+            if (fakeCount == 0) {
+                Text(
+                    text = "当前媒体暂无评论，后续接入真实媒体评论系统。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                repeat(fakeCount) { index ->
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+                        Text(
+                            text = if (index % 2 == 0) "我" else "你",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = "这是一条当前媒体评论占位，后续会替换成真实媒体评论。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InPostViewerPlaceholder(
+    detail: PostDetailUiModel,
+    initialPage: Int,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val safeInitialPage = initialPage.coerceIn(0, detail.mediaItems.lastIndex)
+    val pagerState = rememberPagerState(
+        initialPage = safeInitialPage,
+        pageCount = { detail.mediaItems.size },
+    )
+    val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
+
+    Column(
+        modifier = modifier
+            .background(Color(0xFF07101C))
+            .statusBarsPadding()
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.xs, bottom = spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onBack),
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "<",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "帖子内查看态占位",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+                Text(
+                    text = "来自：${detail.title}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.62f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = "${currentPage + 1}/${detail.mediaItems.size}",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White.copy(alpha = 0.70f),
+            )
+        }
+
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            beyondViewportPageCount = 1,
+            key = { page -> detail.mediaItems[page].id },
+        ) { page ->
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                PostViewerPlaceholderMedia(
+                    media = detail.mediaItems[page],
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        InPostSegmentPlaceholder(
+            currentPage = currentPage,
+            total = detail.mediaItems.size,
+        )
+
+        Text(
+            text = "占位边界：这里未来只在同帖媒体内左右切换，并保留帖子内分段小白条；它不是照片页全局媒体流 Viewer。",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.58f),
+        )
+    }
+}
+
+@Composable
+private fun PostViewerPlaceholderMedia(
+    media: PostDetailMediaUiModel,
+    modifier: Modifier = Modifier,
+) {
+    val radius = YingShiThemeTokens.radius
+
+    Box(
+        modifier = modifier
+            .aspectRatio(media.aspectRatio.coerceIn(0.78f, 1.24f))
+            .clip(RoundedCornerShape(radius.lg))
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(media.palette.start, media.palette.end),
+                ),
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(0.56f)
+                .height(34.dp)
+                .clip(RoundedCornerShape(radius.capsule))
+                .background(Color.White.copy(alpha = 0.12f)),
+        )
+    }
+}
+
+@Composable
+private fun InPostSegmentPlaceholder(
+    currentPage: Int,
+    total: Int,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(total) { index ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(radius.capsule))
+                    .background(
+                        if (index == currentPage) {
+                            Color.White.copy(alpha = 0.82f)
+                        } else {
+                            Color.White.copy(alpha = 0.22f)
+                        },
+                    ),
+            )
         }
     }
 }

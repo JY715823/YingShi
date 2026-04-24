@@ -73,6 +73,8 @@ fun PhotosRootScreen(
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
     }
+    val albumSummaries = remember { FakeAlbumRepository.getAlbums() }
+    val albumPosts = remember { FakeAlbumRepository.getPosts() }
     val selectedSection = PhotosTopDestination.valueOf(selectedSectionName)
     val pagerState = rememberPagerState(
         initialPage = selectedSection.ordinal,
@@ -127,6 +129,7 @@ fun PhotosRootScreen(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
                 key = { page -> PhotosTopDestination.entries[page].name },
             ) { page ->
                 when (PhotosTopDestination.entries[page]) {
@@ -146,8 +149,8 @@ fun PhotosRootScreen(
 
                     PhotosTopDestination.ALBUMS -> {
                         AlbumPageScreen(
-                            albums = FakeAlbumRepository.getAlbums(),
-                            posts = FakeAlbumRepository.getPosts(),
+                            albums = albumSummaries,
+                            posts = albumPosts,
                             onOpenPost = onOpenPostDetail,
                             onManageAlbums = {
                                 Toast.makeText(context, "相册管理入口占位", Toast.LENGTH_SHORT).show()
