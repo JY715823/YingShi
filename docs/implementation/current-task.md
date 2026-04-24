@@ -1,55 +1,61 @@
-# Current Task - Stage 3.4 Viewer Polish and Tunability
+# Current Task - Stage 4.1 Album Page v1
 
 ## Status
-Stage 3.3 Viewer Comment Entry and Related Posts States is complete. Current work is Stage 3.4.
+Stage 3.4 Viewer Polish and Tunability is complete. Current work is Stage 4.1.
 
 ## Goal
-Polish the viewer layout and make its core vertical proportions easier to tune.
+Build the first usable version of the album page as a post-browsing and content-archive page.
 
 ## Scope
 This stage covers:
-- scrollable preview comments area
-- slight viewer layout refinements
-- slight height adjustments for:
-  - media canvas
-  - preview comment area
-  - fuller comment panel
-- viewer top-structure reset:
-  - left-edge back mark
-  - centered time capsule
-  - right-side settings placeholder
-- centered adaptive canvas that fills width whenever possible
-- collapsed-by-default preview comments entry flow
-- better tunability for future layout tweaks
+- viewer comment-entry rule sync:
+  - preview is collapsed by default
+  - first bubble tap expands preview
+  - second bubble tap collapses preview
+  - only tapping a comment opens the fuller comment panel with highlight
+- photo-module top bar cleanup:
+  - tighter top spacing
+  - single-row horizontal layout
+  - left secondary tabs + right tools on one baseline
+- photo-page density interaction:
+  - keep explicit density switcher
+  - add basic pinch-to-zoom switching for `2 / 3 / 4 / 8 / 16`
+- fake album and post-summary data
+- album-switch chips
+- 2-column post grid
+- album-page density interaction:
+  - support `2 / 3 / 4` columns
+  - add basic pinch-to-zoom switching
+  - present album chips as two rows
+- post card structure
+- placeholder route into post detail
+- treat post detail as an independent page shell without the photo-module top bar or global bottom bar
+- album-manage placeholder entry
 - minimal related doc updates
 
 ## Product intent
-- The viewer still belongs to the global media-flow context from the photo page.
-- It should remain immersive, quiet, dark, and image-first.
-- Preview comments should be usable without becoming a heavy panel.
-- Layout parameters should become easier to tweak later.
-- Keep the vertical relationship: canvas > fuller comment panel > preview comment area.
-- Canvas should feel like the clear main actor: centered, adaptive, and width-first without card-like gutters.
-- Preview comments should stay collapsed by default so the viewer opens cleaner, then follow the chain: bubble -> preview -> full panel.
-- Viewer top should stay quiet and unified with the dark status-bar area: left back mark, centered time capsule, right settings placeholder.
+- The album page is not the default browsing entry.
+- It should feel like a memorial album directory / content archive page.
+- It should be softer and more content-oriented than the photo page.
+- It should not look like a pure media feed and should not look like a heavy social feed.
+
+## Current shell assumption
+Use the latest confirmed global shell and navigation structure.
 
 ## Do not do in this stage
-- no real comment system
-- no real post navigation
-- no real original-image loading
-- no in-post viewer
-- no backend / Room / Retrofit
+- no full post detail implementation
+- no post comment system
+- no real edit / delete / export
+- no backend / Room / Retrofit / MediaStore
 
 ## Done when
-- Preview comments area can scroll internally
-- Canvas is moved slightly downward
-- Preview area is slightly taller
-- Full comment panel is slightly lower in height
-- Layout remains balanced and immersive
-- Preview comments are collapsed by default and only expand after the first bubble tap
-- Second bubble tap opens the fuller comment panel
-- Time capsule sits at the top center, with back and settings completing the top structure
-- Viewer top is simplified and visually unified with the dark status-bar area
-- Photo-page viewer still does not show in-post segmented white bars
-- Docs are minimally synchronized
+- Photo-module top bar stays horizontal, tighter, and visually unified
+- Photo page supports basic pinch switching between `2 / 3 / 4 / 8 / 16`
+- Album chips can switch current album
+- Album page supports `2 / 3 / 4` columns with basic pinch switching
+- Album chips present as two rows
+- Post cards have cover + light info band + media count
+- Tapping a post opens a placeholder post-detail route
+- Post detail is shown as an independent page shell
 - App builds and runs
+- Docs are minimally synchronized

@@ -424,7 +424,7 @@ fun PhotoViewerScreen(
                     } else if (!showCommentPreview) {
                         showCommentPreview = true
                     } else {
-                        commentPanelState = ViewerCommentPanelState()
+                        showCommentPreview = false
                     }
                 },
                 onOpenOriginal = {

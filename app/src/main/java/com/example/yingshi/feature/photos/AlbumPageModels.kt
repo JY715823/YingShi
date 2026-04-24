@@ -1,0 +1,44 @@
+package com.example.yingshi.feature.photos
+
+import androidx.compose.runtime.Immutable
+
+@Immutable
+data class AlbumSummaryUiModel(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val accent: PhotoThumbnailPalette,
+)
+
+@Immutable
+data class AlbumPostCardUiModel(
+    val id: String,
+    val albumId: String,
+    val title: String,
+    val summary: String,
+    val postDisplayTimeMillis: Long,
+    val mediaCount: Int,
+    val coverPalette: PhotoThumbnailPalette,
+    val coverAspectRatio: Float = 1f,
+)
+
+enum class AlbumGridDensity(
+    val columns: Int,
+    val label: String,
+) {
+    COZY_2(columns = 2, label = "2列"),
+    COZY_3(columns = 3, label = "3列"),
+    COZY_4(columns = 4, label = "4列"),
+}
+
+@Immutable
+data class PostDetailPlaceholderRoute(
+    val postId: String,
+    val albumId: String,
+    val title: String,
+    val summary: String,
+    val postDisplayTimeMillis: Long,
+    val mediaCount: Int,
+    val coverPalette: PhotoThumbnailPalette,
+    val coverAspectRatio: Float = 1f,
+)
