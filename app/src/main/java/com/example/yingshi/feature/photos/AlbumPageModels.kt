@@ -22,6 +22,35 @@ data class AlbumPostCardUiModel(
     val coverAspectRatio: Float = 1f,
 )
 
+@Immutable
+data class PostDetailUiModel(
+    val postId: String,
+    val title: String,
+    val summary: String,
+    val contributorLabel: String,
+    val postDisplayTimeMillis: Long,
+    val albumChips: List<String>,
+    val mediaItems: List<PostDetailMediaUiModel>,
+    val comments: List<PostCommentUiModel>,
+)
+
+@Immutable
+data class PostDetailMediaUiModel(
+    val id: String,
+    val displayTimeMillis: Long,
+    val commentCount: Int,
+    val palette: PhotoThumbnailPalette,
+    val aspectRatio: Float = 1f,
+)
+
+@Immutable
+data class PostCommentUiModel(
+    val id: String,
+    val author: String,
+    val body: String,
+    val displayTimeMillis: Long,
+)
+
 enum class AlbumGridDensity(
     val columns: Int,
     val label: String,

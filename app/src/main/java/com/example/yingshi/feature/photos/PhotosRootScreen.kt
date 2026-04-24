@@ -2,11 +2,10 @@ package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -70,8 +74,21 @@ fun PhotosRootScreen(
         mutableStateOf(PhotoFeedSelectionState())
     }
     val selectedSection = PhotosTopDestination.valueOf(selectedSectionName)
+    val pagerState = rememberPagerState(
+        initialPage = selectedSection.ordinal,
+        pageCount = { PhotosTopDestination.entries.size },
+    )
     val isPhotoSelectionMode =
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
+
+    LaunchedEffect(selectedSection.ordinal) {
+        if (pagerState.currentPage != selectedSection.ordinal) {
+            pagerState.animateScrollToPage(selectedSection.ordinal)
+        }
+    }
+    LaunchedEffect(pagerState.currentPage) {
+        selectedSectionName = PhotosTopDestination.entries[pagerState.currentPage].name
+    }
 
     if (isPhotoSelectionMode) {
         BackHandler {
@@ -84,8 +101,8 @@ fun PhotosRootScreen(
             .fillMaxSize()
             .statusBarsPadding()
             .padding(horizontal = spacing.lg)
-            .padding(top = spacing.xs, bottom = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            .padding(top = 0.dp, bottom = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
         PhotoTopBar(
             selectedSection = selectedSection,
@@ -107,40 +124,46 @@ fun PhotosRootScreen(
         )
 
         Box(modifier = Modifier.weight(1f)) {
-            when (selectedSection) {
-                PhotosTopDestination.PHOTOS -> {
-                    PhotoFeedScreen(
-                        modifier = Modifier.fillMaxSize(),
-                        selectionState = photoSelectionState,
-                        bottomOverlayPadding = if (isPhotoSelectionMode) {
-                            PhotoSelectionActionBarPadding
-                        } else {
-                            0.dp
-                        },
-                        onSelectionStateChange = { photoSelectionState = it },
-                        onOpenViewer = onOpenViewer,
-                    )
-                }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                key = { page -> PhotosTopDestination.entries[page].name },
+            ) { page ->
+                when (PhotosTopDestination.entries[page]) {
+                    PhotosTopDestination.PHOTOS -> {
+                        PhotoFeedScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            selectionState = photoSelectionState,
+                            bottomOverlayPadding = if (isPhotoSelectionMode) {
+                                PhotoSelectionActionBarPadding
+                            } else {
+                                0.dp
+                            },
+                            onSelectionStateChange = { photoSelectionState = it },
+                            onOpenViewer = onOpenViewer,
+                        )
+                    }
 
-                PhotosTopDestination.ALBUMS -> {
-                    AlbumPageScreen(
-                        albums = FakeAlbumRepository.getAlbums(),
-                        posts = FakeAlbumRepository.getPosts(),
-                        onOpenPost = onOpenPostDetail,
-                        onManageAlbums = {
-                            Toast.makeText(context, "相册管理入口占位", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
+                    PhotosTopDestination.ALBUMS -> {
+                        AlbumPageScreen(
+                            albums = FakeAlbumRepository.getAlbums(),
+                            posts = FakeAlbumRepository.getPosts(),
+                            onOpenPost = onOpenPostDetail,
+                            onManageAlbums = {
+                                Toast.makeText(context, "相册管理入口占位", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
 
-                PhotosTopDestination.TRASH -> {
-                    PlaceholderPage(
-                        title = selectedSection.headline,
-                        summary = selectedSection.supporting,
-                        blocks = trashBlocks,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    PhotosTopDestination.TRASH -> {
+                        PlaceholderPage(
+                            title = PhotosTopDestination.TRASH.headline,
+                            summary = PhotosTopDestination.TRASH.supporting,
+                            blocks = trashBlocks,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
 
@@ -213,15 +236,10 @@ private fun PhotoTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PhotoTopToolButton(
-                text = "系统媒体",
-                emphasized = true,
+                text = "系统",
                 onClick = onOpenSystemMedia,
             )
-            PhotoTopToolButton(
-                text = "铃铛",
-                emphasized = false,
-                onClick = onOpenNotifications,
-            )
+            PhotoBellButton(onClick = onOpenNotifications)
         }
     }
 }
@@ -229,7 +247,6 @@ private fun PhotoTopBar(
 @Composable
 private fun PhotoTopToolButton(
     text: String,
-    emphasized: Boolean,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -240,26 +257,59 @@ private fun PhotoTopToolButton(
             .clip(RoundedCornerShape(radius.capsule))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(radius.capsule),
-        color = if (emphasized) {
-            MaterialTheme.colorScheme.surface
-        } else {
-            Color.Transparent
-        },
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = if (emphasized) 0.22f else 0.16f),
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
         ),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-            style = if (emphasized) {
-                MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
-            } else {
-                MaterialTheme.typography.labelMedium
-            },
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun PhotoBellButton(onClick: () -> Unit) {
+    val iconColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Surface(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = Color.Transparent,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+        ),
+    ) {
+        Canvas(modifier = Modifier.padding(8.dp)) {
+            val stroke = Stroke(width = 2.2f, cap = StrokeCap.Round)
+            drawArc(
+                color = iconColor,
+                startAngle = 202f,
+                sweepAngle = 136f,
+                useCenter = false,
+                style = stroke,
+            )
+            drawLine(
+                color = iconColor,
+                start = center.copy(x = size.width * 0.22f, y = size.height * 0.62f),
+                end = center.copy(x = size.width * 0.78f, y = size.height * 0.62f),
+                strokeWidth = 2.2f,
+                cap = StrokeCap.Round,
+            )
+            drawCircle(
+                color = iconColor,
+                radius = 1.8f,
+                center = center.copy(y = size.height * 0.78f),
+            )
+        }
     }
 }
 

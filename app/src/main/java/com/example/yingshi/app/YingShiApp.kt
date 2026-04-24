@@ -16,7 +16,7 @@ import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
-import com.example.yingshi.feature.photos.PostDetailPlaceholderScreen
+import com.example.yingshi.feature.photos.PostDetailScreen
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -71,7 +71,7 @@ fun YingShiApp() {
                 }
 
                 postDetailRoute?.let { route ->
-                    PostDetailPlaceholderScreen(
+                    PostDetailScreen(
                         route = route,
                         onBack = { postDetailRoute = null },
                         modifier = Modifier.fillMaxSize(),
