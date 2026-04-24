@@ -44,6 +44,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -78,9 +79,8 @@ fun PostDetailScreen(
     ) {
         val viewerInitialPage = inPostViewerInitialPage
         if (viewerInitialPage != null) {
-            InPostViewerPlaceholder(
-                detail = detail,
-                initialPage = viewerInitialPage,
+            PhotoViewerScreen(
+                route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
                 onBack = { inPostViewerInitialPage = null },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -509,163 +509,6 @@ private fun MediaCommentPlaceholderSheet(
 }
 
 @Composable
-private fun InPostViewerPlaceholder(
-    detail: PostDetailUiModel,
-    initialPage: Int,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val safeInitialPage = initialPage.coerceIn(0, detail.mediaItems.lastIndex)
-    val pagerState = rememberPagerState(
-        initialPage = safeInitialPage,
-        pageCount = { detail.mediaItems.size },
-    )
-    val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
-
-    Column(
-        modifier = modifier
-            .background(Color(0xFF07101C))
-            .statusBarsPadding()
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.xs, bottom = spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onBack),
-                shape = CircleShape,
-                color = Color.White.copy(alpha = 0.08f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "<",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "帖子内查看态占位",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
-                )
-                Text(
-                    text = "来自：${detail.title}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.62f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text(
-                text = "${currentPage + 1}/${detail.mediaItems.size}",
-                style = MaterialTheme.typography.labelLarge,
-                color = Color.White.copy(alpha = 0.70f),
-            )
-        }
-
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            beyondViewportPageCount = 1,
-            key = { page -> detail.mediaItems[page].id },
-        ) { page ->
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                PostViewerPlaceholderMedia(
-                    media = detail.mediaItems[page],
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        InPostSegmentPlaceholder(
-            currentPage = currentPage,
-            total = detail.mediaItems.size,
-        )
-
-        Text(
-            text = "占位边界：这里未来只在同帖媒体内左右切换，并保留帖子内分段小白条；它不是照片页全局媒体流 Viewer。",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.58f),
-        )
-    }
-}
-
-@Composable
-private fun PostViewerPlaceholderMedia(
-    media: PostDetailMediaUiModel,
-    modifier: Modifier = Modifier,
-) {
-    val radius = YingShiThemeTokens.radius
-
-    Box(
-        modifier = modifier
-            .aspectRatio(media.aspectRatio.coerceIn(0.78f, 1.24f))
-            .clip(RoundedCornerShape(radius.lg))
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(media.palette.start, media.palette.end),
-                ),
-            ),
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(0.56f)
-                .height(34.dp)
-                .clip(RoundedCornerShape(radius.capsule))
-                .background(Color.White.copy(alpha = 0.12f)),
-        )
-    }
-}
-
-@Composable
-private fun InPostSegmentPlaceholder(
-    currentPage: Int,
-    total: Int,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        repeat(total) { index ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(radius.capsule))
-                    .background(
-                        if (index == currentPage) {
-                            Color.White.copy(alpha = 0.82f)
-                        } else {
-                            Color.White.copy(alpha = 0.22f)
-                        },
-                    ),
-            )
-        }
-    }
-}
-
-@Composable
 private fun PostCircleButton(
     text: String,
     onClick: () -> Unit,
@@ -730,6 +573,45 @@ private fun PostMetaCapsule(text: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewerRoute {
+    return PhotoViewerRoute(
+        mediaItems = mediaItems.map { media ->
+            val parts = postViewerDateParts(media.displayTimeMillis)
+            PhotoFeedItem(
+                mediaId = media.id,
+                mediaDisplayTimeMillis = media.displayTimeMillis,
+                displayYear = parts.year,
+                displayMonth = parts.month,
+                displayDay = parts.day,
+                commentCount = media.commentCount,
+                postIds = listOf(postId),
+                palette = media.palette,
+                aspectRatio = media.aspectRatio,
+            )
+        },
+        initialIndex = initialIndex,
+        sourceLabel = "帖子内媒体",
+        showPostSegments = true,
+    )
+}
+
+private data class PostViewerDateParts(
+    val year: Int,
+    val month: Int,
+    val day: Int,
+)
+
+private fun postViewerDateParts(timeMillis: Long): PostViewerDateParts {
+    val calendar = Calendar.getInstance(Locale.CHINA).apply {
+        this.timeInMillis = timeMillis
+    }
+    return PostViewerDateParts(
+        year = calendar.get(Calendar.YEAR),
+        month = calendar.get(Calendar.MONTH) + 1,
+        day = calendar.get(Calendar.DAY_OF_MONTH),
+    )
 }
 
 private fun formatPostTime(timeMillis: Long): String {

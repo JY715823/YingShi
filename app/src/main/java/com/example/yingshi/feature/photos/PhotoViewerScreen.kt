@@ -458,6 +458,23 @@ fun PhotoViewerScreen(
             )
         }
 
+        if (route.showPostSegments) {
+            ViewerPostSegmentIndicator(
+                currentIndex = currentIndex,
+                total = route.mediaItems.size,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(
+                        start = spacing.xl,
+                        end = spacing.xl,
+                        bottom = if (zoomState.isZoomed) spacing.lg else 88.dp,
+                    ),
+                alpha = if (zoomState.isZoomed) ViewerLayoutTuning.zoomedOverlayAlpha else 0.92f,
+            )
+        }
+
         commentPanelState?.let { panelState ->
             PhotoViewerCommentSheet(
                 comments = overlayUiModel.previewComments,
@@ -474,6 +491,41 @@ fun PhotoViewerScreen(
                     Toast.makeText(context, "将进入「${post.title}」（占位）", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { showRelatedPostsSheet = false },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ViewerPostSegmentIndicator(
+    currentIndex: Int,
+    total: Int,
+    alpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    if (total <= 1) return
+
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Row(
+        modifier = modifier.alpha(alpha),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(total) { index ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(radius.capsule))
+                    .background(
+                        if (index <= currentIndex) {
+                            ViewerSurface.copy(alpha = 0.82f)
+                        } else {
+                            ViewerSurface.copy(alpha = 0.22f)
+                        },
+                    ),
             )
         }
     }
