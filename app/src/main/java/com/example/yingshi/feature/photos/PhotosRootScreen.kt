@@ -6,6 +6,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +16,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,7 +33,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,12 +46,6 @@ import com.example.yingshi.ui.components.PlaceholderPage
 import com.example.yingshi.ui.components.TitleTabs
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-
-private val albumBlocks = listOf(
-    PlaceholderBlock("相册目录", "后续这里承接按相册浏览帖子，不作为默认首屏。"),
-    PlaceholderBlock("帖子卡片", "下一阶段补帖子封面、标题、摘要和媒体数。"),
-    PlaceholderBlock("详情入口", "保留从相册进入帖子详情与 Viewer 的后续挂点。"),
-)
 
 private val trashBlocks = listOf(
     PlaceholderBlock("帖子删除", "后续回收站需要区分帖子删除与媒体删除。"),
@@ -59,6 +59,7 @@ private val PhotoSelectionActionBarPadding = 88.dp
 fun PhotosRootScreen(
     modifier: Modifier = Modifier,
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
+    onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
@@ -82,8 +83,9 @@ fun PhotosRootScreen(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.xs, bottom = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         PhotoTopBar(
             selectedSection = selectedSection,
@@ -93,7 +95,9 @@ fun PhotosRootScreen(
                 PhotoFeedSelectionState()
             },
             onCancelSelection = { photoSelectionState = photoSelectionState.clear() },
-            onSelected = { selectedSectionName = PhotosTopDestination.entries[it].name },
+            onSelected = { index ->
+                selectedSectionName = PhotosTopDestination.entries[index].name
+            },
             onOpenSystemMedia = {
                 Toast.makeText(context, "系统媒体将在后续阶段接入", Toast.LENGTH_SHORT).show()
             },
@@ -119,10 +123,13 @@ fun PhotosRootScreen(
                 }
 
                 PhotosTopDestination.ALBUMS -> {
-                    PlaceholderPage(
-                        title = selectedSection.headline,
-                        summary = selectedSection.supporting,
-                        blocks = albumBlocks,
+                    AlbumPageScreen(
+                        albums = FakeAlbumRepository.getAlbums(),
+                        posts = FakeAlbumRepository.getPosts(),
+                        onOpenPost = onOpenPostDetail,
+                        onManageAlbums = {
+                            Toast.makeText(context, "相册管理入口占位", Toast.LENGTH_SHORT).show()
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -163,15 +170,12 @@ private fun PhotoTopBar(
     onOpenNotifications: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val isSelectionContext =
         selectedSection == PhotosTopDestination.PHOTOS && selectionState.isInSelectionMode
 
     if (isSelectionContext) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = spacing.xxs),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onCancelSelection) {
@@ -193,10 +197,8 @@ private fun PhotoTopBar(
     }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = spacing.xxs),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TitleTabs(
@@ -206,32 +208,58 @@ private fun PhotoTopBar(
             onSelected = onSelected,
         )
 
-        Spacer(modifier = Modifier.width(spacing.sm))
-
         Row(
             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                shape = RoundedCornerShape(radius.capsule),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.30f),
-                ),
-            ) {
-                OutlinedButton(
-                    onClick = onOpenSystemMedia,
-                    border = null,
-                ) {
-                    Text(text = "系统媒体")
-                }
-            }
-
-            TextButton(onClick = onOpenNotifications) {
-                Text(text = "铃铛")
-            }
+            PhotoTopToolButton(
+                text = "系统媒体",
+                emphasized = true,
+                onClick = onOpenSystemMedia,
+            )
+            PhotoTopToolButton(
+                text = "铃铛",
+                emphasized = false,
+                onClick = onOpenNotifications,
+            )
         }
+    }
+}
+
+@Composable
+private fun PhotoTopToolButton(
+    text: String,
+    emphasized: Boolean,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(radius.capsule))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(radius.capsule),
+        color = if (emphasized) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            Color.Transparent
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = if (emphasized) 0.22f else 0.16f),
+        ),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            style = if (emphasized) {
+                MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+            } else {
+                MaterialTheme.typography.labelMedium
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

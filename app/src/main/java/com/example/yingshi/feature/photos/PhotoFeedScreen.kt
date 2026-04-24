@@ -125,6 +125,16 @@ fun PhotoFeedScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .discreteZoomLevelGesture(
+                    enabled = !selectionState.isInSelectionMode,
+                    levels = PhotoFeedDensity.entries.toList(),
+                    currentLevel = density,
+                    onLevelChange = { densityName = it.name },
+                ),
+        ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -190,6 +200,7 @@ fun PhotoFeedScreen(
                     )
                 }
             }
+        }
         }
 
         AnimatedVisibility(

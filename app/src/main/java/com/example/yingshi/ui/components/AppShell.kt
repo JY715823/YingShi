@@ -2,6 +2,7 @@ package com.example.yingshi.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -27,9 +29,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.navigation.RootDestination
@@ -121,6 +125,7 @@ fun TitleTabs(
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         tabs.forEachIndexed { index, title ->
             val selected = index == selectedIndex
@@ -136,30 +141,29 @@ fun TitleTabs(
                 Color.Transparent
             }
 
-            TextButton(
-                onClick = { onSelected(index) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            color = containerColor,
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(radius.capsule),
-                        )
-                        .padding(horizontal = spacing.sm, vertical = spacing.xs),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = title,
-                        color = textColor,
-                        textAlign = TextAlign.Center,
-                        style = if (selected) {
-                            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        } else {
-                            MaterialTheme.typography.bodyLarge
-                        },
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(radius.capsule))
+                    .background(
+                        color = containerColor,
+                        shape = RoundedCornerShape(radius.capsule),
                     )
-                }
+                    .clickable { onSelected(index) }
+                    .padding(horizontal = spacing.sm, vertical = spacing.xs),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = title,
+                    color = textColor,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = if (selected) {
+                        MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                    } else {
+                        MaterialTheme.typography.bodyLarge
+                    },
+                )
             }
         }
     }
