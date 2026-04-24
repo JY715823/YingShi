@@ -6,6 +6,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,13 +69,19 @@ private val ViewerNightTop = Color(0xFF07111C)
 private val ViewerNightBottom = Color(0xFF03070E)
 private val ViewerNightMiddle = Color(0xFF102032)
 private val ViewerSurface = Color(0xFFFFFFFF)
-private val ViewerCanvasTopPadding = 100.dp
-private val ViewerCanvasBottomPadding = 230.dp
-private val ViewerCommentPreviewHeight = 152.dp
-private const val ViewerCommentSheetHeightFraction = 0.74f
 private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
+
+private object ViewerLayoutTuning {
+    val canvasTopPadding = 108.dp
+    val canvasBottomPadding = 230.dp
+    val commentPreviewHeight = 164.dp
+    val commentPreviewBottomOffset = 108.dp
+    const val commentSheetHeightFraction = 0.70f
+    const val relatedPostsSheetHeightFraction = 0.42f
+    const val zoomedOverlayAlpha = 0.42f
+}
 
 private data class ViewerCommentPanelState(
     val selectedCommentId: String? = null,
@@ -326,7 +334,7 @@ fun PhotoViewerScreen(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = spacing.lg, vertical = spacing.sm),
-            overlayAlpha = if (zoomState.isZoomed) 0.42f else 1f,
+            overlayAlpha = if (zoomState.isZoomed) ViewerLayoutTuning.zoomedOverlayAlpha else 1f,
         )
 
         if (!zoomState.isZoomed) {
@@ -339,7 +347,7 @@ fun PhotoViewerScreen(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .navigationBarsPadding()
-                        .padding(start = spacing.lg, bottom = 108.dp),
+                        .padding(start = spacing.lg, bottom = ViewerLayoutTuning.commentPreviewBottomOffset),
                 )
             }
 
@@ -530,9 +538,9 @@ private fun PhotoViewerCanvas(
     Box(
         modifier = modifier.padding(
             start = spacing.xl,
-            top = ViewerCanvasTopPadding,
+            top = ViewerLayoutTuning.canvasTopPadding,
             end = spacing.xl,
-            bottom = ViewerCanvasBottomPadding,
+            bottom = ViewerLayoutTuning.canvasBottomPadding,
         ),
         contentAlignment = Alignment.TopCenter,
     ) {
@@ -742,9 +750,10 @@ private fun ViewerCommentPreviewLayer(
         modifier = modifier
             .fillMaxWidth(0.78f)
             .widthIn(max = 340.dp)
-            .height(ViewerCommentPreviewHeight)
+            .height(ViewerLayoutTuning.commentPreviewHeight)
             .clip(RoundedCornerShape(radius.lg))
             .background(Color.Black.copy(alpha = 0.34f))
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.md, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
@@ -789,7 +798,7 @@ private fun PhotoViewerCommentSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(ViewerCommentSheetHeightFraction)
+                .fillMaxHeight(ViewerLayoutTuning.commentSheetHeightFraction)
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
@@ -866,7 +875,7 @@ private fun ViewerRelatedPostsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.42f)
+                .fillMaxHeight(ViewerLayoutTuning.relatedPostsSheetHeightFraction)
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
