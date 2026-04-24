@@ -132,24 +132,17 @@ fun TitleTabs(
             val textColor = if (selected) {
                 MaterialTheme.colorScheme.primary
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-
-            val containerColor = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-            } else {
-                Color.Transparent
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
             }
 
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(radius.capsule))
-                    .background(
-                        color = containerColor,
-                        shape = RoundedCornerShape(radius.capsule),
-                    )
                     .clickable { onSelected(index) }
-                    .padding(horizontal = spacing.sm, vertical = spacing.xs),
+                    .padding(
+                        horizontal = if (selected) spacing.sm else spacing.xs,
+                        vertical = spacing.xxs,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -159,9 +152,9 @@ fun TitleTabs(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = if (selected) {
-                        MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                        MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
                     } else {
-                        MaterialTheme.typography.bodyLarge
+                        MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
                     },
                 )
             }

@@ -225,6 +225,39 @@ object FakeAlbumRepository {
 
     fun getPosts(): List<AlbumPostCardUiModel> = posts
 
+    fun getPostDetail(route: PostDetailPlaceholderRoute): PostDetailUiModel {
+        val post = posts.firstOrNull { it.id == route.postId }
+        val album = albums.firstOrNull { it.id == route.albumId }
+        val title = post?.title ?: route.title
+        val summary = post?.summary ?: route.summary
+        val basePalette = post?.coverPalette ?: route.coverPalette
+        val mediaCount = (post?.mediaCount ?: route.mediaCount).coerceAtLeast(1)
+        val mediaItems = List(mediaCount.coerceAtMost(8)) { index ->
+            PostDetailMediaUiModel(
+                id = "${route.postId}-media-$index",
+                displayTimeMillis = route.postDisplayTimeMillis + (index * 9 * 60 * 1000L),
+                commentCount = (index + route.postId.length) % 4,
+                palette = if (index == 0) {
+                    basePalette
+                } else {
+                    shiftedPalette(basePalette = basePalette, index = index)
+                },
+                aspectRatio = listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4],
+            )
+        }
+
+        return PostDetailUiModel(
+            postId = route.postId,
+            title = title,
+            summary = summary,
+            contributorLabel = if (route.postId.length % 2 == 0) "我整理" else "你补充",
+            postDisplayTimeMillis = route.postDisplayTimeMillis,
+            albumChips = listOfNotNull(album?.title, "共同回忆").distinct(),
+            mediaItems = mediaItems,
+            comments = fakePostComments(route.postId),
+        )
+    }
+
     fun toPostDetailRoute(post: AlbumPostCardUiModel): PostDetailPlaceholderRoute {
         return PostDetailPlaceholderRoute(
             postId = post.id,
@@ -235,6 +268,34 @@ object FakeAlbumRepository {
             mediaCount = post.mediaCount,
             coverPalette = post.coverPalette,
             coverAspectRatio = post.coverAspectRatio,
+        )
+    }
+
+    private fun fakePostComments(postId: String): List<PostCommentUiModel> {
+        val bodies = listOf(
+            "这一组放在一起看，比单张照片更像那天的完整记忆。",
+            "标题先这样占位，后面接真实评论系统时再替换。",
+            "我喜欢这里保留一点上下文，不急着进入全屏查看。",
+        )
+        return bodies.mapIndexed { index, body ->
+            PostCommentUiModel(
+                id = "$postId-post-comment-$index",
+                author = if (index % 2 == 0) "我" else "你",
+                body = body,
+                displayTimeMillis = 1714300000000L + (index * 13 * 60 * 1000L),
+            )
+        }
+    }
+
+    private fun shiftedPalette(
+        basePalette: PhotoThumbnailPalette,
+        index: Int,
+    ): PhotoThumbnailPalette {
+        val alpha = 0.78f + ((index % 3) * 0.06f)
+        return PhotoThumbnailPalette(
+            start = basePalette.start.copy(alpha = alpha.coerceAtMost(1f)),
+            end = basePalette.end.copy(alpha = (alpha + 0.08f).coerceAtMost(1f)),
+            accent = basePalette.accent,
         )
     }
 }

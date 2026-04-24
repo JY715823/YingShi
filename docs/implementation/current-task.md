@@ -1,61 +1,50 @@
-# Current Task - Stage 4.1 Album Page v1
+# Current Task - Stage 4.2 Post Detail v1
 
 ## Status
-Stage 3.4 Viewer Polish and Tunability is complete. Current work is Stage 4.1.
+Stage 4.1 Album Page v1 is complete. Current work is Stage 4.2.
 
 ## Goal
-Build the first usable version of the album page as a post-browsing and content-archive page.
+Build the first usable post detail page and refine the photo module top navigation.
 
 ## Scope
 This stage covers:
-- viewer comment-entry rule sync:
-  - preview is collapsed by default
-  - first bubble tap expands preview
-  - second bubble tap collapses preview
-  - only tapping a comment opens the fuller comment panel with highlight
-- photo-module top bar cleanup:
-  - tighter top spacing
-  - single-row horizontal layout
-  - left secondary tabs + right tools on one baseline
-- photo-page density interaction:
-  - keep explicit density switcher
-  - add basic pinch-to-zoom switching for `2 / 3 / 4 / 8 / 16`
-- fake album and post-summary data
-- album-switch chips
-- 2-column post grid
-- album-page density interaction:
-  - support `2 / 3 / 4` columns
-  - add basic pinch-to-zoom switching
-  - present album chips as two rows
-- post card structure
-- placeholder route into post detail
-- treat post detail as an independent page shell without the photo-module top bar or global bottom bar
-- album-manage placeholder entry
+- photo module top bar refinement:
+  - closer to the system status bar while respecting safe area
+  - current secondary title larger and more prominent
+  - inactive secondary titles smaller and weaker
+  - `系统媒体` shortened to `系统`
+  - notification shown as a bell icon button
+- secondary root-page swipe switching:
+  - only for `照片 / 相册 / 回收站`
+  - not for post detail, Viewer, system media, or other independent pages
+- independent post detail route / screen
+- post media area with same-post media switching shell
+- media info row
+- post info white section
+- post comment section shell
 - minimal related doc updates
 
 ## Product intent
-- The album page is not the default browsing entry.
-- It should feel like a memorial album directory / content archive page.
-- It should be softer and more content-oriented than the photo page.
-- It should not look like a pure media feed and should not look like a heavy social feed.
-
-## Current shell assumption
-Use the latest confirmed global shell and navigation structure.
+- The photo module root pages should have a compact and polished top bar.
+- Photo / Album / Trash root pages may switch by horizontal swipe.
+- Independent pages such as post detail and Viewer must not participate in root-page swipe switching.
+- Post detail is a context page, not a Viewer and not an album grid.
+- Post comments and media comments stay separated.
 
 ## Do not do in this stage
-- no full post detail implementation
-- no post comment system
-- no real edit / delete / export
-- no backend / Room / Retrofit / MediaStore
+- no real backend
+- no Room / Retrofit / MediaStore
+- no real export / save
+- no real Gear Edit
+- no full comment system
+- no in-post Viewer final implementation
 
 ## Done when
-- Photo-module top bar stays horizontal, tighter, and visually unified
-- Photo page supports basic pinch switching between `2 / 3 / 4 / 8 / 16`
-- Album chips can switch current album
-- Album page supports `2 / 3 / 4` columns with basic pinch switching
-- Album chips present as two rows
-- Post cards have cover + light info band + media count
-- Tapping a post opens a placeholder post-detail route
-- Post detail is shown as an independent page shell
+- Photo module top bar is compact and visually improved
+- Current secondary title is prominent
+- Secondary root pages support horizontal swipe switching
+- Post detail opens as an independent page
+- Post detail hides global bottom nav and photo module top nav
+- Post detail has media area, media info row, info white section, and post comment shell
 - App builds and runs
 - Docs are minimally synchronized
