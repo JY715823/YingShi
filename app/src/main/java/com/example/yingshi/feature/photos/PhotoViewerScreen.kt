@@ -1,5 +1,7 @@
 package com.example.yingshi.feature.photos
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -10,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -35,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -54,10 +58,12 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
@@ -74,13 +80,22 @@ private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
 
 private object ViewerLayoutTuning {
-    val canvasTopPadding = 108.dp
-    val canvasBottomPadding = 230.dp
-    val commentPreviewHeight = 164.dp
-    val commentPreviewBottomOffset = 108.dp
-    const val commentSheetHeightFraction = 0.70f
+    val topBarStartInset = 4.dp
+    val topBarEndInset = 10.dp
+    val topBarTopInset = 6.dp
+    val backButtonTouchSize = 42.dp
+    val canvasHorizontalPadding = 0.dp
+    val canvasTopPadding = 62.dp
+    val canvasBottomPadding = 170.dp
+    const val commentPreviewWidthFraction = 0.70f
+    val commentPreviewMaxWidth = 288.dp
+    val commentPreviewStartOffset = 8.dp
+    val commentPreviewHeight = 172.dp
+    val commentPreviewBottomOffset = 68.dp
+    const val commentSheetHeightFraction = 0.68f
     const val relatedPostsSheetHeightFraction = 0.42f
     const val zoomedOverlayAlpha = 0.42f
+    const val previewCommentsMaxCount = 10
 }
 
 private data class ViewerCommentPanelState(
@@ -191,6 +206,40 @@ private fun List<PointerInputChange>.averageDistanceTo(
 }
 
 @Composable
+private fun ViewerStatusBarEffect() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val activity = view.context.findActivity()
+        val window = activity?.window
+        val previousStatusBarColor = window?.statusBarColor
+        val previousLightStatusBars = window?.let {
+            WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars
+        }
+
+        if (window != null) {
+            window.statusBarColor = android.graphics.Color.BLACK
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+        }
+
+        onDispose {
+            if (window != null && previousStatusBarColor != null && previousLightStatusBars != null) {
+                window.statusBarColor = previousStatusBarColor
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
+                    previousLightStatusBars
+            }
+        }
+    }
+}
+
+private tailrec fun android.content.Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+}
+
+@Composable
 fun PhotoViewerScreen(
     route: PhotoViewerRoute,
     onBack: () -> Unit,
@@ -211,6 +260,7 @@ fun PhotoViewerScreen(
     val originalLoadStates = remember(route.mediaItems) {
         mutableStateMapOf<String, ViewerOriginalLoadState>()
     }
+    var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(
@@ -232,17 +282,12 @@ fun PhotoViewerScreen(
         fakeViewerRelatedPosts(currentItem)
     }
     val overlayUiModel = remember(
-        route.sourceLabel,
-        currentIndex,
-        route.mediaItems.size,
         currentItem,
         currentOriginalState,
         previewComments,
         relatedPosts,
     ) {
         PhotoViewerOverlayUiModel(
-            sourceLabel = route.sourceLabel,
-            pageLabel = "${currentIndex + 1} / ${route.mediaItems.size}",
             commentCountLabel = currentItem.commentCount.toString(),
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
             originalLoadState = currentOriginalState,
@@ -262,6 +307,7 @@ fun PhotoViewerScreen(
 
     LaunchedEffect(currentIndex) {
         zoomState.reset()
+        showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
     }
@@ -274,12 +320,16 @@ fun PhotoViewerScreen(
     BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
     }
+    BackHandler(enabled = showCommentPreview) {
+        showCommentPreview = false
+    }
     BackHandler(enabled = commentPanelState != null) {
         commentPanelState = null
     }
     BackHandler(enabled = showRelatedPostsSheet) {
         showRelatedPostsSheet = false
     }
+    ViewerStatusBarEffect()
 
     Box(
         modifier = modifier
@@ -326,19 +376,25 @@ fun PhotoViewerScreen(
         }
 
         PhotoViewerTopBar(
-            sourceLabel = overlayUiModel.sourceLabel,
-            pageLabel = overlayUiModel.pageLabel,
             onBack = onBack,
+            timeLabel = overlayUiModel.timeLabel,
+            onOpenSettings = {
+                Toast.makeText(context, "设置入口占位", Toast.LENGTH_SHORT).show()
+            },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = spacing.lg, vertical = spacing.sm),
+                .padding(
+                    start = ViewerLayoutTuning.topBarStartInset,
+                    end = ViewerLayoutTuning.topBarEndInset,
+                    top = ViewerLayoutTuning.topBarTopInset,
+                ),
             overlayAlpha = if (zoomState.isZoomed) ViewerLayoutTuning.zoomedOverlayAlpha else 1f,
         )
 
         if (!zoomState.isZoomed) {
-            if (overlayUiModel.previewComments.isNotEmpty()) {
+            if (showCommentPreview && overlayUiModel.previewComments.isNotEmpty()) {
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
                     onOpenComment = { commentId ->
@@ -347,19 +403,29 @@ fun PhotoViewerScreen(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .navigationBarsPadding()
-                        .padding(start = spacing.lg, bottom = ViewerLayoutTuning.commentPreviewBottomOffset),
+                        .padding(
+                            start = ViewerLayoutTuning.commentPreviewStartOffset,
+                            bottom = ViewerLayoutTuning.commentPreviewBottomOffset,
+                        ),
                 )
             }
 
             PhotoViewerEdgeActions(
                 overlayUiModel = overlayUiModel,
+                showCommentPreview = showCommentPreview,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(horizontal = spacing.lg, vertical = spacing.lg),
                 onOpenComments = {
-                    commentPanelState = ViewerCommentPanelState()
+                    if (overlayUiModel.previewComments.isEmpty()) {
+                        commentPanelState = ViewerCommentPanelState()
+                    } else if (!showCommentPreview) {
+                        showCommentPreview = true
+                    } else {
+                        commentPanelState = ViewerCommentPanelState()
+                    }
                 },
                 onOpenOriginal = {
                     when (currentOriginalState) {
@@ -476,40 +542,46 @@ private fun EmptyPhotoViewerScreen(
 
 @Composable
 private fun PhotoViewerTopBar(
-    sourceLabel: String,
-    pageLabel: String,
     onBack: () -> Unit,
+    timeLabel: String,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     overlayAlpha: Float = 1f,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-
-    Row(
+    Box(
         modifier = modifier.alpha(overlayAlpha),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onBack) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .size(ViewerLayoutTuning.backButtonTouchSize)
+                .clip(CircleShape)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
-                text = "返回",
-                style = MaterialTheme.typography.titleMedium,
+                text = "<",
+                style = MaterialTheme.typography.headlineSmall,
                 color = ViewerSurface.copy(alpha = 0.92f),
             )
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ViewerCapsule(
-                text = sourceLabel,
-                emphasized = false,
-            )
-            ViewerCapsule(
-                text = pageLabel,
-                emphasized = true,
-            )
-        }
+        ViewerCapsule(
+            text = timeLabel,
+            emphasized = false,
+            modifier = Modifier.align(Alignment.TopCenter),
+            surfaceAlpha = 0.06f,
+            contentAlpha = 0.78f,
+        )
+
+        ViewerCapsule(
+            text = "设置",
+            emphasized = false,
+            modifier = Modifier.align(Alignment.TopEnd),
+            surfaceAlpha = 0.08f,
+            contentAlpha = 0.80f,
+            onClick = onOpenSettings,
+        )
     }
 }
 
@@ -520,7 +592,6 @@ private fun PhotoViewerCanvas(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val canvasAspectRatio = media.aspectRatio.coerceIn(0.75f, 1.35f)
     val zoomModifier = if (zoomState != null) {
         Modifier
@@ -535,21 +606,32 @@ private fun PhotoViewerCanvas(
         Modifier
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier.padding(
-            start = spacing.xl,
+            start = ViewerLayoutTuning.canvasHorizontalPadding,
             top = ViewerLayoutTuning.canvasTopPadding,
-            end = spacing.xl,
+            end = ViewerLayoutTuning.canvasHorizontalPadding,
             bottom = ViewerLayoutTuning.canvasBottomPadding,
         ),
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = Alignment.Center,
     ) {
+        val fillWidthHeight = maxWidth / canvasAspectRatio
+        val canvasWidth = if (fillWidthHeight <= maxHeight) {
+            maxWidth
+        } else {
+            maxHeight * canvasAspectRatio
+        }
+        val canvasHeight = if (fillWidthHeight <= maxHeight) {
+            fillWidthHeight
+        } else {
+            maxHeight
+        }
+
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(canvasAspectRatio)
+                .width(canvasWidth)
+                .height(canvasHeight)
                 .then(zoomModifier)
-                .clip(RoundedCornerShape(radius.xl))
                 .background(
                     brush = Brush.linearGradient(
                         colors = listOf(
@@ -559,53 +641,53 @@ private fun PhotoViewerCanvas(
                     ),
                 ),
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = spacing.lg, end = spacing.lg)
-                    .size(92.dp)
-                    .clip(CircleShape)
-                    .background(media.palette.accent.copy(alpha = 0.20f)),
-            )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = spacing.lg, end = spacing.lg)
+                        .size(92.dp)
+                        .clip(CircleShape)
+                        .background(media.palette.accent.copy(alpha = 0.20f)),
+                )
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = spacing.lg, bottom = spacing.lg)
-                    .fillMaxWidth(0.46f)
-                    .aspectRatio(2.5f)
-                    .clip(RoundedCornerShape(radius.capsule))
-                    .background(media.palette.accent.copy(alpha = 0.14f)),
-            )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = spacing.lg, bottom = spacing.lg)
+                        .fillMaxWidth(0.46f)
+                        .aspectRatio(2.5f)
+                        .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
+                        .background(media.palette.accent.copy(alpha = 0.14f)),
+                )
 
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.10f),
-                                Color.Transparent,
-                                ViewerNightTop.copy(alpha = 0.12f),
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    Color.Transparent,
+                                    ViewerNightTop.copy(alpha = 0.12f),
+                                ),
                             ),
                         ),
-                    ),
-            )
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = spacing.md, bottom = spacing.md),
-                shape = RoundedCornerShape(radius.capsule),
-                color = ViewerNightTop.copy(alpha = 0.18f),
-            ) {
-                Text(
-                    text = "媒体预览占位",
-                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ViewerSurface.copy(alpha = 0.82f),
                 )
-            }
+
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = spacing.md, bottom = spacing.md),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = ViewerNightTop.copy(alpha = 0.18f),
+                ) {
+                    Text(
+                        text = "媒体预览占位",
+                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ViewerSurface.copy(alpha = 0.82f),
+                    )
+        }
         }
     }
 }
@@ -613,6 +695,7 @@ private fun PhotoViewerCanvas(
 @Composable
 private fun PhotoViewerEdgeActions(
     overlayUiModel: PhotoViewerOverlayUiModel,
+    showCommentPreview: Boolean,
     onOpenComments: () -> Unit,
     onOpenOriginal: () -> Unit,
     onOpenRelatedPosts: () -> Unit,
@@ -627,6 +710,7 @@ private fun PhotoViewerEdgeActions(
     ) {
         ViewerCommentEntry(
             commentCountLabel = overlayUiModel.commentCountLabel,
+            previewExpanded = showCommentPreview,
             onClick = onOpenComments,
         )
 
@@ -634,12 +718,6 @@ private fun PhotoViewerEdgeActions(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            ViewerCapsule(
-                text = overlayUiModel.timeLabel,
-                emphasized = false,
-                surfaceAlpha = 0.06f,
-                contentAlpha = 0.78f,
-            )
             ViewerCapsule(
                 text = overlayUiModel.originalLoadState.label,
                 emphasized = overlayUiModel.originalLoadState == ViewerOriginalLoadState.Loaded,
@@ -660,6 +738,7 @@ private fun PhotoViewerEdgeActions(
 @Composable
 private fun ViewerCommentEntry(
     commentCountLabel: String,
+    previewExpanded: Boolean,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -674,7 +753,7 @@ private fun ViewerCommentEntry(
     ) {
         Surface(
             shape = CircleShape,
-            color = ViewerSurface.copy(alpha = 0.12f),
+            color = ViewerSurface.copy(alpha = if (previewExpanded) 0.18f else 0.12f),
         ) {
             Text(
                 text = "评",
@@ -688,6 +767,7 @@ private fun ViewerCommentEntry(
             ViewerCapsule(
                 text = commentCountLabel,
                 emphasized = true,
+                surfaceAlpha = if (previewExpanded) 0.18f else 0.14f,
             )
         }
     }
@@ -748,8 +828,8 @@ private fun ViewerCommentPreviewLayer(
 
     Column(
         modifier = modifier
-            .fillMaxWidth(0.78f)
-            .widthIn(max = 340.dp)
+            .fillMaxWidth(ViewerLayoutTuning.commentPreviewWidthFraction)
+            .widthIn(max = ViewerLayoutTuning.commentPreviewMaxWidth)
             .height(ViewerLayoutTuning.commentPreviewHeight)
             .clip(RoundedCornerShape(radius.lg))
             .background(Color.Black.copy(alpha = 0.34f))
@@ -757,7 +837,7 @@ private fun ViewerCommentPreviewLayer(
             .padding(horizontal = spacing.md, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        comments.take(3).forEach { comment ->
+        comments.forEach { comment ->
             Text(
                 text = "${comment.author}：${comment.body}",
                 modifier = Modifier
@@ -767,13 +847,6 @@ private fun ViewerCommentPreviewLayer(
                 style = MaterialTheme.typography.bodySmall,
                 color = ViewerSurface.copy(alpha = 0.86f),
                 maxLines = 2,
-            )
-        }
-        if (comments.size > 3) {
-            Text(
-                text = "还有 ${comments.size - 3} 条轻预览",
-                style = MaterialTheme.typography.labelSmall,
-                color = ViewerSurface.copy(alpha = 0.58f),
             )
         }
     }
@@ -924,7 +997,7 @@ private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<ViewerPreviewC
         "这个角度好像比现场更安静。",
         "先留一条占位评论，后面接真实媒体评论。",
     )
-    return List(media.commentCount.coerceAtMost(4)) { index ->
+    return List(media.commentCount.coerceAtMost(ViewerLayoutTuning.previewCommentsMaxCount)) { index ->
         ViewerPreviewCommentUiModel(
             id = "${media.mediaId}-preview-$index",
             author = if (index % 2 == 0) "我" else "你",

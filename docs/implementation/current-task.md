@@ -14,6 +14,12 @@ This stage covers:
   - media canvas
   - preview comment area
   - fuller comment panel
+- viewer top-structure reset:
+  - left-edge back mark
+  - centered time capsule
+  - right-side settings placeholder
+- centered adaptive canvas that fills width whenever possible
+- collapsed-by-default preview comments entry flow
 - better tunability for future layout tweaks
 - minimal related doc updates
 
@@ -23,6 +29,9 @@ This stage covers:
 - Preview comments should be usable without becoming a heavy panel.
 - Layout parameters should become easier to tweak later.
 - Keep the vertical relationship: canvas > fuller comment panel > preview comment area.
+- Canvas should feel like the clear main actor: centered, adaptive, and width-first without card-like gutters.
+- Preview comments should stay collapsed by default so the viewer opens cleaner, then follow the chain: bubble -> preview -> full panel.
+- Viewer top should stay quiet and unified with the dark status-bar area: left back mark, centered time capsule, right settings placeholder.
 
 ## Do not do in this stage
 - no real comment system
@@ -37,6 +46,10 @@ This stage covers:
 - Preview area is slightly taller
 - Full comment panel is slightly lower in height
 - Layout remains balanced and immersive
+- Preview comments are collapsed by default and only expand after the first bubble tap
+- Second bubble tap opens the fuller comment panel
+- Time capsule sits at the top center, with back and settings completing the top structure
+- Viewer top is simplified and visually unified with the dark status-bar area
 - Photo-page viewer still does not show in-post segmented white bars
 - Docs are minimally synchronized
 - App builds and runs

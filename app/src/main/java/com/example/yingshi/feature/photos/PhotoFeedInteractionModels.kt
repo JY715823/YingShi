@@ -46,8 +46,6 @@ data class PhotoViewerRoute(
 
 @Immutable
 data class PhotoViewerOverlayUiModel(
-    val sourceLabel: String,
-    val pageLabel: String,
     val commentCountLabel: String,
     val timeLabel: String,
     val originalLoadState: ViewerOriginalLoadState,
