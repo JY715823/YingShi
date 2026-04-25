@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -405,8 +406,18 @@ private fun PostCommentSection(postId: String) {
     var editingCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
     var editingDraft by rememberSaveable(postId) { mutableStateOf("") }
     var selectedCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
+    var selectedCommentValue by rememberSaveable(postId, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     val visibleComments = comments.visibleComments(expanded)
-    val actionComment = comments.firstOrNull { it.id == actionCommentId }
+
+    BackHandler(enabled = selectedCommentId != null) {
+        selectedCommentId = null
+        selectedCommentValue = TextFieldValue("")
+    }
+    BackHandler(enabled = actionCommentId != null) {
+        actionCommentId = null
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -434,8 +445,54 @@ private fun PostCommentSection(postId: String) {
                     CommentListItem(
                         comment = comment,
                         timeLabel = formatPostTime(comment.createdAtMillis),
-                        onLongPress = { actionCommentId = comment.id },
-                        selectedForCopy = selectedCommentId == comment.id,
+                        onLongPress = {
+                            selectedCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                            editingCommentId = null
+                            editingDraft = ""
+                            actionCommentId = comment.id
+                        },
+                        onClick = {
+                            if (selectedCommentId != null) {
+                                selectedCommentId = null
+                                selectedCommentValue = TextFieldValue("")
+                            }
+                            actionCommentId = null
+                        },
+                        showInlineActionMenu = actionCommentId == comment.id &&
+                            selectedCommentId != comment.id &&
+                            editingCommentId != comment.id,
+                        onCopyFull = {
+                            copyComment(comment.content)
+                            actionCommentId = null
+                        },
+                        onSelectText = {
+                            selectedCommentId = comment.id
+                            selectedCommentValue = fullCommentSelectionValue(comment.content)
+                            editingCommentId = null
+                            editingDraft = ""
+                            actionCommentId = null
+                        },
+                        onEdit = {
+                            editingCommentId = comment.id
+                            editingDraft = comment.content
+                            selectedCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                            actionCommentId = null
+                        },
+                        onDelete = {
+                            FakeCommentRepository.deletePostComment(postId, comment.id)
+                            if (selectedCommentId == comment.id) {
+                                selectedCommentId = null
+                                selectedCommentValue = TextFieldValue("")
+                            }
+                            if (editingCommentId == comment.id) {
+                                editingCommentId = null
+                                editingDraft = ""
+                            }
+                            actionCommentId = null
+                            Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
+                        },
                         isEditing = editingCommentId == comment.id,
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
                         onEditingValueChange = { editingDraft = it },
@@ -447,15 +504,25 @@ private fun PostCommentSection(postId: String) {
                             )
                             editingCommentId = null
                             editingDraft = ""
+                            actionCommentId = null
                             Toast.makeText(context, "评论已更新", Toast.LENGTH_SHORT).show()
                         },
                         onCancelEdit = {
                             editingCommentId = null
                             editingDraft = ""
                         },
+                        selectionMode = selectedCommentId == comment.id,
+                        selectionFieldValue = if (selectedCommentId == comment.id) {
+                            selectedCommentValue
+                        } else {
+                            TextFieldValue(comment.content)
+                        },
+                        onSelectionFieldValueChange = { selectedCommentValue = it },
                         onCopySelection = if (selectedCommentId == comment.id) {
                             {
-                                copyComment(comment.content)
+                                selectedCommentValue.selectedTextOrNull()?.let(copyComment)
+                                selectedCommentId = null
+                                selectedCommentValue = TextFieldValue("")
                             }
                         } else {
                             null
@@ -478,38 +545,6 @@ private fun PostCommentSection(postId: String) {
                 },
             )
         }
-    }
-
-    actionComment?.let { comment ->
-        CommentActionMenuSheet(
-            comment = comment,
-            onDismiss = { actionCommentId = null },
-            onEdit = {
-                editingCommentId = comment.id
-                editingDraft = comment.content
-                selectedCommentId = null
-                actionCommentId = null
-            },
-            onDelete = {
-                FakeCommentRepository.deletePostComment(postId, comment.id)
-                if (selectedCommentId == comment.id) {
-                    selectedCommentId = null
-                }
-                if (editingCommentId == comment.id) {
-                    editingCommentId = null
-                    editingDraft = ""
-                }
-                actionCommentId = null
-                Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
-            },
-            onSelect = {
-                selectedCommentId = comment.id
-                editingCommentId = null
-                editingDraft = ""
-                actionCommentId = null
-                Toast.makeText(context, "已选中当前评论全文", Toast.LENGTH_SHORT).show()
-            },
-        )
     }
 }
 
