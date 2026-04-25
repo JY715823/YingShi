@@ -233,10 +233,11 @@ object FakeAlbumRepository {
         val basePalette = post?.coverPalette ?: route.coverPalette
         val mediaCount = (post?.mediaCount ?: route.mediaCount).coerceAtLeast(1)
         val mediaItems = List(mediaCount.coerceAtMost(8)) { index ->
+            val mediaId = fakeMediaIdForPost(route.postId, index)
             PostDetailMediaUiModel(
-                id = "${route.postId}-media-$index",
+                id = mediaId,
                 displayTimeMillis = route.postDisplayTimeMillis + (index * 9 * 60 * 1000L),
-                commentCount = (index + route.postId.length) % 4,
+                commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
                 palette = if (index == 0) {
                     basePalette
                 } else {
@@ -254,7 +255,7 @@ object FakeAlbumRepository {
             postDisplayTimeMillis = route.postDisplayTimeMillis,
             albumChips = listOfNotNull(album?.title, "共同回忆").distinct(),
             mediaItems = mediaItems,
-            comments = fakePostComments(route.postId),
+            comments = FakeCommentRepository.getPostComments(route.postId),
         )
     }
 
@@ -271,18 +272,20 @@ object FakeAlbumRepository {
         )
     }
 
-    private fun fakePostComments(postId: String): List<PostCommentUiModel> {
+    private fun fakePostComments(postId: String): List<CommentUiModel> {
         val bodies = listOf(
             "这一组放在一起看，比单张照片更像那天的完整记忆。",
             "标题先这样占位，后面接真实评论系统时再替换。",
             "我喜欢这里保留一点上下文，不急着进入全屏查看。",
         )
         return bodies.mapIndexed { index, body ->
-            PostCommentUiModel(
+            CommentUiModel(
                 id = "$postId-post-comment-$index",
+                targetType = CommentTargetType.Post,
+                targetId = postId,
                 author = if (index % 2 == 0) "我" else "你",
-                body = body,
-                displayTimeMillis = 1714300000000L + (index * 13 * 60 * 1000L),
+                content = body,
+                createdAtMillis = 1714300000000L + (index * 13 * 60 * 1000L),
             )
         }
     }
@@ -298,4 +301,32 @@ object FakeAlbumRepository {
             accent = basePalette.accent,
         )
     }
+
+    private fun fakeMediaIdForPost(postId: String, index: Int): String {
+        val sharedIds = sharedMediaIdsByPost[postId]
+        return sharedIds?.getOrNull(index) ?: "$postId-media-$index"
+    }
+
+    private val sharedMediaIdsByPost = mapOf(
+        "post-sunday-brunch" to listOf(
+            "media-2026-04-12-a",
+            "media-2026-04-12-b",
+        ),
+        "post-flower-table" to listOf(
+            "media-2026-04-12-b",
+            "post-flower-table-media-1",
+        ),
+        "post-late-return" to listOf(
+            "media-2026-03-30-a",
+            "media-2026-03-30-b",
+        ),
+        "post-river-night" to listOf(
+            "media-2026-03-30-b",
+            "post-river-night-media-1",
+        ),
+        "post-firework-reflection" to listOf(
+            "media-2026-01-01-b",
+            "post-firework-reflection-media-1",
+        ),
+    )
 }

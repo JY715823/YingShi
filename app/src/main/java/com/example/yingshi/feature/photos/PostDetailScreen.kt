@@ -392,9 +392,11 @@ private fun PostInfoSection(
 }
 
 @Composable
-private fun PostCommentSection(comments: List<PostCommentUiModel>) {
+private fun PostCommentSection(comments: List<CommentUiModel>) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val visibleComments = comments.take(10)
+    val hasMoreComments = comments.size > visibleComments.size
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -411,19 +413,22 @@ private fun PostCommentSection(comments: List<PostCommentUiModel>) {
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            comments.forEach { comment ->
+            visibleComments.forEach { comment ->
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                     Text(
-                        text = "${comment.author} · ${formatPostTime(comment.displayTimeMillis)}",
+                        text = "${comment.author} · ${formatPostTime(comment.createdAtMillis)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = comment.body,
+                        text = comment.content,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
+            }
+            if (hasMoreComments) {
+                PostActionChip(text = "展开更多评论", onClick = { })
             }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -449,7 +454,9 @@ private fun MediaCommentPlaceholderSheet(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val fakeCount = media.commentCount.coerceAtMost(3)
+    val comments = remember(media.id) {
+        FakeCommentRepository.getMediaComments(media.id)
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -482,26 +489,45 @@ private fun MediaCommentPlaceholderSheet(
                 PostActionChip(text = "关闭", onClick = onClose)
             }
 
-            if (fakeCount == 0) {
+            if (comments.isEmpty()) {
                 Text(
                     text = "当前媒体暂无评论，后续接入真实媒体评论系统。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                repeat(fakeCount) { index ->
+                comments.take(10).forEach { comment ->
                     Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                         Text(
-                            text = if (index % 2 == 0) "我" else "你",
+                            text = "${comment.author} · ${formatPostTime(comment.createdAtMillis)}",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            text = "这是一条当前媒体评论占位，后续会替换成真实媒体评论。",
+                            text = comment.content,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
+                }
+                if (comments.size > 10) {
+                    Text(
+                        text = "更多媒体评论后续接入分页 / 展开能力",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(radius.lg),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+                ) {
+                    Text(
+                        text = "写一条媒体评论，占位输入入口",
+                        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }

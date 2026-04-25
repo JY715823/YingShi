@@ -31,7 +31,7 @@ data class PostDetailUiModel(
     val postDisplayTimeMillis: Long,
     val albumChips: List<String>,
     val mediaItems: List<PostDetailMediaUiModel>,
-    val comments: List<PostCommentUiModel>,
+    val comments: List<CommentUiModel>,
 )
 
 @Immutable
@@ -41,14 +41,6 @@ data class PostDetailMediaUiModel(
     val commentCount: Int,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float = 1f,
-)
-
-@Immutable
-data class PostCommentUiModel(
-    val id: String,
-    val author: String,
-    val body: String,
-    val displayTimeMillis: Long,
 )
 
 enum class AlbumGridDensity(
