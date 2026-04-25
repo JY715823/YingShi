@@ -1172,6 +1172,13 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Entering text selection must dismiss the inline menu first, and dismissing text selection must fully clear the selection state so the next long press reopens the inline menu.
 - Copy-full-text and copy-selected-text both stay lightweight and should exit selection mode after a successful copy.
 
+## Stage 5.5 implementation note
+
+- Comment selection should stay visually lightweight and read-only; entering selection should not summon the software keyboard.
+- Keyboard appearance remains reserved for explicit edit state and bottom input bars.
+- Post comment styling and media comment styling can differ by page tone, but their state boundaries should stay aligned: latest-first lists, latest 10 in collapsed mode, stable expand/collapse, and no cross-mixing of post/media targets.
+- Viewer comment preview and detail should continue to feel like one layered flow: preview stays light and anchored, detail stays deeper but safe even when the requested highlight target is missing.
+
 - 帖子评论区保持普通内容页评论气质，只显示帖子评论，不混入媒体评论。
 - Viewer 的评论预览层与评论详情区都只服务当前 `mediaId` 的媒体评论，并延续深色沉浸背景下的轻量层级。
 - 评论气泡负责展开 / 收起预览层；预览层中的评论条目才是进入详情区的入口，详情区需要对被点击评论做清晰高亮。
