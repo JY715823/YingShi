@@ -1,24 +1,7 @@
 package com.example.yingshi.feature.photos
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
-
-enum class SystemMediaPermissionState(
-    val label: String,
-    val description: String,
-) {
-    UNAUTHORIZED(
-        label = "未授权",
-        description = "当前只展示权限引导壳子。后续接真实权限后，这里会控制系统媒体读取范围。",
-    ),
-    PARTIAL(
-        label = "部分授权",
-        description = "用于占位 Android 的部分照片授权场景，先用 fake 数据模拟可见范围。",
-    ),
-    AUTHORIZED(
-        label = "已授权",
-        description = "当前以本地 fake system media 数据占位，后续再接真实 MediaStore。",
-    ),
-}
 
 enum class SystemMediaFilter(
     val label: String,
@@ -31,24 +14,30 @@ enum class SystemMediaFilter(
     UNPOSTED("未发帖"),
 }
 
-enum class SystemMediaKind(
+enum class SystemMediaType(
     val label: String,
 ) {
-    CAMERA("相机"),
-    SCREENSHOT("截图"),
+    IMAGE("图片"),
     VIDEO("视频"),
 }
 
 @Immutable
 data class SystemMediaItem(
     val id: String,
+    val mediaStoreId: Long,
+    val uri: Uri,
+    val type: SystemMediaType,
+    val mimeType: String,
+    val displayName: String,
+    val bucketName: String?,
     val displayTimeMillis: Long,
     val displayYear: Int,
     val displayMonth: Int,
     val displayDay: Int,
-    val palette: PhotoThumbnailPalette,
+    val width: Int?,
+    val height: Int?,
     val aspectRatio: Float,
-    val kind: SystemMediaKind,
+    val palette: PhotoThumbnailPalette,
     val linkedPostIds: List<String>,
 )
 
@@ -62,3 +51,15 @@ data class SystemMediaViewerRoute(
     val mediaItems: List<SystemMediaItem>,
     val initialIndex: Int,
 )
+
+@Immutable
+data class SystemMediaUiState(
+    val isLoading: Boolean = true,
+    val selectedFilter: SystemMediaFilter = SystemMediaFilter.ALL,
+    val allItems: List<SystemMediaItem> = emptyList(),
+    val filteredItems: List<SystemMediaItem> = emptyList(),
+    val errorMessage: String? = null,
+) {
+    val hasError: Boolean
+        get() = !errorMessage.isNullOrBlank()
+}

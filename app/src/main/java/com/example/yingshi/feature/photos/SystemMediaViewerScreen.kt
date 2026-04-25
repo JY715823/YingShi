@@ -3,7 +3,6 @@ package com.example.yingshi.feature.photos
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,16 +22,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -95,7 +92,7 @@ fun SystemMediaViewerScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "当前没有可查看的系统媒体占位数据。",
+                        text = "当前没有可查看的系统媒体。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.72f),
                     )
@@ -111,26 +108,29 @@ fun SystemMediaViewerScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.xl))
-                            .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(item.palette.start, item.palette.end),
-                                ),
-                            ),
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.White.copy(alpha = 0.10f),
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.18f),
-                                        ),
-                                    ),
-                                ),
+                        AsyncImage(
+                            model = item.uri,
+                            contentDescription = item.displayName,
+                            modifier = Modifier.fillMaxSize(),
                         )
+
+                        if (item.type == SystemMediaType.VIDEO) {
+                            Surface(
+                                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                                color = Color.Black.copy(alpha = 0.42f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                            ) {
+                                Text(
+                                    text = "视频预览占位",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = Color.White,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -151,12 +151,12 @@ fun SystemMediaViewerScreen(
                     verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
                 ) {
                     Text(
-                        text = "系统媒体查看态占位",
+                        text = item.displayName,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White,
                     )
                     Text(
-                        text = "${item.kind.label} · ${formatSystemMediaViewerTime(item.displayTimeMillis)}",
+                        text = "${item.type.label} · ${formatSystemMediaViewerTime(item.displayTimeMillis)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.72f),
                     )
@@ -195,13 +195,11 @@ private fun SystemMediaViewerCircleButton(
     onClick: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
+        modifier = Modifier.size(40.dp),
         shape = CircleShape,
         color = Color.White.copy(alpha = 0.08f),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        onClick = onClick,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -243,7 +241,7 @@ private fun SystemMediaViewerScreenPreview() {
     YingShiTheme {
         SystemMediaViewerScreen(
             route = SystemMediaViewerRoute(
-                mediaItems = FakeSystemMediaRepository.getMedia(SystemMediaFilter.ALL),
+                mediaItems = emptyList(),
                 initialIndex = 0,
             ),
             onBack = {},

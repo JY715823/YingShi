@@ -1,7 +1,13 @@
 package com.example.yingshi.feature.photos
 
+import android.app.Application
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -9,34 +15,33 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,17 +49,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun SystemMediaScreen(
@@ -63,12 +66,16 @@ fun SystemMediaScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val spacing = YingShiThemeTokens.spacing
-    var permissionStateName by rememberSaveable {
-        mutableStateOf(SystemMediaPermissionState.UNAUTHORIZED.name)
+    val appContext = context.applicationContext as Application
+    val viewModel: SystemMediaViewModel = viewModel(
+        factory = SystemMediaViewModel.factory(appContext),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    var hasPermission by rememberSaveable {
+        mutableStateOf(hasSystemMediaReadAccess(context))
     }
-    var selectedFilterName by rememberSaveable {
-        mutableStateOf(SystemMediaFilter.ALL.name)
+    var permissionRequestedOnce by rememberSaveable {
+        mutableStateOf(false)
     }
     var selectionMode by rememberSaveable {
         mutableStateOf(false)
@@ -76,11 +83,25 @@ fun SystemMediaScreen(
     var selectedIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
-
-    val permissionState = SystemMediaPermissionState.valueOf(permissionStateName)
-    val selectedFilter = SystemMediaFilter.valueOf(selectedFilterName)
-    val mediaItems = FakeSystemMediaRepository.getMedia(selectedFilter)
     val selectedIdSet = selectedIds.toSet()
+    val spacing = YingShiThemeTokens.spacing
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        hasPermission = hasSystemMediaReadAccess(context)
+        if (hasPermission) {
+            viewModel.refresh()
+        }
+    }
+
+    LaunchedEffect(hasPermission) {
+        if (hasPermission) {
+            viewModel.refresh()
+        } else if (!permissionRequestedOnce) {
+            permissionRequestedOnce = true
+            permissionLauncher.launch(requiredSystemMediaPermissions())
+        }
+    }
 
     if (selectionMode) {
         BackHandler {
@@ -102,7 +123,7 @@ fun SystemMediaScreen(
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             SystemMediaTopBar(
-                selectedFilter = selectedFilter,
+                selectedFilter = uiState.selectedFilter,
                 selectionMode = selectionMode,
                 selectedCount = selectedIds.size,
                 onBack = onBack,
@@ -114,70 +135,92 @@ fun SystemMediaScreen(
                 },
             )
 
-            SystemMediaPermissionCard(
-                permissionState = permissionState,
-                onPermissionStateSelected = { permissionStateName = it.name },
-                onReRequestPermission = {
-                    Toast.makeText(context, "权限重新申请入口占位", Toast.LENGTH_SHORT).show()
-                },
-                onOpenSettings = {
-                    Toast.makeText(context, "系统设置入口占位", Toast.LENGTH_SHORT).show()
-                },
-            )
-
             SystemMediaFilterRow(
-                selectedFilter = selectedFilter,
-                onFilterSelected = { selectedFilterName = it.name },
+                selectedFilter = uiState.selectedFilter,
+                onFilterSelected = viewModel::onFilterSelected,
             )
 
             Text(
-                text = "时间降序 · fake system media grid",
+                text = "默认按时间降序显示本地图片和视频",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (mediaItems.isEmpty()) {
-                SystemMediaEmptyState(
-                    text = "当前筛选下没有可显示的系统媒体占位数据。",
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 96.dp),
-                ) {
-                    items(
-                        items = mediaItems,
-                        key = { it.id },
-                    ) { item ->
-                        SystemMediaCard(
-                            item = item,
-                            selectionMode = selectionMode,
-                            selected = selectedIdSet.contains(item.id),
-                            dimmed = permissionState == SystemMediaPermissionState.UNAUTHORIZED,
-                            onClick = {
-                                if (selectionMode) {
-                                    selectedIds = selectedIds.toggleSystemMediaId(item.id)
-                                    if (selectedIds.isEmpty()) {
-                                        selectionMode = false
+            when {
+                !hasPermission -> {
+                    SystemMediaPermissionState(
+                        modifier = Modifier.weight(1f),
+                        onRequestPermission = {
+                            permissionLauncher.launch(requiredSystemMediaPermissions())
+                        },
+                        onOpenSettings = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                ),
+                            )
+                        },
+                    )
+                }
+
+                uiState.isLoading -> {
+                    SystemMediaLoadingState(modifier = Modifier.weight(1f))
+                }
+
+                uiState.hasError -> {
+                    SystemMediaErrorState(
+                        message = uiState.errorMessage.orEmpty(),
+                        onRetry = viewModel::refresh,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                uiState.filteredItems.isEmpty() -> {
+                    SystemMediaEmptyState(
+                        text = "当前没有可显示的本地媒体。",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                else -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                    ) {
+                        items(
+                            items = uiState.filteredItems,
+                            key = { it.id },
+                        ) { item ->
+                            SystemMediaCard(
+                                item = item,
+                                selectionMode = selectionMode,
+                                selected = selectedIdSet.contains(item.id),
+                                onClick = {
+                                    if (selectionMode) {
+                                        selectedIds = selectedIds.toggleSystemMediaId(item.id)
+                                        if (selectedIds.isEmpty()) {
+                                            selectionMode = false
+                                        }
+                                    } else {
+                                        onOpenViewer(
+                                            SystemMediaViewerRoute(
+                                                mediaItems = uiState.filteredItems,
+                                                initialIndex = uiState.filteredItems.indexOfFirst { it.id == item.id }
+                                                    .coerceAtLeast(0),
+                                            ),
+                                        )
                                     }
-                                } else {
-                                    onOpenViewer(
-                                        SystemMediaViewerRoute(
-                                            mediaItems = mediaItems,
-                                            initialIndex = mediaItems.indexOfFirst { it.id == item.id }.coerceAtLeast(0),
-                                        ),
-                                    )
-                                }
-                            },
-                            onLongPress = {
-                                selectionMode = true
-                                selectedIds = selectedIds.toggleSystemMediaId(item.id)
-                            },
-                        )
+                                },
+                                onLongPress = {
+                                    selectionMode = true
+                                    selectedIds = selectedIds.toggleSystemMediaId(item.id)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -204,6 +247,44 @@ fun SystemMediaScreen(
                     Toast.makeText(context, "移到系统回收站占位", Toast.LENGTH_SHORT).show()
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaPermissionState(
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "需要图片和视频权限才能显示系统媒体。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onRequestPermission) {
+                        Text(text = "继续授权")
+                    }
+                    TextButton(onClick = onOpenSettings) {
+                        Text(text = "去设置")
+                    }
+                }
+            }
         }
     }
 }
@@ -259,63 +340,6 @@ private fun SystemMediaTopBar(
 }
 
 @Composable
-private fun SystemMediaPermissionCard(
-    permissionState: SystemMediaPermissionState,
-    onPermissionStateSelected: (SystemMediaPermissionState) -> Unit,
-    onReRequestPermission: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = "权限引导壳子",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = permissionState.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                SystemMediaPermissionState.entries.forEach { state ->
-                    SystemMediaActionChip(
-                        text = state.label,
-                        emphasized = state == permissionState,
-                        onClick = { onPermissionStateSelected(state) },
-                    )
-                }
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                TextButton(onClick = onReRequestPermission) {
-                    Text(text = "重新申请权限")
-                }
-                TextButton(onClick = onOpenSettings) {
-                    Text(text = "去系统设置")
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun SystemMediaFilterRow(
     selectedFilter: SystemMediaFilter,
     onFilterSelected: (SystemMediaFilter) -> Unit,
@@ -344,7 +368,6 @@ private fun SystemMediaCard(
     item: SystemMediaItem,
     selectionMode: Boolean,
     selected: Boolean,
-    dimmed: Boolean,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
 ) {
@@ -354,28 +377,16 @@ private fun SystemMediaCard(
         modifier = Modifier
             .aspectRatio(item.aspectRatio.coerceIn(0.56f, 1.25f))
             .clip(shape)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(item.palette.start, item.palette.end),
-                ),
-            )
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress,
             ),
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.10f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = if (dimmed) 0.28f else 0.10f),
-                        ),
-                    ),
-                ),
+        AsyncImage(
+            model = item.uri,
+            contentDescription = item.displayName,
+            modifier = Modifier.fillMaxSize(),
         )
 
         if (selectionMode) {
@@ -401,12 +412,21 @@ private fun SystemMediaCard(
             )
         }
 
-        SystemMediaKindBadge(
-            text = item.kind.label,
+        SystemMediaTypeBadge(
+            text = item.type.label,
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(6.dp),
         )
+
+        if (item.type == SystemMediaType.VIDEO) {
+            SystemMediaBadge(
+                text = "视频",
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp),
+            )
+        }
 
         if (selectionMode) {
             SystemMediaSelectionBadge(
@@ -439,14 +459,14 @@ private fun SystemMediaBadge(
 }
 
 @Composable
-private fun SystemMediaKindBadge(
+private fun SystemMediaTypeBadge(
     text: String,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = Color.Black.copy(alpha = 0.16f),
+        color = Color.Black.copy(alpha = 0.20f),
     ) {
         Text(
             text = text,
@@ -512,7 +532,6 @@ private fun SystemMediaActionChip(
     onClick: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier.clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule)),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (emphasized) {
             MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -551,13 +570,11 @@ private fun SystemMediaCircleButton(
     onClick: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
+        modifier = Modifier.size(40.dp),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        onClick = onClick,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -598,6 +615,61 @@ private fun SystemMediaSelectionBadge(
 }
 
 @Composable
+private fun SystemMediaLoadingState(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = "正在读取本地媒体…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaErrorState(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onRetry) {
+                    Text(text = "重试")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SystemMediaEmptyState(
     text: String,
     modifier: Modifier = Modifier,
@@ -630,11 +702,8 @@ private fun List<String>.toggleSystemMediaId(id: String): List<String> {
 
 @Preview(showBackground = true)
 @Composable
-private fun SystemMediaScreenPreview() {
+private fun SystemMediaEmptyStatePreview() {
     YingShiTheme {
-        SystemMediaScreen(
-            onBack = {},
-            onOpenViewer = {},
-        )
+        SystemMediaEmptyState(text = "当前没有可显示的本地媒体。")
     }
 }
