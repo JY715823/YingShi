@@ -73,10 +73,25 @@ data class GearEditRoute(
 )
 
 @Immutable
+data class MediaManagementRoute(
+    val postId: String,
+)
+
+@Immutable
 data class EditablePostDraft(
     val postId: String,
     val title: String,
     val summary: String,
     val postDisplayTimeMillis: Long,
     val albumIds: List<String>,
+)
+
+@Immutable
+data class ManagedPostMediaUiModel(
+    val id: String,
+    val displayTimeMillis: Long,
+    val commentCount: Int,
+    val palette: PhotoThumbnailPalette,
+    val aspectRatio: Float,
+    val isCover: Boolean,
 )

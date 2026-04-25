@@ -1,49 +1,44 @@
-# Current Task - Stage 6.1 Gear Edit Basic Info
+# Current Task - Stage 6.2 Media Management Page v1
 
 ## Goal
-Build the Gear Edit main page and support local editing of post basic information.
+Build the first media management page under Gear Edit.
 
 ## Scope
 This stage covers:
-- Gear Edit entry from post detail
-- independent Gear Edit route / screen
-- edit title
-- edit description
-- basic edit post_display_time
-- basic edit album chips / album relation placeholder
-- media management entry placeholder
-- delete semantics entry placeholder
-- local fake repository / ViewModel update
+- media management entry from Gear Edit
+- independent media management page
+- two-column media grid
+- cover marker
+- delete mode shell
+- sort mode shell
+- set-cover local behavior
+- add-media placeholder
+- edit-media-time placeholder
 - minimal related doc updates
 
 ## Product intent
-- Gear Edit enters editing mode directly.
-- It is a post-level editing page.
-- It should not show global bottom navigation.
-- It should not show photo-module secondary navigation.
-- This stage edits post metadata only.
-- Media management and delete semantics are prepared as entries for later stages.
-- Cancel / back should dismiss the local draft without accidental save.
-- Save writes back to the local fake repository so post detail can refresh immediately.
+- Media management is part of Gear Edit.
+- It manages media inside the current post.
+- This stage builds page structure and local state only.
+- Formal delete semantics will be implemented later.
+- Cover changes should write back locally so post detail and album card can reflect the new cover.
+- Delete / sort / add-media / edit-time first establish stable mode shells and placeholders.
 
 ## Do not do in this stage
-- no real backend
-- no Room / Retrofit
-- no full media management
-- no media deletion
-- no media sorting
-- no cover setting
-- no full post deletion flow
+- no real MediaStore
+- no real system picker
+- no formal directory delete / system delete
 - no recycle bin integration
-- no complex date picker
-- no real album management
+- no empty-post protection
+- no backend / Room / Retrofit
+- no large unrelated refactor
 
 ## Done when
-- Gear Edit opens from post detail
-- Gear Edit is an independent page
-- Title / description can be edited locally
-- Basic display time and album relation editing or placeholders exist
-- Saving updates post detail
-- Media management and delete entries exist as placeholders
+- Gear Edit opens media management
+- Media management page uses two-column grid
+- Delete mode can select media
+- Sort mode shell exists
+- Set cover works locally
+- Add media and edit time entries exist as placeholders
 - App builds and runs
 - Docs are minimally synchronized
