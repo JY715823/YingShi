@@ -51,7 +51,7 @@ data class PhotoViewerOverlayUiModel(
     val originalLoadState: ViewerOriginalLoadState,
     val relatedPostsLabel: String?,
     val relatedPosts: List<ViewerRelatedPostUiModel>,
-    val previewComments: List<ViewerPreviewCommentUiModel>,
+    val previewComments: List<CommentUiModel>,
 )
 
 enum class ViewerOriginalLoadState(
@@ -61,13 +61,6 @@ enum class ViewerOriginalLoadState(
     Loading(label = "加载中"),
     Loaded(label = "已加载原图"),
 }
-
-@Immutable
-data class ViewerPreviewCommentUiModel(
-    val id: String,
-    val author: String,
-    val body: String,
-)
 
 @Immutable
 data class ViewerRelatedPostUiModel(

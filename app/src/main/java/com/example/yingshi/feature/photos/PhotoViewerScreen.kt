@@ -92,6 +92,8 @@ private object ViewerLayoutTuning {
     val commentPreviewStartOffset = 8.dp
     val commentPreviewHeight = 172.dp
     val commentPreviewBottomOffset = 68.dp
+    val edgeActionsBottomPadding = 56.dp
+    val postSegmentBottomOffset = 12.dp
     const val commentSheetHeightFraction = 0.68f
     const val relatedPostsSheetHeightFraction = 0.42f
     const val zoomedOverlayAlpha = 0.42f
@@ -275,8 +277,11 @@ fun PhotoViewerScreen(
     val currentItem = route.mediaItems[currentIndex]
     val currentOriginalState = originalLoadStates[currentItem.mediaId]
         ?: ViewerOriginalLoadState.NotLoaded
-    val previewComments = remember(currentItem.mediaId, currentItem.commentCount) {
-        fakeViewerPreviewComments(currentItem)
+    val mediaComments = remember(currentItem.mediaId) {
+        FakeCommentRepository.getMediaComments(currentItem.mediaId)
+    }
+    val previewComments = remember(mediaComments) {
+        mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
     }
     val relatedPosts = remember(currentItem.postIds) {
         fakeViewerRelatedPosts(currentItem)
@@ -288,7 +293,7 @@ fun PhotoViewerScreen(
         relatedPosts,
     ) {
         PhotoViewerOverlayUiModel(
-            commentCountLabel = currentItem.commentCount.toString(),
+            commentCountLabel = mediaComments.size.toString(),
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
             originalLoadState = currentOriginalState,
             relatedPostsLabel = if (currentItem.postIds.isNotEmpty()) {
@@ -394,7 +399,7 @@ fun PhotoViewerScreen(
         )
 
         if (!zoomState.isZoomed) {
-            if (showCommentPreview && overlayUiModel.previewComments.isNotEmpty()) {
+            if (showCommentPreview) {
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
                     onOpenComment = { commentId ->
@@ -417,11 +422,14 @@ fun PhotoViewerScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = spacing.lg, vertical = spacing.lg),
+                    .padding(
+                        start = spacing.lg,
+                        end = spacing.lg,
+                        top = spacing.lg,
+                        bottom = ViewerLayoutTuning.edgeActionsBottomPadding,
+                    ),
                 onOpenComments = {
-                    if (overlayUiModel.previewComments.isEmpty()) {
-                        commentPanelState = ViewerCommentPanelState()
-                    } else if (!showCommentPreview) {
+                    if (!showCommentPreview) {
                         showCommentPreview = true
                     } else {
                         showCommentPreview = false
@@ -469,7 +477,7 @@ fun PhotoViewerScreen(
                     .padding(
                         start = spacing.xl,
                         end = spacing.xl,
-                        bottom = if (zoomState.isZoomed) spacing.lg else 88.dp,
+                        bottom = ViewerLayoutTuning.postSegmentBottomOffset,
                     ),
                 alpha = if (zoomState.isZoomed) ViewerLayoutTuning.zoomedOverlayAlpha else 0.92f,
             )
@@ -477,7 +485,7 @@ fun PhotoViewerScreen(
 
         commentPanelState?.let { panelState ->
             PhotoViewerCommentSheet(
-                comments = overlayUiModel.previewComments,
+                comments = mediaComments,
                 selectedCommentId = panelState.selectedCommentId,
                 onDismiss = { commentPanelState = null },
             )
@@ -871,7 +879,7 @@ private fun ViewerCapsule(
 
 @Composable
 private fun ViewerCommentPreviewLayer(
-    comments: List<ViewerPreviewCommentUiModel>,
+    comments: List<CommentUiModel>,
     onOpenComment: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -889,17 +897,26 @@ private fun ViewerCommentPreviewLayer(
             .padding(horizontal = spacing.md, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        comments.forEach { comment ->
+        if (comments.isEmpty()) {
             Text(
-                text = "${comment.author}：${comment.body}",
-                modifier = Modifier
-                    .clip(RoundedCornerShape(radius.sm))
-                    .clickable { onOpenComment(comment.id) }
-                    .padding(horizontal = spacing.xs, vertical = spacing.xs),
+                text = "当前媒体还没有评论",
+                modifier = Modifier.padding(horizontal = spacing.xs, vertical = spacing.xs),
                 style = MaterialTheme.typography.bodySmall,
-                color = ViewerSurface.copy(alpha = 0.86f),
-                maxLines = 2,
+                color = ViewerSurface.copy(alpha = 0.62f),
             )
+        } else {
+            comments.forEach { comment ->
+                Text(
+                    text = "${comment.author}：${comment.content}",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(radius.sm))
+                        .clickable { onOpenComment(comment.id) }
+                        .padding(horizontal = spacing.xs, vertical = spacing.xs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ViewerSurface.copy(alpha = 0.86f),
+                    maxLines = 2,
+                )
+            }
         }
     }
 }
@@ -907,7 +924,7 @@ private fun ViewerCommentPreviewLayer(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PhotoViewerCommentSheet(
-    comments: List<ViewerPreviewCommentUiModel>,
+    comments: List<CommentUiModel>,
     selectedCommentId: String?,
     onDismiss: () -> Unit,
 ) {
@@ -924,6 +941,7 @@ private fun PhotoViewerCommentSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(ViewerLayoutTuning.commentSheetHeightFraction)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
@@ -964,9 +982,14 @@ private fun PhotoViewerCommentSheet(
                             color = ViewerSurface.copy(alpha = 0.88f),
                         )
                         Text(
-                            text = comment.body,
+                            text = comment.content,
                             style = MaterialTheme.typography.bodyMedium,
                             color = ViewerSurface.copy(alpha = 0.78f),
+                        )
+                        Text(
+                            text = formatViewerTime(comment.createdAtMillis),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ViewerSurface.copy(alpha = 0.46f),
                         )
                     }
                 }
@@ -1040,7 +1063,7 @@ private fun ViewerRelatedPostsSheet(
     }
 }
 
-private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<ViewerPreviewCommentUiModel> {
+private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<CommentUiModel> {
     if (media.commentCount <= 0) return emptyList()
 
     val bodies = listOf(
@@ -1050,10 +1073,13 @@ private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<ViewerPreviewC
         "先留一条占位评论，后面接真实媒体评论。",
     )
     return List(media.commentCount.coerceAtMost(ViewerLayoutTuning.previewCommentsMaxCount)) { index ->
-        ViewerPreviewCommentUiModel(
+        CommentUiModel(
             id = "${media.mediaId}-preview-$index",
+            targetType = CommentTargetType.Media,
+            targetId = media.mediaId,
             author = if (index % 2 == 0) "我" else "你",
-            body = bodies[index % bodies.size],
+            content = bodies[index % bodies.size],
+            createdAtMillis = media.mediaDisplayTimeMillis - (index * 7 * 60 * 1000L),
         )
     }
 }
