@@ -1149,6 +1149,13 @@ Stage 4.1 落地时先保持最小可用 UI：
 
 ## Stage 5.1 implementation note
 
+## Stage 5.2 implementation note
+
+- Post comment input and viewer media comment input both stay lightweight: plain text field, send action, empty content disabled, and local clear-after-send.
+- Viewer media comment preview still only handles preview visibility; entering comment detail still depends on tapping a specific preview comment, and the detail sheet should reflect newly added media comments immediately.
+- Comment lists keep the newest 10 items in the collapsed state and expose a minimal expand / collapse affordance before any real pagination exists.
+- Overlay action offsets can diverge between photo-flow viewer and in-post viewer so the in-post segmented indicator keeps a clean bottom lane.
+
 - 帖子评论区保持普通内容页评论气质，只显示帖子评论，不混入媒体评论。
 - Viewer 的评论预览层与评论详情区都只服务当前 `mediaId` 的媒体评论，并延续深色沉浸背景下的轻量层级。
 - 评论气泡负责展开 / 收起预览层；预览层中的评论条目才是进入详情区的入口，详情区需要对被点击评论做清晰高亮。

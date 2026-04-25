@@ -1,30 +1,31 @@
-# Current Task - Stage 5.1 Comment Foundation v1
+# Current Task - Stage 5.2 Comment Input and Local Add v1
 
 ## Goal
-Build the foundation of the comment system and connect fake post/media comments to the existing post detail and viewer shells.
+Add local comment input and local append behavior for post comments and media comments.
 
 ## Scope
 This stage covers:
-- comment UI models
-- fake comment repository
-- post comments by postId
-- media comments by mediaId
-- post detail comment section using fake post comments
-- viewer media comment preview using fake media comments
-- viewer media comment detail panel using fake media comments
-- highlighted comment placeholder when opened from preview
-- comment input placeholders
-- minor in-post viewer layout fix for segment indicator and overlay buttons
+- comment input bar
+- local add post comment by postId
+- local add media comment by mediaId
+- in-memory fake comment source updates shared across viewer entry points
+- immediate UI refresh after sending
+- latest-first ordering
+- default latest 10 comments
+- expand more / collapse to latest 10
+- minor viewer overlay offset adjustment
 - minimal related doc updates
 
 ## Product intent
-- Post comments and media comments are two separate flows.
+- Post comments and media comments remain separate.
 - Post comments belong only to posts.
 - Media comments belong only to media.
-- Media comments are shared by the same media across different post contexts.
-- Viewer comment preview is closed by default.
-- Tapping the comment bubble toggles the preview layer open/closed.
-- Tapping a preview comment opens the full media comment panel and highlights that comment.
+- Same mediaId should share the same media comments across photo-flow viewer and in-post viewer.
+- Input should be simple, lightweight, and not a rich-text editor yet.
+
+## Viewer adjustment
+- Photo-flow viewer overlay actions should move slightly downward for a more natural visual balance.
+- In-post viewer overlay actions must still avoid overlapping the bottom segmented indicator.
 
 ## Do not do in this stage
 - no real backend
@@ -36,10 +37,11 @@ This stage covers:
 - no rich text editor
 
 ## Done when
-- Post detail shows fake post comments only
-- Viewer shows fake media comments only
-- Post and media comment flows do not mix
-- Preview comment tap opens detail panel and highlights the selected comment
-- In-post viewer segment indicator is moved to the bottom and no longer overlaps action buttons
+- Post detail can add local post comments
+- Viewer can add local media comments
+- Post and media comments do not mix
+- Comments show latest-first
+- Latest 10 / expand more / collapse works at a basic level
+- Viewer overlay actions are repositioned without overlapping in-post segmented indicator
 - App builds and runs
 - Docs are minimally synchronized

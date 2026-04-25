@@ -177,6 +177,7 @@ private fun PostDetailContent(
 
         PostMediaInfoRow(
             media = currentMedia,
+            commentCount = FakeCommentRepository.mediaCommentCount(currentMedia.id),
             originalLoaded = originalLoaded,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
@@ -192,7 +193,7 @@ private fun PostDetailContent(
             },
         )
 
-        PostCommentSection(comments = detail.comments)
+        PostCommentSection(postId = detail.postId)
     }
 }
 
@@ -316,6 +317,7 @@ private fun PostMediaCard(
 @Composable
 private fun PostMediaInfoRow(
     media: PostDetailMediaUiModel,
+    commentCount: Int,
     originalLoaded: Boolean,
     onCommentClick: () -> Unit,
     onOriginalClick: () -> Unit,
@@ -330,7 +332,7 @@ private fun PostMediaInfoRow(
         PostMetaCapsule(text = formatPostTime(media.displayTimeMillis))
         Spacer(modifier = Modifier.weight(1f))
         PostActionChip(text = "评", onClick = onCommentClick)
-        PostMetaCapsule(text = media.commentCount.toString())
+        PostMetaCapsule(text = commentCount.toString())
         PostActionChip(
             text = if (originalLoaded) "已加载原图" else "加载原图",
             onClick = onOriginalClick,
@@ -392,11 +394,12 @@ private fun PostInfoSection(
 }
 
 @Composable
-private fun PostCommentSection(comments: List<CommentUiModel>) {
+private fun PostCommentSection(postId: String) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val visibleComments = comments.take(10)
-    val hasMoreComments = comments.size > visibleComments.size
+    val comments = FakeCommentRepository.getPostComments(postId)
+    var expanded by rememberSaveable(postId) { mutableStateOf(false) }
+    val visibleComments = comments.visibleComments(expanded)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -413,35 +416,42 @@ private fun PostCommentSection(comments: List<CommentUiModel>) {
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            visibleComments.forEach { comment ->
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
-                    Text(
-                        text = "${comment.author} · ${formatPostTime(comment.createdAtMillis)}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = comment.content,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-            if (hasMoreComments) {
-                PostActionChip(text = "展开更多评论", onClick = { })
-            }
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(radius.lg),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
-            ) {
+            if (visibleComments.isEmpty()) {
                 Text(
-                    text = "写一条帖子评论，占位输入入口",
-                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+                    text = "当前帖子还没有评论，先写下第一条本地评论。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else {
+                visibleComments.forEach { comment ->
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+                        Text(
+                            text = "${comment.author} · ${formatPostTime(comment.createdAtMillis)}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = comment.content,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
             }
+            if (comments.hasHiddenComments(expanded)) {
+                PostActionChip(text = "展开更多评论", onClick = { expanded = true })
+            }
+            if (comments.canCollapseComments(expanded)) {
+                PostActionChip(text = "收起到最新 10 条", onClick = { expanded = false })
+            }
+            CommentInputBar(
+                stateKey = "post-comment-input-$postId",
+                placeholder = "写一条帖子评论",
+                onSend = { content ->
+                    FakeCommentRepository.addPostComment(postId, content)
+                    expanded = false
+                },
+            )
         }
     }
 }
@@ -454,9 +464,7 @@ private fun MediaCommentPlaceholderSheet(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val comments = remember(media.id) {
-        FakeCommentRepository.getMediaComments(media.id)
-    }
+    val comments = FakeCommentRepository.getMediaComments(media.id)
 
     Surface(
         modifier = modifier.fillMaxWidth(),

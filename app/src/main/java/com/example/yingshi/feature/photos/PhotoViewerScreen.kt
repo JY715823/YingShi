@@ -92,7 +92,8 @@ private object ViewerLayoutTuning {
     val commentPreviewStartOffset = 8.dp
     val commentPreviewHeight = 172.dp
     val commentPreviewBottomOffset = 68.dp
-    val edgeActionsBottomPadding = 56.dp
+    val photoFlowEdgeActionsBottomPadding = 46.dp
+    val inPostEdgeActionsBottomPadding = 62.dp
     val postSegmentBottomOffset = 12.dp
     const val commentSheetHeightFraction = 0.68f
     const val relatedPostsSheetHeightFraction = 0.42f
@@ -277,11 +278,12 @@ fun PhotoViewerScreen(
     val currentItem = route.mediaItems[currentIndex]
     val currentOriginalState = originalLoadStates[currentItem.mediaId]
         ?: ViewerOriginalLoadState.NotLoaded
-    val mediaComments = remember(currentItem.mediaId) {
-        FakeCommentRepository.getMediaComments(currentItem.mediaId)
-    }
-    val previewComments = remember(mediaComments) {
-        mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
+    val mediaComments = FakeCommentRepository.getMediaComments(currentItem.mediaId)
+    val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
+    val edgeActionsBottomPadding = if (route.showPostSegments) {
+        ViewerLayoutTuning.inPostEdgeActionsBottomPadding
+    } else {
+        ViewerLayoutTuning.photoFlowEdgeActionsBottomPadding
     }
     val relatedPosts = remember(currentItem.postIds) {
         fakeViewerRelatedPosts(currentItem)
@@ -426,7 +428,7 @@ fun PhotoViewerScreen(
                         start = spacing.lg,
                         end = spacing.lg,
                         top = spacing.lg,
-                        bottom = ViewerLayoutTuning.edgeActionsBottomPadding,
+                        bottom = edgeActionsBottomPadding,
                     ),
                 onOpenComments = {
                     if (!showCommentPreview) {
@@ -485,6 +487,7 @@ fun PhotoViewerScreen(
 
         commentPanelState?.let { panelState ->
             PhotoViewerCommentSheet(
+                mediaId = currentItem.mediaId,
                 comments = mediaComments,
                 selectedCommentId = panelState.selectedCommentId,
                 onDismiss = { commentPanelState = null },
@@ -924,12 +927,15 @@ private fun ViewerCommentPreviewLayer(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PhotoViewerCommentSheet(
+    mediaId: String,
     comments: List<CommentUiModel>,
     selectedCommentId: String?,
     onDismiss: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var expanded by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf(false) }
+    val visibleComments = comments.visibleComments(expanded)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -957,14 +963,14 @@ private fun PhotoViewerCommentSheet(
                     color = ViewerSurface.copy(alpha = 0.58f),
                 )
             }
-            if (comments.isEmpty()) {
+            if (visibleComments.isEmpty()) {
                 Text(
-                    text = "还没有评论，正式评论区将在后续阶段接入。",
+                    text = "当前媒体还没有评论，先写下第一条本地媒体评论。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ViewerSurface.copy(alpha = 0.68f),
                 )
             } else {
-                comments.forEach { comment ->
+                visibleComments.forEach { comment ->
                     val isSelected = comment.id == selectedCommentId
                     Column(
                         modifier = Modifier
@@ -993,12 +999,26 @@ private fun PhotoViewerCommentSheet(
                         )
                     }
                 }
-                Text(
-                    text = "评论输入、编辑和真实列表将在后续评论系统阶段接入。",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ViewerSurface.copy(alpha = 0.50f),
-                )
             }
+            if (comments.hasHiddenComments(expanded)) {
+                TextButton(onClick = { expanded = true }) {
+                    Text(text = "展开更多评论", color = ViewerSurface.copy(alpha = 0.88f))
+                }
+            }
+            if (comments.canCollapseComments(expanded)) {
+                TextButton(onClick = { expanded = false }) {
+                    Text(text = "收起到最新 10 条", color = ViewerSurface.copy(alpha = 0.72f))
+                }
+            }
+            CommentInputBar(
+                stateKey = "media-comment-input-$mediaId",
+                placeholder = "写一条媒体评论",
+                darkMode = true,
+                onSend = { content ->
+                    FakeCommentRepository.addMediaComment(mediaId, content)
+                    expanded = false
+                },
+            )
         }
     }
 }
