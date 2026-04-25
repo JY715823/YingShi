@@ -1219,3 +1219,15 @@ Stage 4.1 落地时先保持最小可用 UI：
 - `系统媒体` 页面不再先显示权限引导壳子，而是默认直接进入系统媒体主列表；权限问题仅在查询失败时退回到极简错误态。
 - 主体从 fake grid 切到真实本地媒体缩略图：图片 / 视频混排、时间降序、uri 直接加载，视频先以缩略图或静态占位查看。
 - 多选、`已发帖` 标记和系统工具动作继续保留，但这轮只升级查询与展示，不引入真实系统删除、真实发帖或评论能力。
+## Stage 8.3 implementation note
+
+- The main photo feed now confirms delete before media is written into app trash.
+- System media multi-select and single-item viewer actions share the same lightweight local fake flows: create post, add to existing post, and simulated move to system trash.
+- After `create post` or `add to existing post`, the system-media card should immediately show a lightweight `已发帖` marker and the `posted / unposted` filter should update.
+- Simulated system trash is a local hide-only behavior inside the system-media tool area and should clearly avoid app-trash semantics.
+- Smooth scrolling and state retention for the system-media tool remain follow-up work and should stay documented as known performance risk.
+## Stage 8.3 targeted adjustment note
+
+- `加入已有帖子` in system media should use a two-step picker: first choose an album, then choose a post under that album.
+- The picker can stay lightweight, but it must support returning to the previous album step and must keep safe empty states for no albums or albums without posts.
+- Post items in the second step should expose a lightweight cover, title, time, and media count so the target feels confirmable before the local fake import continues.

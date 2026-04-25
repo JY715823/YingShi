@@ -34,6 +34,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -71,6 +73,9 @@ fun SystemMediaScreen(
         factory = SystemMediaViewModel.factory(appContext),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val mutationVersion = LocalSystemMediaBridgeRepository.mutationVersion
+    val albums = FakeAlbumRepository.getAlbums()
+    val posts = FakeAlbumRepository.getPosts()
     var hasPermission by rememberSaveable {
         mutableStateOf(hasSystemMediaReadAccess(context))
     }
@@ -83,8 +88,15 @@ fun SystemMediaScreen(
     var selectedIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
-    val selectedIdSet = selectedIds.toSet()
+    var showAddToPostDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var showMoveToTrashDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
     val spacing = YingShiThemeTokens.spacing
+    val selectedIdSet = selectedIds.toSet()
+    val selectedItems = uiState.filteredItems.filter { selectedIdSet.contains(it.id) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -103,11 +115,81 @@ fun SystemMediaScreen(
         }
     }
 
+    LaunchedEffect(mutationVersion) {
+        viewModel.refreshLocalState()
+    }
+
     if (selectionMode) {
         BackHandler {
             selectionMode = false
             selectedIds = emptyList()
         }
+    }
+
+    if (showAddToPostDialog) {
+        SystemMediaPostDestinationDialog(
+            albums = albums,
+            posts = posts,
+            onDismiss = { showAddToPostDialog = false },
+            onPostSelected = { postId ->
+                val addedCount = LocalSystemMediaBridgeRepository.addSystemMediaToExistingPost(
+                    postId = postId,
+                    mediaItems = selectedItems,
+                )
+                showAddToPostDialog = false
+                selectedIds = emptyList()
+                selectionMode = false
+                Toast.makeText(
+                    context,
+                    if (addedCount > 0) {
+                        "已加入已有帖子，并同步进入照片页"
+                    } else {
+                        "这些媒体已在目标帖子里"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+        )
+    }
+
+    if (showMoveToTrashDialog) {
+        AlertDialog(
+            onDismissRequest = { showMoveToTrashDialog = false },
+            title = {
+                Text(text = "确认移到系统回收站？")
+            },
+            text = {
+                Text(text = "当前仅做本地模拟：这些媒体会从系统媒体工具区隐藏，不会进入 app 回收站，也不会执行真实 Android 系统删除。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val hiddenCount = LocalSystemMediaBridgeRepository.moveToSimulatedSystemTrash(
+                            selectedIds,
+                        )
+                        showMoveToTrashDialog = false
+                        selectedIds = emptyList()
+                        selectionMode = false
+                        Toast.makeText(
+                            context,
+                            if (hiddenCount > 0) {
+                                "已从系统媒体工具区本地隐藏"
+                            } else {
+                                "这些媒体已处于本地隐藏状态"
+                            },
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                ) {
+                    Text(text = "移到系统回收站")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMoveToTrashDialog = false }) {
+                    Text(text = "取消")
+                }
+            },
+        )
     }
 
     Box(
@@ -178,7 +260,11 @@ fun SystemMediaScreen(
 
                 uiState.filteredItems.isEmpty() -> {
                     SystemMediaEmptyState(
-                        text = "当前没有可显示的本地媒体。",
+                        text = if (uiState.selectedFilter == SystemMediaFilter.ALL) {
+                            "当前没有可显示的本地媒体"
+                        } else {
+                            "当前筛选下没有可显示的媒体"
+                        },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -189,7 +275,7 @@ fun SystemMediaScreen(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = PaddingValues(bottom = 96.dp),
+                        contentPadding = PaddingValues(bottom = 112.dp),
                     ) {
                         items(
                             items = uiState.filteredItems,
@@ -238,13 +324,28 @@ fun SystemMediaScreen(
             SystemMediaSelectionBar(
                 selectedCount = selectedIds.size,
                 onCreatePost = {
-                    Toast.makeText(context, "发成新帖子占位", Toast.LENGTH_SHORT).show()
+                    val post = LocalSystemMediaBridgeRepository.createPostFromSystemMedia(selectedItems)
+                    selectedIds = emptyList()
+                    selectionMode = false
+                    Toast.makeText(
+                        context,
+                        if (post != null) {
+                            "已发成新帖子，并同步进入照片页和相册页"
+                        } else {
+                            "当前没有可处理的媒体"
+                        },
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 },
                 onAddToPost = {
-                    Toast.makeText(context, "加入已有帖子占位", Toast.LENGTH_SHORT).show()
+                    showAddToPostDialog = true
                 },
                 onMoveToTrash = {
-                    Toast.makeText(context, "移到系统回收站占位", Toast.LENGTH_SHORT).show()
+                    showMoveToTrashDialog = true
+                },
+                onCancel = {
+                    selectionMode = false
+                    selectedIds = emptyList()
                 },
             )
         }
@@ -392,7 +493,7 @@ private fun SystemMediaCard(
         if (selectionMode) {
             Box(
                 modifier = Modifier
-                    .matchParentSize()
+                    .fillMaxSize()
                     .background(
                         if (selected) {
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -483,6 +584,7 @@ private fun SystemMediaSelectionBar(
     onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
     onMoveToTrash: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
 
@@ -519,6 +621,11 @@ private fun SystemMediaSelectionBar(
                     text = "移到系统回收站",
                     emphasized = false,
                     onClick = onMoveToTrash,
+                )
+                SystemMediaActionChip(
+                    text = "取消",
+                    emphasized = false,
+                    onClick = onCancel,
                 )
             }
         }
@@ -606,7 +713,7 @@ private fun SystemMediaSelectionBadge(
     ) {
         if (selected) {
             Text(
-                text = "✓",
+                text = "√",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                 color = Color.White,
             )
@@ -692,6 +799,58 @@ private fun SystemMediaEmptyState(
     }
 }
 
+@Composable
+private fun SystemMediaPostPickerDialog(
+    posts: List<AlbumPostCardUiModel>,
+    onDismiss: () -> Unit,
+    onPostSelected: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "加入已有帖子")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                posts.forEach { post ->
+                    Surface(
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+                        onClick = { onPostSelected(post.id) },
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = post.title,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "${post.mediaCount} 项媒体",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消")
+            }
+        },
+    )
+}
+
 private fun List<String>.toggleSystemMediaId(id: String): List<String> {
     return if (contains(id)) {
         filterNot { it == id }
@@ -704,6 +863,6 @@ private fun List<String>.toggleSystemMediaId(id: String): List<String> {
 @Composable
 private fun SystemMediaEmptyStatePreview() {
     YingShiTheme {
-        SystemMediaEmptyState(text = "当前没有可显示的本地媒体。")
+        SystemMediaEmptyState(text = "当前没有可显示的本地媒体")
     }
 }

@@ -96,6 +96,72 @@ object FakeAlbumRepository {
         return posts.firstOrNull { it.id == postId }
     }
 
+    fun createLocalPostFromSystemMedia(
+        mediaItems: List<SystemMediaItem>,
+    ): AlbumPostCardUiModel? {
+        val normalizedMedia = mediaItems
+            .distinctBy { it.id }
+            .sortedByDescending { it.displayTimeMillis }
+            .mapIndexed { index, item ->
+                item.toManagedState(isCover = index == 0)
+            }
+        if (normalizedMedia.isEmpty()) return null
+
+        val primaryAlbum = albums.first()
+        val coverMedia = normalizedMedia.first()
+        val postTime = normalizedMedia.maxOf { it.displayTimeMillis }
+        val postId = "post-system-import-$postTime-${posts.size + 1}"
+        val post = AlbumPostCardUiModel(
+            id = postId,
+            albumId = primaryAlbum.id,
+            albumIds = listOf(primaryAlbum.id),
+            title = buildSystemImportTitle(
+                mediaCount = normalizedMedia.size,
+                displayTimeMillis = postTime,
+            ),
+            summary = "从系统媒体工具区加入的本地占位帖子",
+            postDisplayTimeMillis = postTime,
+            mediaCount = normalizedMedia.size,
+            coverPalette = coverMedia.palette,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
+            addAll(normalizedMedia)
+        }
+        posts.add(post)
+        posts.sortByDescending { it.postDisplayTimeMillis }
+        FakePhotoFeedRepository.unhidePostsLocally(listOf(postId))
+        return post
+    }
+
+    fun appendSystemMediaToPost(
+        postId: String,
+        mediaItems: List<SystemMediaItem>,
+    ): Int {
+        val post = getPost(postId) ?: return 0
+        val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
+        val existingMediaIds = mediaState.mapTo(mutableSetOf()) { it.id }
+        val appendedMedia = mediaItems
+            .distinctBy { it.id }
+            .filterNot { existingMediaIds.contains(it.id) }
+            .sortedByDescending { it.displayTimeMillis }
+            .map { item ->
+                item.toManagedState(isCover = false)
+            }
+        if (appendedMedia.isEmpty()) return 0
+
+        val nextItems = normalizeCover(mediaState.toList() + appendedMedia)
+        replacePostMedia(postId = postId, newItems = nextItems)
+        val coverMedia = nextItems.firstOrNull { it.isCover } ?: nextItems.first()
+        syncPostAfterMediaMutation(
+            postId = postId,
+            mediaCount = nextItems.size,
+            coverPalette = coverMedia.palette,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        return appendedMedia.size
+    }
+
     fun getEditablePostDraft(postId: String): EditablePostDraft? {
         val post = getPost(postId) ?: return null
         return EditablePostDraft(
@@ -633,6 +699,26 @@ object FakeAlbumRepository {
         } else {
             albumTitles
         }
+    }
+
+    private fun SystemMediaItem.toManagedState(isCover: Boolean): ManagedPostMediaState {
+        return ManagedPostMediaState(
+            id = id,
+            displayTimeMillis = displayTimeMillis,
+            commentCount = FakeCommentRepository.mediaCommentCount(id),
+            palette = palette,
+            aspectRatio = aspectRatio,
+            isCover = isCover,
+        )
+    }
+
+    private fun buildSystemImportTitle(
+        mediaCount: Int,
+        displayTimeMillis: Long,
+    ): String {
+        val dateLabel = java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA)
+            .format(java.util.Date(displayTimeMillis))
+        return "系统导入 $dateLabel · $mediaCount 项"
     }
 
     private fun shiftedPalette(

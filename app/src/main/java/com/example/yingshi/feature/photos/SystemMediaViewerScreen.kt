@@ -15,13 +15,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +57,69 @@ fun SystemMediaViewerScreen(
     val currentItem = route.mediaItems.getOrNull(
         pagerState.currentPage.coerceIn(0, (route.mediaItems.size - 1).coerceAtLeast(0)),
     )
+    var showAddToPostDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var showMoveToTrashDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+    val albums = FakeAlbumRepository.getAlbums()
+    val posts = FakeAlbumRepository.getPosts()
+
+    if (showAddToPostDialog && currentItem != null) {
+        SystemMediaPostDestinationDialog(
+            albums = albums,
+            posts = posts,
+            onDismiss = { showAddToPostDialog = false },
+            onPostSelected = { postId ->
+                val addedCount = LocalSystemMediaBridgeRepository.addSystemMediaToExistingPost(
+                    postId = postId,
+                    mediaItems = listOf(currentItem),
+                )
+                showAddToPostDialog = false
+                Toast.makeText(
+                    context,
+                    if (addedCount > 0) {
+                        "已加入已有帖子，并同步进入照片页"
+                    } else {
+                        "该媒体已在目标帖子里"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+        )
+    }
+
+    if (showMoveToTrashDialog && currentItem != null) {
+        AlertDialog(
+            onDismissRequest = { showMoveToTrashDialog = false },
+            title = {
+                Text(text = "确认移到系统回收站？")
+            },
+            text = {
+                Text(text = "当前仅做本地模拟：会从系统媒体工具区隐藏，不会进入 app 回收站，也不会执行真实系统删除。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        LocalSystemMediaBridgeRepository.moveToSimulatedSystemTrash(
+                            listOf(currentItem.id),
+                        )
+                        showMoveToTrashDialog = false
+                        Toast.makeText(context, "已从系统媒体工具区本地隐藏", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    },
+                ) {
+                    Text(text = "移到系统回收站")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMoveToTrashDialog = false }) {
+                    Text(text = "取消")
+                }
+            },
+        )
+    }
 
     Box(
         modifier = modifier
@@ -92,7 +162,7 @@ fun SystemMediaViewerScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "当前没有可查看的系统媒体。",
+                        text = "当前没有可查看的系统媒体",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.72f),
                     )
@@ -167,19 +237,30 @@ fun SystemMediaViewerScreen(
                         SystemMediaViewerActionChip(
                             text = "发成新帖子",
                             onClick = {
-                                Toast.makeText(context, "发成新帖子占位", Toast.LENGTH_SHORT).show()
+                                val post = LocalSystemMediaBridgeRepository.createPostFromSystemMedia(
+                                    listOf(item),
+                                )
+                                Toast.makeText(
+                                    context,
+                                    if (post != null) {
+                                        "已发成新帖子，并同步进入照片页和相册页"
+                                    } else {
+                                        "当前媒体无法处理"
+                                    },
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                             },
                         )
                         SystemMediaViewerActionChip(
                             text = "加入已有帖子",
                             onClick = {
-                                Toast.makeText(context, "加入已有帖子占位", Toast.LENGTH_SHORT).show()
+                                showAddToPostDialog = true
                             },
                         )
                         SystemMediaViewerActionChip(
                             text = "移到系统回收站",
                             onClick = {
-                                Toast.makeText(context, "移到系统回收站占位", Toast.LENGTH_SHORT).show()
+                                showMoveToTrashDialog = true
                             },
                         )
                     }
@@ -229,6 +310,58 @@ private fun SystemMediaViewerActionChip(
             )
         }
     }
+}
+
+@Composable
+private fun SystemMediaViewerPostPickerDialog(
+    posts: List<AlbumPostCardUiModel>,
+    onDismiss: () -> Unit,
+    onPostSelected: (String) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "加入已有帖子")
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                posts.forEach { post ->
+                    Surface(
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+                        onClick = { onPostSelected(post.id) },
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = post.title,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "${post.mediaCount} 项媒体",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消")
+            }
+        },
+    )
 }
 
 private fun formatSystemMediaViewerTime(timeMillis: Long): String {
