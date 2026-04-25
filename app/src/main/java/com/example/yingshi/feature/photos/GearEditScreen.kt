@@ -47,13 +47,16 @@ fun GearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
     onOpenMediaManagement: (MediaManagementRoute) -> Unit,
-    onDeleteCurrentPost: (String) -> Unit,
+    onDeleteCurrentPost: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val initialDraft = remember(route.postId) {
         FakeAlbumRepository.getEditablePostDraft(route.postId)
+    }
+    val systemDeleteImpact = remember(route.postId) {
+        FakeAlbumRepository.getPostSystemDeleteImpact(route.postId)
     }
 
     if (initialDraft == null) {
@@ -199,7 +202,7 @@ fun GearEditScreen(
             )
             GearEditEntryRow(
                 title = "删除整个帖子",
-                subtitle = "本轮先写入本地回收站的“帖子删除”，删除帖子并系统删媒体留到后续阶段。",
+                subtitle = "本轮支持“仅删帖子”以及“删帖子并系统删其中媒体”的本地版本。",
                 danger = true,
                 onClick = {
                     showDeletePostDialog = true
@@ -213,16 +216,38 @@ fun GearEditScreen(
             onDismissRequest = { showDeletePostDialog = false },
             title = { Text("删除整个帖子") },
             text = {
-                Text("本轮先把帖子删除写入本地回收站。删除后帖子会从相册页和帖子详情中消失，恢复与 24h 逻辑留到 Stage 7.2。")
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+                ) {
+                    Text("选择只删除帖子，或在删除帖子时把其中媒体一起记入“媒体系统删”。")
+                    if (systemDeleteImpact.sharedMediaCount > 0) {
+                        Text(
+                            text = "其中有 ${systemDeleteImpact.sharedMediaCount} 张媒体同时属于其他帖子，会带来 ${systemDeleteImpact.affectedOtherPostCount} 个其他帖子的全局影响。",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else if (systemDeleteImpact.mediaCount > 0) {
+                        Text("当前帖子共有 ${systemDeleteImpact.mediaCount} 张媒体会进入本地系统删流程。")
+                    }
+                }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeletePostDialog = false
-                        onDeleteCurrentPost(route.postId)
-                    },
-                ) {
-                    Text("仅删除帖子")
+                Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
+                    TextButton(
+                        onClick = {
+                            showDeletePostDialog = false
+                            onDeleteCurrentPost(route.postId, false)
+                        },
+                    ) {
+                        Text("仅删帖子")
+                    }
+                    TextButton(
+                        onClick = {
+                            showDeletePostDialog = false
+                            onDeleteCurrentPost(route.postId, true)
+                        },
+                    ) {
+                        Text("删帖并系统删媒体")
+                    }
                 }
             },
             dismissButton = {
@@ -471,7 +496,7 @@ private fun GearEditScreenPreview() {
             route = GearEditRoute(postId = "post-window-light"),
             onBack = {},
             onOpenMediaManagement = {},
-            onDeleteCurrentPost = {},
+            onDeleteCurrentPost = { _, _ -> },
         )
     }
 }

@@ -67,6 +67,7 @@ private const val PhotoFeedLeadingItemCount = 2
 
 @Composable
 fun PhotoFeedScreen(
+    feedItems: List<PhotoFeedItem> = FakePhotoFeedRepository.getPhotoFeed(),
     modifier: Modifier = Modifier,
     selectionState: PhotoFeedSelectionState = PhotoFeedSelectionState(),
     bottomOverlayPadding: Dp = 0.dp,
@@ -74,7 +75,6 @@ fun PhotoFeedScreen(
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val feedItems = FakePhotoFeedRepository.getPhotoFeed()
     val mediaPositionLookup = remember(feedItems) {
         feedItems.mapIndexed { index, item ->
             item.mediaId to index
@@ -99,12 +99,20 @@ fun PhotoFeedScreen(
     }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var lastRequestedAnchorIndex by remember { mutableIntStateOf(-1) }
     val currentScrubberAnchorIndex by remember(listState, scrubberAnchors) {
         derivedStateOf {
             resolveCurrentScrubberAnchorIndex(
                 itemIndex = listState.firstVisibleItemIndex,
                 anchors = scrubberAnchors,
             )
+        }
+    }
+    val updateDensity = remember(density) {
+        { nextDensity: PhotoFeedDensity ->
+            if (nextDensity != density) {
+                densityName = nextDensity.name
+            }
         }
     }
 
@@ -124,6 +132,12 @@ fun PhotoFeedScreen(
         }
     }
 
+    LaunchedEffect(currentScrubberAnchorIndex, scrubberInteracting) {
+        if (!scrubberInteracting) {
+            lastRequestedAnchorIndex = currentScrubberAnchorIndex
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -132,7 +146,7 @@ fun PhotoFeedScreen(
                     enabled = !selectionState.isInSelectionMode,
                     levels = PhotoFeedDensity.entries.toList(),
                     currentLevel = density,
-                    onLevelChange = { densityName = it.name },
+                    onLevelChange = updateDensity,
                 ),
         ) {
         LazyColumn(
@@ -156,7 +170,7 @@ fun PhotoFeedScreen(
                 PhotoFeedDensitySwitcher(
                     selectedDensity = density,
                     enabled = !selectionState.isInSelectionMode,
-                    onDensitySelected = { densityName = it.name },
+                    onDensitySelected = updateDensity,
                 )
             }
 
@@ -217,7 +231,11 @@ fun PhotoFeedScreen(
                 anchors = scrubberAnchors,
                 currentAnchorIndex = currentScrubberAnchorIndex,
                 onSeekToAnchor = { anchorIndex ->
+                    if (anchorIndex == lastRequestedAnchorIndex) {
+                        return@PhotoFeedTimeScrubber
+                    }
                     scrubberAnchors.getOrNull(anchorIndex)?.let { anchor ->
+                        lastRequestedAnchorIndex = anchorIndex
                         coroutineScope.launch {
                             listState.scrollToItem(anchor.itemIndex)
                         }
@@ -359,6 +377,7 @@ private fun PhotoFeedTimeScrubber(
     val verticalPadding = 18.dp
     var scrubberHeightPx by remember { mutableIntStateOf(0) }
     var bubbleHeightPx by remember { mutableIntStateOf(0) }
+    var lastDispatchedAnchorIndex by remember(anchors) { mutableIntStateOf(-1) }
     val safeAnchorIndex = currentAnchorIndex.coerceIn(0, (anchors.size - 1).coerceAtLeast(0))
     val currentLabel = anchors.getOrNull(safeAnchorIndex)?.label.orEmpty()
     val thumbFraction = if (anchors.size <= 1) {
@@ -378,8 +397,10 @@ private fun PhotoFeedTimeScrubber(
 
         val fraction = ((offsetY - verticalPaddingPx - (thumbSizePx / 2f)) / travelHeightPx.toFloat())
             .coerceIn(0f, 1f)
-        val anchorIndex = (fraction * anchors.lastIndex).roundToInt()
-        onSeekToAnchor(anchorIndex.coerceIn(0, anchors.lastIndex))
+        val anchorIndex = (fraction * anchors.lastIndex).roundToInt().coerceIn(0, anchors.lastIndex)
+        if (anchorIndex == lastDispatchedAnchorIndex) return
+        lastDispatchedAnchorIndex = anchorIndex
+        onSeekToAnchor(anchorIndex)
     }
 
     Box(
@@ -390,6 +411,7 @@ private fun PhotoFeedTimeScrubber(
                 detectTapGestures { offset: Offset ->
                     onInteractingChanged(true)
                     seekByOffset(offset.y)
+                    lastDispatchedAnchorIndex = -1
                     onInteractingChanged(false)
                 }
             }
@@ -402,8 +424,14 @@ private fun PhotoFeedTimeScrubber(
                     onVerticalDrag = { change, _ ->
                         seekByOffset(change.position.y)
                     },
-                    onDragEnd = { onInteractingChanged(false) },
-                    onDragCancel = { onInteractingChanged(false) },
+                    onDragEnd = {
+                        lastDispatchedAnchorIndex = -1
+                        onInteractingChanged(false)
+                    },
+                    onDragCancel = {
+                        lastDispatchedAnchorIndex = -1
+                        onInteractingChanged(false)
+                    },
                 )
             },
     ) {

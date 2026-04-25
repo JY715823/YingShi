@@ -58,6 +58,13 @@ fun PostDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val detail = FakeAlbumRepository.getPostDetail(route)
+    if (detail.mediaItems.isEmpty()) {
+        PostDetailMissingState(
+            onBack = onBack,
+            modifier = modifier,
+        )
+        return
+    }
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
@@ -111,6 +118,35 @@ fun PostDetailScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PostDetailMissingState(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .padding(
+                horizontal = YingShiThemeTokens.spacing.lg,
+                vertical = YingShiThemeTokens.spacing.md,
+            ),
+        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+    ) {
+        PostDetailTopBar(
+            onBack = onBack,
+            onExport = {},
+            onEdit = {},
+        )
+        Text(
+            text = "当前帖子没有可展示的媒体，可能已经被删除、被移出关系，或仍处于系统删除状态。",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
