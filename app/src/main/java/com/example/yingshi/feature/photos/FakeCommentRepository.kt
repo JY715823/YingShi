@@ -1,8 +1,14 @@
 package com.example.yingshi.feature.photos
 
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import kotlin.math.absoluteValue
 
 object FakeCommentRepository {
+    private val postCommentsById = mutableMapOf<String, SnapshotStateList<CommentUiModel>>()
+    private val mediaCommentsById = mutableMapOf<String, SnapshotStateList<CommentUiModel>>()
+    private var localCommentSequence = 0L
+
     private val postCommentBodies = listOf(
         "这一组放在一起看，比单张照片更像那天的完整记忆。",
         "标题先这样占位，后面接真实评论系统时再替换。",
@@ -11,7 +17,7 @@ object FakeCommentRepository {
         "以后这里可以承接更长一点的记录，但现在先保持轻。",
         "这组里最有感觉的是开头那几张，节奏很好。",
         "如果后面要导出成纪念册，这一帖应该保留下来。",
-        "这里的时间顺序很清楚，看起来像一小段日记。",
+        "这里的时间顺序很清晰，看起来像一小段日记。",
         "先记一笔，后面真实输入器接入后再完善。",
         "评论区保持这样干净就很好，不要太社区化。",
         "超过十条时先给展开入口，后面再接分页。",
@@ -33,6 +39,54 @@ object FakeCommentRepository {
     )
 
     fun getPostComments(postId: String): List<CommentUiModel> {
+        return postCommentsById.getOrPut(postId) {
+            mutableStateListOf<CommentUiModel>().apply {
+                addAll(seedPostComments(postId))
+            }
+        }
+    }
+
+    fun getMediaComments(mediaId: String): List<CommentUiModel> {
+        return mediaCommentsById.getOrPut(mediaId) {
+            mutableStateListOf<CommentUiModel>().apply {
+                addAll(seedMediaComments(mediaId))
+            }
+        }
+    }
+
+    fun addPostComment(postId: String, content: String) {
+        val normalized = content.trim()
+        if (normalized.isBlank()) return
+
+        val comments = getPostComments(postId) as SnapshotStateList<CommentUiModel>
+        comments.add(
+            index = 0,
+            element = createLocalComment(
+                targetType = CommentTargetType.Post,
+                targetId = postId,
+                content = normalized,
+            ),
+        )
+    }
+
+    fun addMediaComment(mediaId: String, content: String) {
+        val normalized = content.trim()
+        if (normalized.isBlank()) return
+
+        val comments = getMediaComments(mediaId) as SnapshotStateList<CommentUiModel>
+        comments.add(
+            index = 0,
+            element = createLocalComment(
+                targetType = CommentTargetType.Media,
+                targetId = mediaId,
+                content = normalized,
+            ),
+        )
+    }
+
+    fun mediaCommentCount(mediaId: String): Int = getMediaComments(mediaId).size
+
+    private fun seedPostComments(postId: String): List<CommentUiModel> {
         val count = 4 + (postId.hashCode().absoluteValue % 9)
         return List(count) { index ->
             CommentUiModel(
@@ -47,8 +101,8 @@ object FakeCommentRepository {
         }.sortedByDescending { it.createdAtMillis }
     }
 
-    fun getMediaComments(mediaId: String): List<CommentUiModel> {
-        val count = mediaCommentCount(mediaId)
+    private fun seedMediaComments(mediaId: String): List<CommentUiModel> {
+        val count = seededMediaCommentCount(mediaId)
         return List(count) { index ->
             CommentUiModel(
                 id = "$mediaId-media-comment-$index",
@@ -62,9 +116,25 @@ object FakeCommentRepository {
         }.sortedByDescending { it.createdAtMillis }
     }
 
-    fun mediaCommentCount(mediaId: String): Int {
+    private fun seededMediaCommentCount(mediaId: String): Int {
         val rawValue = mediaId.hashCode().absoluteValue % 12
         return if (rawValue <= 1) 0 else rawValue
     }
-}
 
+    private fun createLocalComment(
+        targetType: CommentTargetType,
+        targetId: String,
+        content: String,
+    ): CommentUiModel {
+        val sequence = localCommentSequence++
+        return CommentUiModel(
+            id = "${targetId}-local-$sequence",
+            targetType = targetType,
+            targetId = targetId,
+            author = "我",
+            content = content,
+            createdAtMillis = System.currentTimeMillis() + sequence,
+            isMine = true,
+        )
+    }
+}
