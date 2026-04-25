@@ -116,12 +116,8 @@ fun MediaManagementScreen(
         showEmptyPostDialog = false
     }
 
-    fun deletedPostSnapshots(postIds: Set<String>): List<Pair<AlbumPostCardUiModel, List<String>>> {
-        return postIds.mapNotNull { deletedPostId ->
-            FakeAlbumRepository.getPost(deletedPostId)?.let { deletedPost ->
-                deletedPost to (FakeAlbumRepository.getManagedPostMedia(deletedPostId)?.map { it.id } ?: emptyList())
-            }
-        }
+    fun deletedPostSnapshots(postIds: Set<String>): List<TrashPostSnapshot> {
+        return postIds.mapNotNull(FakeAlbumRepository::snapshotPost)
     }
 
     fun executeDelete(semantic: FakeAlbumRepository.MediaDeleteSemantic) {
@@ -131,17 +127,15 @@ fun MediaManagementScreen(
             return
         }
 
-        val selectedMediaSnapshots = repoMediaItems
-            .filter { selectedIds.contains(it.id) }
-            .map { media ->
-                TrashMediaSnapshot(
-                    mediaId = media.id,
-                    displayTimeMillis = media.displayTimeMillis,
-                    palette = media.palette,
-                    sourcePostId = route.postId,
-                    sourcePostTitle = post.title,
-                )
-            }
+        val selectedMediaSnapshots = FakeAlbumRepository.snapshotPostMedia(
+            postId = route.postId,
+            mediaIds = selectedIds,
+        )
+        val relationSnapshotsByMediaId = if (semantic == FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE) {
+            FakeAlbumRepository.snapshotMediaRelations(selectedIds)
+        } else {
+            emptyMap()
+        }
         val outcomePreview = when (semantic) {
             FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> {
                 FakeAlbumRepository.previewDeleteOutcome(route.postId, selectedIds, semantic)
@@ -166,14 +160,16 @@ fun MediaManagementScreen(
             }
 
             FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> {
-                FakeTrashRepository.recordSystemDeletedMedia(selectedMediaSnapshots)
+                FakeTrashRepository.recordSystemDeletedMedia(
+                    mediaSnapshots = selectedMediaSnapshots,
+                    relationSnapshotsByMediaId = relationSnapshotsByMediaId,
+                )
             }
         }
 
-        postSnapshots.forEach { (deletedPost, mediaIds) ->
+        postSnapshots.forEach { snapshot ->
             FakeTrashRepository.recordDeletedPost(
-                post = deletedPost,
-                mediaIds = mediaIds,
+                snapshot = snapshot,
             )
         }
 

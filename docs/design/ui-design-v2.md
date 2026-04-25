@@ -1188,6 +1188,21 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Gear Edit post delete, media-management delete, and photo-page multi-select delete all write into the local in-memory trash model first.
 - Restore details, 24h undo, and formal delete-detail pages stay deferred to Stage 7.2 and later.
 
+## Stage 7.2 implementation note
+
+- Trash detail is now a standalone full-screen page without the global bottom bar or the photos module top secondary tabs.
+- Deleted-state detail should still feel close to normal browsing, but it is read-only and no longer exposes export, edit, or Gear Edit style actions.
+- The top-right action set is reduced to exactly two actions: `恢复` and `移出回收站 / 删除`.
+- Remove-from-trash feedback stays lightweight through a short snackbar plus a dedicated `24h 可撤销 / 待清理` entry inside the trash page, rather than a persistent bottom banner.
+- Missing targets or missing delete snapshots should fall back to a safe empty state instead of crashing.
+
+## Stage 7.2 targeted fix note
+
+- 删除态详情在 UI 上优先渲染 trash snapshot / fallback 内容，不应因为正常页面数据已经移除而闪退。
+- “24h 可撤销”从全局常驻底部提示调整为回收站页内入口或分区；移出回收站后只允许短暂 snackbar 提示，不长期占底部。
+- `照片 / 相册 / 回收站` 二级导航点击后应直接平滑吸附到完整页面，不允许停在半屏状态。
+- Time Scrubber、列数切换和二级页切换只做轻量局部优化，优先减少重复计算、重复滚动和状态源冲突。
+
 - 帖子评论区保持普通内容页评论气质，只显示帖子评论，不混入媒体评论。
 - Viewer 的评论预览层与评论详情区都只服务当前 `mediaId` 的媒体评论，并延续深色沉浸背景下的轻量层级。
 - 评论气泡负责展开 / 收起预览层；预览层中的评论条目才是进入详情区的入口，详情区需要对被点击评论做清晰高亮。

@@ -15,6 +15,12 @@ object FakeAlbumRepository {
         val affectedPostIds: Set<String> = emptySet(),
     )
 
+    data class PostSystemDeleteImpact(
+        val mediaCount: Int,
+        val sharedMediaCount: Int,
+        val affectedOtherPostCount: Int,
+    )
+
     private data class ManagedPostMediaState(
         val id: String,
         val displayTimeMillis: Long,
@@ -105,6 +111,8 @@ object FakeAlbumRepository {
         val post = getPost(postId) ?: return null
         return ensurePostMedia(postId = postId, fallbackPost = post).map { media ->
             media.toUiModel()
+        }.filterNot { media ->
+            FakePhotoFeedRepository.isMediaHidden(media.id)
         }
     }
 
@@ -150,6 +158,8 @@ object FakeAlbumRepository {
                 palette = media.palette,
                 aspectRatio = media.aspectRatio,
             )
+        }.filterNot { media ->
+            FakePhotoFeedRepository.isMediaHidden(media.id)
         }
 
         return PostDetailUiModel(
@@ -303,10 +313,6 @@ object FakeAlbumRepository {
     fun applyGlobalMediaDelete(mediaIds: Set<String>): MediaDeleteOutcome {
         if (mediaIds.isEmpty()) return MediaDeleteOutcome()
         val preview = previewGlobalMediaDelete(mediaIds)
-        posts.toList().forEach { post ->
-            if (preview.deletedPostIds.contains(post.id)) return@forEach
-            removeMediaFromPost(postId = post.id, mediaIds = mediaIds)
-        }
         FakePhotoFeedRepository.hideMediaGlobally(mediaIds)
         return preview
     }
@@ -325,6 +331,151 @@ object FakeAlbumRepository {
             FakePhotoFeedRepository.hidePostsLocally(removedIds)
         }
         return removedIds
+    }
+
+    fun snapshotPost(postId: String): TrashPostSnapshot? {
+        val post = getPost(postId) ?: return null
+        val mediaSnapshots = ensurePostMedia(postId = postId, fallbackPost = post).map { media ->
+            media.toTrashSnapshot(
+                sourcePostId = post.id,
+                sourcePostTitle = post.title,
+            )
+        }
+        return TrashPostSnapshot(
+            post = post,
+            mediaSnapshots = mediaSnapshots,
+        )
+    }
+
+    fun snapshotPostMedia(
+        postId: String,
+        mediaIds: Set<String>,
+    ): List<TrashMediaSnapshot> {
+        if (mediaIds.isEmpty()) return emptyList()
+        val post = getPost(postId) ?: return emptyList()
+        return ensurePostMedia(postId = postId, fallbackPost = post)
+            .filter { mediaIds.contains(it.id) }
+            .map { media ->
+                media.toTrashSnapshot(
+                    sourcePostId = post.id,
+                    sourcePostTitle = post.title,
+                )
+            }
+    }
+
+    fun snapshotMediaRelations(
+        mediaIds: Set<String>,
+    ): Map<String, List<TrashPostRelationSnapshot>> {
+        if (mediaIds.isEmpty()) return emptyMap()
+        val relationsByMediaId = linkedMapOf<String, MutableList<TrashPostRelationSnapshot>>()
+        posts.forEach { post ->
+            ensurePostMedia(postId = post.id, fallbackPost = post)
+                .filter { mediaIds.contains(it.id) }
+                .forEach { media ->
+                    val snapshot = media.toTrashSnapshot(
+                        sourcePostId = post.id,
+                        sourcePostTitle = post.title,
+                    )
+                    relationsByMediaId.getOrPut(media.id) { mutableListOf() }
+                        .add(
+                            TrashPostRelationSnapshot(
+                                postId = post.id,
+                                postTitle = post.title.ifBlank { "当前帖子" },
+                                mediaSnapshot = snapshot,
+                            ),
+                        )
+                }
+        }
+        return relationsByMediaId
+    }
+
+    fun restorePost(snapshot: TrashPostSnapshot): Boolean {
+        val restoredMedia = snapshot.mediaSnapshots
+            .ifEmpty { return false }
+            .map { it.toManagedState() }
+        val visibleMedia = restoredMedia.filterNot { media ->
+            FakePhotoFeedRepository.isMediaHidden(media.id)
+        }
+        val coverMedia = visibleMedia.firstOrNull { it.isCover }
+            ?: visibleMedia.firstOrNull()
+            ?: restoredMedia.firstOrNull { it.isCover }
+            ?: restoredMedia.first()
+
+        postMediaByPostId[snapshot.post.id] = mutableStateListOf<ManagedPostMediaState>().apply {
+            addAll(restoredMedia)
+        }
+
+        val normalizedPost = snapshot.post.copy(
+            mediaCount = visibleMedia.size.takeIf { it > 0 } ?: restoredMedia.size,
+            coverPalette = coverMedia.palette,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        val existingIndex = posts.indexOfFirst { it.id == normalizedPost.id }
+        if (existingIndex >= 0) {
+            posts[existingIndex] = normalizedPost
+        } else {
+            posts.add(normalizedPost)
+        }
+        posts.sortByDescending { it.postDisplayTimeMillis }
+        FakePhotoFeedRepository.unhidePostsLocally(listOf(normalizedPost.id))
+        return true
+    }
+
+    fun restoreMediaToPost(
+        postId: String,
+        mediaSnapshot: TrashMediaSnapshot,
+    ): Boolean {
+        val post = getPost(postId) ?: return false
+        val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
+        if (mediaState.any { it.id == mediaSnapshot.mediaId }) return true
+
+        mediaState.add(mediaSnapshot.toManagedState())
+        val normalized = normalizeCover(mediaState.toList())
+        replacePostMedia(postId = postId, newItems = normalized)
+        syncPostAfterMediaMutation(
+            postId = postId,
+            mediaCount = normalized.size,
+            coverPalette = normalized.first().palette,
+            coverAspectRatio = normalized.first().aspectRatio,
+        )
+        return true
+    }
+
+    fun restoreMediaRelations(relationSnapshots: List<TrashPostRelationSnapshot>): Int {
+        if (relationSnapshots.isEmpty()) return 0
+        return relationSnapshots.count { relation ->
+            restoreMediaToPost(
+                postId = relation.postId,
+                mediaSnapshot = relation.mediaSnapshot,
+            )
+        }
+    }
+
+    fun getPostSystemDeleteImpact(postId: String): PostSystemDeleteImpact {
+        val post = getPost(postId) ?: return PostSystemDeleteImpact(
+            mediaCount = 0,
+            sharedMediaCount = 0,
+            affectedOtherPostCount = 0,
+        )
+        val mediaItems = ensurePostMedia(postId = postId, fallbackPost = post)
+        val sharedMediaIds = mediaItems.map { it.id }.filter { mediaId ->
+            posts.any { otherPost ->
+                otherPost.id != postId &&
+                    ensurePostMedia(postId = otherPost.id, fallbackPost = otherPost).any { media -> media.id == mediaId }
+            }
+        }
+        val affectedOtherPostIds = posts.mapNotNull { otherPost ->
+            if (otherPost.id == postId) return@mapNotNull null
+            val sharesAnyMedia = ensurePostMedia(postId = otherPost.id, fallbackPost = otherPost).any { media ->
+                sharedMediaIds.contains(media.id)
+            }
+            otherPost.id.takeIf { sharesAnyMedia }
+        }
+        return PostSystemDeleteImpact(
+            mediaCount = mediaItems.size,
+            sharedMediaCount = sharedMediaIds.distinct().size,
+            affectedOtherPostCount = affectedOtherPostIds.distinct().size,
+        )
     }
 
     private fun ensurePostMedia(
@@ -441,6 +592,32 @@ object FakeAlbumRepository {
             id = id,
             displayTimeMillis = displayTimeMillis,
             commentCount = FakeCommentRepository.mediaCommentCount(id),
+            palette = palette,
+            aspectRatio = aspectRatio,
+            isCover = isCover,
+        )
+    }
+
+    private fun ManagedPostMediaState.toTrashSnapshot(
+        sourcePostId: String,
+        sourcePostTitle: String,
+    ): TrashMediaSnapshot {
+        return TrashMediaSnapshot(
+            mediaId = id,
+            displayTimeMillis = displayTimeMillis,
+            palette = palette,
+            aspectRatio = aspectRatio,
+            isCover = isCover,
+            sourcePostId = sourcePostId,
+            sourcePostTitle = sourcePostTitle.ifBlank { "当前帖子" },
+        )
+    }
+
+    private fun TrashMediaSnapshot.toManagedState(): ManagedPostMediaState {
+        return ManagedPostMediaState(
+            id = mediaId,
+            displayTimeMillis = displayTimeMillis,
+            commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
             palette = palette,
             aspectRatio = aspectRatio,
             isCover = isCover,

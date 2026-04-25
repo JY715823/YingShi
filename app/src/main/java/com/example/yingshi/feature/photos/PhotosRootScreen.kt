@@ -28,11 +28,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +48,7 @@ import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.ui.components.TitleTabs
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.launch
 
 private val PhotoSelectionActionBarPadding = 88.dp
 
@@ -57,33 +57,23 @@ fun PhotosRootScreen(
     modifier: Modifier = Modifier,
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
+    onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
-    var selectedSectionName by rememberSaveable {
-        mutableStateOf(PhotosTopDestination.PHOTOS.name)
-    }
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
     }
+    val coroutineScope = rememberCoroutineScope()
     val albumSummaries = remember { FakeAlbumRepository.getAlbums() }
     val albumPosts = remember { FakeAlbumRepository.getPosts() }
-    val selectedSection = PhotosTopDestination.valueOf(selectedSectionName)
     val pagerState = rememberPagerState(
-        initialPage = selectedSection.ordinal,
+        initialPage = PhotosTopDestination.PHOTOS.ordinal,
         pageCount = { PhotosTopDestination.entries.size },
     )
+    val selectedSection = PhotosTopDestination.entries[pagerState.currentPage]
     val isPhotoSelectionMode =
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
-
-    LaunchedEffect(selectedSection.ordinal) {
-        if (pagerState.currentPage != selectedSection.ordinal) {
-            pagerState.animateScrollToPage(selectedSection.ordinal)
-        }
-    }
-    LaunchedEffect(pagerState.currentPage) {
-        selectedSectionName = PhotosTopDestination.entries[pagerState.currentPage].name
-    }
 
     if (isPhotoSelectionMode) {
         BackHandler {
@@ -108,7 +98,10 @@ fun PhotosRootScreen(
             },
             onCancelSelection = { photoSelectionState = photoSelectionState.clear() },
             onSelected = { index ->
-                selectedSectionName = PhotosTopDestination.entries[index].name
+                if (pagerState.currentPage == index) return@PhotoTopBar
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(index)
+                }
             },
             onOpenSystemMedia = {
                 Toast.makeText(context, "系统媒体将在后续阶段接入", Toast.LENGTH_SHORT).show()
@@ -130,6 +123,7 @@ fun PhotosRootScreen(
                         val feedItems = FakePhotoFeedRepository.getPhotoFeed()
                         Box(modifier = Modifier.fillMaxSize()) {
                             PhotoFeedScreen(
+                                feedItems = feedItems,
                                 modifier = Modifier.fillMaxSize(),
                                 selectionState = photoSelectionState,
                                 bottomOverlayPadding = if (isPhotoSelectionMode) {
@@ -160,11 +154,10 @@ fun PhotosRootScreen(
                                         }
 
                                         val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
-                                        val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull { deletedPostId ->
-                                            FakeAlbumRepository.getPost(deletedPostId)?.let { post ->
-                                                post to (FakeAlbumRepository.getManagedPostMedia(deletedPostId)?.map { it.id } ?: emptyList())
-                                            }
-                                        }
+                                        val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(
+                                            FakeAlbumRepository::snapshotPost,
+                                        )
+                                        val relationSnapshotsByMediaId = FakeAlbumRepository.snapshotMediaRelations(selectedIds)
 
                                         FakeTrashRepository.recordSystemDeletedMedia(
                                             mediaSnapshots = selectedMedia.map { item ->
@@ -172,17 +165,18 @@ fun PhotosRootScreen(
                                                     mediaId = item.mediaId,
                                                     displayTimeMillis = item.mediaDisplayTimeMillis,
                                                     palette = item.palette,
+                                                    aspectRatio = item.aspectRatio,
                                                     sourcePostId = item.postIds.firstOrNull(),
                                                     sourcePostTitle = item.postIds.firstOrNull()
                                                         ?.let(FakeAlbumRepository::getPost)
                                                         ?.title,
                                                 )
                                             },
+                                            relationSnapshotsByMediaId = relationSnapshotsByMediaId,
                                         )
-                                        deletedPostSnapshots.forEach { (post, mediaIds) ->
+                                        deletedPostSnapshots.forEach { snapshot ->
                                             FakeTrashRepository.recordDeletedPost(
-                                                post = post,
-                                                mediaIds = mediaIds,
+                                                snapshot = snapshot,
                                             )
                                         }
                                         val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
@@ -208,7 +202,10 @@ fun PhotosRootScreen(
                     }
 
                     PhotosTopDestination.TRASH -> {
-                        TrashPageScreen(modifier = Modifier.fillMaxSize())
+                        TrashPageScreen(
+                            modifier = Modifier.fillMaxSize(),
+                            onOpenTrashDetail = onOpenTrashDetail,
+                        )
                     }
                 }
             }

@@ -8,14 +8,19 @@ import java.util.Locale
 object FakePhotoFeedRepository {
     private val hiddenMediaIds = mutableStateListOf<String>()
     private val hiddenPostIds = mutableStateListOf<String>()
+    private val sourceEntriesByMediaId: Map<String, List<PhotoFeedSourceEntry>> by lazy {
+        fakeSourceEntries().groupBy { it.mediaId }
+    }
 
     fun getPhotoFeed(): List<PhotoFeedItem> {
-        return fakeSourceEntries()
-            .filterNot { hiddenMediaIds.contains(it.mediaId) }
-            .groupBy { it.mediaId }
+        return sourceEntriesByMediaId
             .values
-            .map { entries ->
+            .asSequence()
+            .mapNotNull { entries ->
                 val latestEntry = entries.maxBy { it.mediaDisplayTimeMillis }
+                if (hiddenMediaIds.contains(latestEntry.mediaId)) {
+                    return@mapNotNull null
+                }
                 val parts = dateParts(latestEntry.mediaDisplayTimeMillis)
 
                 PhotoFeedItem(
@@ -33,6 +38,7 @@ object FakePhotoFeedRepository {
                     aspectRatio = latestEntry.aspectRatio,
                 )
             }
+            .toList()
             .sortedByDescending { it.mediaDisplayTimeMillis }
     }
 
@@ -44,6 +50,10 @@ object FakePhotoFeedRepository {
         }
     }
 
+    fun unhideMediaGlobally(mediaIds: Collection<String>) {
+        hiddenMediaIds.removeAll { mediaId -> mediaIds.contains(mediaId) }
+    }
+
     fun hidePostsLocally(postIds: Collection<String>) {
         postIds.forEach { postId ->
             if (!hiddenPostIds.contains(postId)) {
@@ -51,6 +61,14 @@ object FakePhotoFeedRepository {
             }
         }
     }
+
+    fun unhidePostsLocally(postIds: Collection<String>) {
+        hiddenPostIds.removeAll { postId -> postIds.contains(postId) }
+    }
+
+    fun isMediaHidden(mediaId: String): Boolean = hiddenMediaIds.contains(mediaId)
+
+    fun currentHiddenMediaIds(): Set<String> = hiddenMediaIds.toSet()
 
     private fun placeholderCommentCount(mediaId: String): Int {
         return FakeCommentRepository.mediaCommentCount(mediaId)
