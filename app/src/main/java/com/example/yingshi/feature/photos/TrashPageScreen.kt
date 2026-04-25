@@ -35,15 +35,13 @@ import kotlinx.coroutines.delay
 @Composable
 fun TrashPageScreen(
     modifier: Modifier = Modifier,
+    selectedTypeName: String = TrashEntryType.POST_DELETED.name,
+    onSelectedTypeNameChange: (String) -> Unit = { },
+    showPendingCleanup: Boolean = false,
+    onShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
-    var selectedTypeName by rememberSaveable {
-        mutableStateOf(TrashEntryType.POST_DELETED.name)
-    }
-    var showPendingCleanup by rememberSaveable {
-        mutableStateOf(false)
-    }
     var transientMessage by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -70,7 +68,7 @@ fun TrashPageScreen(
             TrashOverviewCard(
                 selectedType = selectedType,
                 pendingCount = pendingEntries.size,
-                onTypeSelected = { selectedTypeName = it.name },
+                onTypeSelected = { onSelectedTypeNameChange(it.name) },
             )
         }
 
@@ -78,7 +76,7 @@ fun TrashPageScreen(
             TrashPendingCleanupCard(
                 pendingCount = pendingEntries.size,
                 expanded = showPendingCleanup,
-                onToggle = { showPendingCleanup = !showPendingCleanup },
+                onToggle = { onShowPendingCleanupChange(!showPendingCleanup) },
             )
         }
 
@@ -201,7 +199,7 @@ private fun TrashPendingCleanupCard(
     onToggle: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val label = if (expanded) "收起" else "查看"
+    val actionLabel = if (expanded) "收起" else "查看"
 
     Surface(
         modifier = Modifier
@@ -225,7 +223,7 @@ private fun TrashPendingCleanupCard(
                 )
                 Text(
                     text = if (pendingCount > 0) {
-                        "移出回收站后的条目会先进入待清理列表，可在这里撤销。"
+                        "移出回收站后的条目会先进入待清理列表，可以在这里撤销。"
                     } else {
                         "当前还没有待清理条目。"
                     },
@@ -234,7 +232,7 @@ private fun TrashPendingCleanupCard(
                 )
             }
             Text(
-                text = "$pendingCount 项 · $label",
+                text = "$pendingCount 项 · $actionLabel",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.primary,
             )
