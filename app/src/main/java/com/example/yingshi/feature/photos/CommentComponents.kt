@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
@@ -387,10 +389,13 @@ private fun CommentSelectableText(
 ) {
     val textColor = if (darkMode) Color.White.copy(alpha = 0.88f) else MaterialTheme.colorScheme.onSurface
     val focusRequester = FocusRequester()
+    val keyboardController = LocalSoftwareKeyboardController.current
     val selectedText = value.selectedTextOrNull()
 
     LaunchedEffect(value.text) {
+        keyboardController?.hide()
         focusRequester.requestFocus()
+        keyboardController?.hide()
     }
 
     CompositionLocalProvider(LocalTextToolbar provides DisabledTextToolbar) {
@@ -404,7 +409,8 @@ private fun CommentSelectableText(
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focusRequester),
-            readOnly = false,
+            readOnly = true,
+            keyboardOptions = KeyboardOptions(showKeyboardOnFocus = false),
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
             cursorBrush = SolidColor(textColor),
         )
