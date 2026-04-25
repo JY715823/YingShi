@@ -14,6 +14,7 @@ data class AlbumSummaryUiModel(
 data class AlbumPostCardUiModel(
     val id: String,
     val albumId: String,
+    val albumIds: List<String> = listOf(albumId),
     val title: String,
     val summary: String,
     val postDisplayTimeMillis: Long,
@@ -29,6 +30,7 @@ data class PostDetailUiModel(
     val summary: String,
     val contributorLabel: String,
     val postDisplayTimeMillis: Long,
+    val albumIds: List<String>,
     val albumChips: List<String>,
     val mediaItems: List<PostDetailMediaUiModel>,
     val comments: List<CommentUiModel>,
@@ -56,10 +58,25 @@ enum class AlbumGridDensity(
 data class PostDetailPlaceholderRoute(
     val postId: String,
     val albumId: String,
+    val albumIds: List<String> = listOf(albumId),
     val title: String,
     val summary: String,
     val postDisplayTimeMillis: Long,
     val mediaCount: Int,
     val coverPalette: PhotoThumbnailPalette,
     val coverAspectRatio: Float = 1f,
+)
+
+@Immutable
+data class GearEditRoute(
+    val postId: String,
+)
+
+@Immutable
+data class EditablePostDraft(
+    val postId: String,
+    val title: String,
+    val summary: String,
+    val postDisplayTimeMillis: Long,
+    val albumIds: List<String>,
 )

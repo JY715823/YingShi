@@ -1,44 +1,49 @@
-# Current Task - Stage 5.5 Comment System Polish and Boundary Check
+# Current Task - Stage 6.1 Gear Edit Basic Info
 
 ## Goal
-Polish and stabilize the current local comment system before moving to Gear Edit and media management.
+Build the Gear Edit main page and support local editing of post basic information.
 
 ## Scope
 This stage covers:
-- fixing text selection keyboard behavior
-- keeping text selection read-only and keyboard-free
-- separating read-only selection state from editable input/edit state
-- checking post/media comment boundaries
-- checking comment input and local append flow
-- checking latest 10 / expand more / collapse behavior
-- checking viewer preview/detail comment flow
-- checking inline action menu behavior
+- Gear Edit entry from post detail
+- independent Gear Edit route / screen
+- edit title
+- edit description
+- basic edit post_display_time
+- basic edit album chips / album relation placeholder
+- media management entry placeholder
+- delete semantics entry placeholder
+- local fake repository / ViewModel update
 - minimal related doc updates
 
 ## Product intent
-- Comment text selection should not open the keyboard.
-- Comment text selection stays read-only; only edit/input states may open the keyboard.
-- Keyboard should only appear for comment input or comment editing.
-- Post comments and media comments must remain separate.
-- Media comments are keyed by mediaId and shared across viewer contexts.
-- Comment preview and comment detail should stay stable and lightweight.
+- Gear Edit enters editing mode directly.
+- It is a post-level editing page.
+- It should not show global bottom navigation.
+- It should not show photo-module secondary navigation.
+- This stage edits post metadata only.
+- Media management and delete semantics are prepared as entries for later stages.
+- Cancel / back should dismiss the local draft without accidental save.
+- Save writes back to the local fake repository so post detail can refresh immediately.
 
 ## Do not do in this stage
 - no real backend
 - no Room / Retrofit
-- no real pagination
-- no replies
-- no nested comments
-- no quoted replies
-- no notification system
-- no complex rich text editor
-- no large unrelated refactor
+- no full media management
+- no media deletion
+- no media sorting
+- no cover setting
+- no full post deletion flow
+- no recycle bin integration
+- no complex date picker
+- no real album management
 
 ## Done when
-- Selecting comment text does not show the keyboard
-- Editing comments still shows the keyboard
-- Comment input still shows the keyboard
-- Post and media comments do not mix
-- Existing comment flows remain stable
+- Gear Edit opens from post detail
+- Gear Edit is an independent page
+- Title / description can be edited locally
+- Basic display time and album relation editing or placeholders exist
+- Saving updates post detail
+- Media management and delete entries exist as placeholders
 - App builds and runs
 - Docs are minimally synchronized
