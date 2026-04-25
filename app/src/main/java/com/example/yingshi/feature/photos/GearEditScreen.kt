@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -27,6 +28,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +47,7 @@ fun GearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
     onOpenMediaManagement: (MediaManagementRoute) -> Unit,
+    onDeleteCurrentPost: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -70,6 +73,7 @@ fun GearEditScreen(
         }
     }
     val albums = remember { FakeAlbumRepository.getAlbums() }
+    var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
     val hasChanges = title != initialDraft.title ||
         summary != initialDraft.summary ||
         displayTimeMillis != initialDraft.postDisplayTimeMillis ||
@@ -77,7 +81,7 @@ fun GearEditScreen(
 
     val handleClose = {
         if (hasChanges) {
-            Toast.makeText(context, "未保存更改已放弃", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "未保存修改已放弃", Toast.LENGTH_SHORT).show()
         }
         onBack()
     }
@@ -134,7 +138,7 @@ fun GearEditScreen(
 
         GearEditSection(
             title = "时间设置",
-            subtitle = "本轮先做轻量本地调整，后续再接正式时间选择器。",
+            subtitle = "本轮先做轻量本地调整，后续再接正式日期选择器。",
         ) {
             Text(
                 text = formatGearEditTime(displayTimeMillis),
@@ -160,7 +164,7 @@ fun GearEditScreen(
 
         GearEditSection(
             title = "所属相册",
-            subtitle = "本轮支持在 fake albums 中做基础多选，保存后回写帖子信息区。",
+            subtitle = "本轮支持在 fake albums 里做基础多选，保存后回写帖子信息区。",
         ) {
             if (selectedAlbumIds.isEmpty()) {
                 Text(
@@ -184,24 +188,49 @@ fun GearEditScreen(
 
         GearEditSection(
             title = "后续入口",
-            subtitle = "媒体管理和删除语义本轮只保留入口和路由位置。",
+            subtitle = "媒体管理和删除语义本轮先接入本地流程，回收站详情与恢复后续再补。",
         ) {
             GearEditEntryRow(
                 title = "媒体管理",
-                subtitle = "Stage 6.2 接入媒体管理页。",
+                subtitle = "进入独立媒体管理页，管理当前帖子的媒体。",
                 onClick = {
                     onOpenMediaManagement(MediaManagementRoute(route.postId))
                 },
             )
             GearEditEntryRow(
-                title = "删除帖子",
-                subtitle = "危险操作占位，Stage 6.3 再接完整删除语义。",
+                title = "删除整个帖子",
+                subtitle = "本轮先写入本地回收站的“帖子删除”，删除帖子并系统删媒体留到后续阶段。",
                 danger = true,
                 onClick = {
-                    Toast.makeText(context, "删除帖子语义将在 Stage 6.3 接入", Toast.LENGTH_SHORT).show()
+                    showDeletePostDialog = true
                 },
             )
         }
+    }
+
+    if (showDeletePostDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeletePostDialog = false },
+            title = { Text("删除整个帖子") },
+            text = {
+                Text("本轮先把帖子删除写入本地回收站。删除后帖子会从相册页和帖子详情中消失，恢复与 24h 逻辑留到 Stage 7.2。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeletePostDialog = false
+                        onDeleteCurrentPost(route.postId)
+                    },
+                ) {
+                    Text("仅删除帖子")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeletePostDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 }
 
@@ -442,6 +471,7 @@ private fun GearEditScreenPreview() {
             route = GearEditRoute(postId = "post-window-light"),
             onBack = {},
             onOpenMediaManagement = {},
+            onDeleteCurrentPost = {},
         )
     }
 }

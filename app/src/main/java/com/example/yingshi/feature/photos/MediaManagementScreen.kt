@@ -116,6 +116,14 @@ fun MediaManagementScreen(
         showEmptyPostDialog = false
     }
 
+    fun deletedPostSnapshots(postIds: Set<String>): List<Pair<AlbumPostCardUiModel, List<String>>> {
+        return postIds.mapNotNull { deletedPostId ->
+            FakeAlbumRepository.getPost(deletedPostId)?.let { deletedPost ->
+                deletedPost to (FakeAlbumRepository.getManagedPostMedia(deletedPostId)?.map { it.id } ?: emptyList())
+            }
+        }
+    }
+
     fun executeDelete(semantic: FakeAlbumRepository.MediaDeleteSemantic) {
         val selectedIds = selectedForDelete.toSet()
         if (selectedIds.isEmpty()) {
@@ -123,21 +131,62 @@ fun MediaManagementScreen(
             return
         }
 
+        val selectedMediaSnapshots = repoMediaItems
+            .filter { selectedIds.contains(it.id) }
+            .map { media ->
+                TrashMediaSnapshot(
+                    mediaId = media.id,
+                    displayTimeMillis = media.displayTimeMillis,
+                    palette = media.palette,
+                    sourcePostId = route.postId,
+                    sourcePostTitle = post.title,
+                )
+            }
+        val outcomePreview = when (semantic) {
+            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> {
+                FakeAlbumRepository.previewDeleteOutcome(route.postId, selectedIds, semantic)
+            }
+            FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> {
+                FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
+            }
+        }
+        val postSnapshots = deletedPostSnapshots(outcomePreview.deletedPostIds)
+
         val outcome = FakeAlbumRepository.applyMediaDelete(
             postId = route.postId,
             mediaIds = selectedIds,
             semantic = semantic,
         )
+
+        when (semantic) {
+            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> {
+                if (!outcome.deletedPostIds.contains(route.postId)) {
+                    FakeTrashRepository.recordRemovedMedia(post, selectedMediaSnapshots)
+                }
+            }
+
+            FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> {
+                FakeTrashRepository.recordSystemDeletedMedia(selectedMediaSnapshots)
+            }
+        }
+
+        postSnapshots.forEach { (deletedPost, mediaIds) ->
+            FakeTrashRepository.recordDeletedPost(
+                post = deletedPost,
+                mediaIds = mediaIds,
+            )
+        }
+
         val removedPosts = FakeAlbumRepository.deletePostsLocally(outcome.deletedPostIds)
         if (removedPosts.contains(route.postId)) {
-            Toast.makeText(context, "当前帖子已本地移除", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "当前帖子已移入本地回收站", Toast.LENGTH_SHORT).show()
             onCurrentPostDeleted()
             return
         }
 
         val actionLabel = when (semantic) {
-            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> "已从当前帖子移除"
-            FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> "已从本地全局媒体中移除"
+            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> "已从当前帖子移除，并写入回收站"
+            FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> "已执行本地系统删，并写入回收站"
         }
         Toast.makeText(context, actionLabel, Toast.LENGTH_SHORT).show()
         exitMode()
@@ -226,7 +275,7 @@ fun MediaManagementScreen(
                 if (mode == MediaManagementMode.NORMAL) {
                     MediaManagementEntryRow(
                         onAddMedia = {
-                            Toast.makeText(context, "添加媒体占位：后续接系统媒体选择", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "添加媒体先保留占位，后续再接系统媒体选择", Toast.LENGTH_SHORT).show()
                         },
                         onDeleteMode = {
                             selectedForDelete = emptyList()
@@ -278,7 +327,7 @@ fun MediaManagementScreen(
                                 exitMode()
                             }
                             MediaManagementMode.EDIT_TIME -> {
-                                Toast.makeText(context, "修改媒体时间入口占位：后续再接基础编辑", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "修改媒体时间先保留入口占位，后续再接基础编辑", Toast.LENGTH_SHORT).show()
                                 exitMode()
                             }
                         }
@@ -299,7 +348,7 @@ fun MediaManagementScreen(
             onDismissRequest = { showDeleteSemanticDialog = false },
             title = { Text("选择删除语义") },
             text = {
-                Text("本轮先在本地状态里区分“从当前帖子移除”和“系统删除该媒体”，不接正式回收站。")
+                Text("本轮先在本地状态里区分“从当前帖子移除”和“系统删除该媒体”，并把结果写入不同回收站分段。")
             },
             confirmButton = {
                 TextButton(
@@ -326,7 +375,7 @@ fun MediaManagementScreen(
             },
             title = { Text("空帖保护") },
             text = {
-                Text("继续删除会让当前帖子变成空帖子。本轮不允许直接留下空帖子，你可以删除整个帖子或取消本次删除。")
+                Text("继续删除会让当前帖子变成空帖。本轮不允许直接留下空帖子，你可以删除整个帖子或取消本次删除。")
             },
             confirmButton = {
                 TextButton(
@@ -709,8 +758,8 @@ private fun MediaManagementMissingState(
 
 private fun modeDescription(mode: MediaManagementMode): String {
     return when (mode) {
-        MediaManagementMode.NORMAL -> "两列网格管理当前帖子的媒体；本轮先打通目录删 / 系统删、本地排序和封面同步。"
-        MediaManagementMode.DELETE -> "删除模式支持多选，点击“删除（x）”后先选择目录删或系统删，不直接删除。"
+        MediaManagementMode.NORMAL -> "两列网格管理当前帖子的媒体。本轮已接入目录删 / 本地系统删、排序壳子和封面同步。"
+        MediaManagementMode.DELETE -> "删除模式支持多选；点击“删除（x）”后先选择目录删还是系统删，不直接删除。"
         MediaManagementMode.SORT -> "排序模式使用上移 / 下移完成本地调整；点击完成保存，点击取消恢复进入排序前的顺序。"
         MediaManagementMode.SET_COVER -> "点击某张媒体即可本地设为封面，并尽量同步到帖子详情页和相册页。"
         MediaManagementMode.EDIT_TIME -> "修改媒体时间继续保留入口占位，本轮不接复杂时间编辑器。"

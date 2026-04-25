@@ -16,6 +16,8 @@ import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.MediaManagementRoute
 import com.example.yingshi.feature.photos.MediaManagementScreen
+import com.example.yingshi.feature.photos.FakeAlbumRepository
+import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
@@ -107,6 +109,20 @@ fun YingShiApp() {
                         route = route,
                         onBack = { gearEditRoute = null },
                         onOpenMediaManagement = { mediaManagementRoute = it },
+                        onDeleteCurrentPost = { postId ->
+                            FakeAlbumRepository.getPost(postId)?.let { post ->
+                                val mediaIds = FakeAlbumRepository.getManagedPostMedia(postId)
+                                    ?.map { it.id }
+                                    .orEmpty()
+                                FakeTrashRepository.recordDeletedPost(
+                                    post = post,
+                                    mediaIds = mediaIds,
+                                )
+                            }
+                            FakeAlbumRepository.deletePostsLocally(listOf(postId))
+                            gearEditRoute = null
+                            postDetailRoute = null
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -45,17 +46,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.navigation.PhotosTopDestination
-import com.example.yingshi.ui.components.PlaceholderBlock
-import com.example.yingshi.ui.components.PlaceholderPage
 import com.example.yingshi.ui.components.TitleTabs
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-
-private val trashBlocks = listOf(
-    PlaceholderBlock("帖子删除", "后续回收站需要区分帖子删除与媒体删除。"),
-    PlaceholderBlock("媒体移除", "目录删与系统删会在后续阶段分层处理。"),
-    PlaceholderBlock("恢复逻辑", "当前只保留页面结构和恢复入口占位。"),
-)
 
 private val PhotoSelectionActionBarPadding = 88.dp
 
@@ -134,17 +127,72 @@ fun PhotosRootScreen(
             ) { page ->
                 when (PhotosTopDestination.entries[page]) {
                     PhotosTopDestination.PHOTOS -> {
-                        PhotoFeedScreen(
-                            modifier = Modifier.fillMaxSize(),
-                            selectionState = photoSelectionState,
-                            bottomOverlayPadding = if (isPhotoSelectionMode) {
-                                PhotoSelectionActionBarPadding
-                            } else {
-                                0.dp
-                            },
-                            onSelectionStateChange = { photoSelectionState = it },
-                            onOpenViewer = onOpenViewer,
-                        )
+                        val feedItems = FakePhotoFeedRepository.getPhotoFeed()
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            PhotoFeedScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                selectionState = photoSelectionState,
+                                bottomOverlayPadding = if (isPhotoSelectionMode) {
+                                    PhotoSelectionActionBarPadding
+                                } else {
+                                    0.dp
+                                },
+                                onSelectionStateChange = { photoSelectionState = it },
+                                onOpenViewer = onOpenViewer,
+                            )
+
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = isPhotoSelectionMode,
+                                enter = fadeIn(),
+                                exit = fadeOut(),
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = spacing.sm),
+                            ) {
+                                PhotoSelectionActionBar(
+                                    selectedCount = photoSelectionState.selectedCount,
+                                    onDelete = {
+                                        val selectedIds = photoSelectionState.selectedMediaIds
+                                        val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
+                                        if (selectedMedia.isEmpty()) {
+                                            photoSelectionState = photoSelectionState.clear()
+                                            return@PhotoSelectionActionBar
+                                        }
+
+                                        val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
+                                        val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull { deletedPostId ->
+                                            FakeAlbumRepository.getPost(deletedPostId)?.let { post ->
+                                                post to (FakeAlbumRepository.getManagedPostMedia(deletedPostId)?.map { it.id } ?: emptyList())
+                                            }
+                                        }
+
+                                        FakeTrashRepository.recordSystemDeletedMedia(
+                                            mediaSnapshots = selectedMedia.map { item ->
+                                                TrashMediaSnapshot(
+                                                    mediaId = item.mediaId,
+                                                    displayTimeMillis = item.mediaDisplayTimeMillis,
+                                                    palette = item.palette,
+                                                    sourcePostId = item.postIds.firstOrNull(),
+                                                    sourcePostTitle = item.postIds.firstOrNull()
+                                                        ?.let(FakeAlbumRepository::getPost)
+                                                        ?.title,
+                                                )
+                                            },
+                                        )
+                                        deletedPostSnapshots.forEach { (post, mediaIds) ->
+                                            FakeTrashRepository.recordDeletedPost(
+                                                post = post,
+                                                mediaIds = mediaIds,
+                                            )
+                                        }
+                                        val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
+                                        FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
+                                        photoSelectionState = photoSelectionState.clear()
+                                        Toast.makeText(context, "已执行本地系统删，并写入回收站", Toast.LENGTH_SHORT).show()
+                                    },
+                                )
+                            }
+                        }
                     }
 
                     PhotosTopDestination.ALBUMS -> {
@@ -160,27 +208,9 @@ fun PhotosRootScreen(
                     }
 
                     PhotosTopDestination.TRASH -> {
-                        PlaceholderPage(
-                            title = PhotosTopDestination.TRASH.headline,
-                            summary = PhotosTopDestination.TRASH.supporting,
-                            blocks = trashBlocks,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        TrashPageScreen(modifier = Modifier.fillMaxSize())
                     }
                 }
-            }
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = isPhotoSelectionMode,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = spacing.sm),
-            ) {
-                PhotoSelectionActionBar(
-                    selectedCount = photoSelectionState.selectedCount,
-                )
             }
         }
     }
@@ -317,7 +347,10 @@ private fun PhotoBellButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun PhotoSelectionActionBar(selectedCount: Int) {
+private fun PhotoSelectionActionBar(
+    selectedCount: Int,
+    onDelete: () -> Unit,
+) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
 
@@ -344,19 +377,23 @@ private fun PhotoSelectionActionBar(selectedCount: Int) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            SelectionActionChip(text = "整理")
-            SelectionActionChip(text = "导出")
-            SelectionActionChip(text = "删除")
+            SelectionActionChip(text = "整理", onClick = {})
+            SelectionActionChip(text = "导出", onClick = {})
+            SelectionActionChip(text = "删除", onClick = onDelete)
         }
     }
 }
 
 @Composable
-private fun SelectionActionChip(text: String) {
+private fun SelectionActionChip(
+    text: String,
+    onClick: () -> Unit,
+) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
 
     Surface(
+        modifier = Modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(radius.capsule),
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
     ) {

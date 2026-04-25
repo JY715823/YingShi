@@ -241,36 +241,23 @@ object FakeAlbumRepository {
         semantic: MediaDeleteSemantic,
     ): MediaDeleteOutcome {
         if (mediaIds.isEmpty()) return MediaDeleteOutcome()
-        val affectedPostIds = mutableSetOf<String>()
-        val deletedPostIds = mutableSetOf<String>()
-
         when (semantic) {
             MediaDeleteSemantic.DIRECTORY_ONLY -> {
+                val affectedPostIds = mutableSetOf<String>()
+                val deletedPostIds = mutableSetOf<String>()
                 val remaining = remainingMediaCountAfterDelete(postId, mediaIds)
                 if (remaining <= 0) {
                     deletedPostIds += postId
                 } else {
                     affectedPostIds += postId
                 }
+                return MediaDeleteOutcome(
+                    deletedPostIds = deletedPostIds,
+                    affectedPostIds = affectedPostIds,
+                )
             }
-            MediaDeleteSemantic.SYSTEM_WIDE -> {
-                posts.toList().forEach { post ->
-                    val state = ensurePostMedia(postId = post.id, fallbackPost = post)
-                    if (state.any { mediaIds.contains(it.id) }) {
-                        val remaining = state.count { !mediaIds.contains(it.id) }
-                        if (remaining <= 0) {
-                            deletedPostIds += post.id
-                        } else {
-                            affectedPostIds += post.id
-                        }
-                    }
-                }
-            }
+            MediaDeleteSemantic.SYSTEM_WIDE -> return previewGlobalMediaDelete(mediaIds)
         }
-        return MediaDeleteOutcome(
-            deletedPostIds = deletedPostIds,
-            affectedPostIds = affectedPostIds,
-        )
     }
 
     fun applyMediaDelete(
@@ -286,14 +273,41 @@ object FakeAlbumRepository {
                     removeMediaFromPost(postId = postId, mediaIds = mediaIds)
                 }
             }
-            MediaDeleteSemantic.SYSTEM_WIDE -> {
-                posts.toList().forEach { post ->
-                    if (preview.deletedPostIds.contains(post.id)) return@forEach
-                    removeMediaFromPost(postId = post.id, mediaIds = mediaIds)
+            MediaDeleteSemantic.SYSTEM_WIDE -> return applyGlobalMediaDelete(mediaIds)
+        }
+        return preview
+    }
+
+    fun previewGlobalMediaDelete(mediaIds: Set<String>): MediaDeleteOutcome {
+        if (mediaIds.isEmpty()) return MediaDeleteOutcome()
+        val affectedPostIds = mutableSetOf<String>()
+        val deletedPostIds = mutableSetOf<String>()
+
+        posts.toList().forEach { post ->
+            val state = ensurePostMedia(postId = post.id, fallbackPost = post)
+            if (state.any { mediaIds.contains(it.id) }) {
+                val remaining = state.count { !mediaIds.contains(it.id) }
+                if (remaining <= 0) {
+                    deletedPostIds += post.id
+                } else {
+                    affectedPostIds += post.id
                 }
-                FakePhotoFeedRepository.hideMediaGlobally(mediaIds)
             }
         }
+        return MediaDeleteOutcome(
+            deletedPostIds = deletedPostIds,
+            affectedPostIds = affectedPostIds,
+        )
+    }
+
+    fun applyGlobalMediaDelete(mediaIds: Set<String>): MediaDeleteOutcome {
+        if (mediaIds.isEmpty()) return MediaDeleteOutcome()
+        val preview = previewGlobalMediaDelete(mediaIds)
+        posts.toList().forEach { post ->
+            if (preview.deletedPostIds.contains(post.id)) return@forEach
+            removeMediaFromPost(postId = post.id, mediaIds = mediaIds)
+        }
+        FakePhotoFeedRepository.hideMediaGlobally(mediaIds)
         return preview
     }
 
