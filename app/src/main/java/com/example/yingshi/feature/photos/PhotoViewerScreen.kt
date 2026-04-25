@@ -60,6 +60,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -410,7 +411,7 @@ fun PhotoViewerScreen(
                         .navigationBarsPadding()
                         .padding(
                             start = spacing.lg,
-                            bottom = edgeActionsBottomPadding + 18.dp,
+                            bottom = edgeActionsBottomPadding + 64.dp,
                         ),
                 )
             }
@@ -939,8 +940,18 @@ private fun PhotoViewerCommentSheet(
     var editingCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
     var editingDraft by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf("") }
     var selectedForCopyCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
+    var selectedCommentValue by androidx.compose.runtime.saveable.rememberSaveable(mediaId, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     val visibleComments = comments.visibleComments(expanded)
-    val actionComment = comments.firstOrNull { it.id == actionCommentId }
+
+    BackHandler(enabled = selectedForCopyCommentId != null) {
+        selectedForCopyCommentId = null
+        selectedCommentValue = TextFieldValue("")
+    }
+    BackHandler(enabled = actionCommentId != null) {
+        actionCommentId = null
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -979,10 +990,56 @@ private fun PhotoViewerCommentSheet(
                     CommentListItem(
                         comment = comment,
                         timeLabel = formatViewerTime(comment.createdAtMillis),
-                        onLongPress = { actionCommentId = comment.id },
+                        onLongPress = {
+                            selectedForCopyCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                            editingCommentId = null
+                            editingDraft = ""
+                            actionCommentId = comment.id
+                        },
+                        onClick = {
+                            if (selectedForCopyCommentId != null) {
+                                selectedForCopyCommentId = null
+                                selectedCommentValue = TextFieldValue("")
+                            }
+                            actionCommentId = null
+                        },
                         darkMode = true,
                         highlighted = comment.id == selectedCommentId,
-                        selectedForCopy = selectedForCopyCommentId == comment.id,
+                        showInlineActionMenu = actionCommentId == comment.id &&
+                            selectedForCopyCommentId != comment.id &&
+                            editingCommentId != comment.id,
+                        onCopyFull = {
+                            copyComment(comment.content)
+                            actionCommentId = null
+                        },
+                        onSelectText = {
+                            selectedForCopyCommentId = comment.id
+                            selectedCommentValue = fullCommentSelectionValue(comment.content)
+                            editingCommentId = null
+                            editingDraft = ""
+                            actionCommentId = null
+                        },
+                        onEdit = {
+                            editingCommentId = comment.id
+                            editingDraft = comment.content
+                            selectedForCopyCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                            actionCommentId = null
+                        },
+                        onDelete = {
+                            FakeCommentRepository.deleteMediaComment(mediaId, comment.id)
+                            if (selectedForCopyCommentId == comment.id) {
+                                selectedForCopyCommentId = null
+                                selectedCommentValue = TextFieldValue("")
+                            }
+                            if (editingCommentId == comment.id) {
+                                editingCommentId = null
+                                editingDraft = ""
+                            }
+                            actionCommentId = null
+                            Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
+                        },
                         isEditing = editingCommentId == comment.id,
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
                         onEditingValueChange = { editingDraft = it },
@@ -994,15 +1051,25 @@ private fun PhotoViewerCommentSheet(
                             )
                             editingCommentId = null
                             editingDraft = ""
+                            actionCommentId = null
                             Toast.makeText(context, "评论已更新", Toast.LENGTH_SHORT).show()
                         },
                         onCancelEdit = {
                             editingCommentId = null
                             editingDraft = ""
                         },
+                        selectionMode = selectedForCopyCommentId == comment.id,
+                        selectionFieldValue = if (selectedForCopyCommentId == comment.id) {
+                            selectedCommentValue
+                        } else {
+                            TextFieldValue(comment.content)
+                        },
+                        onSelectionFieldValueChange = { selectedCommentValue = it },
                         onCopySelection = if (selectedForCopyCommentId == comment.id) {
                             {
-                                copyComment(comment.content)
+                                selectedCommentValue.selectedTextOrNull()?.let(copyComment)
+                                selectedForCopyCommentId = null
+                                selectedCommentValue = TextFieldValue("")
                             }
                         } else {
                             null
@@ -1030,39 +1097,6 @@ private fun PhotoViewerCommentSheet(
                 },
             )
         }
-    }
-
-    actionComment?.let { comment ->
-        CommentActionMenuSheet(
-            comment = comment,
-            darkMode = true,
-            onDismiss = { actionCommentId = null },
-            onEdit = {
-                editingCommentId = comment.id
-                editingDraft = comment.content
-                selectedForCopyCommentId = null
-                actionCommentId = null
-            },
-            onDelete = {
-                FakeCommentRepository.deleteMediaComment(mediaId, comment.id)
-                if (selectedForCopyCommentId == comment.id) {
-                    selectedForCopyCommentId = null
-                }
-                if (editingCommentId == comment.id) {
-                    editingCommentId = null
-                    editingDraft = ""
-                }
-                actionCommentId = null
-                Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
-            },
-            onSelect = {
-                selectedForCopyCommentId = comment.id
-                editingCommentId = null
-                editingDraft = ""
-                actionCommentId = null
-                Toast.makeText(context, "已选中当前评论全文", Toast.LENGTH_SHORT).show()
-            },
-        )
     }
 }
 

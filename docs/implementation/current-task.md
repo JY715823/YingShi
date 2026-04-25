@@ -1,49 +1,55 @@
-# Current Task - Stage 5.3 Comment Item Actions v1
+# Current Task - Stage 5.4 Comment Selection and Copy Polish
 
 ## Goal
-Add basic local item-level actions for post comments and media comments.
+Polish comment item actions so long-press shows a lightweight inline menu and text selection behaves closer to a real app.
 
 ## Scope
 This stage covers:
-- long press comment item
-- comment action menu
-- local edit comment
-- local delete comment
-- basic select state
-- basic copy behavior
-- viewer overlay position adjustment
-- comment bubble and preview panel alignment
+- lightweight inline comment action menu
+- anchored popup-style menu that does not affect comment list layout
+- menu options:
+  - 复制
+  - 选择
+  - 编辑
+  - 删除
+- copy full comment text to system clipboard
+- enter text selection mode from 选择
+- default full-text selection where possible
+- selected-text copy
+- mutually exclusive action-menu state and text-selection state
+- local edit/delete preservation
 - minimal related doc updates
 
 ## Product intent
-- Post comments and media comments remain separate.
-- Item-level comment actions should work locally first.
-- Editing or deleting a post comment must not affect media comments.
-- Editing or deleting a media comment must not affect post comments.
-- Same mediaId should share the same media comment state across photo-flow viewer and in-post viewer.
+- Long-press should not open a large full-screen or heavy menu.
+- The action menu should appear near the comment item.
+- Copy should directly copy the whole comment.
+- Select should enter text selection mode, not normal multi-select mode.
+- After selecting text, only the copy action should appear.
+- Post comments and media comments must remain separate.
 
-## Viewer adjustment
-- Photo-flow viewer overlay actions should move slightly further downward.
-- In-post viewer overlay actions should sit closer to the segmented indicator but must not overlap it.
-- The segmented indicator must remain clearly visible.
-- Comment preview panel should align with the comment bubble and feel like it expands from the bubble.
+## Applies to
+- post comments in post detail
+- media comments in photo-flow viewer detail panel
+- media comments in in-post viewer detail panel
 
 ## Do not do in this stage
 - no real backend
 - no Room / Retrofit
-- no real permission system
 - no replies
 - no nested comments
 - no quoted replies
-- no complex rich text editor
 - no notification system
+- no heavy rich text editor
+- no large unrelated refactor
 
 ## Done when
-- Post comments support local item actions
-- Media comments support local item actions
-- Edit / delete / select / copy work at a basic local level
-- Post and media comment operations do not mix
-- Viewer overlay actions are repositioned naturally
-- Comment bubble and preview panel align visually
+- Long-press comment shows a small inline menu
+- Menu only has 复制 / 选择 / 编辑 / 删除
+- Copy copies full text
+- Select enters text selection mode
+- Selected-text copy works at a basic level
+- Edit/delete still work locally
+- Post and media comments do not mix
 - App builds and runs
 - Docs are minimally synchronized

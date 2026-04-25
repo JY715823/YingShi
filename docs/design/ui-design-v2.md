@@ -1163,6 +1163,15 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Selection can stay at the whole-comment-text level for now; only after a comment is marked selected should the copy action appear.
 - The viewer comment preview layer should feel anchored to the comment bubble, while the bottom action group remains lower and still leaves the segmented indicator visible in the in-post viewer.
 
+## Stage 5.4 implementation note
+
+- The long-press menu should collapse into a compact inline floating menu attached to the current comment item instead of using a large modal surface.
+- The inline menu keeps only four actions: copy, select, edit, and delete; no extra management entries should appear.
+- The floating menu must not occupy comment-list layout height; it should sit as an overlay near the pressed comment.
+- Comment selection should lean on Compose / Android native text selection behavior where possible, default to full-text selection on entry, and show only copy as the active operation while selecting.
+- Entering text selection must dismiss the inline menu first, and dismissing text selection must fully clear the selection state so the next long press reopens the inline menu.
+- Copy-full-text and copy-selected-text both stay lightweight and should exit selection mode after a successful copy.
+
 - 帖子评论区保持普通内容页评论气质，只显示帖子评论，不混入媒体评论。
 - Viewer 的评论预览层与评论详情区都只服务当前 `mediaId` 的媒体评论，并延续深色沉浸背景下的轻量层级。
 - 评论气泡负责展开 / 收起预览层；预览层中的评论条目才是进入详情区的入口，详情区需要对被点击评论做清晰高亮。
