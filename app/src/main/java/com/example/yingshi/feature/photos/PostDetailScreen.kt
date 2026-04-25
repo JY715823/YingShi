@@ -54,11 +54,10 @@ import java.util.Locale
 fun PostDetailScreen(
     route: PostDetailPlaceholderRoute,
     onBack: () -> Unit,
+    onOpenGearEdit: (GearEditRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val detail = remember(route.postId) {
-        FakeAlbumRepository.getPostDetail(route)
-    }
+    val detail = FakeAlbumRepository.getPostDetail(route)
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
@@ -89,6 +88,7 @@ fun PostDetailScreen(
             PostDetailContent(
                 detail = detail,
                 onBack = onBack,
+                onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
                 onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
                 onOpenMediaComments = { page -> mediaCommentPage = page },
                 modifier = Modifier.fillMaxSize(),
@@ -118,6 +118,7 @@ fun PostDetailScreen(
 private fun PostDetailContent(
     detail: PostDetailUiModel,
     onBack: () -> Unit,
+    onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
     onOpenMediaComments: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -144,9 +145,7 @@ private fun PostDetailContent(
             onExport = {
                 Toast.makeText(context, "导出 / 保存将在后续阶段接入", Toast.LENGTH_SHORT).show()
             },
-            onEdit = {
-                Toast.makeText(context, "Gear Edit 将在后续阶段接入", Toast.LENGTH_SHORT).show()
-            },
+            onEdit = onOpenGearEdit,
         )
 
         PostMediaArea(
@@ -751,6 +750,7 @@ private fun PostDetailScreenPreview() {
         PostDetailScreen(
             route = FakeAlbumRepository.toPostDetailRoute(FakeAlbumRepository.getPosts().first()),
             onBack = { },
+            onOpenGearEdit = { },
         )
     }
 }

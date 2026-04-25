@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
+import com.example.yingshi.feature.photos.GearEditRoute
+import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
@@ -32,6 +34,9 @@ fun YingShiApp() {
     var postDetailRoute by remember {
         mutableStateOf<PostDetailPlaceholderRoute?>(null)
     }
+    var gearEditRoute by remember {
+        mutableStateOf<GearEditRoute?>(null)
+    }
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
 
     if (photoViewerRoute != null) {
@@ -44,11 +49,16 @@ fun YingShiApp() {
             postDetailRoute = null
         }
     }
+    if (gearEditRoute != null) {
+        BackHandler {
+            gearEditRoute = null
+        }
+    }
 
     AppShellScaffold(
         selectedDestination = selectedDestination,
         onDestinationSelected = { selectedDestinationName = it.name },
-        showBottomBar = photoViewerRoute == null && postDetailRoute == null,
+        showBottomBar = photoViewerRoute == null && postDetailRoute == null && gearEditRoute == null,
     ) {
         when {
             photoViewerRoute != null -> {
@@ -74,6 +84,15 @@ fun YingShiApp() {
                     PostDetailScreen(
                         route = route,
                         onBack = { postDetailRoute = null },
+                        onOpenGearEdit = { gearEditRoute = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                gearEditRoute?.let { route ->
+                    GearEditScreen(
+                        route = route,
+                        onBack = { gearEditRoute = null },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

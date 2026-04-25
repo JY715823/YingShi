@@ -72,9 +72,7 @@ fun AlbumPageScreen(
     val selectedAlbum = remember(albums, selectedAlbumId) {
         albums.firstOrNull { it.id == selectedAlbumId } ?: albums.firstOrNull()
     }
-    val filteredPosts = remember(posts, selectedAlbumId) {
-        posts.filter { it.albumId == selectedAlbumId }
-    }
+    val filteredPosts = posts.filter { it.albumIds.contains(selectedAlbumId) }
     val chipRows = remember(albums) { buildAlbumChipRows(albums) }
 
     Column(
