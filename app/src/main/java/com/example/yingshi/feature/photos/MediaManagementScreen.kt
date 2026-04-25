@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,10 +20,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,14 +60,15 @@ private enum class MediaManagementMode {
 fun MediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
+    onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val post = FakeAlbumRepository.getPost(route.postId)
-    val mediaItems = FakeAlbumRepository.getManagedPostMedia(route.postId)
+    val repoMediaItems = FakeAlbumRepository.getManagedPostMedia(route.postId)
 
-    if (post == null || mediaItems == null) {
+    if (post == null || repoMediaItems == null) {
         MediaManagementMissingState(
             onBack = onBack,
             modifier = modifier,
@@ -82,17 +81,92 @@ fun MediaManagementScreen(
     }
     val mode = MediaManagementMode.valueOf(modeName)
     var selectedForDelete by rememberSaveable(route.postId) {
-        mutableStateOf(setOf<String>())
+        mutableStateOf<List<String>>(emptyList())
+    }
+    var sortDraftOrder by rememberSaveable(route.postId) {
+        mutableStateOf<List<String>>(emptyList())
+    }
+    var pendingDeleteSemanticName by rememberSaveable(route.postId) {
+        mutableStateOf<String?>(null)
+    }
+    var showDeleteSemanticDialog by rememberSaveable(route.postId) {
+        mutableStateOf(false)
+    }
+    var showEmptyPostDialog by rememberSaveable(route.postId) {
+        mutableStateOf(false)
     }
     val gridState = rememberLazyGridState()
 
-    fun exitMode() {
-        modeName = MediaManagementMode.NORMAL.name
-        selectedForDelete = emptySet()
+    val mediaItems = remember(repoMediaItems, mode, sortDraftOrder) {
+        if (mode == MediaManagementMode.SORT && sortDraftOrder.isNotEmpty()) {
+            sortDraftOrder.mapNotNull { mediaId ->
+                repoMediaItems.firstOrNull { it.id == mediaId }
+            }
+        } else {
+            repoMediaItems
+        }
     }
 
-    BackHandler(enabled = mode != MediaManagementMode.NORMAL) {
+    fun exitMode() {
+        modeName = MediaManagementMode.NORMAL.name
+        selectedForDelete = emptyList()
+        sortDraftOrder = emptyList()
+        pendingDeleteSemanticName = null
+        showDeleteSemanticDialog = false
+        showEmptyPostDialog = false
+    }
+
+    fun executeDelete(semantic: FakeAlbumRepository.MediaDeleteSemantic) {
+        val selectedIds = selectedForDelete.toSet()
+        if (selectedIds.isEmpty()) {
+            exitMode()
+            return
+        }
+
+        val outcome = FakeAlbumRepository.applyMediaDelete(
+            postId = route.postId,
+            mediaIds = selectedIds,
+            semantic = semantic,
+        )
+        val removedPosts = FakeAlbumRepository.deletePostsLocally(outcome.deletedPostIds)
+        if (removedPosts.contains(route.postId)) {
+            Toast.makeText(context, "当前帖子已本地移除", Toast.LENGTH_SHORT).show()
+            onCurrentPostDeleted()
+            return
+        }
+
+        val actionLabel = when (semantic) {
+            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> "已从当前帖子移除"
+            FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> "已从本地全局媒体中移除"
+        }
+        Toast.makeText(context, actionLabel, Toast.LENGTH_SHORT).show()
         exitMode()
+    }
+
+    fun handleSemanticSelection(semantic: FakeAlbumRepository.MediaDeleteSemantic) {
+        pendingDeleteSemanticName = semantic.name
+        showDeleteSemanticDialog = false
+        val outcome = FakeAlbumRepository.previewDeleteOutcome(
+            postId = route.postId,
+            mediaIds = selectedForDelete.toSet(),
+            semantic = semantic,
+        )
+        if (outcome.deletedPostIds.contains(route.postId)) {
+            showEmptyPostDialog = true
+        } else {
+            executeDelete(semantic)
+        }
+    }
+
+    BackHandler(enabled = mode != MediaManagementMode.NORMAL || showDeleteSemanticDialog || showEmptyPostDialog) {
+        if (showEmptyPostDialog) {
+            showEmptyPostDialog = false
+            pendingDeleteSemanticName = null
+        } else if (showDeleteSemanticDialog) {
+            showDeleteSemanticDialog = false
+        } else {
+            exitMode()
+        }
     }
 
     Column(
@@ -113,17 +187,17 @@ fun MediaManagementScreen(
                     exitMode()
                 }
             },
-            onDelete = {
-                Toast.makeText(
-                    context,
-                    "删除语义占位：已选择 ${selectedForDelete.size} 项，Stage 6.3 再接正式流程",
-                    Toast.LENGTH_SHORT,
-                ).show()
-            },
+            onDelete = { showDeleteSemanticDialog = true },
             onCancelMode = { exitMode() },
             onFinishMode = {
                 if (mode == MediaManagementMode.SORT) {
-                    Toast.makeText(context, "排序模式结构已保留，本轮先不接复杂拖动", Toast.LENGTH_SHORT).show()
+                    val saved = FakeAlbumRepository.updatePostMediaOrder(
+                        postId = route.postId,
+                        orderedIds = sortDraftOrder.ifEmpty { repoMediaItems.map { it.id } },
+                    )
+                    if (saved) {
+                        Toast.makeText(context, "当前帖子媒体顺序已保存", Toast.LENGTH_SHORT).show()
+                    }
                 }
                 exitMode()
             },
@@ -155,19 +229,20 @@ fun MediaManagementScreen(
                             Toast.makeText(context, "添加媒体占位：后续接系统媒体选择", Toast.LENGTH_SHORT).show()
                         },
                         onDeleteMode = {
-                            selectedForDelete = emptySet()
+                            selectedForDelete = emptyList()
                             modeName = MediaManagementMode.DELETE.name
                         },
                         onSortMode = {
-                            selectedForDelete = emptySet()
+                            selectedForDelete = emptyList()
+                            sortDraftOrder = FakeAlbumRepository.getManagedMediaOrder(route.postId)
                             modeName = MediaManagementMode.SORT.name
                         },
                         onSetCoverMode = {
-                            selectedForDelete = emptySet()
+                            selectedForDelete = emptyList()
                             modeName = MediaManagementMode.SET_COVER.name
                         },
                         onEditTimeMode = {
-                            selectedForDelete = emptySet()
+                            selectedForDelete = emptyList()
                             modeName = MediaManagementMode.EDIT_TIME.name
                         },
                     )
@@ -187,19 +262,15 @@ fun MediaManagementScreen(
                     media = media,
                     mode = mode,
                     selected = selectedForDelete.contains(media.id),
+                    canMoveUp = mode == MediaManagementMode.SORT && mediaItems.firstOrNull()?.id != media.id,
+                    canMoveDown = mode == MediaManagementMode.SORT && mediaItems.lastOrNull()?.id != media.id,
                     onClick = {
                         when (mode) {
                             MediaManagementMode.NORMAL -> Unit
                             MediaManagementMode.DELETE -> {
-                                selectedForDelete = if (selectedForDelete.contains(media.id)) {
-                                    selectedForDelete - media.id
-                                } else {
-                                    selectedForDelete + media.id
-                                }
+                                selectedForDelete = selectedForDelete.toggleMediaSelection(media.id)
                             }
-                            MediaManagementMode.SORT -> {
-                                Toast.makeText(context, "排序拖动占位：Stage 6.2 先保留模式结构", Toast.LENGTH_SHORT).show()
-                            }
+                            MediaManagementMode.SORT -> Unit
                             MediaManagementMode.SET_COVER -> {
                                 if (FakeAlbumRepository.setPostCover(route.postId, media.id)) {
                                     Toast.makeText(context, "已设为封面", Toast.LENGTH_SHORT).show()
@@ -207,14 +278,80 @@ fun MediaManagementScreen(
                                 exitMode()
                             }
                             MediaManagementMode.EDIT_TIME -> {
-                                Toast.makeText(context, "修改媒体时间入口占位：后续可接基础编辑", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "修改媒体时间入口占位：后续再接基础编辑", Toast.LENGTH_SHORT).show()
                                 exitMode()
                             }
                         }
                     },
+                    onMoveUp = {
+                        sortDraftOrder = sortDraftOrder.moveMedia(media.id, direction = -1)
+                    },
+                    onMoveDown = {
+                        sortDraftOrder = sortDraftOrder.moveMedia(media.id, direction = 1)
+                    },
                 )
             }
         }
+    }
+
+    if (showDeleteSemanticDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSemanticDialog = false },
+            title = { Text("选择删除语义") },
+            text = {
+                Text("本轮先在本地状态里区分“从当前帖子移除”和“系统删除该媒体”，不接正式回收站。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { handleSemanticSelection(FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE) },
+                ) {
+                    Text("系统删除该媒体")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { handleSemanticSelection(FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY) },
+                ) {
+                    Text("从当前帖子移除")
+                }
+            },
+        )
+    }
+
+    if (showEmptyPostDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showEmptyPostDialog = false
+                pendingDeleteSemanticName = null
+            },
+            title = { Text("空帖保护") },
+            text = {
+                Text("继续删除会让当前帖子变成空帖子。本轮不允许直接留下空帖子，你可以删除整个帖子或取消本次删除。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val semantic = pendingDeleteSemanticName
+                            ?.let(FakeAlbumRepository.MediaDeleteSemantic::valueOf)
+                            ?: FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY
+                        showEmptyPostDialog = false
+                        executeDelete(semantic)
+                    },
+                ) {
+                    Text("删除整个帖子")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showEmptyPostDialog = false
+                        pendingDeleteSemanticName = null
+                    },
+                ) {
+                    Text("取消本次删除")
+                }
+            },
+        )
     }
 }
 
@@ -309,7 +446,11 @@ private fun MediaManagementCard(
     media: ManagedPostMediaUiModel,
     mode: MediaManagementMode,
     selected: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     onClick: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -405,7 +546,56 @@ private fun MediaManagementCard(
                         .padding(bottom = spacing.sm),
                 )
             }
+
+            if (mode == MediaManagementMode.SORT) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    SortControlChip(
+                        text = "上移",
+                        enabled = canMoveUp,
+                        onClick = onMoveUp,
+                    )
+                    SortControlChip(
+                        text = "下移",
+                        enabled = canMoveDown,
+                        onClick = onMoveDown,
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun SortControlChip(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (enabled) {
+            Color.Black.copy(alpha = 0.18f)
+        } else {
+            Color.Black.copy(alpha = 0.08f)
+        },
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(
+                horizontal = YingShiThemeTokens.spacing.sm,
+                vertical = YingShiThemeTokens.spacing.xs,
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (enabled) Color.White.copy(alpha = 0.94f) else Color.White.copy(alpha = 0.54f),
+        )
     }
 }
 
@@ -519,11 +709,11 @@ private fun MediaManagementMissingState(
 
 private fun modeDescription(mode: MediaManagementMode): String {
     return when (mode) {
-        MediaManagementMode.NORMAL -> "两列网格管理当前帖子的媒体；本轮先打通本地结构、删除模式和设为封面。"
-        MediaManagementMode.DELETE -> "删除模式支持多选，但本轮先停在占位确认，不进入正式目录删 / 系统删语义。"
-        MediaManagementMode.SORT -> "排序模式先保留页面结构和完成 / 取消入口，复杂拖拽留到后续阶段。"
-        MediaManagementMode.SET_COVER -> "点某张媒体即可本地设为封面，并尽量同步到帖子详情页和相册页。"
-        MediaManagementMode.EDIT_TIME -> "修改媒体时间先保留轻量入口，本轮不接复杂时间编辑器。"
+        MediaManagementMode.NORMAL -> "两列网格管理当前帖子的媒体；本轮先打通目录删 / 系统删、本地排序和封面同步。"
+        MediaManagementMode.DELETE -> "删除模式支持多选，点击“删除（x）”后先选择目录删或系统删，不直接删除。"
+        MediaManagementMode.SORT -> "排序模式使用上移 / 下移完成本地调整；点击完成保存，点击取消恢复进入排序前的顺序。"
+        MediaManagementMode.SET_COVER -> "点击某张媒体即可本地设为封面，并尽量同步到帖子详情页和相册页。"
+        MediaManagementMode.EDIT_TIME -> "修改媒体时间继续保留入口占位，本轮不接复杂时间编辑器。"
     }
 }
 
@@ -534,7 +724,7 @@ private fun cardStateHint(
     return when (mode) {
         MediaManagementMode.NORMAL -> if (isCover) "当前封面" else "普通态"
         MediaManagementMode.DELETE -> "点击选择"
-        MediaManagementMode.SORT -> "排序占位"
+        MediaManagementMode.SORT -> "调整顺序"
         MediaManagementMode.SET_COVER -> if (isCover) "当前封面" else "点此设封面"
         MediaManagementMode.EDIT_TIME -> "时间入口"
     }
@@ -544,6 +734,29 @@ private fun formatMediaManagementTime(timeMillis: Long): String {
     return SimpleDateFormat("M月d日", Locale.CHINA).format(Date(timeMillis))
 }
 
+private fun List<String>.toggleMediaSelection(mediaId: String): List<String> {
+    return if (contains(mediaId)) {
+        filterNot { it == mediaId }
+    } else {
+        this + mediaId
+    }
+}
+
+private fun List<String>.moveMedia(
+    mediaId: String,
+    direction: Int,
+): List<String> {
+    val currentIndex = indexOf(mediaId)
+    if (currentIndex < 0) return this
+    val targetIndex = currentIndex + direction
+    if (targetIndex !in indices) return this
+
+    val mutable = toMutableList()
+    val item = mutable.removeAt(currentIndex)
+    mutable.add(targetIndex, item)
+    return mutable
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun MediaManagementScreenPreview() {
@@ -551,6 +764,7 @@ private fun MediaManagementScreenPreview() {
         MediaManagementScreen(
             route = MediaManagementRoute(postId = "post-window-light"),
             onBack = {},
+            onCurrentPostDeleted = {},
         )
     }
 }

@@ -115,6 +115,11 @@ fun YingShiApp() {
                     MediaManagementScreen(
                         route = route,
                         onBack = { mediaManagementRoute = null },
+                        onCurrentPostDeleted = {
+                            mediaManagementRoute = null
+                            gearEditRoute = null
+                            postDetailRoute = null
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

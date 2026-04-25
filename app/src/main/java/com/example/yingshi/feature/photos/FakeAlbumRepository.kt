@@ -5,6 +5,16 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.Color
 
 object FakeAlbumRepository {
+    enum class MediaDeleteSemantic {
+        DIRECTORY_ONLY,
+        SYSTEM_WIDE,
+    }
+
+    data class MediaDeleteOutcome(
+        val deletedPostIds: Set<String> = emptySet(),
+        val affectedPostIds: Set<String> = emptySet(),
+    )
+
     private data class ManagedPostMediaState(
         val id: String,
         val displayTimeMillis: Long,
@@ -192,6 +202,117 @@ object FakeAlbumRepository {
         posts.sortByDescending { it.postDisplayTimeMillis }
     }
 
+    fun getManagedMediaOrder(postId: String): List<String> {
+        val post = getPost(postId) ?: return emptyList()
+        return ensurePostMedia(postId = postId, fallbackPost = post).map { it.id }
+    }
+
+    fun updatePostMediaOrder(
+        postId: String,
+        orderedIds: List<String>,
+    ): Boolean {
+        val post = getPost(postId) ?: return false
+        val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
+        if (orderedIds.isEmpty() || orderedIds.size != mediaState.size) return false
+
+        val orderedItems = orderedIds.mapNotNull { mediaId ->
+            mediaState.firstOrNull { it.id == mediaId }
+        }
+        if (orderedItems.size != mediaState.size) return false
+
+        val coverId = mediaState.firstOrNull { it.isCover }?.id ?: orderedItems.first().id
+        val reordered = orderedItems.map { media ->
+            media.copy(isCover = media.id == coverId)
+        }
+        replacePostMedia(postId = postId, newItems = reordered)
+        reordered.firstOrNull { it.isCover }?.let { cover ->
+            syncPostCardCover(
+                postId = postId,
+                coverPalette = cover.palette,
+                coverAspectRatio = cover.aspectRatio,
+            )
+        }
+        return true
+    }
+
+    fun previewDeleteOutcome(
+        postId: String,
+        mediaIds: Set<String>,
+        semantic: MediaDeleteSemantic,
+    ): MediaDeleteOutcome {
+        if (mediaIds.isEmpty()) return MediaDeleteOutcome()
+        val affectedPostIds = mutableSetOf<String>()
+        val deletedPostIds = mutableSetOf<String>()
+
+        when (semantic) {
+            MediaDeleteSemantic.DIRECTORY_ONLY -> {
+                val remaining = remainingMediaCountAfterDelete(postId, mediaIds)
+                if (remaining <= 0) {
+                    deletedPostIds += postId
+                } else {
+                    affectedPostIds += postId
+                }
+            }
+            MediaDeleteSemantic.SYSTEM_WIDE -> {
+                posts.toList().forEach { post ->
+                    val state = ensurePostMedia(postId = post.id, fallbackPost = post)
+                    if (state.any { mediaIds.contains(it.id) }) {
+                        val remaining = state.count { !mediaIds.contains(it.id) }
+                        if (remaining <= 0) {
+                            deletedPostIds += post.id
+                        } else {
+                            affectedPostIds += post.id
+                        }
+                    }
+                }
+            }
+        }
+        return MediaDeleteOutcome(
+            deletedPostIds = deletedPostIds,
+            affectedPostIds = affectedPostIds,
+        )
+    }
+
+    fun applyMediaDelete(
+        postId: String,
+        mediaIds: Set<String>,
+        semantic: MediaDeleteSemantic,
+    ): MediaDeleteOutcome {
+        if (mediaIds.isEmpty()) return MediaDeleteOutcome()
+        val preview = previewDeleteOutcome(postId = postId, mediaIds = mediaIds, semantic = semantic)
+        when (semantic) {
+            MediaDeleteSemantic.DIRECTORY_ONLY -> {
+                if (!preview.deletedPostIds.contains(postId)) {
+                    removeMediaFromPost(postId = postId, mediaIds = mediaIds)
+                }
+            }
+            MediaDeleteSemantic.SYSTEM_WIDE -> {
+                posts.toList().forEach { post ->
+                    if (preview.deletedPostIds.contains(post.id)) return@forEach
+                    removeMediaFromPost(postId = post.id, mediaIds = mediaIds)
+                }
+                FakePhotoFeedRepository.hideMediaGlobally(mediaIds)
+            }
+        }
+        return preview
+    }
+
+    fun deletePostsLocally(postIds: Collection<String>): Set<String> {
+        val removedIds = mutableSetOf<String>()
+        postIds.distinct().forEach { postId ->
+            val index = posts.indexOfFirst { it.id == postId }
+            if (index >= 0) {
+                posts.removeAt(index)
+                postMediaByPostId.remove(postId)
+                removedIds += postId
+            }
+        }
+        if (removedIds.isNotEmpty()) {
+            FakePhotoFeedRepository.hidePostsLocally(removedIds)
+        }
+        return removedIds
+    }
+
     private fun ensurePostMedia(
         postId: String,
         fallbackPost: AlbumPostCardUiModel? = getPost(postId),
@@ -235,6 +356,44 @@ object FakeAlbumRepository {
         mediaState.addAll(newItems)
     }
 
+    private fun remainingMediaCountAfterDelete(
+        postId: String,
+        mediaIds: Set<String>,
+    ): Int {
+        val post = getPost(postId) ?: return 0
+        val state = ensurePostMedia(postId = postId, fallbackPost = post)
+        return state.count { !mediaIds.contains(it.id) }
+    }
+
+    private fun removeMediaFromPost(
+        postId: String,
+        mediaIds: Set<String>,
+    ) {
+        val post = getPost(postId) ?: return
+        val state = ensurePostMedia(postId = postId, fallbackPost = post)
+        val remaining = state.filterNot { mediaIds.contains(it.id) }
+        if (remaining.isEmpty()) return
+
+        val normalized = normalizeCover(remaining)
+        replacePostMedia(postId = postId, newItems = normalized)
+        syncPostAfterMediaMutation(
+            postId = postId,
+            mediaCount = normalized.size,
+            coverPalette = normalized.first().palette,
+            coverAspectRatio = normalized.first().aspectRatio,
+        )
+    }
+
+    private fun normalizeCover(
+        items: List<ManagedPostMediaState>,
+    ): List<ManagedPostMediaState> {
+        if (items.isEmpty()) return items
+        val coverId = items.firstOrNull { it.isCover }?.id ?: items.first().id
+        return items.map { media ->
+            media.copy(isCover = media.id == coverId)
+        }
+    }
+
     private fun syncPostCardCover(
         postId: String,
         coverPalette: PhotoThumbnailPalette,
@@ -243,6 +402,21 @@ object FakeAlbumRepository {
         val index = posts.indexOfFirst { it.id == postId }
         if (index < 0) return
         posts[index] = posts[index].copy(
+            coverPalette = coverPalette,
+            coverAspectRatio = coverAspectRatio,
+        )
+    }
+
+    private fun syncPostAfterMediaMutation(
+        postId: String,
+        mediaCount: Int,
+        coverPalette: PhotoThumbnailPalette,
+        coverAspectRatio: Float,
+    ) {
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index < 0) return
+        posts[index] = posts[index].copy(
+            mediaCount = mediaCount,
             coverPalette = coverPalette,
             coverAspectRatio = coverAspectRatio,
         )

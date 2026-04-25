@@ -1,12 +1,17 @@
 package com.example.yingshi.feature.photos
 
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.graphics.Color
 import java.util.Calendar
 import java.util.Locale
 
 object FakePhotoFeedRepository {
+    private val hiddenMediaIds = mutableStateListOf<String>()
+    private val hiddenPostIds = mutableStateListOf<String>()
+
     fun getPhotoFeed(): List<PhotoFeedItem> {
         return fakeSourceEntries()
+            .filterNot { hiddenMediaIds.contains(it.mediaId) }
             .groupBy { it.mediaId }
             .values
             .map { entries ->
@@ -20,12 +25,31 @@ object FakePhotoFeedRepository {
                     displayMonth = parts.month,
                     displayDay = parts.day,
                     commentCount = placeholderCommentCount(latestEntry.mediaId),
-                    postIds = entries.mapNotNull { it.postId }.distinct(),
+                    postIds = entries
+                        .mapNotNull { it.postId }
+                        .filterNot { hiddenPostIds.contains(it) }
+                        .distinct(),
                     palette = latestEntry.palette,
                     aspectRatio = latestEntry.aspectRatio,
                 )
             }
             .sortedByDescending { it.mediaDisplayTimeMillis }
+    }
+
+    fun hideMediaGlobally(mediaIds: Collection<String>) {
+        mediaIds.forEach { mediaId ->
+            if (!hiddenMediaIds.contains(mediaId)) {
+                hiddenMediaIds.add(mediaId)
+            }
+        }
+    }
+
+    fun hidePostsLocally(postIds: Collection<String>) {
+        postIds.forEach { postId ->
+            if (!hiddenPostIds.contains(postId)) {
+                hiddenPostIds.add(postId)
+            }
+        }
     }
 
     private fun placeholderCommentCount(mediaId: String): Int {
