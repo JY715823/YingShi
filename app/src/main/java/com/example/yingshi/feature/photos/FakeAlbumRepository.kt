@@ -1,9 +1,19 @@
 package com.example.yingshi.feature.photos
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.Color
 
 object FakeAlbumRepository {
+    private data class ManagedPostMediaState(
+        val id: String,
+        val displayTimeMillis: Long,
+        val commentCount: Int,
+        val palette: PhotoThumbnailPalette,
+        val aspectRatio: Float,
+        val isCover: Boolean,
+    )
+
     private val albums = listOf(
         AlbumSummaryUiModel(
             id = "album-spring-window",
@@ -60,6 +70,7 @@ object FakeAlbumRepository {
     private val posts = mutableStateListOf<AlbumPostCardUiModel>().apply {
         addAll(seedPosts().sortedByDescending { it.postDisplayTimeMillis })
     }
+    private val postMediaByPostId = mutableStateMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<ManagedPostMediaState>>()
 
     fun getAlbums(): List<AlbumSummaryUiModel> = albums
 
@@ -80,26 +91,54 @@ object FakeAlbumRepository {
         )
     }
 
+    fun getManagedPostMedia(postId: String): List<ManagedPostMediaUiModel>? {
+        val post = getPost(postId) ?: return null
+        return ensurePostMedia(postId = postId, fallbackPost = post).map { media ->
+            media.toUiModel()
+        }
+    }
+
+    fun setPostCover(postId: String, mediaId: String): Boolean {
+        val post = getPost(postId) ?: return false
+        val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
+        val targetIndex = mediaState.indexOfFirst { it.id == mediaId }
+        if (targetIndex < 0) return false
+
+        val target = mediaState[targetIndex].copy(isCover = true)
+        val reordered = buildList {
+            add(target)
+            mediaState.forEachIndexed { index, media ->
+                if (index != targetIndex) {
+                    add(media.copy(isCover = false))
+                }
+            }
+        }
+        replacePostMedia(postId = postId, newItems = reordered)
+        syncPostCardCover(
+            postId = postId,
+            coverPalette = target.palette,
+            coverAspectRatio = target.aspectRatio,
+        )
+        return true
+    }
+
     fun getPostDetail(route: PostDetailPlaceholderRoute): PostDetailUiModel {
         val post = getPost(route.postId)
         val title = post?.title ?: route.title
         val summary = post?.summary ?: route.summary
         val postDisplayTimeMillis = post?.postDisplayTimeMillis ?: route.postDisplayTimeMillis
-        val basePalette = post?.coverPalette ?: route.coverPalette
-        val mediaCount = (post?.mediaCount ?: route.mediaCount).coerceAtLeast(1)
         val albumIds = post?.albumIds ?: route.albumIds.ifEmpty { listOf(route.albumId) }
-        val mediaItems = List(mediaCount.coerceAtMost(8)) { index ->
-            val mediaId = fakeMediaIdForPost(route.postId, index)
+        val mediaItems = ensurePostMedia(
+            postId = route.postId,
+            fallbackPost = post,
+            fallbackRoute = route,
+        ).map { media ->
             PostDetailMediaUiModel(
-                id = mediaId,
-                displayTimeMillis = postDisplayTimeMillis + (index * 9 * 60 * 1000L),
-                commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
-                palette = if (index == 0) {
-                    basePalette
-                } else {
-                    shiftedPalette(basePalette = basePalette, index = index)
-                },
-                aspectRatio = listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4],
+                id = media.id,
+                displayTimeMillis = media.displayTimeMillis,
+                commentCount = FakeCommentRepository.mediaCommentCount(media.id),
+                palette = media.palette,
+                aspectRatio = media.aspectRatio,
             )
         }
 
@@ -151,6 +190,73 @@ object FakeAlbumRepository {
             postDisplayTimeMillis = postDisplayTimeMillis,
         )
         posts.sortByDescending { it.postDisplayTimeMillis }
+    }
+
+    private fun ensurePostMedia(
+        postId: String,
+        fallbackPost: AlbumPostCardUiModel? = getPost(postId),
+        fallbackRoute: PostDetailPlaceholderRoute? = null,
+    ): androidx.compose.runtime.snapshots.SnapshotStateList<ManagedPostMediaState> {
+        postMediaByPostId[postId]?.let { return it }
+
+        val post = fallbackPost ?: getPost(postId)
+        val mediaCount = (post?.mediaCount ?: fallbackRoute?.mediaCount ?: 0).coerceAtLeast(1).coerceAtMost(8)
+        val basePalette = post?.coverPalette ?: fallbackRoute?.coverPalette ?: albums.first().accent
+        val baseTime = post?.postDisplayTimeMillis ?: fallbackRoute?.postDisplayTimeMillis ?: System.currentTimeMillis()
+        val mediaState = mutableStateListOf<ManagedPostMediaState>().apply {
+            repeat(mediaCount) { index ->
+                val mediaId = fakeMediaIdForPost(postId, index)
+                add(
+                    ManagedPostMediaState(
+                        id = mediaId,
+                        displayTimeMillis = baseTime + (index * 9 * 60 * 1000L),
+                        commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
+                        palette = if (index == 0) {
+                            basePalette
+                        } else {
+                            shiftedPalette(basePalette = basePalette, index = index)
+                        },
+                        aspectRatio = listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4],
+                        isCover = index == 0,
+                    ),
+                )
+            }
+        }
+        postMediaByPostId[postId] = mediaState
+        return mediaState
+    }
+
+    private fun replacePostMedia(
+        postId: String,
+        newItems: List<ManagedPostMediaState>,
+    ) {
+        val mediaState = ensurePostMedia(postId)
+        mediaState.clear()
+        mediaState.addAll(newItems)
+    }
+
+    private fun syncPostCardCover(
+        postId: String,
+        coverPalette: PhotoThumbnailPalette,
+        coverAspectRatio: Float,
+    ) {
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index < 0) return
+        posts[index] = posts[index].copy(
+            coverPalette = coverPalette,
+            coverAspectRatio = coverAspectRatio,
+        )
+    }
+
+    private fun ManagedPostMediaState.toUiModel(): ManagedPostMediaUiModel {
+        return ManagedPostMediaUiModel(
+            id = id,
+            displayTimeMillis = displayTimeMillis,
+            commentCount = FakeCommentRepository.mediaCommentCount(id),
+            palette = palette,
+            aspectRatio = aspectRatio,
+            isCover = isCover,
+        )
     }
 
     private fun buildAlbumChips(albumIds: List<String>): List<String> {

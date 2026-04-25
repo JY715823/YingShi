@@ -44,6 +44,7 @@ import java.util.Locale
 fun GearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
+    onOpenMediaManagement: (MediaManagementRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -189,7 +190,7 @@ fun GearEditScreen(
                 title = "媒体管理",
                 subtitle = "Stage 6.2 接入媒体管理页。",
                 onClick = {
-                    Toast.makeText(context, "媒体管理将在 Stage 6.2 接入", Toast.LENGTH_SHORT).show()
+                    onOpenMediaManagement(MediaManagementRoute(route.postId))
                 },
             )
             GearEditEntryRow(
@@ -440,6 +441,7 @@ private fun GearEditScreenPreview() {
         GearEditScreen(
             route = GearEditRoute(postId = "post-window-light"),
             onBack = {},
+            onOpenMediaManagement = {},
         )
     }
 }

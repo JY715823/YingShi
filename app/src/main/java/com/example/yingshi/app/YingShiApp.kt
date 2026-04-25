@@ -14,6 +14,8 @@ import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
+import com.example.yingshi.feature.photos.MediaManagementRoute
+import com.example.yingshi.feature.photos.MediaManagementScreen
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
@@ -37,6 +39,9 @@ fun YingShiApp() {
     var gearEditRoute by remember {
         mutableStateOf<GearEditRoute?>(null)
     }
+    var mediaManagementRoute by remember {
+        mutableStateOf<MediaManagementRoute?>(null)
+    }
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
 
     if (photoViewerRoute != null) {
@@ -45,20 +50,28 @@ fun YingShiApp() {
         }
     }
     if (postDetailRoute != null) {
-        BackHandler {
+        BackHandler(enabled = gearEditRoute == null && mediaManagementRoute == null) {
             postDetailRoute = null
         }
     }
     if (gearEditRoute != null) {
-        BackHandler {
+        BackHandler(enabled = mediaManagementRoute == null) {
             gearEditRoute = null
+        }
+    }
+    if (mediaManagementRoute != null) {
+        BackHandler {
+            mediaManagementRoute = null
         }
     }
 
     AppShellScaffold(
         selectedDestination = selectedDestination,
         onDestinationSelected = { selectedDestinationName = it.name },
-        showBottomBar = photoViewerRoute == null && postDetailRoute == null && gearEditRoute == null,
+        showBottomBar = photoViewerRoute == null &&
+            postDetailRoute == null &&
+            gearEditRoute == null &&
+            mediaManagementRoute == null,
     ) {
         when {
             photoViewerRoute != null -> {
@@ -93,6 +106,15 @@ fun YingShiApp() {
                     GearEditScreen(
                         route = route,
                         onBack = { gearEditRoute = null },
+                        onOpenMediaManagement = { mediaManagementRoute = it },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                mediaManagementRoute?.let { route ->
+                    MediaManagementScreen(
+                        route = route,
+                        onBack = { mediaManagementRoute = null },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
