@@ -84,6 +84,36 @@ object FakeCommentRepository {
         )
     }
 
+    fun updatePostComment(postId: String, commentId: String, content: String) {
+        updateComment(
+            comments = getPostComments(postId) as SnapshotStateList<CommentUiModel>,
+            commentId = commentId,
+            content = content,
+        )
+    }
+
+    fun deletePostComment(postId: String, commentId: String) {
+        deleteComment(
+            comments = getPostComments(postId) as SnapshotStateList<CommentUiModel>,
+            commentId = commentId,
+        )
+    }
+
+    fun updateMediaComment(mediaId: String, commentId: String, content: String) {
+        updateComment(
+            comments = getMediaComments(mediaId) as SnapshotStateList<CommentUiModel>,
+            commentId = commentId,
+            content = content,
+        )
+    }
+
+    fun deleteMediaComment(mediaId: String, commentId: String) {
+        deleteComment(
+            comments = getMediaComments(mediaId) as SnapshotStateList<CommentUiModel>,
+            commentId = commentId,
+        )
+    }
+
     fun mediaCommentCount(mediaId: String): Int = getMediaComments(mediaId).size
 
     private fun seedPostComments(postId: String): List<CommentUiModel> {
@@ -136,5 +166,26 @@ object FakeCommentRepository {
             createdAtMillis = System.currentTimeMillis() + sequence,
             isMine = true,
         )
+    }
+
+    private fun updateComment(
+        comments: SnapshotStateList<CommentUiModel>,
+        commentId: String,
+        content: String,
+    ) {
+        val normalized = content.trim()
+        if (normalized.isBlank()) return
+
+        val index = comments.indexOfFirst { it.id == commentId }
+        if (index == -1) return
+
+        comments[index] = comments[index].copy(content = normalized)
+    }
+
+    private fun deleteComment(
+        comments: SnapshotStateList<CommentUiModel>,
+        commentId: String,
+    ) {
+        comments.removeAll { it.id == commentId }
     }
 }

@@ -89,11 +89,9 @@ private object ViewerLayoutTuning {
     val canvasBottomPadding = 170.dp
     const val commentPreviewWidthFraction = 0.70f
     val commentPreviewMaxWidth = 288.dp
-    val commentPreviewStartOffset = 8.dp
     val commentPreviewHeight = 172.dp
-    val commentPreviewBottomOffset = 68.dp
-    val photoFlowEdgeActionsBottomPadding = 46.dp
-    val inPostEdgeActionsBottomPadding = 62.dp
+    val photoFlowEdgeActionsBottomPadding = 34.dp
+    val inPostEdgeActionsBottomPadding = 50.dp
     val postSegmentBottomOffset = 12.dp
     const val commentSheetHeightFraction = 0.68f
     const val relatedPostsSheetHeightFraction = 0.42f
@@ -411,8 +409,8 @@ fun PhotoViewerScreen(
                         .align(Alignment.BottomStart)
                         .navigationBarsPadding()
                         .padding(
-                            start = ViewerLayoutTuning.commentPreviewStartOffset,
-                            bottom = ViewerLayoutTuning.commentPreviewBottomOffset,
+                            start = spacing.lg,
+                            bottom = edgeActionsBottomPadding + 18.dp,
                         ),
                 )
             }
@@ -933,9 +931,16 @@ private fun PhotoViewerCommentSheet(
     onDismiss: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val context = LocalContext.current
+    val copyComment = rememberCommentCopyHandler()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var expanded by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf(false) }
+    var actionCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
+    var editingCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
+    var editingDraft by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf("") }
+    var selectedForCopyCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
     val visibleComments = comments.visibleComments(expanded)
+    val actionComment = comments.firstOrNull { it.id == actionCommentId }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -971,33 +976,38 @@ private fun PhotoViewerCommentSheet(
                 )
             } else {
                 visibleComments.forEach { comment ->
-                    val isSelected = comment.id == selectedCommentId
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.md))
-                            .background(
-                                ViewerSurface.copy(alpha = if (isSelected) 0.10f else 0.00f),
+                    CommentListItem(
+                        comment = comment,
+                        timeLabel = formatViewerTime(comment.createdAtMillis),
+                        onLongPress = { actionCommentId = comment.id },
+                        darkMode = true,
+                        highlighted = comment.id == selectedCommentId,
+                        selectedForCopy = selectedForCopyCommentId == comment.id,
+                        isEditing = editingCommentId == comment.id,
+                        editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
+                        onEditingValueChange = { editingDraft = it },
+                        onSaveEdit = {
+                            FakeCommentRepository.updateMediaComment(
+                                mediaId = mediaId,
+                                commentId = comment.id,
+                                content = editingDraft,
                             )
-                            .padding(horizontal = spacing.sm, vertical = spacing.xs),
-                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                    ) {
-                        Text(
-                            text = comment.author,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = ViewerSurface.copy(alpha = 0.88f),
-                        )
-                        Text(
-                            text = comment.content,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ViewerSurface.copy(alpha = 0.78f),
-                        )
-                        Text(
-                            text = formatViewerTime(comment.createdAtMillis),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ViewerSurface.copy(alpha = 0.46f),
-                        )
-                    }
+                            editingCommentId = null
+                            editingDraft = ""
+                            Toast.makeText(context, "评论已更新", Toast.LENGTH_SHORT).show()
+                        },
+                        onCancelEdit = {
+                            editingCommentId = null
+                            editingDraft = ""
+                        },
+                        onCopySelection = if (selectedForCopyCommentId == comment.id) {
+                            {
+                                copyComment(comment.content)
+                            }
+                        } else {
+                            null
+                        },
+                    )
                 }
             }
             if (comments.hasHiddenComments(expanded)) {
@@ -1020,6 +1030,39 @@ private fun PhotoViewerCommentSheet(
                 },
             )
         }
+    }
+
+    actionComment?.let { comment ->
+        CommentActionMenuSheet(
+            comment = comment,
+            darkMode = true,
+            onDismiss = { actionCommentId = null },
+            onEdit = {
+                editingCommentId = comment.id
+                editingDraft = comment.content
+                selectedForCopyCommentId = null
+                actionCommentId = null
+            },
+            onDelete = {
+                FakeCommentRepository.deleteMediaComment(mediaId, comment.id)
+                if (selectedForCopyCommentId == comment.id) {
+                    selectedForCopyCommentId = null
+                }
+                if (editingCommentId == comment.id) {
+                    editingCommentId = null
+                    editingDraft = ""
+                }
+                actionCommentId = null
+                Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
+            },
+            onSelect = {
+                selectedForCopyCommentId = comment.id
+                editingCommentId = null
+                editingDraft = ""
+                actionCommentId = null
+                Toast.makeText(context, "已选中当前评论全文", Toast.LENGTH_SHORT).show()
+            },
+        )
     }
 }
 
