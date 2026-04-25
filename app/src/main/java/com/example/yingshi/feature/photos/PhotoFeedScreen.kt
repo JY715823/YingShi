@@ -74,7 +74,7 @@ fun PhotoFeedScreen(
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val feedItems = remember { FakePhotoFeedRepository.getPhotoFeed() }
+    val feedItems = FakePhotoFeedRepository.getPhotoFeed()
     val mediaPositionLookup = remember(feedItems) {
         feedItems.mapIndexed { index, item ->
             item.mediaId to index
