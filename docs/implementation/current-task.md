@@ -1,51 +1,38 @@
-# Current Task - Stage 7.2 删除态详情、恢复与 24h 可撤销
+# Current Task - Stage 8.1 System Media Shell
 
 ## Goal
-补齐本地回收站的删除态详情页、三类恢复逻辑，以及“移出回收站后 24h 可撤销”的基础占位。
+Build the first shell of the system media tool area.
 
 ## Scope
-本阶段覆盖：
-- 回收站条目详情路由与独立页面
-- 三类删除态的只读详情
-- 恢复帖子删除
-- 恢复媒体移除（目录删）
-- 恢复媒体系统删
-- 移出回收站
-- 24h 可撤销提示与本地 undo 占位
-- 删除整个帖子并系统删除其中媒体的本地版本
-- 最小文档同步
+- fix trash detail / pending cleanup back navigation and keep trash tab state
+- system media route
+- permission guide shell
+- authorized / unauthorized / partial placeholder states
+- fake system media grid
+- filters
+- posted marker
+- multi-select shell
+- system media viewer placeholder
+- minimal doc updates
 
 ## Product intent
-- 回收站条目在恢复或移出前必须可查看。
-- 删除态详情页保持接近正常浏览，但只能只读查看。
-- 不同删除语义对应不同恢复规则。
-- “移出回收站”先进入 24h 可撤销状态，不做真实物理清理。
-- 整体仍保持本地 fake state / 内存状态，不接真实后端。
+- System media is a separate tool area.
+- It is not part of the app content feed.
+- It does not show comments, original-load state, or related-post navigation.
+- It should feel more tool-like and closer to a system gallery.
 
-## Do not do in this stage
-- 不接真实后端
-- 不接 Room / Retrofit
-- 不接真实 Android 系统媒体删除
-- 不做真实后台 24h 定时清理
-- 不做物理删除
-- 不做复杂权限
-- 不做大范围无关重构
+## Do not do
+- no real MediaStore query
+- no real system delete
+- no real post creation
+- no real permission flow completion
+- no backend / Room / Retrofit
 
 ## Done when
-- 回收站条目可进入删除态详情页
-- 三类删除条目都能恢复
-- 恢复后正常页面重新出现对应内容
-- 移出回收站后条目从主列表消失
-- 移出回收站后显示一次轻量提示，并可在“24h 可撤销 / 待清理”入口里撤销
-- 点击撤销后条目回到回收站
-- 删除整个帖子并系统删除其中媒体有本地版本
-- 项目可构建运行
-- 文档已最小同步
-
-## Targeted Fix Note
-- 本轮不是新阶段开发，只做 Stage 7.2 范围内的定点修复。
-- 回收站删除态详情必须优先使用 TrashItem 快照与 trash repository 数据，不能依赖 active post/media 一定存在。
-- 找不到删除项、找不到快照、媒体列表为空时都必须安全降级为空态，不允许闪退。
-- “24h 可撤销”不再使用全局常驻底部提示，改为回收站内的待清理入口 + 短暂 snackbar 提示。
-- `照片 / 相册 / 回收站` 二级切页保持单一 pager 状态源，点击切页与手势滑动都要稳定吸附到完整页面。
-- 本轮性能只做轻量优化：减少假数据重复构建、减少 scrubber 拖动的重复跳转、减少切页状态打架带来的重组与卡顿。
+- System button opens independent system media page
+- Permission shell exists
+- Fake media grid and filters work
+- Multi-select shell exists
+- Viewer placeholder exists
+- Trash back navigation returns to trash page
+- App builds and runs

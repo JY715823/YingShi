@@ -2,7 +2,6 @@ package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -28,10 +27,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,9 +56,16 @@ private val PhotoSelectionActionBarPadding = 88.dp
 @Composable
 fun PhotosRootScreen(
     modifier: Modifier = Modifier,
+    selectedTopDestinationName: String = PhotosTopDestination.PHOTOS.name,
+    onSelectedTopDestinationChange: (String) -> Unit = { },
+    trashSelectedTypeName: String = TrashEntryType.POST_DELETED.name,
+    onTrashSelectedTypeNameChange: (String) -> Unit = { },
+    trashShowPendingCleanup: Boolean = false,
+    onTrashShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
+    onOpenSystemMedia: () -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
@@ -67,13 +75,23 @@ fun PhotosRootScreen(
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = remember { FakeAlbumRepository.getAlbums() }
     val albumPosts = remember { FakeAlbumRepository.getPosts() }
+    val initialPage = rememberSaveable(selectedTopDestinationName) {
+        PhotosTopDestination.valueOf(selectedTopDestinationName).ordinal
+    }
     val pagerState = rememberPagerState(
-        initialPage = PhotosTopDestination.PHOTOS.ordinal,
+        initialPage = initialPage,
         pageCount = { PhotosTopDestination.entries.size },
     )
     val selectedSection = PhotosTopDestination.entries[pagerState.currentPage]
     val isPhotoSelectionMode =
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
+
+    LaunchedEffect(pagerState.currentPage) {
+        val pageName = PhotosTopDestination.entries[pagerState.currentPage].name
+        if (pageName != selectedTopDestinationName) {
+            onSelectedTopDestinationChange(pageName)
+        }
+    }
 
     if (isPhotoSelectionMode) {
         BackHandler {
@@ -103,9 +121,7 @@ fun PhotosRootScreen(
                     pagerState.animateScrollToPage(index)
                 }
             },
-            onOpenSystemMedia = {
-                Toast.makeText(context, "系统媒体将在后续阶段接入", Toast.LENGTH_SHORT).show()
-            },
+            onOpenSystemMedia = onOpenSystemMedia,
             onOpenNotifications = {
                 Toast.makeText(context, "通知中心将在后续阶段接入", Toast.LENGTH_SHORT).show()
             },
@@ -157,7 +173,8 @@ fun PhotosRootScreen(
                                         val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(
                                             FakeAlbumRepository::snapshotPost,
                                         )
-                                        val relationSnapshotsByMediaId = FakeAlbumRepository.snapshotMediaRelations(selectedIds)
+                                        val relationSnapshotsByMediaId =
+                                            FakeAlbumRepository.snapshotMediaRelations(selectedIds)
 
                                         FakeTrashRepository.recordSystemDeletedMedia(
                                             mediaSnapshots = selectedMedia.map { item ->
@@ -175,14 +192,16 @@ fun PhotosRootScreen(
                                             relationSnapshotsByMediaId = relationSnapshotsByMediaId,
                                         )
                                         deletedPostSnapshots.forEach { snapshot ->
-                                            FakeTrashRepository.recordDeletedPost(
-                                                snapshot = snapshot,
-                                            )
+                                            FakeTrashRepository.recordDeletedPost(snapshot = snapshot)
                                         }
                                         val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
                                         FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
                                         photoSelectionState = photoSelectionState.clear()
-                                        Toast.makeText(context, "已执行本地系统删，并写入回收站", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            "已执行本地系统删，并写入回收站",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
                                     },
                                 )
                             }
@@ -204,6 +223,10 @@ fun PhotosRootScreen(
                     PhotosTopDestination.TRASH -> {
                         TrashPageScreen(
                             modifier = Modifier.fillMaxSize(),
+                            selectedTypeName = trashSelectedTypeName,
+                            onSelectedTypeNameChange = onTrashSelectedTypeNameChange,
+                            showPendingCleanup = trashShowPendingCleanup,
+                            onShowPendingCleanupChange = onTrashShowPendingCleanupChange,
                             onOpenTrashDetail = onOpenTrashDetail,
                         )
                     }

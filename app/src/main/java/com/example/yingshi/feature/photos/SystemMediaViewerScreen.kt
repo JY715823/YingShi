@@ -1,0 +1,252 @@
+package com.example.yingshi.feature.photos
+
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.theme.YingShiTheme
+import com.example.yingshi.ui.theme.YingShiThemeTokens
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun SystemMediaViewerScreen(
+    route: SystemMediaViewerRoute,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val pagerState = rememberPagerState(
+        initialPage = route.initialIndex.coerceIn(0, (route.mediaItems.size - 1).coerceAtLeast(0)),
+        pageCount = { route.mediaItems.size.coerceAtLeast(1) },
+    )
+    val currentItem = route.mediaItems.getOrNull(
+        pagerState.currentPage.coerceIn(0, (route.mediaItems.size - 1).coerceAtLeast(0)),
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF0E131A)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SystemMediaViewerCircleButton(
+                    text = "<",
+                    onClick = onBack,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "系统媒体",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                    Text(
+                        text = "${pagerState.currentPage + 1} / ${route.mediaItems.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.72f),
+                    )
+                }
+            }
+
+            if (route.mediaItems.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "当前没有可查看的系统媒体占位数据。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.72f),
+                    )
+                }
+            } else {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    beyondViewportPageCount = 1,
+                    key = { page -> route.mediaItems[page].id },
+                ) { page ->
+                    val item = route.mediaItems[page]
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.xl))
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(item.palette.start, item.palette.end),
+                                ),
+                            ),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.10f),
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.18f),
+                                        ),
+                                    ),
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+
+        currentItem?.let { item ->
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                color = Color.White.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                ) {
+                    Text(
+                        text = "系统媒体查看态占位",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                    Text(
+                        text = "${item.kind.label} · ${formatSystemMediaViewerTime(item.displayTimeMillis)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.72f),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+                    ) {
+                        SystemMediaViewerActionChip(
+                            text = "发成新帖子",
+                            onClick = {
+                                Toast.makeText(context, "发成新帖子占位", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                        SystemMediaViewerActionChip(
+                            text = "加入已有帖子",
+                            onClick = {
+                                Toast.makeText(context, "加入已有帖子占位", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                        SystemMediaViewerActionChip(
+                            text = "移到系统回收站",
+                            onClick = {
+                                Toast.makeText(context, "移到系统回收站占位", Toast.LENGTH_SHORT).show()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaViewerCircleButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = Color.White.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaViewerActionChip(
+    text: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = Color.White.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+        TextButton(onClick = onClick) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+private fun formatSystemMediaViewerTime(timeMillis: Long): String {
+    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun SystemMediaViewerScreenPreview() {
+    YingShiTheme {
+        SystemMediaViewerScreen(
+            route = SystemMediaViewerRoute(
+                mediaItems = FakeSystemMediaRepository.getMedia(SystemMediaFilter.ALL),
+                initialIndex = 0,
+            ),
+            onBack = {},
+        )
+    }
+}

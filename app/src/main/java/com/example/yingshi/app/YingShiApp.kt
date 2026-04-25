@@ -1,18 +1,20 @@
 package com.example.yingshi.app
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
+import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.MediaManagementRoute
@@ -22,9 +24,14 @@ import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
+import com.example.yingshi.feature.photos.SystemMediaRoute
+import com.example.yingshi.feature.photos.SystemMediaScreen
+import com.example.yingshi.feature.photos.SystemMediaViewerRoute
+import com.example.yingshi.feature.photos.SystemMediaViewerScreen
 import com.example.yingshi.feature.photos.TrashDetailRoute
 import com.example.yingshi.feature.photos.TrashDetailScreen
-import com.example.yingshi.feature.photos.FakeTrashRepository
+import com.example.yingshi.feature.photos.TrashEntryType
+import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -34,8 +41,23 @@ fun YingShiApp() {
     var selectedDestinationName by rememberSaveable {
         mutableStateOf(RootDestination.PHOTOS.name)
     }
+    var photosTopDestinationName by rememberSaveable {
+        mutableStateOf(PhotosTopDestination.PHOTOS.name)
+    }
+    var trashSelectedTypeName by rememberSaveable {
+        mutableStateOf(TrashEntryType.POST_DELETED.name)
+    }
+    var trashShowPendingCleanup by rememberSaveable {
+        mutableStateOf(false)
+    }
     var photoViewerRoute by remember {
         mutableStateOf<PhotoViewerRoute?>(null)
+    }
+    var systemMediaRoute by remember {
+        mutableStateOf<SystemMediaRoute?>(null)
+    }
+    var systemMediaViewerRoute by remember {
+        mutableStateOf<SystemMediaViewerRoute?>(null)
     }
     var postDetailRoute by remember {
         mutableStateOf<PostDetailPlaceholderRoute?>(null)
@@ -54,6 +76,16 @@ fun YingShiApp() {
     if (photoViewerRoute != null) {
         BackHandler {
             photoViewerRoute = null
+        }
+    }
+    if (systemMediaViewerRoute != null) {
+        BackHandler {
+            systemMediaViewerRoute = null
+        }
+    }
+    if (systemMediaRoute != null && systemMediaViewerRoute == null) {
+        BackHandler {
+            systemMediaRoute = null
         }
     }
     if (trashDetailRoute != null) {
@@ -81,6 +113,7 @@ fun YingShiApp() {
         selectedDestination = selectedDestination,
         onDestinationSelected = { selectedDestinationName = it.name },
         showBottomBar = photoViewerRoute == null &&
+            systemMediaRoute == null &&
             trashDetailRoute == null &&
             postDetailRoute == null &&
             gearEditRoute == null &&
@@ -93,6 +126,27 @@ fun YingShiApp() {
                         route = route,
                         onBack = { photoViewerRoute = null },
                     )
+                }
+            }
+
+            systemMediaRoute != null -> {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    SystemMediaScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        onBack = {
+                            systemMediaViewerRoute = null
+                            systemMediaRoute = null
+                        },
+                        onOpenViewer = { systemMediaViewerRoute = it },
+                    )
+
+                    systemMediaViewerRoute?.let { route ->
+                        SystemMediaViewerScreen(
+                            route = route,
+                            onBack = { systemMediaViewerRoute = null },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
 
@@ -110,9 +164,16 @@ fun YingShiApp() {
                 when (selectedDestination) {
                     RootDestination.HOME -> HomeScreen()
                     RootDestination.PHOTOS -> PhotosRootScreen(
+                        selectedTopDestinationName = photosTopDestinationName,
+                        onSelectedTopDestinationChange = { photosTopDestinationName = it },
+                        trashSelectedTypeName = trashSelectedTypeName,
+                        onTrashSelectedTypeNameChange = { trashSelectedTypeName = it },
+                        trashShowPendingCleanup = trashShowPendingCleanup,
+                        onTrashShowPendingCleanupChange = { trashShowPendingCleanup = it },
                         onOpenViewer = { photoViewerRoute = it },
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenTrashDetail = { trashDetailRoute = it },
+                        onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
                     )
                     RootDestination.LIFE -> LifeScreen()
                 }
