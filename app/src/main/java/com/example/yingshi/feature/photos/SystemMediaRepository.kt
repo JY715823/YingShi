@@ -10,7 +10,6 @@ import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import java.util.Calendar
 import java.util.Locale
-import kotlin.math.absoluteValue
 
 interface SystemMediaRepository {
     suspend fun loadMedia(): List<SystemMediaItem>
@@ -119,7 +118,7 @@ class MediaStoreSystemMediaDataSource(
                     height = height,
                     aspectRatio = resolveAspectRatio(width, height),
                     palette = paletteFor(mediaStoreId),
-                    linkedPostIds = fakeLinkedPostIds(mediaStoreId, type, displayName),
+                    linkedPostIds = emptyList(),
                 )
             }
         }
@@ -159,19 +158,6 @@ class MediaStoreSystemMediaDataSource(
             return 1f
         }
         return (width.toFloat() / height.toFloat()).coerceIn(0.56f, 1.8f)
-    }
-
-    private fun fakeLinkedPostIds(
-        mediaStoreId: Long,
-        type: SystemMediaType,
-        displayName: String,
-    ): List<String> {
-        val marker = "${type.name}-$mediaStoreId-$displayName".hashCode().absoluteValue
-        return if (marker % 3 == 0) {
-            listOf("local-post-$mediaStoreId")
-        } else {
-            emptyList()
-        }
     }
 
     private fun paletteFor(mediaStoreId: Long): PhotoThumbnailPalette {

@@ -19,6 +19,7 @@ class SystemMediaViewModel(
 
     private val _uiState = MutableStateFlow(SystemMediaUiState())
     val uiState: StateFlow<SystemMediaUiState> = _uiState.asStateFlow()
+    private var queriedItems: List<SystemMediaItem> = emptyList()
 
     init {
         refresh()
@@ -36,12 +37,11 @@ class SystemMediaViewModel(
                     repository.loadMedia()
                 }
             }.onSuccess { items ->
-                val selectedFilter = _uiState.value.selectedFilter
-                _uiState.value = SystemMediaUiState(
+                queriedItems = items
+                publishState(
+                    rawItems = queriedItems,
+                    selectedFilter = _uiState.value.selectedFilter,
                     isLoading = false,
-                    selectedFilter = selectedFilter,
-                    allItems = items,
-                    filteredItems = items.applyFilter(selectedFilter),
                     errorMessage = null,
                 )
             }.onFailure { throwable ->
@@ -56,10 +56,37 @@ class SystemMediaViewModel(
     }
 
     fun onFilterSelected(filter: SystemMediaFilter) {
-        val current = _uiState.value
-        _uiState.value = current.copy(
+        publishState(
+            rawItems = queriedItems,
             selectedFilter = filter,
-            filteredItems = current.allItems.applyFilter(filter),
+            isLoading = false,
+            errorMessage = _uiState.value.errorMessage,
+        )
+    }
+
+    fun refreshLocalState() {
+        if (_uiState.value.hasError && queriedItems.isEmpty()) return
+        publishState(
+            rawItems = queriedItems,
+            selectedFilter = _uiState.value.selectedFilter,
+            isLoading = false,
+            errorMessage = null,
+        )
+    }
+
+    private fun publishState(
+        rawItems: List<SystemMediaItem>,
+        selectedFilter: SystemMediaFilter,
+        isLoading: Boolean,
+        errorMessage: String?,
+    ) {
+        val visibleItems = LocalSystemMediaBridgeRepository.applyOverlay(rawItems)
+        _uiState.value = SystemMediaUiState(
+            isLoading = isLoading,
+            selectedFilter = selectedFilter,
+            allItems = visibleItems,
+            filteredItems = visibleItems.applyFilter(selectedFilter),
+            errorMessage = errorMessage,
         )
     }
 

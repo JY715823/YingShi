@@ -1,36 +1,47 @@
-# Current Task - Stage 8.2 System Media Query
+# Current Task - Stage 8.3 System Media Actions
 
 ## Goal
-Connect the system media tool area to local device media query.
+Upgrade system media actions from placeholders to local fake flows and add delete confirmation for photo feed media deletion.
 
 ## Scope
-- simplify permission flow as granted
-- system media repository / data source
-- query local images and videos
-- display real local media grid
-- show minimal empty / error fallback instead of permission guide shell
-- keep filters
-- keep posted marker placeholder
-- open system media viewer with real uri
-- keep multi-select shell
+- photo feed delete confirmation
+- system media multi-select action bar
+- create fake post from selected system media
+- add selected system media to existing post
+- add-to-post picker uses album -> post two-step selection
+- local simulated move to system trash
+- single media viewer actions
+- posted marker update
+- filters update
+- keep system-media performance follow-up noted without deep optimization
 - minimal doc updates
 
 ## Product intent
+- Photo feed media deletion is global app-content deletion and must ask confirmation.
 - System media is a tool area.
-- It is separate from app content media feed.
-- Permission guide is skipped for now; treat media access as granted.
-- System media viewer does not show comments, original-load state, or related posts.
+- System media does not enter app content unless sent as a post or added to a post.
+- System media trash is not the app trash.
+- This stage is local fake flow only.
 
 ## Do not do
-- no permission guide
-- no real system delete
-- no real post creation
-- no upload
-- no backend / Room / Retrofit
+- no real upload
+- no backend
+- no real Android system delete
+- no MediaStore trash request
+- no Room / Retrofit
+- no system media comments
+- no deep performance optimization
+
+## Known follow-up
+- System media scrolling performance needs optimization.
+- Re-entering system media should preserve/cache query results.
+- These are planned for a later performance/state-retention pass.
 
 ## Done when
-- System media page shows local media or empty state
-- Filters work
-- Media opens in system media viewer
-- Multi-select still works
+- Photo feed delete asks confirmation
+- Multi-select system media actions work locally
+- Create-post flow creates local fake post and app media
+- Add-to-post flow updates target post and app media
+- Simulated system trash hides media from system tool area
+- Posted marker and filters update
 - App builds and runs

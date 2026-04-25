@@ -8,12 +8,13 @@ import java.util.Locale
 object FakePhotoFeedRepository {
     private val hiddenMediaIds = mutableStateListOf<String>()
     private val hiddenPostIds = mutableStateListOf<String>()
-    private val sourceEntriesByMediaId: Map<String, List<PhotoFeedSourceEntry>> by lazy {
+    private val importedEntries = mutableStateListOf<PhotoFeedSourceEntry>()
+    private val baseSourceEntriesByMediaId: Map<String, List<PhotoFeedSourceEntry>> by lazy {
         fakeSourceEntries().groupBy { it.mediaId }
     }
 
     fun getPhotoFeed(): List<PhotoFeedItem> {
-        return sourceEntriesByMediaId
+        return sourceEntriesByMediaId()
             .values
             .asSequence()
             .mapNotNull { entries ->
@@ -40,6 +41,30 @@ object FakePhotoFeedRepository {
             }
             .toList()
             .sortedByDescending { it.mediaDisplayTimeMillis }
+    }
+
+    fun importSystemMediaToFeed(
+        mediaItems: List<SystemMediaItem>,
+        postId: String,
+    ) {
+        mediaItems
+            .distinctBy { it.id }
+            .forEach { item ->
+                val duplicate = importedEntries.any { entry ->
+                    entry.mediaId == item.id && entry.postId == postId
+                }
+                if (!duplicate) {
+                    importedEntries.add(
+                        PhotoFeedSourceEntry(
+                            mediaId = item.id,
+                            mediaDisplayTimeMillis = item.displayTimeMillis,
+                            postId = postId,
+                            palette = item.palette,
+                            aspectRatio = item.aspectRatio,
+                        ),
+                    )
+                }
+            }
     }
 
     fun hideMediaGlobally(mediaIds: Collection<String>) {
@@ -69,6 +94,14 @@ object FakePhotoFeedRepository {
     fun isMediaHidden(mediaId: String): Boolean = hiddenMediaIds.contains(mediaId)
 
     fun currentHiddenMediaIds(): Set<String> = hiddenMediaIds.toSet()
+
+    private fun sourceEntriesByMediaId(): Map<String, List<PhotoFeedSourceEntry>> {
+        if (importedEntries.isEmpty()) {
+            return baseSourceEntriesByMediaId
+        }
+        return (baseSourceEntriesByMediaId.values.flatten() + importedEntries)
+            .groupBy { it.mediaId }
+    }
 
     private fun placeholderCommentCount(mediaId: String): Int {
         return FakeCommentRepository.mediaCommentCount(mediaId)

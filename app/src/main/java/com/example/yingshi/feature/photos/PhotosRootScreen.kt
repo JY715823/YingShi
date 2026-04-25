@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -22,6 +23,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -72,6 +74,9 @@ fun PhotosRootScreen(
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
     }
+    var showDeleteConfirm by rememberSaveable {
+        mutableStateOf(false)
+    }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = remember { FakeAlbumRepository.getAlbums() }
     val albumPosts = remember { FakeAlbumRepository.getPosts() }
@@ -107,6 +112,73 @@ fun PhotosRootScreen(
             .padding(top = 0.dp, bottom = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
+        if (showDeleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirm = false },
+                title = {
+                    Text(text = "确认删除该媒体？")
+                },
+                text = {
+                    Text(text = "删除后会进入回收站，可在回收站中恢复。")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirm = false
+                            val selectedIds = photoSelectionState.selectedMediaIds
+                            val feedItems = FakePhotoFeedRepository.getPhotoFeed()
+                            val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
+                            if (selectedMedia.isEmpty()) {
+                                photoSelectionState = photoSelectionState.clear()
+                                return@TextButton
+                            }
+
+                            val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
+                            val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(
+                                FakeAlbumRepository::snapshotPost,
+                            )
+                            val relationSnapshotsByMediaId =
+                                FakeAlbumRepository.snapshotMediaRelations(selectedIds)
+
+                            FakeTrashRepository.recordSystemDeletedMedia(
+                                mediaSnapshots = selectedMedia.map { item ->
+                                    TrashMediaSnapshot(
+                                        mediaId = item.mediaId,
+                                        displayTimeMillis = item.mediaDisplayTimeMillis,
+                                        palette = item.palette,
+                                        aspectRatio = item.aspectRatio,
+                                        sourcePostId = item.postIds.firstOrNull(),
+                                        sourcePostTitle = item.postIds.firstOrNull()
+                                            ?.let(FakeAlbumRepository::getPost)
+                                            ?.title,
+                                    )
+                                },
+                                relationSnapshotsByMediaId = relationSnapshotsByMediaId,
+                            )
+                            deletedPostSnapshots.forEach { snapshot ->
+                                FakeTrashRepository.recordDeletedPost(snapshot = snapshot)
+                            }
+                            val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
+                            FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
+                            photoSelectionState = photoSelectionState.clear()
+                            Toast.makeText(
+                                context,
+                                "已执行本地系统删，并写入回收站",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                    ) {
+                        Text(text = "删除")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirm = false }) {
+                        Text(text = "取消")
+                    }
+                },
+            )
+        }
+
         PhotoTopBar(
             selectedSection = selectedSection,
             selectionState = if (selectedSection == PhotosTopDestination.PHOTOS) {
@@ -162,46 +234,11 @@ fun PhotosRootScreen(
                                 PhotoSelectionActionBar(
                                     selectedCount = photoSelectionState.selectedCount,
                                     onDelete = {
-                                        val selectedIds = photoSelectionState.selectedMediaIds
-                                        val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
-                                        if (selectedMedia.isEmpty()) {
+                                        if (photoSelectionState.selectedMediaIds.isEmpty()) {
                                             photoSelectionState = photoSelectionState.clear()
-                                            return@PhotoSelectionActionBar
+                                        } else {
+                                            showDeleteConfirm = true
                                         }
-
-                                        val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
-                                        val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(
-                                            FakeAlbumRepository::snapshotPost,
-                                        )
-                                        val relationSnapshotsByMediaId =
-                                            FakeAlbumRepository.snapshotMediaRelations(selectedIds)
-
-                                        FakeTrashRepository.recordSystemDeletedMedia(
-                                            mediaSnapshots = selectedMedia.map { item ->
-                                                TrashMediaSnapshot(
-                                                    mediaId = item.mediaId,
-                                                    displayTimeMillis = item.mediaDisplayTimeMillis,
-                                                    palette = item.palette,
-                                                    aspectRatio = item.aspectRatio,
-                                                    sourcePostId = item.postIds.firstOrNull(),
-                                                    sourcePostTitle = item.postIds.firstOrNull()
-                                                        ?.let(FakeAlbumRepository::getPost)
-                                                        ?.title,
-                                                )
-                                            },
-                                            relationSnapshotsByMediaId = relationSnapshotsByMediaId,
-                                        )
-                                        deletedPostSnapshots.forEach { snapshot ->
-                                            FakeTrashRepository.recordDeletedPost(snapshot = snapshot)
-                                        }
-                                        val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
-                                        FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
-                                        photoSelectionState = photoSelectionState.clear()
-                                        Toast.makeText(
-                                            context,
-                                            "已执行本地系统删，并写入回收站",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
                                     },
                                 )
                             }
