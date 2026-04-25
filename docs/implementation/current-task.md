@@ -1,45 +1,44 @@
-# Current Task - Stage 6.3 Media Management Actions v1
+# Current Task - Stage 7.1 Trash Foundation and Delete Flow Integration
 
 ## Goal
-Complete the first local version of core media management actions.
+Build the local trash foundation and connect existing delete flows to trash entries.
 
 ## Scope
 This stage covers:
-- multi-select delete mode
-- directory delete
-- system delete
-- empty-post protection
-- basic media sorting
-- cancel sorting rollback
-- set-cover stabilization
-- delete-post entry placeholder
+- trash item model
+- three trash categories
+  - deleted posts
+  - media removed from post
+  - globally deleted media
+- trash page category switch
+- local post delete to trash
+- local directory delete to trash
+- local system delete to trash
+- photo-page multi-select delete into system-delete trash
+- minimal trash detail placeholder
 - minimal related doc updates
 
 ## Product intent
-- Media deletion inside a post must ask for deletion semantics.
-- Directory delete only removes the media from the current post.
-- System delete removes the media globally from the app content model.
-- Empty posts should not remain after deletion.
-- Sorting affects only the current post media order.
-- Formal recycle bin behavior comes later in Stage 7.
-- If deletion would leave the current post empty, the user must choose between deleting the whole post or cancelling.
-- Sorting cancel should restore the order from when sort mode was entered.
+- Delete actions should no longer simply disappear without trace.
+- Post delete, directory delete, and system delete have different meanings.
+- Trash page is divided into three categories.
+- Trash remains local-first and in-memory in this stage.
+- Formal restore, delete-detail pages, and 24h undo come later.
 
 ## Do not do in this stage
 - no real backend
 - no Room / Retrofit
-- no real MediaStore delete
-- no real system gallery delete
-- no formal recycle bin
+- no real Android system media delete
+- no formal restore flow
 - no 24h undo
+- no physical cleanup
 - no large unrelated refactor
 
 ## Done when
-- Delete mode supports multi-select
-- Delete semantic choice is shown before deletion
-- Directory delete and system delete behave differently in local state
-- Empty-post protection works
-- Sorting can be completed or cancelled
-- Set cover remains stable
+- Trash page has three categories
+- Deleted posts appear in deleted-post trash
+- Directory-deleted media appears in removed-media trash
+- System-deleted media appears in system-deleted-media trash
+- Normal pages reflect local delete effects
 - App builds and runs
 - Docs are minimally synchronized
