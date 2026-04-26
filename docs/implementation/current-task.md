@@ -1,47 +1,36 @@
-# Current Task - Stage 8.3 System Media Actions
+# Current Task - Stage 8.4 System Media Performance and State Retention
 
 ## Goal
-Upgrade system media actions from placeholders to local fake flows and add delete confirmation for photo feed media deletion.
+Improve basic performance and state retention for the system media tool area.
 
 ## Scope
-- photo feed delete confirmation
-- system media multi-select action bar
-- create fake post from selected system media
-- add selected system media to existing post
-- add-to-post picker uses album -> post two-step selection
-- local simulated move to system trash
-- single media viewer actions
-- posted marker update
-- filters update
-- keep system-media performance follow-up noted without deep optimization
+- cache system media query result
+- avoid repeated query on re-entry
+- preserve filter state
+- preserve grid scroll position
+- keep viewer return on the same system-media session without dropping back to photos
+- add a lightweight manual refresh entry
+- preserve posted marker and local hidden state
+- improve LazyVerticalGrid keys/contentType
+- reduce unnecessary recomposition / recalculation
+- optimize thumbnail loading basics
 - minimal doc updates
 
 ## Product intent
-- Photo feed media deletion is global app-content deletion and must ask confirmation.
-- System media is a tool area.
-- System media does not enter app content unless sent as a post or added to a post.
-- System media trash is not the app trash.
-- This stage is local fake flow only.
+- System media should feel closer to a tool-like gallery.
+- Re-entering the page should not reload everything unnecessarily.
+- Scrolling should be acceptable before deeper performance polish.
 
 ## Do not do
+- no real system delete
 - no real upload
-- no backend
-- no real Android system delete
-- no MediaStore trash request
-- no Room / Retrofit
-- no system media comments
-- no deep performance optimization
-
-## Known follow-up
-- System media scrolling performance needs optimization.
-- Re-entering system media should preserve/cache query results.
-- These are planned for a later performance/state-retention pass.
+- no backend / Room / Retrofit
+- no large Paging rewrite unless very controlled
+- no unrelated feature work
 
 ## Done when
-- Photo feed delete asks confirmation
-- Multi-select system media actions work locally
-- Create-post flow creates local fake post and app media
-- Add-to-post flow updates target post and app media
-- Simulated system trash hides media from system tool area
-- Posted marker and filters update
+- Re-entering system media page uses cached data when possible
+- Scroll position and filter are preserved
+- Grid scrolling is smoother than before
+- Existing system media actions still work
 - App builds and runs
