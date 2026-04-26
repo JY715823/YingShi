@@ -31,10 +31,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -48,18 +48,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun SystemMediaScreen(
@@ -70,12 +75,19 @@ fun SystemMediaScreen(
     val context = LocalContext.current
     val appContext = context.applicationContext as Application
     val viewModel: SystemMediaViewModel = viewModel(
-        factory = SystemMediaViewModel.factory(appContext),
+        factory = SystemMediaViewModel.factory(
+            application = appContext,
+            initialFilter = LocalSystemMediaPageStateStore.selectedFilter,
+        ),
     )
     val uiState by viewModel.uiState.collectAsState()
     val mutationVersion = LocalSystemMediaBridgeRepository.mutationVersion
     val albums = FakeAlbumRepository.getAlbums()
     val posts = FakeAlbumRepository.getPosts()
+    val gridState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = LocalSystemMediaPageStateStore.firstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = LocalSystemMediaPageStateStore.firstVisibleItemScrollOffset,
+    )
     var hasPermission by rememberSaveable {
         mutableStateOf(hasSystemMediaReadAccess(context))
     }
@@ -102,21 +114,34 @@ fun SystemMediaScreen(
     ) {
         hasPermission = hasSystemMediaReadAccess(context)
         if (hasPermission) {
-            viewModel.refresh()
+            viewModel.refresh(forceRefresh = true)
         }
     }
 
     LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            viewModel.refresh()
-        } else if (!permissionRequestedOnce) {
+        if (!hasPermission && !permissionRequestedOnce) {
             permissionRequestedOnce = true
             permissionLauncher.launch(requiredSystemMediaPermissions())
+        } else if (hasPermission) {
+            viewModel.ensureLoaded()
         }
     }
 
     LaunchedEffect(mutationVersion) {
         viewModel.refreshLocalState()
+    }
+
+    LaunchedEffect(uiState.selectedFilter) {
+        LocalSystemMediaPageStateStore.selectedFilter = uiState.selectedFilter
+    }
+
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+        }.collectLatest { (index, offset) ->
+            LocalSystemMediaPageStateStore.firstVisibleItemIndex = index
+            LocalSystemMediaPageStateStore.firstVisibleItemScrollOffset = offset
+        }
     }
 
     if (selectionMode) {
@@ -209,6 +234,7 @@ fun SystemMediaScreen(
                 selectionMode = selectionMode,
                 selectedCount = selectedIds.size,
                 onBack = onBack,
+                onRefresh = { viewModel.refresh(forceRefresh = true) },
                 onToggleSelectionMode = {
                     selectionMode = !selectionMode
                     if (!selectionMode) {
@@ -250,10 +276,10 @@ fun SystemMediaScreen(
                     SystemMediaLoadingState(modifier = Modifier.weight(1f))
                 }
 
-                uiState.hasError -> {
+                uiState.hasError && uiState.allItems.isEmpty() -> {
                     SystemMediaErrorState(
                         message = uiState.errorMessage.orEmpty(),
-                        onRetry = viewModel::refresh,
+                        onRetry = { viewModel.refresh(forceRefresh = true) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -272,6 +298,7 @@ fun SystemMediaScreen(
                 else -> {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
+                        state = gridState,
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -280,6 +307,7 @@ fun SystemMediaScreen(
                         items(
                             items = uiState.filteredItems,
                             key = { it.id },
+                            contentType = { it.type },
                         ) { item ->
                             SystemMediaCard(
                                 item = item,
@@ -337,12 +365,8 @@ fun SystemMediaScreen(
                         Toast.LENGTH_SHORT,
                     ).show()
                 },
-                onAddToPost = {
-                    showAddToPostDialog = true
-                },
-                onMoveToTrash = {
-                    showMoveToTrashDialog = true
-                },
+                onAddToPost = { showAddToPostDialog = true },
+                onMoveToTrash = { showMoveToTrashDialog = true },
                 onCancel = {
                     selectionMode = false
                     selectedIds = emptyList()
@@ -396,6 +420,7 @@ private fun SystemMediaTopBar(
     selectionMode: Boolean,
     selectedCount: Int,
     onBack: () -> Unit,
+    onRefresh: () -> Unit,
     onToggleSelectionMode: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -428,9 +453,9 @@ private fun SystemMediaTopBar(
         }
 
         SystemMediaActionChip(
-            text = "筛选",
+            text = "刷新",
             emphasized = false,
-            onClick = {},
+            onClick = onRefresh,
         )
         SystemMediaActionChip(
             text = if (selectionMode) "取消多选" else "多选",
@@ -472,6 +497,7 @@ private fun SystemMediaCard(
     onClick: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    val context = LocalContext.current
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.lg)
 
     Box(
@@ -485,15 +511,21 @@ private fun SystemMediaCard(
             ),
     ) {
         AsyncImage(
-            model = item.uri,
+            model = ImageRequest.Builder(context)
+                .data(item.uri)
+                .size(512)
+                .precision(Precision.INEXACT)
+                .crossfade(false)
+                .build(),
             contentDescription = item.displayName,
             modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
         )
 
         if (selectionMode) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .matchParentSize()
                     .background(
                         if (selected) {
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -797,58 +829,6 @@ private fun SystemMediaEmptyState(
             )
         }
     }
-}
-
-@Composable
-private fun SystemMediaPostPickerDialog(
-    posts: List<AlbumPostCardUiModel>,
-    onDismiss: () -> Unit,
-    onPostSelected: (String) -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "加入已有帖子")
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                posts.forEach { post ->
-                    Surface(
-                        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
-                        onClick = { onPostSelected(post.id) },
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(
-                                text = post.title,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = "${post.mediaCount} 项媒体",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "取消")
-            }
-        },
-    )
 }
 
 private fun List<String>.toggleSystemMediaId(id: String): List<String> {

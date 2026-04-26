@@ -1231,3 +1231,8 @@ Stage 4.1 落地时先保持最小可用 UI：
 - `加入已有帖子` in system media should use a two-step picker: first choose an album, then choose a post under that album.
 - The picker can stay lightweight, but it must support returning to the previous album step and must keep safe empty states for no albums or albums without posts.
 - Post items in the second step should expose a lightweight cover, title, time, and media count so the target feels confirmable before the local fake import continues.
+## Stage 8.4 implementation note
+
+- Re-entering `系统媒体` should feel like returning to the same tool session: keep the current filter, keep the approximate grid position, and avoid a full-screen reload whenever cached data is already available.
+- The grid should stay lightweight: stable keys, lightweight content types, and thumbnail-oriented loading rather than rendering full-resolution originals in the scrolling list.
+- A simple `刷新` entry is sufficient for now; heavier work such as paging, thumbnail prefetch, and deeper cache layers remains a later performance pass.

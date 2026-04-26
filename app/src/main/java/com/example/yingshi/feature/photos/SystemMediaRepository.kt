@@ -12,7 +12,8 @@ import java.util.Calendar
 import java.util.Locale
 
 interface SystemMediaRepository {
-    suspend fun loadMedia(): List<SystemMediaItem>
+    fun peekCachedMedia(): List<SystemMediaItem>?
+    suspend fun loadMedia(forceRefresh: Boolean = false): List<SystemMediaItem>
 }
 
 class LocalSystemMediaRepository(
@@ -23,16 +24,31 @@ class LocalSystemMediaRepository(
     ),
 ) : SystemMediaRepository {
 
-    override suspend fun loadMedia(): List<SystemMediaItem> {
+    override fun peekCachedMedia(): List<SystemMediaItem>? {
+        return LocalSystemMediaQueryCache.items
+    }
+
+    override suspend fun loadMedia(forceRefresh: Boolean): List<SystemMediaItem> {
         if (!hasSystemMediaReadAccess(appContext)) {
             throw SecurityException("Missing system media permission.")
         }
-        return dataSource.queryMedia().sortedByDescending { it.displayTimeMillis }
+        if (!forceRefresh) {
+            LocalSystemMediaQueryCache.items?.let { return it }
+        }
+        return dataSource.queryMedia()
+            .sortedByDescending { it.displayTimeMillis }
+            .also { items ->
+                LocalSystemMediaQueryCache.items = items
+            }
     }
 }
 
 interface SystemMediaDataSource {
     suspend fun queryMedia(): List<SystemMediaItem>
+}
+
+private object LocalSystemMediaQueryCache {
+    var items: List<SystemMediaItem>? = null
 }
 
 class MediaStoreSystemMediaDataSource(

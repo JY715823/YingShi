@@ -14,27 +14,53 @@ import kotlinx.coroutines.withContext
 
 class SystemMediaViewModel(
     application: Application,
+    initialFilter: SystemMediaFilter = SystemMediaFilter.ALL,
     private val repository: SystemMediaRepository = LocalSystemMediaRepository(application),
 ) : AndroidViewModel(application) {
 
-    private val _uiState = MutableStateFlow(SystemMediaUiState())
+    private val _uiState = MutableStateFlow(
+        SystemMediaUiState(
+            isLoading = false,
+            selectedFilter = initialFilter,
+        ),
+    )
     val uiState: StateFlow<SystemMediaUiState> = _uiState.asStateFlow()
     private var queriedItems: List<SystemMediaItem> = emptyList()
 
     init {
-        refresh()
-    }
-
-    fun refresh() {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
+        val cachedItems = repository.peekCachedMedia()
+        if (cachedItems.isNullOrEmpty()) {
+            refresh()
+        } else {
+            queriedItems = cachedItems
+            publishState(
+                rawItems = cachedItems,
+                selectedFilter = initialFilter,
+                isLoading = false,
                 errorMessage = null,
             )
+        }
+    }
+
+    fun ensureLoaded() {
+        if (queriedItems.isEmpty() && !_uiState.value.isLoading) {
+            refresh()
+        }
+    }
+
+    fun refresh(forceRefresh: Boolean = false) {
+        viewModelScope.launch {
+            val showLoading = _uiState.value.allItems.isEmpty()
+            if (showLoading) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true,
+                    errorMessage = null,
+                )
+            }
 
             runCatching {
                 withContext(Dispatchers.IO) {
-                    repository.loadMedia()
+                    repository.loadMedia(forceRefresh = forceRefresh)
                 }
             }.onSuccess { items ->
                 queriedItems = items
@@ -45,12 +71,19 @@ class SystemMediaViewModel(
                     errorMessage = null,
                 )
             }.onFailure { throwable ->
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    allItems = emptyList(),
-                    filteredItems = emptyList(),
-                    errorMessage = throwable.toSystemMediaMessage(),
-                )
+                if (_uiState.value.allItems.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        allItems = emptyList(),
+                        filteredItems = emptyList(),
+                        errorMessage = throwable.toSystemMediaMessage(),
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = throwable.toSystemMediaMessage(),
+                    )
+                }
             }
         }
     }
@@ -91,11 +124,17 @@ class SystemMediaViewModel(
     }
 
     companion object {
-        fun factory(application: Application): ViewModelProvider.Factory {
+        fun factory(
+            application: Application,
+            initialFilter: SystemMediaFilter = SystemMediaFilter.ALL,
+        ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return SystemMediaViewModel(application) as T
+                    return SystemMediaViewModel(
+                        application = application,
+                        initialFilter = initialFilter,
+                    ) as T
                 }
             }
         }
