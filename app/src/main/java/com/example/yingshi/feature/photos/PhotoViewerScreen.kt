@@ -1,4 +1,4 @@
-package com.example.yingshi.feature.photos
+﻿package com.example.yingshi.feature.photos
 
 import android.app.Activity
 import android.content.ContextWrapper
@@ -42,7 +42,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,7 +66,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -259,9 +257,6 @@ fun PhotoViewerScreen(
     val spacing = YingShiThemeTokens.spacing
     val initialPage = route.initialIndex.coerceIn(0, route.mediaItems.lastIndex)
     val zoomState = remember { ViewerZoomState() }
-    val originalLoadStates = remember(route.mediaItems) {
-        mutableStateMapOf<String, ViewerOriginalLoadState>()
-    }
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
@@ -275,8 +270,7 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = route.mediaItems[currentIndex]
-    val currentOriginalState = originalLoadStates[currentItem.mediaId]
-        ?: ViewerOriginalLoadState.NotLoaded
+    val currentOriginalState = FakeOriginalLoadRepository.getState(currentItem.mediaId)
     val mediaComments = FakeCommentRepository.getMediaComments(currentItem.mediaId)
     val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
     val edgeActionsBottomPadding = if (route.showPostSegments) {
@@ -316,12 +310,6 @@ fun PhotoViewerScreen(
         showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
-    }
-    LaunchedEffect(currentItem.mediaId, currentOriginalState) {
-        if (currentOriginalState == ViewerOriginalLoadState.Loading) {
-            delay(900)
-            originalLoadStates[currentItem.mediaId] = ViewerOriginalLoadState.Loaded
-        }
     }
     BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
@@ -438,17 +426,22 @@ fun PhotoViewerScreen(
                 },
                 onOpenOriginal = {
                     when (currentOriginalState) {
-                        ViewerOriginalLoadState.NotLoaded -> {
-                            originalLoadStates[currentItem.mediaId] = ViewerOriginalLoadState.Loading
-                            Toast.makeText(context, "开始加载原图占位", Toast.LENGTH_SHORT).show()
+                        OriginalLoadState.NotLoaded -> {
+                            FakeOriginalLoadRepository.loadOriginal(currentItem.mediaId)
+                            Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
                         }
 
-                        ViewerOriginalLoadState.Loading -> {
-                            Toast.makeText(context, "原图占位加载中", Toast.LENGTH_SHORT).show()
+                        OriginalLoadState.Loading -> {
+                            Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
                         }
 
-                        ViewerOriginalLoadState.Loaded -> {
-                            Toast.makeText(context, "已加载原图占位", Toast.LENGTH_SHORT).show()
+                        OriginalLoadState.Loaded -> {
+                            Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                        }
+
+                        OriginalLoadState.Failed -> {
+                            FakeOriginalLoadRepository.retryOriginal(currentItem.mediaId)
+                            Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
@@ -782,8 +775,8 @@ private fun PhotoViewerEdgeActions(
         ) {
             ViewerCapsule(
                 text = overlayUiModel.originalLoadState.label,
-                emphasized = overlayUiModel.originalLoadState == ViewerOriginalLoadState.Loaded,
-                enabled = overlayUiModel.originalLoadState != ViewerOriginalLoadState.Loading,
+                emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
+                enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
                 onClick = onOpenOriginal,
             )
             overlayUiModel.relatedPostsLabel?.let { relatedPostsLabel ->
@@ -1232,3 +1225,4 @@ private fun PhotoViewerScreenPreview() {
         )
     }
 }
+

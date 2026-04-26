@@ -48,18 +48,19 @@ data class PhotoViewerRoute(
 data class PhotoViewerOverlayUiModel(
     val commentCountLabel: String,
     val timeLabel: String,
-    val originalLoadState: ViewerOriginalLoadState,
+    val originalLoadState: OriginalLoadState,
     val relatedPostsLabel: String?,
     val relatedPosts: List<ViewerRelatedPostUiModel>,
     val previewComments: List<CommentUiModel>,
 )
 
-enum class ViewerOriginalLoadState(
+enum class OriginalLoadState(
     val label: String,
 ) {
     NotLoaded(label = "加载原图"),
-    Loading(label = "加载中"),
+    Loading(label = "加载中..."),
     Loaded(label = "已加载原图"),
+    Failed(label = "加载失败，重试"),
 }
 
 @Immutable

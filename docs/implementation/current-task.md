@@ -1,36 +1,35 @@
-# Current Task - Stage 8.4 System Media Performance and State Retention
+# Current Task - Stage 9.1 Original Loading Foundation
 
 ## Goal
-Improve basic performance and state retention for the system media tool area.
+Build the first local-state version of original media loading for app content media.
 
 ## Scope
-- cache system media query result
-- avoid repeated query on re-entry
-- preserve filter state
-- preserve grid scroll position
-- keep viewer return on the same system-media session without dropping back to photos
-- add a lightweight manual refresh entry
-- preserve posted marker and local hidden state
-- improve LazyVerticalGrid keys/contentType
-- reduce unnecessary recomposition / recalculation
-- optimize thumbnail loading basics
+- originalLoadState per app media
+- single-media load original action
+- shared original state by mediaId
+- post-level load all originals
+- simple loading / loaded / failed UI states
+- shared state across photo-flow viewer, in-post viewer, and post detail
+- post detail supports a local fake "load all originals" flow
 - minimal doc updates
 
 ## Product intent
-- System media should feel closer to a tool-like gallery.
-- Re-entering the page should not reload everything unnecessarily.
-- Scrolling should be acceptable before deeper performance polish.
+- App content media uses preview-first and original-on-demand.
+- Original loading state belongs to app media, not system media.
+- The same mediaId should share original state across photo-flow viewer, in-post viewer, and post detail.
+- Photo feed cards remain clean and do not show original state.
 
 ## Do not do
-- no real system delete
-- no real upload
-- no backend / Room / Retrofit
-- no large Paging rewrite unless very controlled
-- no unrelated feature work
+- no real download
+- no real cache
+- no backend / Room / Retrofit / OSS
+- no WorkManager
+- no long-image tiling
+- no video original handling
 
 ## Done when
-- Re-entering system media page uses cached data when possible
-- Scroll position and filter are preserved
-- Grid scrolling is smoother than before
-- Existing system media actions still work
+- Single media original-load state works
+- Same mediaId shows shared state in multiple app-content contexts
+- Post detail can load all originals for current post
+- System media does not show original-load actions
 - App builds and runs

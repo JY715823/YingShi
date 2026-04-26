@@ -1,4 +1,4 @@
-package com.example.yingshi.feature.photos
+﻿package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -166,7 +166,12 @@ private fun PostDetailContent(
     )
     val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
     val currentMedia = detail.mediaItems[currentPage]
-    var originalLoaded by remember(detail.postId, currentMedia.id) { mutableStateOf(false) }
+    val postMediaIds = remember(detail.mediaItems) {
+        detail.mediaItems.map { it.id }
+    }
+    val currentOriginalState = FakeOriginalLoadRepository.getState(currentMedia.id)
+    val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
+
 
     Column(
         modifier = modifier
@@ -214,18 +219,37 @@ private fun PostDetailContent(
         PostMediaInfoRow(
             media = currentMedia,
             commentCount = FakeCommentRepository.mediaCommentCount(currentMedia.id),
-            originalLoaded = originalLoaded,
+            originalLoadState = currentOriginalState,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
-                originalLoaded = true
-                Toast.makeText(context, "加载原图占位", Toast.LENGTH_SHORT).show()
+                when (currentOriginalState) {
+                    OriginalLoadState.NotLoaded -> {
+                        FakeOriginalLoadRepository.loadOriginal(currentMedia.id)
+                        Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                    }
+
+                    OriginalLoadState.Loading -> {
+                        Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
+                    }
+
+                    OriginalLoadState.Loaded -> {
+                        Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                    }
+
+                    OriginalLoadState.Failed -> {
+                        FakeOriginalLoadRepository.retryOriginal(currentMedia.id)
+                        Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                    }
+                }
             },
         )
 
         PostInfoSection(
             detail = detail,
+            originalSummary = postOriginalSummary,
             onLoadAllOriginals = {
-                Toast.makeText(context, "加载全帖原图占位", Toast.LENGTH_SHORT).show()
+                FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
+                Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
             },
         )
 
@@ -354,7 +378,7 @@ private fun PostMediaCard(
 private fun PostMediaInfoRow(
     media: PostDetailMediaUiModel,
     commentCount: Int,
-    originalLoaded: Boolean,
+    originalLoadState: OriginalLoadState,
     onCommentClick: () -> Unit,
     onOriginalClick: () -> Unit,
 ) {
@@ -370,7 +394,7 @@ private fun PostMediaInfoRow(
         PostActionChip(text = "评", onClick = onCommentClick)
         PostMetaCapsule(text = commentCount.toString())
         PostActionChip(
-            text = if (originalLoaded) "已加载原图" else "加载原图",
+            text = originalLoadState.label,
             onClick = onOriginalClick,
         )
     }
@@ -379,6 +403,7 @@ private fun PostMediaInfoRow(
 @Composable
 private fun PostInfoSection(
     detail: PostDetailUiModel,
+    originalSummary: PostOriginalLoadSummary,
     onLoadAllOriginals: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -424,7 +449,7 @@ private fun PostInfoSection(
                     PostMetaCapsule(text = chip)
                 }
             }
-            PostActionChip(text = "加载全帖原图", onClick = onLoadAllOriginals)
+            PostActionChip(text = originalSummary.buttonLabel, onClick = onLoadAllOriginals)
         }
     }
 }
@@ -790,3 +815,4 @@ private fun PostDetailScreenPreview() {
         )
     }
 }
+
