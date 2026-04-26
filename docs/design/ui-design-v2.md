@@ -1236,3 +1236,10 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Re-entering `系统媒体` should feel like returning to the same tool session: keep the current filter, keep the approximate grid position, and avoid a full-screen reload whenever cached data is already available.
 - The grid should stay lightweight: stable keys, lightweight content types, and thumbnail-oriented loading rather than rendering full-resolution originals in the scrolling list.
 - A simple `刷新` entry is sufficient for now; heavier work such as paging, thumbnail prefetch, and deeper cache layers remains a later performance pass.
+
+## Stage 9.1 implementation note
+- Original-load buttons should use the four-state labels: load original / loading / loaded / retry.
+- Post detail can show a lightweight shared-state load-all-originals action without changing the main layout.
+- Photo feed cards remain clean and do not surface original-load state.
+- System-media screens do not show app-content original-load actions.
+
