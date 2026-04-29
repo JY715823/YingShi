@@ -302,7 +302,7 @@ fun PhotoViewerScreen(
         mediaId = currentItem.mediaId,
         mediaType = currentItem.mediaType,
     )
-    val mediaComments = FakeCommentRepository.getMediaComments(currentItem.mediaId)
+    val mediaComments = CommentGateway.getMediaComments(currentItem.mediaId)
     val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
     val edgeActionsBottomPadding = if (route.showPostSegments) {
         ViewerLayoutTuning.inPostEdgeActionsBottomPadding
@@ -1509,7 +1509,7 @@ private fun PhotoViewerCommentSheet(
                             actionCommentId = null
                         },
                         onDelete = {
-                            FakeCommentRepository.deleteMediaComment(mediaId, comment.id)
+                            CommentGateway.deleteMediaComment(mediaId, comment.id)
                             if (selectedForCopyCommentId == comment.id) {
                                 selectedForCopyCommentId = null
                                 selectedCommentValue = TextFieldValue("")
@@ -1525,7 +1525,7 @@ private fun PhotoViewerCommentSheet(
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
                         onEditingValueChange = { editingDraft = it },
                         onSaveEdit = {
-                            FakeCommentRepository.updateMediaComment(
+                            CommentGateway.updateMediaComment(
                                 mediaId = mediaId,
                                 commentId = comment.id,
                                 content = editingDraft,
@@ -1573,7 +1573,7 @@ private fun PhotoViewerCommentSheet(
                 placeholder = "写一条媒体评论",
                 darkMode = true,
                 onSend = { content ->
-                    FakeCommentRepository.addMediaComment(mediaId, content)
+                    CommentGateway.addMediaComment(mediaId, content)
                     expanded = false
                 },
             )

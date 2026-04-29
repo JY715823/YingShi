@@ -3,6 +3,7 @@ package com.example.yingshi.data.repository
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
+import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
@@ -117,19 +118,132 @@ class FakePostRepositoryShell : PostRepository {
 }
 
 class FakeCommentRepositoryShell : CommentRepository {
-    override suspend fun getPostComments(postId: String): ApiResult<List<RemoteComment>> {
+    override suspend fun getPostComments(
+        postId: String,
+        page: Int,
+        size: Int,
+    ): ApiResult<RemoteCommentPage> {
+        val allComments = FakeCommentRepository.getPostComments(postId)
+            .map { comment -> comment.toRemoteComment() }
+        val comments = paginateComments(allComments, page, size)
         return ApiResult.Success(
-            FakeCommentRepository.getPostComments(postId).map { comment ->
-                comment.toRemoteComment()
-            },
+            RemoteCommentPage(
+                comments = comments,
+                page = page,
+                size = size,
+                hasMore = allComments.size > page * size,
+            ),
         )
     }
 
-    override suspend fun getMediaComments(mediaId: String): ApiResult<List<RemoteComment>> {
+    override suspend fun getMediaComments(
+        mediaId: String,
+        page: Int,
+        size: Int,
+    ): ApiResult<RemoteCommentPage> {
+        val allComments = FakeCommentRepository.getMediaComments(mediaId)
+            .map { comment -> comment.toRemoteComment() }
+        val comments = paginateComments(allComments, page, size)
         return ApiResult.Success(
-            FakeCommentRepository.getMediaComments(mediaId).map { comment ->
-                comment.toRemoteComment()
-            },
+            RemoteCommentPage(
+                comments = comments,
+                page = page,
+                size = size,
+                hasMore = allComments.size > page * size,
+            ),
+        )
+    }
+
+    override suspend fun createPostComment(
+        postId: String,
+        content: String,
+    ): ApiResult<RemoteComment> {
+        FakeCommentRepository.addPostComment(postId, content)
+        return FakeCommentRepository.getPostComments(postId)
+            .firstOrNull()
+            ?.toRemoteComment()
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(
+                code = "COMMENT_CREATE_FAILED",
+                message = "Fake post comment was not created",
+            )
+    }
+
+    override suspend fun createMediaComment(
+        mediaId: String,
+        content: String,
+    ): ApiResult<RemoteComment> {
+        FakeCommentRepository.addMediaComment(mediaId, content)
+        return FakeCommentRepository.getMediaComments(mediaId)
+            .firstOrNull()
+            ?.toRemoteComment()
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(
+                code = "COMMENT_CREATE_FAILED",
+                message = "Fake media comment was not created",
+            )
+    }
+
+    override suspend fun updateComment(
+        commentId: String,
+        content: String,
+    ): ApiResult<RemoteComment> {
+        val postMatch = FakeCommentRepository.findPostComment(commentId)
+        if (postMatch != null) {
+            FakeCommentRepository.updatePostComment(
+                postId = postMatch.targetId,
+                commentId = commentId,
+                content = content,
+            )
+            return FakeCommentRepository.getPostComments(postMatch.targetId)
+                .firstOrNull { it.id == commentId }
+                ?.toRemoteComment()
+                ?.let { ApiResult.Success(it) }
+                ?: ApiResult.Error(
+                    code = "COMMENT_NOT_FOUND",
+                    message = "Fake post comment update target disappeared",
+                )
+        }
+
+        val mediaMatch = FakeCommentRepository.findMediaComment(commentId)
+        if (mediaMatch != null) {
+            FakeCommentRepository.updateMediaComment(
+                mediaId = mediaMatch.targetId,
+                commentId = commentId,
+                content = content,
+            )
+            return FakeCommentRepository.getMediaComments(mediaMatch.targetId)
+                .firstOrNull { it.id == commentId }
+                ?.toRemoteComment()
+                ?.let { ApiResult.Success(it) }
+                ?: ApiResult.Error(
+                    code = "COMMENT_NOT_FOUND",
+                    message = "Fake media comment update target disappeared",
+                )
+        }
+
+        return ApiResult.Error(
+            code = "COMMENT_NOT_FOUND",
+            message = "Fake comment not found",
+        )
+    }
+
+    override suspend fun deleteComment(commentId: String): ApiResult<Unit> {
+        val postMatch = FakeCommentRepository.findPostComment(commentId)
+        if (postMatch != null) {
+            FakeCommentRepository.deletePostComment(postMatch.targetId, commentId)
+            return ApiResult.Success(Unit)
+        }
+
+        val mediaMatch = FakeCommentRepository.findMediaComment(commentId)
+        if (mediaMatch != null) {
+            FakeCommentRepository.deleteMediaComment(mediaMatch.targetId, commentId)
+            return ApiResult.Success(Unit)
+        }
+
+        return ApiResult.Error(
+            code = "COMMENT_NOT_FOUND",
+            message = "Fake comment not found",
         )
     }
 }
@@ -236,6 +350,18 @@ private fun AppMediaType.toRemoteMediaType(): String {
         AppMediaType.IMAGE -> "image"
         AppMediaType.VIDEO -> "video"
     }
+}
+
+private fun paginateComments(
+    comments: List<RemoteComment>,
+    page: Int,
+    size: Int,
+): List<RemoteComment> {
+    val safePage = page.coerceAtLeast(1)
+    val safeSize = size.coerceAtLeast(1)
+    return comments
+        .drop((safePage - 1) * safeSize)
+        .take(safeSize)
 }
 
 private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment(): RemoteComment {

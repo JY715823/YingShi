@@ -11,9 +11,11 @@ data class CommentDto(
     val isDeleted: Boolean = false,
 )
 
+data class CommentListResponseDto(
+    val comments: List<CommentDto>,
+)
+
 data class CreateCommentRequestDto(
-    val targetType: String,
-    val targetId: String,
     val content: String,
 )
 

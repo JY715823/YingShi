@@ -116,6 +116,18 @@ object FakeCommentRepository {
 
     fun mediaCommentCount(mediaId: String): Int = getMediaComments(mediaId).size
 
+    fun findPostComment(commentId: String): CommentUiModel? {
+        return postCommentsById.values.asSequence()
+            .flatMap { it.asSequence() }
+            .firstOrNull { it.id == commentId }
+    }
+
+    fun findMediaComment(commentId: String): CommentUiModel? {
+        return mediaCommentsById.values.asSequence()
+            .flatMap { it.asSequence() }
+            .firstOrNull { it.id == commentId }
+    }
+
     private fun seedPostComments(postId: String): List<CommentUiModel> {
         val count = 4 + (postId.hashCode().absoluteValue % 9)
         return List(count) { index ->
