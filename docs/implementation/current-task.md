@@ -1,41 +1,40 @@
-# Current Task - Stage 11.2 Auth Contract and Token Shell
+# Current Task - Stage 11.3 Comment API Shell
 
 ## Goal
-Prepare future auth integration by defining login/auth contracts, auth DTOs, token management placeholders, bearer-token injection, and fake/real auth repository boundaries without forcing the current app into a real login flow.
+Build the first real-comment integration shell for post comments and media comments, while keeping the current fake comment flow as the default runnable path.
 
 ## Scope
-- `docs/contracts/auth-api.md`
-- login / refresh / logout / current-user contract draft
-- auth DTO layer
-- `AuthApi` Retrofit shell
-- token store / token provider / session manager placeholder
-- `AuthInterceptor` shell
-- auth repository fake / real boundary
-- settings login-status placeholder
-- minimal PRD / UI doc sync
+- update `docs/contracts/comment-api.md`
+- lock comment pagination draft to one placeholder style
+- keep post comments and media comments as separate streams
+- add comment request / response DTOs for list and mutation
+- refine `CommentApi` Retrofit shell
+- add DTO -> domain and domain -> UI comment mapping boundaries
+- extend `CommentRepository` with list / create / update / delete methods
+- keep `FakeCommentRepository` as the default local behavior source
+- add `RealCommentRepository` placeholder methods for future backend wiring
+- reserve loading / error / empty state structures without forcing a large UI rewrite
+- keep current post comment and media comment interactions working
 
 ## Product intent
-- Stage 11.2 is still contract-first and shell-first.
-- Fake data remains the default runtime path.
-- Token handling should become a clear boundary now so later backend auth can slot into the existing remote layer cleanly.
-- No screen should be blocked behind login yet.
+- Post comments and media comments do not mix.
+- Latest comments appear first.
+- The same `mediaId` still shares one media-comment state across photo-flow Viewer and in-post Viewer.
+- UI must not depend on transport DTOs.
+- Real API wiring should be able to replace fake data incrementally later.
 
 ## Do not do
-- no real backend
-- no real login screen
-- no DataStore or persistent token storage
-- no OAuth / phone code / third-party login
-- no full fake-data migration
-- no hardcoded production URL
+- no live backend dependency
+- no forced real repository switch
+- no Room
+- no real paging implementation
+- no replies, thread nesting, or quote replies
+- no large comment UI restructure
 
 ## Done when
-- `auth-api.md` exists
-- auth DTOs exist
-- `AuthApi` exists
-- token management placeholder exists
-- `AuthInterceptor` exists
-- auth repository fake / real boundary exists
-- settings can show login-status placeholder without forcing login
-- app still starts and uses fake data by default
-- docs are updated
-- app builds and runs
+- `comment-api.md` clearly defines list / create / update / delete drafts
+- comment DTOs, request DTOs, and mapper boundaries exist
+- `CommentApi` has explicit post-comment and media-comment endpoints
+- Fake / Real `CommentRepository` boundaries are clear
+- existing fake post comment and media comment add / edit / delete still work
+- the app still builds and runs

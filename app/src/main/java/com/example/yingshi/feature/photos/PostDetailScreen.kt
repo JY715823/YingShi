@@ -224,7 +224,7 @@ private fun PostDetailContent(
 
         PostMediaInfoRow(
             media = currentMedia,
-            commentCount = FakeCommentRepository.mediaCommentCount(currentMedia.id),
+            commentCount = CommentGateway.mediaCommentCount(currentMedia.id),
             originalLoadState = currentOriginalState,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
@@ -547,7 +547,7 @@ private fun PostCommentSection(postId: String) {
     val radius = YingShiThemeTokens.radius
     val context = LocalContext.current
     val copyComment = rememberCommentCopyHandler()
-    val comments = FakeCommentRepository.getPostComments(postId)
+    val comments = CommentGateway.getPostComments(postId)
     var expanded by rememberSaveable(postId) { mutableStateOf(false) }
     var actionCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
     var editingCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
@@ -628,7 +628,7 @@ private fun PostCommentSection(postId: String) {
                             actionCommentId = null
                         },
                         onDelete = {
-                            FakeCommentRepository.deletePostComment(postId, comment.id)
+                            CommentGateway.deletePostComment(postId, comment.id)
                             if (selectedCommentId == comment.id) {
                                 selectedCommentId = null
                                 selectedCommentValue = TextFieldValue("")
@@ -644,7 +644,7 @@ private fun PostCommentSection(postId: String) {
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
                         onEditingValueChange = { editingDraft = it },
                         onSaveEdit = {
-                            FakeCommentRepository.updatePostComment(
+                            CommentGateway.updatePostComment(
                                 postId = postId,
                                 commentId = comment.id,
                                 content = editingDraft,
@@ -687,7 +687,7 @@ private fun PostCommentSection(postId: String) {
                 stateKey = "post-comment-input-$postId",
                 placeholder = "写一条帖子评论",
                 onSend = { content ->
-                    FakeCommentRepository.addPostComment(postId, content)
+                    CommentGateway.addPostComment(postId, content)
                     expanded = false
                 },
             )
@@ -703,7 +703,7 @@ private fun MediaCommentPlaceholderSheet(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val comments = FakeCommentRepository.getMediaComments(media.id)
+    val comments = CommentGateway.getMediaComments(media.id)
 
     Surface(
         modifier = modifier.fillMaxWidth(),

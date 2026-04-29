@@ -1,6 +1,7 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCurrentUser
@@ -28,8 +29,36 @@ interface PostRepository {
 }
 
 interface CommentRepository {
-    suspend fun getPostComments(postId: String): ApiResult<List<RemoteComment>>
-    suspend fun getMediaComments(mediaId: String): ApiResult<List<RemoteComment>>
+    suspend fun getPostComments(
+        postId: String,
+        page: Int = 1,
+        size: Int = 20,
+    ): ApiResult<RemoteCommentPage>
+
+    suspend fun getMediaComments(
+        mediaId: String,
+        page: Int = 1,
+        size: Int = 20,
+    ): ApiResult<RemoteCommentPage>
+
+    suspend fun createPostComment(
+        postId: String,
+        content: String,
+    ): ApiResult<RemoteComment>
+
+    suspend fun createMediaComment(
+        mediaId: String,
+        content: String,
+    ): ApiResult<RemoteComment>
+
+    suspend fun updateComment(
+        commentId: String,
+        content: String,
+    ): ApiResult<RemoteComment>
+
+    suspend fun deleteComment(
+        commentId: String,
+    ): ApiResult<Unit>
 }
 
 interface TrashRepository {

@@ -2,12 +2,14 @@ package com.example.yingshi.data.remote.mapper
 
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
+import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePost
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
+import com.example.yingshi.data.remote.dto.CommentListResponseDto
 import com.example.yingshi.data.remote.dto.MediaDto
 import com.example.yingshi.data.remote.dto.PostDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
@@ -62,6 +64,19 @@ fun CommentDto.toRemoteModel(): RemoteComment {
         createdAtMillis = createdAtMillis,
         updatedAtMillis = updatedAtMillis,
         isDeleted = isDeleted,
+    )
+}
+
+fun CommentListResponseDto.toRemotePage(
+    page: Int = 1,
+    size: Int = comments.size,
+    hasMore: Boolean = false,
+): RemoteCommentPage {
+    return RemoteCommentPage(
+        comments = comments.map(CommentDto::toRemoteModel),
+        page = page,
+        size = size,
+        hasMore = hasMore,
     )
 }
 

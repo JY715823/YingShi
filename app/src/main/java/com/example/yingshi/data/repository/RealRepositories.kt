@@ -3,6 +3,7 @@ package com.example.yingshi.data.repository
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
+import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
@@ -15,8 +16,12 @@ import com.example.yingshi.data.remote.api.MediaApi
 import com.example.yingshi.data.remote.api.PostApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
+import com.example.yingshi.data.remote.dto.CreateCommentRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
+import com.example.yingshi.data.remote.mapper.toRemoteModel
+import com.example.yingshi.data.remote.mapper.toRemotePage
 import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 
@@ -53,12 +58,131 @@ class RealPostRepository(
 class RealCommentRepository(
     private val commentApi: CommentApi,
 ) : CommentRepository {
-    override suspend fun getPostComments(postId: String): ApiResult<List<RemoteComment>> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real post comments repository is a shell only")
+    override suspend fun getPostComments(
+        postId: String,
+        page: Int,
+        size: Int,
+    ): ApiResult<RemoteCommentPage> {
+        return runCatching {
+            val response = commentApi.getPostComments(postId = postId, page = page, size = size)
+            response.data.toRemotePage(
+                page = response.page?.page ?: page,
+                size = response.page?.pageSize ?: size,
+                hasMore = response.page?.hasMore ?: false,
+            )
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "COMMENT_LIST_REQUEST_FAILED",
+                    message = "Stage 11.3 real post comment request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 
-    override suspend fun getMediaComments(mediaId: String): ApiResult<List<RemoteComment>> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real media comments repository is a shell only")
+    override suspend fun getMediaComments(
+        mediaId: String,
+        page: Int,
+        size: Int,
+    ): ApiResult<RemoteCommentPage> {
+        return runCatching {
+            val response = commentApi.getMediaComments(mediaId = mediaId, page = page, size = size)
+            response.data.toRemotePage(
+                page = response.page?.page ?: page,
+                size = response.page?.pageSize ?: size,
+                hasMore = response.page?.hasMore ?: false,
+            )
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "COMMENT_LIST_REQUEST_FAILED",
+                    message = "Stage 11.3 real media comment request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun createPostComment(
+        postId: String,
+        content: String,
+    ): ApiResult<RemoteComment> {
+        return runCatching {
+            commentApi.createPostComment(
+                postId = postId,
+                request = CreateCommentRequestDto(content = content),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "COMMENT_CREATE_REQUEST_FAILED",
+                    message = "Stage 11.3 real post comment create failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun createMediaComment(
+        mediaId: String,
+        content: String,
+    ): ApiResult<RemoteComment> {
+        return runCatching {
+            commentApi.createMediaComment(
+                mediaId = mediaId,
+                request = CreateCommentRequestDto(content = content),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "COMMENT_CREATE_REQUEST_FAILED",
+                    message = "Stage 11.3 real media comment create failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun updateComment(
+        commentId: String,
+        content: String,
+    ): ApiResult<RemoteComment> {
+        return runCatching {
+            commentApi.updateComment(
+                commentId = commentId,
+                request = UpdateCommentRequestDto(content = content),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "COMMENT_UPDATE_REQUEST_FAILED",
+                    message = "Stage 11.3 real comment update failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun deleteComment(commentId: String): ApiResult<Unit> {
+        return runCatching {
+            commentApi.deleteComment(commentId)
+            Unit
+        }.fold(
+            onSuccess = { ApiResult.Success(Unit) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "COMMENT_DELETE_REQUEST_FAILED",
+                    message = "Stage 11.3 real comment delete failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 }
 
