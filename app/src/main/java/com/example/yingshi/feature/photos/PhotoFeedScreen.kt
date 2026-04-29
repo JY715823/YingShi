@@ -75,15 +75,23 @@ fun PhotoFeedScreen(
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val settingsState = FakeSettingsRepository.getSettingsState()
     val mediaPositionLookup = remember(feedItems) {
         feedItems.mapIndexed { index, item ->
             item.mediaId to index
         }.toMap()
     }
-    var densityName by rememberSaveable { mutableStateOf(PhotoFeedDensity.COMFORT_3.name) }
+    var densityName by rememberSaveable { mutableStateOf<String?>(null) }
     var scrubberVisible by remember { mutableStateOf(false) }
     var scrubberInteracting by remember { mutableStateOf(false) }
-    val density = PhotoFeedDensity.valueOf(densityName)
+    LaunchedEffect(Unit) {
+        if (densityName == null) {
+            densityName = settingsState.defaultPhotoFeedDensity.name
+        }
+    }
+    val density = PhotoFeedDensity.valueOf(
+        densityName ?: settingsState.defaultPhotoFeedDensity.name,
+    )
     val blocks = remember(feedItems, density) {
         buildPhotoFeedBlocks(
             items = feedItems,

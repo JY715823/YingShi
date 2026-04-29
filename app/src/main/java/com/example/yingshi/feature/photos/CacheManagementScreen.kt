@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -37,7 +36,7 @@ fun CacheManagementScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val summary = FakeMediaCacheRepository.getGlobalSummary()
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = modifier
@@ -50,24 +49,24 @@ fun CacheManagementScreen(
     ) {
         CacheTopBar(
             title = "缓存管理",
-            subtitle = "来源：${route.source}",
+            subtitle = "来源：${route.source.toCacheSourceLabel()}",
             onBack = onBack,
         )
 
         CacheSection(
             title = "当前缓存总量",
-            subtitle = "本轮只做 app 内容区 fake 缓存状态，不扫描真实磁盘，不处理系统媒体工具区。",
+            subtitle = "当前只处理 app 内容区 fake 缓存状态，不扫描真实磁盘，也不影响系统媒体工具区。",
         ) {
             CacheSummaryBlock(summary = summary)
         }
 
         CacheSection(
             title = "全局清理入口",
-            subtitle = "本轮只做本地状态变化，为后续真实原图 / 视频 / OSS 缓存清理预留结构。",
+            subtitle = "这轮只做本地状态变化，为后续真实原图 / 视频 / OSS 缓存清理预留结构。",
         ) {
             CacheActionRow(
                 title = "清理全部预览缓存",
-                subtitle = "当前可清理 ${summary.previewCachedCount} 项预览缓存",
+                subtitle = "当前可清理 ${summary.previewCachedCount} 项预览缓存状态。",
                 onClick = {
                     FakeMediaCacheRepository.clearAllPreviewCaches()
                     Toast.makeText(context, "已清理全部预览缓存状态", Toast.LENGTH_SHORT).show()
@@ -75,7 +74,7 @@ fun CacheManagementScreen(
             )
             CacheActionRow(
                 title = "清理全部原图缓存",
-                subtitle = "当前可清理 ${summary.originalCachedCount} 项原图缓存，并重置原图加载状态",
+                subtitle = "当前可清理 ${summary.originalCachedCount} 项原图缓存，并重置原图加载状态。",
                 onClick = {
                     FakeMediaCacheRepository.clearAllOriginalCaches()
                     Toast.makeText(context, "已清理全部原图缓存状态", Toast.LENGTH_SHORT).show()
@@ -83,7 +82,7 @@ fun CacheManagementScreen(
             )
             CacheActionRow(
                 title = "清理全部视频缓存",
-                subtitle = "当前可清理 ${summary.videoCachedCount} 项视频缓存",
+                subtitle = "当前可清理 ${summary.videoCachedCount} 项视频缓存状态。",
                 onClick = {
                     FakeMediaCacheRepository.clearAllVideoCaches()
                     Toast.makeText(context, "已清理全部视频缓存状态", Toast.LENGTH_SHORT).show()
@@ -91,7 +90,7 @@ fun CacheManagementScreen(
             )
             CacheActionRow(
                 title = "清理全部缓存",
-                subtitle = "一次性清理预览 / 原图 / 视频的 fake 缓存状态",
+                subtitle = "一次性清理预览 / 原图 / 视频全部 fake 缓存状态。",
                 danger = true,
                 onClick = {
                     FakeMediaCacheRepository.clearAllCaches()
@@ -243,8 +242,7 @@ private fun CacheCircleButton(
     onClick: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier
-            .clickable(onClick = onClick),
+        modifier = Modifier.clickable(onClick = onClick),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
@@ -259,6 +257,15 @@ private fun CacheCircleButton(
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
+    }
+}
+
+private fun String.toCacheSourceLabel(): String {
+    return when (this) {
+        "settings" -> "设置页"
+        "settings-storage" -> "设置页 / 缓存与存储"
+        "viewer-settings" -> "Viewer 设置入口"
+        else -> this
     }
 }
 

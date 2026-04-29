@@ -276,6 +276,7 @@ fun PhotoViewerScreen(
 
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val settingsState = FakeSettingsRepository.getSettingsState()
     val initialPage = route.initialIndex.coerceIn(0, route.mediaItems.lastIndex)
     val zoomState = remember { ViewerZoomState() }
     var showCommentPreview by remember { mutableStateOf(false) }
@@ -307,6 +308,13 @@ fun PhotoViewerScreen(
         ViewerLayoutTuning.inPostEdgeActionsBottomPadding
     } else {
         ViewerLayoutTuning.photoFlowEdgeActionsBottomPadding
+    }
+    val hideOverlaysWhenZoomed = settingsState.viewerPreferences.hideOverlaysWhenZoomed
+    val overlaysVisible = !zoomState.isZoomed || !hideOverlaysWhenZoomed
+    val overlayAlpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
+        ViewerLayoutTuning.zoomedOverlayAlpha
+    } else {
+        1f
     }
     val relatedPosts = remember(currentItem.postIds) {
         fakeViewerRelatedPosts(currentItem)
@@ -417,7 +425,7 @@ fun PhotoViewerScreen(
                 .height(148.dp),
         )
 
-        if (!zoomState.isZoomed) {
+        if (overlaysVisible) {
             ViewerBottomScrim(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -441,10 +449,10 @@ fun PhotoViewerScreen(
                     end = ViewerLayoutTuning.topBarEndInset,
                     top = ViewerLayoutTuning.topBarTopInset,
                 ),
-            overlayAlpha = if (zoomState.isZoomed) ViewerLayoutTuning.zoomedOverlayAlpha else 1f,
+            overlayAlpha = overlayAlpha,
         )
 
-        if (!zoomState.isZoomed) {
+        if (overlaysVisible) {
             if (showCommentPreview) {
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
@@ -558,7 +566,11 @@ fun PhotoViewerScreen(
                         end = spacing.xl,
                         bottom = ViewerLayoutTuning.postSegmentBottomOffset,
                     ),
-                alpha = if (zoomState.isZoomed) ViewerLayoutTuning.zoomedOverlayAlpha else 0.92f,
+                alpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
+                    ViewerLayoutTuning.zoomedOverlayAlpha
+                } else {
+                    0.92f
+                },
             )
         }
 

@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,13 +62,21 @@ fun AlbumPageScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val settingsState = FakeSettingsRepository.getSettingsState()
     var selectedAlbumId by rememberSaveable(albums) {
         mutableStateOf(albums.firstOrNull()?.id.orEmpty())
     }
     var densityName by rememberSaveable {
-        mutableStateOf(AlbumGridDensity.COZY_2.name)
+        mutableStateOf<String?>(null)
     }
-    val gridDensity = AlbumGridDensity.valueOf(densityName)
+    LaunchedEffect(Unit) {
+        if (densityName == null) {
+            densityName = settingsState.defaultAlbumGridDensity.name
+        }
+    }
+    val gridDensity = AlbumGridDensity.valueOf(
+        densityName ?: settingsState.defaultAlbumGridDensity.name,
+    )
     val gridState = rememberLazyGridState()
     val selectedAlbum = remember(albums, selectedAlbumId) {
         albums.firstOrNull { it.id == selectedAlbumId } ?: albums.firstOrNull()
