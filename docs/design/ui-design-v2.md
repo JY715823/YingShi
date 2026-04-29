@@ -1276,3 +1276,8 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Notification detail placeholders should feel like a continuation of the inbox flow, not a generic modal dump: clear title, type, time, and future destination intent are the priority.
 - Settings-page polish in this stage is mostly about trust: current-value rows, placeholder disclaimers, and interaction stability should feel calmer and more explicit than the earlier shell versions.
 
+## Stage 11.1 implementation note
+- This stage does not introduce visible network-driven UI changes; the design focus is on keeping current screens stable while the codebase gains remote DTO and repository seams behind them.
+- Because DTOs are transport-only, no screen should start rendering raw remote payload structure directly; visual models stay shaped for the existing Yingshi interface language.
+- Future backend loading, auth failure, and pagination states should be able to layer onto the current UI later through the new result and repository boundaries rather than through ad-hoc per-screen rewrites.
+
