@@ -1,11 +1,17 @@
 package com.example.yingshi.data.repository
 
+import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
+import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePost
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.dto.LoginRequestDto
+import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.feature.photos.AppMediaType
@@ -166,6 +172,60 @@ class FakeUploadRepositoryShell : UploadRepository {
                 objectKey = "uploads/fake/${request.fileName}",
                 uploadUrl = "https://upload-placeholder.yingshi.local/",
                 expireAtMillis = System.currentTimeMillis() + 15 * 60 * 1000L,
+            ),
+        )
+    }
+}
+
+class FakeAuthRepositoryShell : AuthRepository {
+    override suspend fun login(
+        request: LoginRequestDto,
+    ): ApiResult<RemoteLoginSession> {
+        val session = RemoteLoginSession(
+            userId = "fake-user-001",
+            displayName = "本地占位账号",
+            spaceId = "fake-space-001",
+            tokens = AuthTokens(
+                accessToken = "fake-access-token",
+                refreshToken = "fake-refresh-token",
+                accessTokenExpireAtMillis = System.currentTimeMillis() + 60 * 60 * 1000L,
+                refreshTokenExpireAtMillis = System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000L,
+            ),
+        )
+        AuthSessionManager.saveTokens(session.tokens)
+        return ApiResult.Success(session)
+    }
+
+    override suspend fun refreshToken(
+        request: RefreshTokenRequestDto,
+    ): ApiResult<AuthTokens> {
+        val tokens = AuthTokens(
+            accessToken = "fake-access-token-refreshed",
+            refreshToken = request.refreshToken.ifBlank { "fake-refresh-token" },
+            accessTokenExpireAtMillis = System.currentTimeMillis() + 60 * 60 * 1000L,
+            refreshTokenExpireAtMillis = System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000L,
+        )
+        AuthSessionManager.saveTokens(tokens)
+        return ApiResult.Success(tokens)
+    }
+
+    override suspend fun logout(): ApiResult<Unit> {
+        AuthSessionManager.clearTokens()
+        return ApiResult.Success(Unit)
+    }
+
+    override suspend fun getCurrentUser(): ApiResult<RemoteCurrentUser> {
+        return ApiResult.Success(
+            RemoteCurrentUser(
+                userId = "fake-user-001",
+                displayName = if (AuthSessionManager.isLoggedIn) {
+                    "本地占位账号"
+                } else {
+                    "未接真实账号"
+                },
+                avatarUrl = null,
+                spaceId = "fake-space-001",
+                spaceDisplayName = "映世本地占位空间",
             ),
         )
     }

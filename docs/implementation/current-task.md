@@ -1,39 +1,41 @@
-# Current Task - Stage 11.1 API Contract and Retrofit Shell
+# Current Task - Stage 11.2 Auth Contract and Token Shell
 
 ## Goal
-Prepare future backend integration by defining API contracts, DTO boundaries, Retrofit service shells, result wrappers, and fake/real repository switching structure without changing the current fake-first app behavior.
+Prepare future auth integration by defining login/auth contracts, auth DTOs, token management placeholders, bearer-token injection, and fake/real auth repository boundaries without forcing the current app into a real login flow.
 
 ## Scope
-- contract docs under `docs/contracts`
-- media / post / comment / trash / upload API drafts
-- remote DTO layer
-- Retrofit API interfaces
-- placeholder remote config and service factory
-- DTO -> domain mapper boundary
-- fake / real repository interfaces and default fake selection
-- simple `ApiResult` / `NetworkResult` style wrapper
+- `docs/contracts/auth-api.md`
+- login / refresh / logout / current-user contract draft
+- auth DTO layer
+- `AuthApi` Retrofit shell
+- token store / token provider / session manager placeholder
+- `AuthInterceptor` shell
+- auth repository fake / real boundary
+- settings login-status placeholder
 - minimal PRD / UI doc sync
 
 ## Product intent
-- Stage 11.1 is a boundary-building pass, not a live backend pass.
-- UI should keep running on the current fake repositories by default.
-- DTOs must stay outside UI-facing models so later backend iteration does not leak transport details into screens.
-- Upload only needs contract and token shape now; real transfer, OSS wiring, and auth remain follow-up work.
+- Stage 11.2 is still contract-first and shell-first.
+- Fake data remains the default runtime path.
+- Token handling should become a clear boundary now so later backend auth can slot into the existing remote layer cleanly.
+- No screen should be blocked behind login yet.
 
 ## Do not do
-- no real Spring Boot backend
-- no real login or token flow
-- no real upload implementation
+- no real backend
+- no real login screen
+- no DataStore or persistent token storage
+- no OAuth / phone code / third-party login
 - no full fake-data migration
-- no large UI refactor
-- no hardcoded production server URL
+- no hardcoded production URL
 
 ## Done when
-- `docs/contracts` contains the API draft docs
-- remote DTOs exist
-- Retrofit service shells exist
-- mapper boundaries exist
-- fake / real repository interfaces exist with fake as the default path
-- app still starts on the fake path
-- docs are minimally updated
+- `auth-api.md` exists
+- auth DTOs exist
+- `AuthApi` exists
+- token management placeholder exists
+- `AuthInterceptor` exists
+- auth repository fake / real boundary exists
+- settings can show login-status placeholder without forcing login
+- app still starts and uses fake data by default
+- docs are updated
 - app builds and runs
