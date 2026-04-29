@@ -49,6 +49,8 @@ data class TrashMediaSnapshot(
     val displayTimeMillis: Long,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float,
+    val width: Int? = null,
+    val height: Int? = null,
     val isCover: Boolean = false,
     val sourcePostId: String? = null,
     val sourcePostTitle: String? = null,

@@ -43,6 +43,8 @@ data class PostDetailMediaUiModel(
     val commentCount: Int,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float = 1f,
+    val width: Int? = null,
+    val height: Int? = null,
 )
 
 enum class AlbumGridDensity(

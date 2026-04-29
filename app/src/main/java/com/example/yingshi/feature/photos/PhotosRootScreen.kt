@@ -147,6 +147,8 @@ fun PhotosRootScreen(
                                         displayTimeMillis = item.mediaDisplayTimeMillis,
                                         palette = item.palette,
                                         aspectRatio = item.aspectRatio,
+                                        width = item.width,
+                                        height = item.height,
                                         sourcePostId = item.postIds.firstOrNull(),
                                         sourcePostTitle = item.postIds.firstOrNull()
                                             ?.let(FakeAlbumRepository::getPost)
