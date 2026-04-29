@@ -9,6 +9,8 @@ import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
@@ -18,6 +20,7 @@ import com.example.yingshi.data.remote.dto.PostDto
 import com.example.yingshi.data.remote.dto.PostMediaDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
+import com.example.yingshi.data.remote.dto.UploadTaskDto
 import com.example.yingshi.data.remote.dto.UploadTokenDto
 
 fun MediaDto.toRemoteModel(): RemoteMedia {
@@ -151,4 +154,27 @@ fun UploadTokenDto.toRemoteModel(): RemoteUploadToken {
         uploadUrl = uploadUrl,
         expireAtMillis = expireAtMillis,
     )
+}
+
+fun UploadTaskDto.toRemoteModel(): RemoteUploadTask {
+    return RemoteUploadTask(
+        uploadId = uploadId,
+        fileName = fileName,
+        mediaType = mediaType,
+        objectKey = objectKey,
+        state = state.toUploadState(),
+        progressPercent = progressPercent,
+        errorMessage = errorMessage,
+    )
+}
+
+private fun String.toUploadState(): UploadState {
+    return when (lowercase()) {
+        "waiting" -> UploadState.WAITING
+        "uploading" -> UploadState.UPLOADING
+        "success" -> UploadState.SUCCESS
+        "failure" -> UploadState.FAILURE
+        "cancelled" -> UploadState.CANCELLED
+        else -> UploadState.FAILURE
+    }
 }
