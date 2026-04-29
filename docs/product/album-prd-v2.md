@@ -22,6 +22,11 @@
 - The same `mediaId` should expose one consistent cache state across photo-flow viewer, in-post viewer, and post detail; clearing original cache should also reset app-content original-load state back to not-loaded.
 - Stage 9.4 only introduces local-first clear-cache entry points at single-media, post, and global levels; it does not introduce real disk cleanup, OSS cache deletion, background work, or system-media cache policy changes.
 
+## Stage 10.1 implementation note
+- The bell button in the photos-module top bar should now open an independent notification-center page instead of staying as a placeholder toast.
+- Notification center and settings are standalone pages: no global bottom navigation, no photos secondary navigation, and no mixing back into the main content stream layout.
+- Stage 10.1 only requires fake notifications, local read-state handling, a settings shell, and a cache / storage bridge into the existing Stage 9.4 global cache-management placeholder; real push, account, permission, and diagnostics logic remain follow-up work.
+
 ## 1. 鏂囨。璇存槑
 
 ### 1.1 鏂囨。鐩爣

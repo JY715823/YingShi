@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,10 @@ import kotlinx.coroutines.launch
 
 private val PhotoSelectionActionBarPadding = 88.dp
 
+private object PhotosRootEntryCallbacks {
+    var onOpenNotifications: (() -> Unit)? = null
+}
+
 @Composable
 fun PhotosRootScreen(
     modifier: Modifier = Modifier,
@@ -68,6 +73,7 @@ fun PhotosRootScreen(
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
     onOpenSystemMedia: () -> Unit = { },
+    onOpenNotifications: () -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
@@ -102,6 +108,9 @@ fun PhotosRootScreen(
         BackHandler {
             photoSelectionState = photoSelectionState.clear()
         }
+    }
+    SideEffect {
+        PhotosRootEntryCallbacks.onOpenNotifications = onOpenNotifications
     }
 
     Column(
@@ -333,7 +342,11 @@ private fun PhotoTopBar(
                 text = "系统",
                 onClick = onOpenSystemMedia,
             )
-            PhotoBellButton(onClick = onOpenNotifications)
+            PhotoBellButton(
+                onClick = {
+                    PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
+                },
+            )
         }
     }
 }
