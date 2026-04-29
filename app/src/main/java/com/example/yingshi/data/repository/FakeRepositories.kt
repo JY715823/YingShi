@@ -13,6 +13,8 @@ import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
+import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
@@ -309,19 +311,64 @@ class FakeTrashRepositoryShell : TrashRepository {
         } else {
             TrashEntryType.entries.flatMap(FakeTrashRepository::getEntries)
         }
+        return ApiResult.Success(items.map { item -> item.toRemoteTrashItem() })
+    }
+
+    override suspend fun getTrashDetail(trashItemId: String): ApiResult<RemoteTrashDetail> {
+        val entry = FakeTrashRepository.getEntry(trashItemId)
+            ?: return ApiResult.Error(code = "TRASH_ITEM_NOT_FOUND", message = "Fake trash item not found")
         return ApiResult.Success(
-            items.map { item ->
-                RemoteTrashItem(
-                    trashItemId = item.id,
-                    itemType = item.type.name,
-                    sourcePostId = item.sourcePostId,
-                    sourceMediaId = item.sourceMediaId,
-                    title = item.title,
-                    previewInfo = item.previewInfo,
-                    deletedAtMillis = item.deletedAtMillis,
-                    relatedPostIds = item.relatedPostIds,
-                    relatedMediaIds = item.relatedMediaIds,
-                )
+            RemoteTrashDetail(
+                item = entry.toRemoteTrashItem(),
+                canRestore = true,
+                canMoveOutOfTrash = true,
+                pendingCleanup = null,
+            ),
+        )
+    }
+
+    override suspend fun restoreTrashItem(trashItemId: String): ApiResult<RemoteTrashItem> {
+        val entry = FakeTrashRepository.getEntry(trashItemId)
+            ?: return ApiResult.Error(code = "TRASH_ITEM_NOT_FOUND", message = "Fake trash item not found")
+        val result = FakeTrashRepository.restoreEntry(trashItemId)
+        return if (result.success) {
+            ApiResult.Success(entry.toRemoteTrashItem())
+        } else {
+            ApiResult.Error(code = "TRASH_RESTORE_FAILED", message = result.message)
+        }
+    }
+
+    override suspend fun moveTrashItemOut(trashItemId: String): ApiResult<RemotePendingCleanup> {
+        val moved = FakeTrashRepository.moveEntryOutOfTrash(trashItemId)
+        val pending = FakeTrashRepository.getPendingCleanupEntry(trashItemId)
+        return if (moved && pending != null) {
+            ApiResult.Success(pending.toRemotePendingCleanup())
+        } else {
+            ApiResult.Error(
+                code = "TRASH_REMOVE_FAILED",
+                message = "Fake trash item could not be moved into pending cleanup",
+            )
+        }
+    }
+
+    override suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem> {
+        val pending = FakeTrashRepository.getPendingCleanupEntry(trashItemId)
+            ?: return ApiResult.Error(code = "TRASH_PENDING_NOT_FOUND", message = "Fake pending cleanup item not found")
+        val undone = FakeTrashRepository.undoPendingRemoval(trashItemId)
+        return if (undone) {
+            ApiResult.Success(pending.entry.toRemoteTrashItem())
+        } else {
+            ApiResult.Error(
+                code = "TRASH_UNDO_REMOVE_FAILED",
+                message = "Fake pending cleanup item could not be restored to trash",
+            )
+        }
+    }
+
+    override suspend fun getPendingCleanupItems(): ApiResult<List<RemotePendingCleanup>> {
+        return ApiResult.Success(
+            FakeTrashRepository.getPendingCleanupEntries().map { pending ->
+                pending.toRemotePendingCleanup()
             },
         )
     }
@@ -515,6 +562,29 @@ private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment():
 
 private fun String.toTrashEntryTypeOrNull(): TrashEntryType? {
     return TrashEntryType.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
+}
+
+private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashItem(): RemoteTrashItem {
+    return RemoteTrashItem(
+        trashItemId = id,
+        itemType = type.name,
+        sourcePostId = sourcePostId,
+        sourceMediaId = sourceMediaId,
+        title = title,
+        previewInfo = previewInfo,
+        deletedAtMillis = deletedAtMillis,
+        relatedPostIds = relatedPostIds,
+        relatedMediaIds = relatedMediaIds,
+    )
+}
+
+private fun com.example.yingshi.feature.photos.TrashPendingCleanupUiModel.toRemotePendingCleanup(): RemotePendingCleanup {
+    return RemotePendingCleanup(
+        trashItemId = entry.id,
+        removedAtMillis = removedAtMillis,
+        undoDeadlineMillis = removedAtMillis + 24L * 60L * 60L * 1000L,
+        item = entry.toRemoteTrashItem(),
+    )
 }
 
 private val fakeUploadTasks = mutableMapOf<String, RemoteUploadTask>()

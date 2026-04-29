@@ -14,3 +14,11 @@ data class MediaDto(
     val commentCount: Int = 0,
     val postIds: List<String> = emptyList(),
 )
+
+data class DeleteMediaRequestDto(
+    val mediaIds: List<String>,
+    val deleteScope: String,
+    val sourcePostId: String? = null,
+    val moveToTrash: Boolean = true,
+    val operatorNote: String? = null,
+)

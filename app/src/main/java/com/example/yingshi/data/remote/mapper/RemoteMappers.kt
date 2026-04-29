@@ -7,6 +7,8 @@ import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
+import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
@@ -19,6 +21,8 @@ import com.example.yingshi.data.remote.dto.PostDetailDto
 import com.example.yingshi.data.remote.dto.PostDto
 import com.example.yingshi.data.remote.dto.PostMediaDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
+import com.example.yingshi.data.remote.dto.PendingCleanupDto
+import com.example.yingshi.data.remote.dto.TrashDetailDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UploadTaskDto
 import com.example.yingshi.data.remote.dto.UploadTokenDto
@@ -142,6 +146,24 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
         deletedAtMillis = deletedAtMillis,
         relatedPostIds = relatedPostIds,
         relatedMediaIds = relatedMediaIds,
+    )
+}
+
+fun PendingCleanupDto.toRemoteModel(): RemotePendingCleanup {
+    return RemotePendingCleanup(
+        trashItemId = trashItemId,
+        removedAtMillis = removedAtMillis,
+        undoDeadlineMillis = undoDeadlineMillis,
+        item = item.toRemoteModel(),
+    )
+}
+
+fun TrashDetailDto.toRemoteDetail(): RemoteTrashDetail {
+    return RemoteTrashDetail(
+        item = item.toRemoteModel(),
+        canRestore = canRestore,
+        canMoveOutOfTrash = canMoveOutOfTrash,
+        pendingCleanup = pendingCleanup?.toRemoteModel(),
     )
 }
 

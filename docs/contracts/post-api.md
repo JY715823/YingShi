@@ -135,22 +135,41 @@ Request draft:
 }
 ```
 
+### `DELETE /v1/posts/{postId}`
+- use case: move one post into app-content trash
+- auth: required
+- Stage 11.6 draft only
+
+Request draft:
+
+```json
+{
+  "deleteMode": "moveToTrash",
+  "operatorNote": null
+}
+```
+
+Response draft:
+- return the created trash entry as `TrashItemDto`
+
 ## Field Notes
 - post list and post detail are different DTO shapes
 - `coverMediaId` is preferred over duplicating full cover blocks on summaries
 - post detail media order belongs to the post itself
 - album membership update now lives in `album-api.md`
+- post delete is separated from media delete and always creates a post-scoped trash entry in this draft
 
 ## Error Code Placeholders
 - `POST_NOT_FOUND`
 - `POST_MEDIA_NOT_FOUND`
 - `POST_MEDIA_ORDER_INVALID`
 - `POST_COVER_INVALID`
+- `POST_DELETE_CONFLICT`
 - `VALIDATION_ERROR`
 - `AUTH_UNAUTHORIZED`
 - `NOT_IMPLEMENTED`
 
 ## Stage 11.4 Draft-Only Notes
-- no post delete contract in this stage
 - no collaborator/member mutation in this stage
 - no rich post editor payload in this stage
+- delete request shape and restore semantics are aligned in Stage 11.6, but no live backend is required yet
