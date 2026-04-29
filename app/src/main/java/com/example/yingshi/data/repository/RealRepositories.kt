@@ -1,7 +1,9 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
+import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
@@ -12,6 +14,7 @@ import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.api.AlbumApi
@@ -22,7 +25,9 @@ import com.example.yingshi.data.remote.api.PostApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
 import com.example.yingshi.data.remote.dto.CreateCommentRequestDto
+import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
+import com.example.yingshi.data.remote.dto.ConfirmUploadRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
@@ -34,7 +39,6 @@ import com.example.yingshi.data.remote.mapper.toRemoteModel
 import com.example.yingshi.data.remote.mapper.toRemotePage
 import com.example.yingshi.data.remote.mapper.toRemoteDetail
 import com.example.yingshi.data.remote.mapper.toRemoteSummary
-import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 
 class RealMediaRepository(
@@ -373,10 +377,82 @@ class RealTrashRepository(
 class RealUploadRepository(
     private val uploadApi: UploadApi,
 ) : UploadRepository {
-    override suspend fun requestUploadToken(
-        request: UploadTokenRequestDto,
+    override suspend fun createUploadToken(
+        payload: CreateUploadTokenPayload,
     ): ApiResult<RemoteUploadToken> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real upload repository is a shell only")
+        return runCatching {
+            uploadApi.createUploadToken(
+                CreateUploadTokenRequestDto(
+                    fileName = payload.fileName,
+                    mimeType = payload.mimeType,
+                    fileSizeBytes = payload.fileSizeBytes,
+                    mediaType = payload.mediaType,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_TOKEN_REQUEST_FAILED",
+                    message = "Stage 11.5 real upload-token request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun confirmUpload(
+        uploadId: String,
+        payload: ConfirmUploadPayload,
+    ): ApiResult<RemoteUploadTask> {
+        return runCatching {
+            uploadApi.confirmUpload(
+                uploadId = uploadId,
+                request = ConfirmUploadRequestDto(
+                    etag = payload.etag,
+                    objectKey = payload.objectKey,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_CONFIRM_REQUEST_FAILED",
+                    message = "Stage 11.5 real upload confirm failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun cancelUpload(uploadId: String): ApiResult<RemoteUploadTask> {
+        return runCatching {
+            uploadApi.cancelUpload(uploadId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_CANCEL_REQUEST_FAILED",
+                    message = "Stage 11.5 real upload cancel failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getUploadTask(uploadId: String): ApiResult<RemoteUploadTask> {
+        return runCatching {
+            uploadApi.getUploadTask(uploadId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_STATUS_REQUEST_FAILED",
+                    message = "Stage 11.5 real upload status request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 }
 

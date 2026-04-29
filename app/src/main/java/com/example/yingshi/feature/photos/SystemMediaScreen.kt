@@ -82,6 +82,7 @@ fun SystemMediaScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val mutationVersion = LocalSystemMediaBridgeRepository.mutationVersion
+    val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val albums = FakeAlbumRepository.getAlbums()
     val posts = FakeAlbumRepository.getPosts()
     val gridState = rememberLazyGridState(
@@ -157,7 +158,7 @@ fun SystemMediaScreen(
             posts = posts,
             onDismiss = { showAddToPostDialog = false },
             onPostSelected = { postId ->
-                val addedCount = LocalSystemMediaBridgeRepository.addSystemMediaToExistingPost(
+                val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
                     postId = postId,
                     mediaItems = selectedItems,
                 )
@@ -340,6 +341,19 @@ fun SystemMediaScreen(
             }
         }
 
+        if (uploadTasks.isNotEmpty()) {
+            SystemMediaUploadTaskPanel(
+                tasks = uploadTasks,
+                onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
+                onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md)
+                    .padding(bottom = if (selectionMode) 96.dp else 0.dp),
+            )
+        }
+
         AnimatedVisibility(
             visible = selectionMode,
             enter = fadeIn(),
@@ -352,12 +366,12 @@ fun SystemMediaScreen(
             SystemMediaSelectionBar(
                 selectedCount = selectedIds.size,
                 onCreatePost = {
-                    val post = LocalSystemMediaBridgeRepository.createPostFromSystemMedia(selectedItems)
+                    val post = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(selectedItems)
                     selectedIds = emptyList()
                     selectionMode = false
                     Toast.makeText(
                         context,
-                        if (post != null) {
+                        if (post > 0) {
                             "已发成新帖子，并同步进入照片页和相册页"
                         } else {
                             "当前没有可处理的媒体"

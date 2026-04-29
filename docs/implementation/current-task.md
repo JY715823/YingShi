@@ -1,39 +1,37 @@
-# Current Task - Stage 11.4 Post and Album API Shell
+# Current Task - Stage 11.5 Upload API Shell
 
 ## Goal
-Prepare post and album backend integration boundaries with clearer contracts, DTOs, mappers, and Fake/Real repository shells, while keeping the current fake-first app flow unchanged.
+Prepare upload-token, upload-task, upload-state, and fake import-flow boundaries so system media can enter app content through upload placeholders rather than direct local insertion.
 
 ## Scope
-- update `docs/contracts/post-api.md`
-- create `docs/contracts/album-api.md`
-- split post and album API responsibilities
-- refine post and album DTOs
-- add post detail / post summary / post media transport models
-- add request DTOs for post create, edit, cover update, media-order update, and album assignment update
-- add DTO -> domain mapper boundaries
-- split `PostRepository` and `AlbumRepository`
-- keep fake repositories as the default runnable path
-- keep real repositories as API-call shells only
+- update `docs/contracts/upload-api.md`
+- minimally sync `docs/contracts/media-api.md`
+- refine upload DTOs
+- extend `UploadApi` shell
+- refine `UploadRepository` fake / real boundary
+- add upload state models
+- add fake upload-task progress simulation
+- connect system-media "create new post" and "add to existing post" flows to upload placeholder tasks
+- only insert media into app content after upload success
 
 ## Product intent
-- posts and albums remain separate but related entities
-- post detail keeps its own media ordering and cover semantics
-- album APIs focus on album directory and post-to-album relationships
-- UI must not depend on Retrofit DTOs
-- existing fake pages must keep running without switching to real APIs
+- upload remains a shell in this stage
+- system media stays separate from app-content media until upload success
+- upload progress should be visible but lightweight
+- fake flow remains the default runnable path
 
 ## Do not do
+- no real OSS upload
+- no real file transfer
 - no live backend dependency
-- no forced real repository switch
-- no full fake-data migration
-- no large UI refactor
-- no hardcoded production server address
+- no WorkManager
+- no full retry or resume system
+- no hardcoded production server
 
 ## Done when
-- post and album contract docs exist
-- `PostApi` and `AlbumApi` shells exist
-- post / album DTOs and request DTOs exist
-- mappers exist
-- fake / real repository boundaries are clear
-- fake app flow remains runnable
+- upload contracts are updated
+- upload DTOs and API shell exist
+- upload repository fake / real boundary is clear
+- system-media import uses upload placeholder tasks
+- fake flow still runs without real backend
 - app builds successfully

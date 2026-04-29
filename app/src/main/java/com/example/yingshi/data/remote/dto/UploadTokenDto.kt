@@ -12,14 +12,24 @@ data class UploadTokenDto(
     val expireAtMillis: Long,
 )
 
-data class UploadTokenRequestDto(
+data class CreateUploadTokenRequestDto(
     val fileName: String,
     val mimeType: String,
     val fileSizeBytes: Long,
     val mediaType: String,
 )
 
-data class CompleteUploadRequestDto(
+data class ConfirmUploadRequestDto(
     val etag: String,
     val objectKey: String,
+)
+
+data class UploadTaskDto(
+    val uploadId: String,
+    val fileName: String,
+    val mediaType: String,
+    val objectKey: String? = null,
+    val state: String,
+    val progressPercent: Int = 0,
+    val errorMessage: String? = null,
 )

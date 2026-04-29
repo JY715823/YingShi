@@ -90,3 +90,4 @@ Response draft:
 ## Stage 11.1 Draft-Only Notes
 - preview/original/video cache state is not part of the remote contract yet
 - real CDN, signed URL, and transformed thumbnail strategy remain follow-up work
+- system-media import should only enter app-content media after upload-confirm success

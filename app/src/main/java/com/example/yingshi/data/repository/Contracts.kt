@@ -1,7 +1,9 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
+import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
@@ -12,11 +14,11 @@ import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
-import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 
 interface MediaRepository {
@@ -91,9 +93,22 @@ interface TrashRepository {
 }
 
 interface UploadRepository {
-    suspend fun requestUploadToken(
-        request: UploadTokenRequestDto,
+    suspend fun createUploadToken(
+        payload: CreateUploadTokenPayload,
     ): ApiResult<RemoteUploadToken>
+
+    suspend fun confirmUpload(
+        uploadId: String,
+        payload: ConfirmUploadPayload,
+    ): ApiResult<RemoteUploadTask>
+
+    suspend fun cancelUpload(
+        uploadId: String,
+    ): ApiResult<RemoteUploadTask>
+
+    suspend fun getUploadTask(
+        uploadId: String,
+    ): ApiResult<RemoteUploadTask>
 }
 
 interface AuthRepository {

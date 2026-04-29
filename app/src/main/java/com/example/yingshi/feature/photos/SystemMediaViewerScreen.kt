@@ -63,6 +63,7 @@ fun SystemMediaViewerScreen(
     var showMoveToTrashDialog by rememberSaveable {
         mutableStateOf(false)
     }
+    val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val albums = FakeAlbumRepository.getAlbums()
     val posts = FakeAlbumRepository.getPosts()
 
@@ -72,7 +73,7 @@ fun SystemMediaViewerScreen(
             posts = posts,
             onDismiss = { showAddToPostDialog = false },
             onPostSelected = { postId ->
-                val addedCount = LocalSystemMediaBridgeRepository.addSystemMediaToExistingPost(
+                val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
                     postId = postId,
                     mediaItems = listOf(currentItem),
                 )
@@ -230,6 +231,13 @@ fun SystemMediaViewerScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.72f),
                     )
+                    if (uploadTasks.isNotEmpty()) {
+                        SystemMediaUploadTaskPanel(
+                            tasks = uploadTasks,
+                            onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
+                            onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
@@ -237,12 +245,12 @@ fun SystemMediaViewerScreen(
                         SystemMediaViewerActionChip(
                             text = "发成新帖子",
                             onClick = {
-                                val post = LocalSystemMediaBridgeRepository.createPostFromSystemMedia(
+                                val post = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
                                     listOf(item),
                                 )
                                 Toast.makeText(
                                     context,
-                                    if (post != null) {
+                                    if (post > 0) {
                                         "已发成新帖子，并同步进入照片页和相册页"
                                     } else {
                                         "当前媒体无法处理"

@@ -1,7 +1,9 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
+import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
@@ -13,19 +15,22 @@ import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
-import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.feature.photos.AppMediaType
+import com.example.yingshi.feature.photos.AlbumPostCardUiModel
 import com.example.yingshi.feature.photos.CommentTargetType
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeCommentRepository
 import com.example.yingshi.feature.photos.FakePhotoFeedRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
+import com.example.yingshi.feature.photos.PostDetailUiModel
 import com.example.yingshi.feature.photos.TrashEntryType
 
 class FakeMediaRepositoryShell : MediaRepository {
@@ -323,19 +328,57 @@ class FakeTrashRepositoryShell : TrashRepository {
 }
 
 class FakeUploadRepositoryShell : UploadRepository {
-    override suspend fun requestUploadToken(
-        request: UploadTokenRequestDto,
+    override suspend fun createUploadToken(
+        payload: CreateUploadTokenPayload,
     ): ApiResult<RemoteUploadToken> {
+        val uploadId = "fake-upload-${payload.fileName}-${System.currentTimeMillis()}"
+        fakeUploadTasks[uploadId] = RemoteUploadTask(
+            uploadId = uploadId,
+            fileName = payload.fileName,
+            mediaType = payload.mediaType,
+            objectKey = "uploads/fake/${payload.fileName}",
+            state = UploadState.WAITING,
+            progressPercent = 0,
+        )
         return ApiResult.Success(
             RemoteUploadToken(
-                uploadId = "fake-upload-${request.fileName}",
+                uploadId = uploadId,
                 provider = "oss",
                 bucket = "placeholder-bucket",
-                objectKey = "uploads/fake/${request.fileName}",
+                objectKey = "uploads/fake/${payload.fileName}",
                 uploadUrl = "https://upload-placeholder.yingshi.local/",
                 expireAtMillis = System.currentTimeMillis() + 15 * 60 * 1000L,
             ),
         )
+    }
+
+    override suspend fun confirmUpload(
+        uploadId: String,
+        payload: ConfirmUploadPayload,
+    ): ApiResult<RemoteUploadTask> {
+        val current = fakeUploadTasks[uploadId]
+            ?: return ApiResult.Error(code = "UPLOAD_NOT_FOUND", message = "Fake upload task not found")
+        val updated = current.copy(
+            objectKey = payload.objectKey,
+            state = UploadState.SUCCESS,
+            progressPercent = 100,
+        )
+        fakeUploadTasks[uploadId] = updated
+        return ApiResult.Success(updated)
+    }
+
+    override suspend fun cancelUpload(uploadId: String): ApiResult<RemoteUploadTask> {
+        val current = fakeUploadTasks[uploadId]
+            ?: return ApiResult.Error(code = "UPLOAD_NOT_FOUND", message = "Fake upload task not found")
+        val updated = current.copy(state = UploadState.CANCELLED)
+        fakeUploadTasks[uploadId] = updated
+        return ApiResult.Success(updated)
+    }
+
+    override suspend fun getUploadTask(uploadId: String): ApiResult<RemoteUploadTask> {
+        return fakeUploadTasks[uploadId]
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(code = "UPLOAD_NOT_FOUND", message = "Fake upload task not found")
     }
 }
 
@@ -473,3 +516,5 @@ private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment():
 private fun String.toTrashEntryTypeOrNull(): TrashEntryType? {
     return TrashEntryType.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
 }
+
+private val fakeUploadTasks = mutableMapOf<String, RemoteUploadTask>()
