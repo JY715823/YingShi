@@ -1,39 +1,39 @@
-# Current Task - Stage 10.3 Notification and Settings Polish
+# Current Task - Stage 11.1 API Contract and Retrofit Shell
 
 ## Goal
-Close the Stage 10 notification and settings shell by adding notification category filters, unread badges, click-through placeholders, and a stability pass on current in-memory settings state.
+Prepare future backend integration by defining API contracts, DTO boundaries, Retrofit service shells, result wrappers, and fake/real repository switching structure without changing the current fake-first app behavior.
 
 ## Scope
-- notification category filter row
-- per-category unread badges
-- bell unread badge in the photos module top bar
-- single-item read and mark-all-read updates
-- notification click-through placeholder detail
-- notification-detail standalone page shell
-- settings state stability check and minimal UI polish
+- contract docs under `docs/contracts`
+- media / post / comment / trash / upload API drafts
+- remote DTO layer
+- Retrofit API interfaces
+- placeholder remote config and service factory
+- DTO -> domain mapper boundary
+- fake / real repository interfaces and default fake selection
+- simple `ApiResult` / `NetworkResult` style wrapper
 - minimal PRD / UI doc sync
 
 ## Product intent
-- Notification center should now feel like a usable local-first inbox instead of only a flat fake list.
-- Read state should stay visually consistent across the bell entry, category filters, and list rows within the current app session.
-- Notification click handling should already express future destination intent, even though real push, deep links, and backend routing are still deferred.
-- Settings remains session-scoped and local-first in this stage; the main requirement is that current values stay stable and clearly explain placeholder behavior where needed.
+- Stage 11.1 is a boundary-building pass, not a live backend pass.
+- UI should keep running on the current fake repositories by default.
+- DTOs must stay outside UI-facing models so later backend iteration does not leak transport details into screens.
+- Upload only needs contract and token shape now; real transfer, OSS wiring, and auth remain follow-up work.
 
 ## Do not do
-- no real push notification
-- no real notification permission
-- no DataStore or restart persistence
-- no backend / Room / Retrofit
-- no complex deep-link router
-- no large navigation refactor
+- no real Spring Boot backend
+- no real login or token flow
+- no real upload implementation
+- no full fake-data migration
+- no large UI refactor
+- no hardcoded production server URL
 
 ## Done when
-- notification filters work for all categories
-- category unread badges update correctly
-- the bell badge reflects current unread count
-- clicking a notification marks it read
-- mark-all-read clears list, filter, and bell unread indicators
-- clicking a notification opens a jump placeholder or detail placeholder
-- settings page remains stable within the current app session
-- docs record fake notifications, placeholder jump behavior, and session-only settings state
+- `docs/contracts` contains the API draft docs
+- remote DTOs exist
+- Retrofit service shells exist
+- mapper boundaries exist
+- fake / real repository interfaces exist with fake as the default path
+- app still starts on the fake path
+- docs are minimally updated
 - app builds and runs

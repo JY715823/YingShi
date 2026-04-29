@@ -2129,4 +2129,10 @@ Spring Data Redis 寰堟垚鐔燂紝浣嗕綘鐨勯鐗堜笉鏄珮骞跺�
 - Notification click-through in this stage should express destination intent rather than full routing depth: comments, content updates, delete / restore events, and system reminders can open type-specific jump placeholders or lightweight detail placeholders.
 - Settings state remains in-memory for the current app session only; Stage 10.3 is a stability pass, not a persistence pass, so DataStore and real push / backend integration stay deferred.
 
+## Stage 11.1 implementation note
+
+- API work in this stage is contract-first only: the app should define transport boundaries, DTO naming, and repository seams without replacing the existing fake-first content flows.
+- UI-facing models must stay separated from DTOs so future backend fields, pagination changes, and auth changes do not leak directly into screens.
+- Fake remains the default runtime source, while real Retrofit-backed repositories can exist as shells or placeholders until backend endpoints are actually available.
+
 
