@@ -23,6 +23,8 @@ import com.example.yingshi.feature.photos.MediaManagementRoute
 import com.example.yingshi.feature.photos.MediaManagementScreen
 import com.example.yingshi.feature.photos.NotificationCenterRoute
 import com.example.yingshi.feature.photos.NotificationCenterScreen
+import com.example.yingshi.feature.photos.NotificationDetailRoute
+import com.example.yingshi.feature.photos.NotificationDetailScreen
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
@@ -80,6 +82,9 @@ fun YingShiApp() {
     var settingsRoute by remember {
         mutableStateOf<SettingsRoute?>(null)
     }
+    var notificationDetailRoute by remember {
+        mutableStateOf<NotificationDetailRoute?>(null)
+    }
     var cacheManagementRoute by remember {
         mutableStateOf<CacheManagementRoute?>(null)
     }
@@ -123,7 +128,17 @@ fun YingShiApp() {
             mediaManagementRoute = null
         }
     }
-    if (notificationCenterRoute != null && settingsRoute == null && cacheManagementRoute == null) {
+    if (notificationDetailRoute != null) {
+        BackHandler {
+            notificationDetailRoute = null
+        }
+    }
+    if (
+        notificationCenterRoute != null &&
+        notificationDetailRoute == null &&
+        settingsRoute == null &&
+        cacheManagementRoute == null
+    ) {
         BackHandler {
             notificationCenterRoute = null
         }
@@ -149,6 +164,7 @@ fun YingShiApp() {
             gearEditRoute == null &&
             mediaManagementRoute == null &&
             notificationCenterRoute == null &&
+            notificationDetailRoute == null &&
             settingsRoute == null &&
             cacheManagementRoute == null,
     ) {
@@ -172,12 +188,22 @@ fun YingShiApp() {
                 }
             }
 
+            notificationDetailRoute != null -> {
+                notificationDetailRoute?.let { route ->
+                    NotificationDetailScreen(
+                        route = route,
+                        onBack = { notificationDetailRoute = null },
+                    )
+                }
+            }
+
             notificationCenterRoute != null -> {
                 notificationCenterRoute?.let { route ->
                     NotificationCenterScreen(
                         route = route,
                         onBack = { notificationCenterRoute = null },
                         onOpenSettings = { settingsRoute = it },
+                        onOpenNotificationDetail = { notificationDetailRoute = it },
                     )
                 }
             }

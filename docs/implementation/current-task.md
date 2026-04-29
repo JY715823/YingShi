@@ -1,41 +1,39 @@
-# Current Task - Stage 10.2 Settings Preferences
+# Current Task - Stage 10.3 Notification and Settings Polish
 
 ## Goal
-Move the settings page from shell-only into a basic usable tool page by connecting browsing preferences, viewer behavior preferences, cache cleanup, permission status, and about/diagnostics placeholders.
+Close the Stage 10 notification and settings shell by adding notification category filters, unread badges, click-through placeholders, and a stability pass on current in-memory settings state.
 
 ## Scope
-- in-memory settings state model for the current app session
-- default photo-page grid density preference
-- default album-page column preference
-- viewer preference group with minimal behavior wiring
-- settings-page cache and storage actions
-- permission status presentation
-- about and diagnostics placeholder presentation
+- notification category filter row
+- per-category unread badges
+- bell unread badge in the photos module top bar
+- single-item read and mark-all-read updates
+- notification click-through placeholder detail
+- notification-detail standalone page shell
+- settings state stability check and minimal UI polish
 - minimal PRD / UI doc sync
 
 ## Product intent
-- Settings should now help shape the app-content browsing experience instead of only listing future placeholders.
-- Browsing defaults should influence first entry into photo and album pages, but should not keep fighting temporary per-page user adjustments.
-- Viewer preferences can land in two layers for this stage: some can affect current viewer behavior now, and some can remain clearly labeled placeholders for later real player work.
-- Cache cleanup stays local-first and fake, but settings should become the formal home for that management entry.
+- Notification center should now feel like a usable local-first inbox instead of only a flat fake list.
+- Read state should stay visually consistent across the bell entry, category filters, and list rows within the current app session.
+- Notification click handling should already express future destination intent, even though real push, deep links, and backend routing are still deferred.
+- Settings remains session-scoped and local-first in this stage; the main requirement is that current values stay stable and clearly explain placeholder behavior where needed.
 
 ## Do not do
-- no DataStore or restart persistence yet
-- no real account system
-- no real notification permission flow
-- no real background task or download permission flow
-- no real crash reporting or analytics service
+- no real push notification
+- no real notification permission
+- no DataStore or restart persistence
 - no backend / Room / Retrofit
-- no large viewer or navigation refactor
+- no complex deep-link router
+- no large navigation refactor
 
 ## Done when
-- settings groups are clear and usable
-- default photo density can be changed to 2 / 3 / 4 / 8 / 16
-- default album columns can be changed to 2 / 3 / 4
-- viewer preference group exists with clear real-vs-placeholder behavior
-- settings page shows fake cache summary and cleanup actions
-- permission status shows system media access as fully granted
-- about and diagnostics placeholders exist with clearer structure
-- settings state survives within the current app session
-- related docs are minimally updated
+- notification filters work for all categories
+- category unread badges update correctly
+- the bell badge reflects current unread count
+- clicking a notification marks it read
+- mark-all-read clears list, filter, and bell unread indicators
+- clicking a notification opens a jump placeholder or detail placeholder
+- settings page remains stable within the current app session
+- docs record fake notifications, placeholder jump behavior, and session-only settings state
 - app builds and runs

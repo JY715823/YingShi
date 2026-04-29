@@ -77,6 +77,7 @@ fun PhotosRootScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
+    val notificationUnreadCount = FakeNotificationRepository.unreadCount()
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
     }
@@ -194,6 +195,7 @@ fun PhotosRootScreen(
 
         PhotoTopBar(
             selectedSection = selectedSection,
+            notificationUnreadCount = notificationUnreadCount,
             selectionState = if (selectedSection == PhotosTopDestination.PHOTOS) {
                 photoSelectionState
             } else {
@@ -289,6 +291,7 @@ fun PhotosRootScreen(
 @Composable
 private fun PhotoTopBar(
     selectedSection: PhotosTopDestination,
+    notificationUnreadCount: Int,
     selectionState: PhotoFeedSelectionState,
     onCancelSelection: () -> Unit,
     onSelected: (Int) -> Unit,
@@ -343,6 +346,7 @@ private fun PhotoTopBar(
                 onClick = onOpenSystemMedia,
             )
             PhotoBellButton(
+                unreadCount = notificationUnreadCount,
                 onClick = {
                     PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
                 },
@@ -380,7 +384,10 @@ private fun PhotoTopToolButton(
 }
 
 @Composable
-private fun PhotoBellButton(onClick: () -> Unit) {
+private fun PhotoBellButton(
+    unreadCount: Int,
+    onClick: () -> Unit,
+) {
     val iconColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
@@ -395,27 +402,46 @@ private fun PhotoBellButton(onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
         ),
     ) {
-        Canvas(modifier = Modifier.padding(8.dp)) {
-            val stroke = Stroke(width = 2.2f, cap = StrokeCap.Round)
-            drawArc(
-                color = iconColor,
-                startAngle = 202f,
-                sweepAngle = 136f,
-                useCenter = false,
-                style = stroke,
-            )
-            drawLine(
-                color = iconColor,
-                start = center.copy(x = size.width * 0.22f, y = size.height * 0.62f),
-                end = center.copy(x = size.width * 0.78f, y = size.height * 0.62f),
-                strokeWidth = 2.2f,
-                cap = StrokeCap.Round,
-            )
-            drawCircle(
-                color = iconColor,
-                radius = 1.8f,
-                center = center.copy(y = size.height * 0.78f),
-            )
+        Box {
+            Canvas(modifier = Modifier.padding(8.dp)) {
+                val stroke = Stroke(width = 2.2f, cap = StrokeCap.Round)
+                drawArc(
+                    color = iconColor,
+                    startAngle = 202f,
+                    sweepAngle = 136f,
+                    useCenter = false,
+                    style = stroke,
+                )
+                drawLine(
+                    color = iconColor,
+                    start = center.copy(x = size.width * 0.22f, y = size.height * 0.62f),
+                    end = center.copy(x = size.width * 0.78f, y = size.height * 0.62f),
+                    strokeWidth = 2.2f,
+                    cap = StrokeCap.Round,
+                )
+                drawCircle(
+                    color = iconColor,
+                    radius = 1.8f,
+                    center = center.copy(y = size.height * 0.78f),
+                )
+            }
+
+            if (unreadCount > 0) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 1.dp, end = 1.dp),
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
         }
     }
 }
