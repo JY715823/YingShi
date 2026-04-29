@@ -21,11 +21,15 @@ import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.MediaManagementRoute
 import com.example.yingshi.feature.photos.MediaManagementScreen
+import com.example.yingshi.feature.photos.NotificationCenterRoute
+import com.example.yingshi.feature.photos.NotificationCenterScreen
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
+import com.example.yingshi.feature.photos.SettingsRoute
+import com.example.yingshi.feature.photos.SettingsScreen
 import com.example.yingshi.feature.photos.SystemMediaRoute
 import com.example.yingshi.feature.photos.SystemMediaScreen
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
@@ -70,6 +74,12 @@ fun YingShiApp() {
     var mediaManagementRoute by remember {
         mutableStateOf<MediaManagementRoute?>(null)
     }
+    var notificationCenterRoute by remember {
+        mutableStateOf<NotificationCenterRoute?>(null)
+    }
+    var settingsRoute by remember {
+        mutableStateOf<SettingsRoute?>(null)
+    }
     var cacheManagementRoute by remember {
         mutableStateOf<CacheManagementRoute?>(null)
     }
@@ -113,6 +123,16 @@ fun YingShiApp() {
             mediaManagementRoute = null
         }
     }
+    if (notificationCenterRoute != null && settingsRoute == null && cacheManagementRoute == null) {
+        BackHandler {
+            notificationCenterRoute = null
+        }
+    }
+    if (settingsRoute != null && cacheManagementRoute == null) {
+        BackHandler {
+            settingsRoute = null
+        }
+    }
     if (cacheManagementRoute != null) {
         BackHandler {
             cacheManagementRoute = null
@@ -128,6 +148,8 @@ fun YingShiApp() {
             postDetailRoute == null &&
             gearEditRoute == null &&
             mediaManagementRoute == null &&
+            notificationCenterRoute == null &&
+            settingsRoute == null &&
             cacheManagementRoute == null,
     ) {
         when {
@@ -136,6 +158,26 @@ fun YingShiApp() {
                     CacheManagementScreen(
                         route = route,
                         onBack = { cacheManagementRoute = null },
+                    )
+                }
+            }
+
+            settingsRoute != null -> {
+                settingsRoute?.let { route ->
+                    SettingsScreen(
+                        route = route,
+                        onBack = { settingsRoute = null },
+                        onOpenCacheManagement = { cacheManagementRoute = it },
+                    )
+                }
+            }
+
+            notificationCenterRoute != null -> {
+                notificationCenterRoute?.let { route ->
+                    NotificationCenterScreen(
+                        route = route,
+                        onBack = { notificationCenterRoute = null },
+                        onOpenSettings = { settingsRoute = it },
                     )
                 }
             }
@@ -195,6 +237,9 @@ fun YingShiApp() {
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenTrashDetail = { trashDetailRoute = it },
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
+                        onOpenNotifications = {
+                            notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
+                        },
                     )
                     RootDestination.LIFE -> LifeScreen()
                 }

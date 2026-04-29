@@ -1259,3 +1259,8 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Viewer cache actions can live behind a restrained settings / more entry and should use lightweight local feedback after clearing cache, while the immersive dark shell and existing overlays remain intact.
 - Post-level and global cache cleanup remain placeholder management flows for this stage: clear wording, fake size summary, and safe local state changes are enough before any real settings page or storage cleaner exists.
 
+## Stage 10.1 implementation note
+- Notification center should feel quieter and more list-first than the photo pages: clean rows, low-noise type labels, clear unread cues, and an independent top bar with back plus title.
+- Settings should read as a restrained tool page inside the Yingshi visual system, with grouped entries instead of management-dashboard density.
+- The settings cache / storage group can hand off into the existing cache-management placeholder page; the rest of the settings groups stay as shell rows without expanding into real account, permission, or diagnostics flows yet.
+

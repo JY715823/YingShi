@@ -1,53 +1,55 @@
-# Current Task - Stage 9.4 Cache State And Clear Entry Placeholders
+# Current Task - Stage 10.1 Notification Center and Settings Shell
 
 ## Goal
-Establish a shared cache-state model and clear-cache entry placeholders for app-content media.
+Add independent notification-center and settings-shell pages for the app.
 
 ## Scope
-- Add app-content media cache state keyed by `mediaId`.
-- Model four lightweight fields for the current stage:
-  - `previewCached`
-  - `originalCached`
-  - `videoCached`
-  - `cacheSizeLabel`
-- Keep cache state local-first and fake-only for now, with no real disk scan or file deletion.
-- Share the same media cache state across photo-flow viewer, in-post viewer, and post detail.
-- Add a single-media clear-cache entry inside both viewer entry contexts.
-- Add a post-level clear-cache entry placeholder in the post-detail / gear-edit chain.
-- Add a global cache-management placeholder entry or route with fake total-size summary.
-- Reset `originalLoadState` back to not-loaded after clearing original cache.
-- Keep photo feed cards clean and keep system-media tools outside the app-content cache strategy.
+- Connect the bell button in the photos-module top bar to an independent notification-center page.
+- Build the notification-center page as a standalone route with no global bottom navigation and no photos secondary navigation.
+- Use fake notification data with at least these categories:
+  - comments
+  - content updates
+  - delete / restore
+  - system
+- Show notification type, title, short body, time, and read / unread state.
+- Support marking one notification as read.
+- Support marking all notifications as read.
+- Add a reachable settings entry if none exists yet.
+- Build the settings page as a standalone route with no global bottom navigation and no photos secondary navigation.
+- Organize settings into grouped placeholder sections.
+- Connect the settings cache / storage section to the existing Stage 9.4 global cache-management placeholder.
 - Sync the minimum required PRD / UI / current-task docs together with code.
 
 ## Product intent
-- Cache state belongs to app-content media only, not to system-media tools.
-- Cache state is shared by the same `mediaId` across app-content surfaces so users do not see conflicting cache status.
-- Stage 9.4 builds management boundaries and entry points first, before any real downloader, cache directory, or cleanup worker exists.
-- Clearing cache should affect only cache-related local state, not media bodies, comments, or ownership relations.
+- Notification center is a focused low-noise list page, not a feed mixed into photos or posts.
+- Settings is a clear tool page, not a backend-style control panel.
+- Both pages are independent shells that prepare room for later real permissions, browsing preferences, cache policies, and notification categories.
+- Stage 10.1 stays local-first and fake-safe: it defines routes, grouping, and page boundaries before real push or account systems exist.
 
 ## Do not do
-- no real disk cache scan
-- no real file deletion
-- no WorkManager cleanup jobs
-- no backend / OSS / Room / Retrofit
-- no full settings page implementation
-- no major viewer / post-detail / gear-edit architecture refactor
+- no real push notification
+- no account system
+- no real permission request
+- no real diagnostics / crash reporting
+- no backend / Room / Retrofit
+- no large main-navigation refactor
+- no regression to photos / albums / viewer / system-media flows
 
 ## Acceptance
-- Media-level cache state exists and is keyed by `mediaId`.
-- Single-media clear-cache entry works in photo-flow viewer and in-post viewer.
-- Clearing original cache resets original-load state to not-loaded.
-- A post-level clear-cache entry exists.
-- A global cache-management placeholder entry or reserved route exists.
-- Photo feed cards do not show cache state.
-- System-media tools do not show app-content cache state.
+- The bell button opens notification center.
+- The notification list is visible.
+- Notifications can be marked read.
+- Mark-all-read works.
+- Settings page is reachable.
+- Settings groups are clear.
+- The cache cleanup entry opens the existing Stage 9.4 global cache-management placeholder.
 - Related docs are minimally updated in the same change.
 - The project builds and remains runnable.
 
-## Follow-up after Stage 9.4
-- Real preview / original / video cache directory management
-- Real file-size calculation and disk usage scan
-- Real file deletion and cleanup confirmation strategy
-- Background cleanup jobs and retry handling
-- OSS / downloader / player cache integration
-- Settings-page integration and deeper cache diagnostics
+## Follow-up after Stage 10.1
+- Real push / notification channel strategy
+- Real notification filtering, grouping, and jump targets
+- Real account and shared-space settings
+- Real browsing preferences persistence
+- Real permission status / request wiring
+- Real diagnostics and export entries
