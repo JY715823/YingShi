@@ -15,6 +15,8 @@ import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
+import com.example.yingshi.feature.photos.CacheManagementRoute
+import com.example.yingshi.feature.photos.CacheManagementScreen
 import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.MediaManagementRoute
@@ -68,6 +70,9 @@ fun YingShiApp() {
     var mediaManagementRoute by remember {
         mutableStateOf<MediaManagementRoute?>(null)
     }
+    var cacheManagementRoute by remember {
+        mutableStateOf<CacheManagementRoute?>(null)
+    }
     var trashDetailRoute by remember {
         mutableStateOf<TrashDetailRoute?>(null)
     }
@@ -108,6 +113,11 @@ fun YingShiApp() {
             mediaManagementRoute = null
         }
     }
+    if (cacheManagementRoute != null) {
+        BackHandler {
+            cacheManagementRoute = null
+        }
+    }
 
     AppShellScaffold(
         selectedDestination = selectedDestination,
@@ -117,14 +127,25 @@ fun YingShiApp() {
             trashDetailRoute == null &&
             postDetailRoute == null &&
             gearEditRoute == null &&
-            mediaManagementRoute == null,
+            mediaManagementRoute == null &&
+            cacheManagementRoute == null,
     ) {
         when {
+            cacheManagementRoute != null -> {
+                cacheManagementRoute?.let { route ->
+                    CacheManagementScreen(
+                        route = route,
+                        onBack = { cacheManagementRoute = null },
+                    )
+                }
+            }
+
             photoViewerRoute != null -> {
                 photoViewerRoute?.let { route ->
                     PhotoViewerScreen(
                         route = route,
                         onBack = { photoViewerRoute = null },
+                        onOpenCacheManagement = { cacheManagementRoute = it },
                     )
                 }
             }
@@ -183,6 +204,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { postDetailRoute = null },
                         onOpenGearEdit = { gearEditRoute = it },
+                        onOpenCacheManagement = { cacheManagementRoute = it },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -192,6 +214,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { gearEditRoute = null },
                         onOpenMediaManagement = { mediaManagementRoute = it },
+                        onOpenCacheManagement = { cacheManagementRoute = it },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
                             val postSnapshot = FakeAlbumRepository.snapshotPost(postId)
                             if (postSnapshot == null) {

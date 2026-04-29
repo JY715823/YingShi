@@ -55,6 +55,11 @@ object FakeOriginalLoadRepository {
         startFakeLoad(mediaId)
     }
 
+    fun clearOriginal(mediaId: String) {
+        activeJobs.remove(mediaId)?.cancel()
+        statesByMediaId[mediaId] = OriginalLoadState.NotLoaded
+    }
+
     fun loadAllOriginals(mediaIds: List<String>) {
         mediaIds
             .distinct()
@@ -82,6 +87,7 @@ object FakeOriginalLoadRepository {
         activeJobs[mediaId] = scope.launch {
             delay(900)
             statesByMediaId[mediaId] = OriginalLoadState.Loaded
+            FakeMediaCacheRepository.markOriginalCached(mediaId)
             activeJobs.remove(mediaId)
         }
     }

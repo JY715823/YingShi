@@ -1,50 +1,53 @@
-# Current Task - Stage 9.3 Video Viewer Basics
+# Current Task - Stage 9.4 Cache State And Clear Entry Placeholders
 
 ## Goal
-Let app-content Viewer start supporting video media in the same flow as photos.
+Establish a shared cache-state model and clear-cache entry placeholders for app-content media.
 
 ## Scope
-- Add or standardize `mediaType: image / video` in app-content media models.
-- Add a few fake video samples into app-content fake data.
-- Make photo feed, album/post cover, post detail media area, and in-post viewer all recognize video media.
-- Show a lightweight video marker on video cards and video covers.
-- Let photo-flow viewer and in-post viewer both render a video viewing shell.
-- Keep video controls minimal: basic play / pause plus simple progress placeholder or lightweight progress.
-- Reset / stop current video session state when switching media, leaving the current video, or exiting the viewer.
-- Keep comments, original-load entry, related-post entry, and in-post white segment indicator usable.
+- Add app-content media cache state keyed by `mediaId`.
+- Model four lightweight fields for the current stage:
+  - `previewCached`
+  - `originalCached`
+  - `videoCached`
+  - `cacheSizeLabel`
+- Keep cache state local-first and fake-only for now, with no real disk scan or file deletion.
+- Share the same media cache state across photo-flow viewer, in-post viewer, and post detail.
+- Add a single-media clear-cache entry inside both viewer entry contexts.
+- Add a post-level clear-cache entry placeholder in the post-detail / gear-edit chain.
+- Add a global cache-management placeholder entry or route with fake total-size summary.
+- Reset `originalLoadState` back to not-loaded after clearing original cache.
+- Keep photo feed cards clean and keep system-media tools outside the app-content cache strategy.
 - Sync the minimum required PRD / UI / current-task docs together with code.
 
 ## Product intent
-- Video belongs to the same app-content media stream as images, not a separate viewer type.
-- Viewer stays immersive and dark even when current media is a video.
-- Video state is session-local only and should never leak across media items.
-- We prefer a small, fake-safe, local-first playback shell now over a heavy real player integration.
+- Cache state belongs to app-content media only, not to system-media tools.
+- Cache state is shared by the same `mediaId` across app-content surfaces so users do not see conflicting cache status.
+- Stage 9.4 builds management boundaries and entry points first, before any real downloader, cache directory, or cleanup worker exists.
+- Clearing cache should affect only cache-related local state, not media bodies, comments, or ownership relations.
 
 ## Do not do
-- no complex player controls
-- no background playback
-- no real video cache
-- no speed control
-- no fullscreen secondary player
-- no volume control
-- no real upload / download
-- no backend / Room / Retrofit
-- no large viewer architecture refactor
+- no real disk cache scan
+- no real file deletion
+- no WorkManager cleanup jobs
+- no backend / OSS / Room / Retrofit
+- no full settings page implementation
+- no major viewer / post-detail / gear-edit architecture refactor
 
 ## Acceptance
-- Fake videos appear in the photo feed and in post media sequences.
-- Video cards and video covers show a lightweight video marker.
-- Tapping a video opens Viewer and shows a clear video viewing area.
-- Play / pause is minimally usable or clearly represented in the local fake shell.
-- Switching between image and video does not crash and does not mix playback state.
-- Leaving the current video stops playback state.
+- Media-level cache state exists and is keyed by `mediaId`.
+- Single-media clear-cache entry works in photo-flow viewer and in-post viewer.
+- Clearing original cache resets original-load state to not-loaded.
+- A post-level clear-cache entry exists.
+- A global cache-management placeholder entry or reserved route exists.
+- Photo feed cards do not show cache state.
+- System-media tools do not show app-content cache state.
 - Related docs are minimally updated in the same change.
 - The project builds and remains runnable.
 
-## Follow-up after Stage 9.3
-- Real player engine integration
-- Real decoded video frames / thumbnails
-- Seek scrubbing, buffered progress, and duration accuracy
-- Background playback
-- Speed / mute / volume / fullscreen controls
-- Real upload / download / cache pipelines
+## Follow-up after Stage 9.4
+- Real preview / original / video cache directory management
+- Real file-size calculation and disk usage scan
+- Real file deletion and cleanup confirmation strategy
+- Background cleanup jobs and retry handling
+- OSS / downloader / player cache integration
+- Settings-page integration and deeper cache diagnostics

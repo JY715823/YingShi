@@ -17,6 +17,11 @@
 - Photo-flow viewer and in-post viewer should both accept video media and keep the same dark immersive overlay structure.
 - Stage 9.3 only requires a local-first video viewing shell with basic play / pause and simple session progress; real player engine, cache, background playback, and advanced controls stay follow-up work.
 
+## Stage 9.4 implementation note
+- App-content media should start owning a shared cache-state model keyed by `mediaId`, covering preview, original, and video cache flags plus a fake cache-size label.
+- The same `mediaId` should expose one consistent cache state across photo-flow viewer, in-post viewer, and post detail; clearing original cache should also reset app-content original-load state back to not-loaded.
+- Stage 9.4 only introduces local-first clear-cache entry points at single-media, post, and global levels; it does not introduce real disk cleanup, OSS cache deletion, background work, or system-media cache policy changes.
+
 ## 1. 鏂囨。璇存槑
 
 ### 1.1 鏂囨。鐩爣

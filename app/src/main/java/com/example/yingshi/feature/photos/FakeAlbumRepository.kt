@@ -606,6 +606,10 @@ object FakeAlbumRepository {
                         isCover = index == 0,
                     ),
                 )
+                FakeMediaCacheRepository.registerMedia(
+                    mediaId = mediaId,
+                    mediaType = descriptor.mediaType,
+                )
             }
         }
         postMediaByPostId[postId] = mediaState
