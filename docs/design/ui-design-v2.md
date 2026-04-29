@@ -1270,3 +1270,9 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Viewer-preference copy should distinguish what already works now from what is still a placeholder, so users are not misled into expecting a full player-settings system.
 - Cache and storage rows can become denser than the rest of settings, but the page should still stay restrained, readable, and within the existing light mist-blue Yingshi tool aesthetic.
 
+## Stage 10.3 implementation note
+- Notification center should stay list-first and low-noise, but category chips now need enough contrast and compact unread badges to make filter changes feel immediately legible.
+- The bell badge should read as a lightweight activity cue rather than an alarm state: compact, restrained, and consistent with the photos-module tool buttons.
+- Notification detail placeholders should feel like a continuation of the inbox flow, not a generic modal dump: clear title, type, time, and future destination intent are the priority.
+- Settings-page polish in this stage is mostly about trust: current-value rows, placeholder disclaimers, and interaction stability should feel calmer and more explicit than the earlier shell versions.
+

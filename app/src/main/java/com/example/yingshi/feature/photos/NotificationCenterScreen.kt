@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,10 +12,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +24,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,12 +47,16 @@ fun NotificationCenterScreen(
     route: NotificationCenterRoute,
     onBack: () -> Unit,
     onOpenSettings: (SettingsRoute) -> Unit,
+    onOpenNotificationDetail: (NotificationDetailRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val notifications = FakeNotificationRepository.getNotifications()
     val unreadCount = FakeNotificationRepository.unreadCount()
+    var selectedFilterName by rememberSaveable { mutableStateOf(NotificationCenterFilter.ALL.name) }
+    val selectedFilter = NotificationCenterFilter.valueOf(selectedFilterName)
+    val filteredNotifications = FakeNotificationRepository.getNotifications(selectedFilter)
 
     Column(
         modifier = modifier
@@ -74,21 +84,35 @@ fun NotificationCenterScreen(
             totalCount = notifications.size,
         )
 
-        if (notifications.isEmpty()) {
-            NotificationCenterEmptyState(modifier = Modifier.fillMaxWidth())
+        NotificationFilterRow(
+            selectedFilter = selectedFilter,
+            onFilterSelected = { selectedFilterName = it.name },
+        )
+
+        if (filteredNotifications.isEmpty()) {
+            NotificationCenterEmptyState(
+                filter = selectedFilter,
+                modifier = Modifier.fillMaxWidth(),
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 items(
-                    items = notifications,
+                    items = filteredNotifications,
                     key = NotificationCenterItemUiModel::id,
                 ) { item ->
                     NotificationCenterItemRow(
                         item = item,
                         onClick = {
                             FakeNotificationRepository.markRead(item.id)
+                            onOpenNotificationDetail(
+                                NotificationDetailRoute(
+                                    notificationId = item.id,
+                                    source = "notification-center",
+                                ),
+                            )
                         },
                     )
                 }
@@ -160,12 +184,12 @@ private fun NotificationCenterSummary(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                 Text(
-                    text = "通知中心壳层",
+                    text = "通知中心",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "入口来源：$source · 当前只做本地假通知与已读状态，不接真实推送。",
+                    text = "入口来源：${source.toNotificationSourceLabel()} · 当前只做本地 fake 通知、已读状态和跳转占位。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -174,6 +198,96 @@ private fun NotificationCenterSummary(
                 text = "未读 $unreadCount / $totalCount",
                 emphasized = unreadCount > 0,
             )
+        }
+    }
+}
+
+@Composable
+private fun NotificationFilterRow(
+    selectedFilter: NotificationCenterFilter,
+    onFilterSelected: (NotificationCenterFilter) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        NotificationCenterFilter.entries.forEach { filter ->
+            NotificationFilterChip(
+                filter = filter,
+                unreadCount = FakeNotificationRepository.unreadCount(filter),
+                selected = filter == selectedFilter,
+                onClick = { onFilterSelected(filter) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotificationFilterChip(
+    filter: NotificationCenterFilter,
+    unreadCount: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(radius.capsule))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(radius.capsule),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+            },
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = filter.label,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                ),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            if (unreadCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(radius.capsule),
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    },
+                ) {
+                    Text(
+                        text = unreadCount.toString(),
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (selected) Color.White else MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
     }
 }
@@ -256,6 +370,11 @@ private fun NotificationCenterItemRow(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Text(
+                        text = item.targetSummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.84f),
+                    )
                 }
             }
         }
@@ -315,6 +434,7 @@ private fun NotificationStatusBadge(
 
 @Composable
 private fun NotificationCenterEmptyState(
+    filter: NotificationCenterFilter,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -331,12 +451,20 @@ private fun NotificationCenterEmptyState(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             Text(
-                text = "当前还没有通知",
+                text = if (filter == NotificationCenterFilter.ALL) {
+                    "当前还没有通知"
+                } else {
+                    "当前分类下还没有通知"
+                },
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "后续真实评论、内容更新、删除恢复和系统提醒会从这里汇总。",
+                text = if (filter == NotificationCenterFilter.ALL) {
+                    "后续真实评论、内容更新、删除恢复和系统提醒会从这里汇总。"
+                } else {
+                    "切换其他分类可继续查看本地 fake 通知。"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -368,6 +496,14 @@ private fun NotificationCircleButton(
     }
 }
 
+private fun String.toNotificationSourceLabel(): String {
+    return when (this) {
+        "photos-bell" -> "照片页铃铛"
+        "notification-center" -> "通知中心"
+        else -> this
+    }
+}
+
 private fun formatNotificationTime(timeMillis: Long): String {
     return SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
 }
@@ -380,6 +516,7 @@ private fun NotificationCenterScreenPreview() {
             route = NotificationCenterRoute(),
             onBack = { },
             onOpenSettings = { },
+            onOpenNotificationDetail = { },
         )
     }
 }

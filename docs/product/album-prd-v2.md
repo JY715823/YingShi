@@ -2123,4 +2123,10 @@ Spring Data Redis 寰堟垚鐔燂紝浣嗕綘鐨勯鐗堜笉鏄珮骞跺�
 - Viewer preferences can be mixed-stage in this pass: overlay behavior may wire into the current viewer immediately, while comment-preview defaults and richer video-switch behavior can stay clearly documented placeholders.
 - Cache and storage now formally live under settings, but all cleanup in this stage still changes fake app-content cache state only and must stay separate from the system-media tool area.
 
+## Stage 10.3 implementation note
+
+- Notification center still runs on local fake data, but it should now expose the same unread-state truth through three surfaces at once: the bell badge, category badges, and row-level unread markers.
+- Notification click-through in this stage should express destination intent rather than full routing depth: comments, content updates, delete / restore events, and system reminders can open type-specific jump placeholders or lightweight detail placeholders.
+- Settings state remains in-memory for the current app session only; Stage 10.3 is a stability pass, not a persistence pass, so DataStore and real push / backend integration stay deferred.
+
 
