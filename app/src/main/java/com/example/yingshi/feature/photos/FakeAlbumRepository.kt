@@ -100,6 +100,32 @@ object FakeAlbumRepository {
         return posts.firstOrNull { it.id == postId }
     }
 
+    fun createPlaceholderPost(
+        title: String,
+        summary: String,
+        postDisplayTimeMillis: Long,
+        albumIds: List<String>,
+    ): AlbumPostCardUiModel {
+        val normalizedAlbumIds = albumIds.distinct().ifEmpty { listOf(albums.first().id) }
+        val primaryAlbum = albums.firstOrNull { it.id == normalizedAlbumIds.first() } ?: albums.first()
+        val postId = "post-local-${postDisplayTimeMillis}-${posts.size + 1}"
+        val post = AlbumPostCardUiModel(
+            id = postId,
+            albumId = primaryAlbum.id,
+            albumIds = normalizedAlbumIds,
+            title = title.ifBlank { "本地占位帖子" },
+            summary = summary.ifBlank { "本地创建的帖子占位内容" },
+            postDisplayTimeMillis = postDisplayTimeMillis,
+            mediaCount = 1,
+            coverPalette = primaryAlbum.accent,
+            coverMediaType = AppMediaType.IMAGE,
+            coverAspectRatio = 1f,
+        )
+        posts.add(post)
+        posts.sortByDescending { it.postDisplayTimeMillis }
+        return post
+    }
+
     fun createLocalPostFromSystemMedia(
         mediaItems: List<SystemMediaItem>,
     ): AlbumPostCardUiModel? {

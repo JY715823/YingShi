@@ -1,15 +1,19 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
-import com.example.yingshi.data.model.RemotePost
+import com.example.yingshi.data.model.RemotePostDetail
+import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.UpdatePostAlbumsPayload
+import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
@@ -22,10 +26,31 @@ interface MediaRepository {
     ): ApiResult<List<RemoteMedia>>
 }
 
-interface PostRepository {
+interface AlbumRepository {
     suspend fun getAlbums(): ApiResult<List<RemoteAlbum>>
-    suspend fun getPosts(albumId: String? = null): ApiResult<List<RemotePost>>
-    suspend fun getPostDetail(postId: String): ApiResult<RemotePost>
+    suspend fun getAlbumPosts(albumId: String): ApiResult<List<RemotePostSummary>>
+    suspend fun updatePostAlbums(
+        postId: String,
+        payload: UpdatePostAlbumsPayload,
+    ): ApiResult<RemotePostSummary>
+}
+
+interface PostRepository {
+    suspend fun getPosts(): ApiResult<List<RemotePostSummary>>
+    suspend fun getPostDetail(postId: String): ApiResult<RemotePostDetail>
+    suspend fun createPost(payload: CreatePostPayload): ApiResult<RemotePostSummary>
+    suspend fun updatePostBasicInfo(
+        postId: String,
+        payload: UpdatePostBasicInfoPayload,
+    ): ApiResult<RemotePostSummary>
+    suspend fun setPostCover(
+        postId: String,
+        coverMediaId: String,
+    ): ApiResult<RemotePostDetail>
+    suspend fun updatePostMediaOrder(
+        postId: String,
+        orderedMediaIds: List<String>,
+    ): ApiResult<RemotePostDetail>
 }
 
 interface CommentRepository {

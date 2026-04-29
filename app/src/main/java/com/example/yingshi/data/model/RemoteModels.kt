@@ -22,17 +22,6 @@ data class RemoteAlbum(
     val postCount: Int,
 )
 
-data class RemotePost(
-    val postId: String,
-    val title: String,
-    val summary: String,
-    val contributorLabel: String?,
-    val displayTimeMillis: Long,
-    val albumIds: List<String>,
-    val coverMediaId: String?,
-    val mediaItems: List<RemoteMedia>,
-)
-
 data class RemoteComment(
     val commentId: String,
     val targetType: String,

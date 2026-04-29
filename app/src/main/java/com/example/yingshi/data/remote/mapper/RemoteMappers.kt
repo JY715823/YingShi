@@ -4,14 +4,19 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteMedia
-import com.example.yingshi.data.model.RemotePost
+import com.example.yingshi.data.model.RemotePostDetail
+import com.example.yingshi.data.model.RemotePostMedia
+import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
 import com.example.yingshi.data.remote.dto.MediaDto
+import com.example.yingshi.data.remote.dto.PostDetailDto
 import com.example.yingshi.data.remote.dto.PostDto
+import com.example.yingshi.data.remote.dto.PostMediaDto
+import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UploadTokenDto
 
@@ -41,8 +46,8 @@ fun AlbumDto.toRemoteModel(): RemoteAlbum {
     )
 }
 
-fun PostDto.toRemoteModel(): RemotePost {
-    return RemotePost(
+fun PostDto.toRemoteSummary(): RemotePostSummary {
+    return RemotePostSummary(
         postId = postId,
         title = title,
         summary = summary,
@@ -50,7 +55,50 @@ fun PostDto.toRemoteModel(): RemotePost {
         displayTimeMillis = displayTimeMillis,
         albumIds = albumIds,
         coverMediaId = coverMediaId,
-        mediaItems = mediaItems.map(MediaDto::toRemoteModel),
+        mediaCount = mediaCount,
+    )
+}
+
+fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
+    return RemotePostSummary(
+        postId = postId,
+        title = title,
+        summary = summary,
+        contributorLabel = contributorLabel,
+        displayTimeMillis = displayTimeMillis,
+        albumIds = albumIds,
+        coverMediaId = coverMediaId,
+        mediaCount = mediaCount,
+    )
+}
+
+fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
+    return RemotePostMedia(
+        mediaId = mediaId,
+        mediaType = mediaType,
+        previewUrl = previewUrl,
+        originalUrl = originalUrl,
+        videoUrl = videoUrl,
+        width = width,
+        height = height,
+        aspectRatio = aspectRatio,
+        displayTimeMillis = displayTimeMillis,
+        commentCount = commentCount,
+        isCover = isCover,
+        videoDurationMillis = videoDurationMillis,
+    )
+}
+
+fun PostDetailDto.toRemoteDetail(): RemotePostDetail {
+    return RemotePostDetail(
+        postId = postId,
+        title = title,
+        summary = summary,
+        contributorLabel = contributorLabel,
+        displayTimeMillis = displayTimeMillis,
+        albumIds = albumIds,
+        coverMediaId = coverMediaId,
+        mediaItems = mediaItems.map(PostMediaDto::toRemotePostMedia),
     )
 }
 
