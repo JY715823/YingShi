@@ -1248,3 +1248,9 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Width-fit plus vertical browsing is the default long-image mode; pinch-zoom and panning become the secondary detail mode.
 - Overlays should already stay hidden or weakened while zoomed, and deeper work such as tiling, decode control, and OOM protection remains a later pass.
 
+## Stage 9.3 implementation note
+- Video stays inside the same app-content media flow as images, so list cards and in-post covers only need a light video marker rather than a separate visual system.
+- Viewer video mode should keep the same deep-night immersive shell, with comments / original / related-post overlays still available and the in-post white segment indicator still reserved.
+- Early video controls should feel lighter than a full player OSD: a compact play / pause entry plus simple progress is enough for this stage.
+- Switching away from a video should immediately stop its local playback session, and video state should never leak when swiping between image and video items.
+

@@ -20,6 +20,7 @@ data class AlbumPostCardUiModel(
     val postDisplayTimeMillis: Long,
     val mediaCount: Int,
     val coverPalette: PhotoThumbnailPalette,
+    val coverMediaType: AppMediaType = AppMediaType.IMAGE,
     val coverAspectRatio: Float = 1f,
 )
 
@@ -42,9 +43,11 @@ data class PostDetailMediaUiModel(
     val displayTimeMillis: Long,
     val commentCount: Int,
     val palette: PhotoThumbnailPalette,
+    val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
     val width: Int? = null,
     val height: Int? = null,
+    val videoDurationMillis: Long? = null,
 )
 
 enum class AlbumGridDensity(
@@ -66,6 +69,7 @@ data class PostDetailPlaceholderRoute(
     val postDisplayTimeMillis: Long,
     val mediaCount: Int,
     val coverPalette: PhotoThumbnailPalette,
+    val coverMediaType: AppMediaType = AppMediaType.IMAGE,
     val coverAspectRatio: Float = 1f,
 )
 
@@ -94,6 +98,8 @@ data class ManagedPostMediaUiModel(
     val displayTimeMillis: Long,
     val commentCount: Int,
     val palette: PhotoThumbnailPalette,
+    val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float,
     val isCover: Boolean,
+    val videoDurationMillis: Long? = null,
 )

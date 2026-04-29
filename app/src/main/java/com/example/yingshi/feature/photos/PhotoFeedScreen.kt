@@ -613,7 +613,15 @@ private fun PhotoFeedCard(
                         } else {
                             Color.Black.copy(alpha = 0.12f)
                         },
-                    ),
+                ),
+            )
+        }
+
+        if (!isInSelectionMode && item.mediaType == AppMediaType.VIDEO) {
+            VideoMediaMarker(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
             )
         }
 

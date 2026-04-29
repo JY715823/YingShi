@@ -353,6 +353,14 @@ private fun AlbumPostCard(
                         ),
                     ),
             ) {
+                if (post.coverMediaType == AppMediaType.VIDEO) {
+                    VideoMediaMarker(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(top = innerPadding, start = innerPadding),
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
