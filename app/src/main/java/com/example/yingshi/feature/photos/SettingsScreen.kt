@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,6 +49,7 @@ fun SettingsScreen(
     val cacheSummary = FakeMediaCacheRepository.getGlobalSummary()
     val settingsState = FakeSettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
+    val loginStatusValue = if (AuthSessionManager.isLoggedIn) "本地占位" else "未接真实账号"
 
     Column(
         modifier = modifier
@@ -76,6 +78,11 @@ fun SettingsScreen(
                 title = "身份与成员状态",
                 subtitle = "后续在这里接入双方身份、邀请状态和空间归属信息。",
                 value = "未接入",
+            )
+            SettingsInfoRow(
+                title = "登录状态",
+                subtitle = "当前只显示本地占位鉴权状态，不接真实登录页和真实账号系统。",
+                value = loginStatusValue,
             )
         }
 

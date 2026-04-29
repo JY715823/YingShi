@@ -18,7 +18,8 @@ The goal is to keep UI models separate from transport models while preserving th
 - bearer token placeholder
 - request header draft:
   - `Authorization: Bearer <token>`
-- token acquisition and refresh are out of scope in Stage 11.1
+- auth contract details now live in `auth-api.md`
+- token acquisition and refresh remain placeholder-only in Stage 11.2
 
 ## Envelope Draft
 

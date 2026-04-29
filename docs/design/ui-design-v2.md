@@ -1281,3 +1281,8 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Because DTOs are transport-only, no screen should start rendering raw remote payload structure directly; visual models stay shaped for the existing Yingshi interface language.
 - Future backend loading, auth failure, and pagination states should be able to layer onto the current UI later through the new result and repository boundaries rather than through ad-hoc per-screen rewrites.
 
+## Stage 11.2 implementation note
+- No dedicated login screen is introduced in this stage; any auth presence in the UI should stay quiet and explanatory, not blocking.
+- Settings can expose a lightweight login-status placeholder so future account work has a clear anchor without turning the page into an account center yet.
+- Auth failure, token expiry, and relogin UI are follow-up work; this stage only needs code-level seams that will later let those states appear consistently.
+

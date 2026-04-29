@@ -46,4 +46,11 @@ object RepositoryProvider {
             RepositoryMode.REAL -> RealUploadRepository(RemoteServiceFactory.uploadApi)
         }
     }
+
+    val authRepository: AuthRepository by lazy {
+        when (currentMode) {
+            RepositoryMode.FAKE -> FakeAuthRepositoryShell()
+            RepositoryMode.REAL -> RealAuthRepository(RemoteServiceFactory.authApi)
+        }
+    }
 }
