@@ -1,37 +1,27 @@
-# Current Task - Stage 11.5 Upload API Shell
+# Current Task - Stage 11.6 Trash / Delete-Restore API Shell
 
 ## Goal
-Prepare upload-token, upload-task, upload-state, and fake import-flow boundaries so system media can enter app content through upload placeholders rather than direct local insertion.
+Prepare API, DTO, mapper, and repository boundaries for future real delete, trash, restore, and 24h undo cleanup flows while keeping the current fake trash experience runnable by default.
 
 ## Scope
-- update `docs/contracts/upload-api.md`
-- minimally sync `docs/contracts/media-api.md`
-- refine upload DTOs
-- extend `UploadApi` shell
-- refine `UploadRepository` fake / real boundary
-- add upload state models
-- add fake upload-task progress simulation
-- connect system-media "create new post" and "add to existing post" flows to upload placeholder tasks
-- only insert media into app content after upload success
-
-## Product intent
-- upload remains a shell in this stage
-- system media stays separate from app-content media until upload success
-- upload progress should be visible but lightweight
-- fake flow remains the default runnable path
+- update trash contract with list, detail, restore, remove-from-trash, undo-remove, and pending-cleanup drafts
+- align post/media delete contract drafts with trash entry creation semantics
+- add trash detail and pending-cleanup DTOs plus delete request DTOs
+- expand TrashApi Retrofit shell
+- expand trash DTO -> domain mapper boundary
+- expand TrashRepository fake/real interface while keeping fake as the default path
 
 ## Do not do
-- no real OSS upload
-- no real file transfer
-- no live backend dependency
-- no WorkManager
-- no full retry or resume system
-- no hardcoded production server
+- no real backend integration
+- no real Android system delete
+- no real 24h cleanup worker or background job
+- no forced switch to real repositories
+- no large trash UI refactor
+- no hardcoded production server address
 
 ## Done when
-- upload contracts are updated
-- upload DTOs and API shell exist
-- upload repository fake / real boundary is clear
-- system-media import uses upload placeholder tasks
-- fake flow still runs without real backend
-- app builds successfully
+- `docs/contracts/trash-api.md` is complete for Stage 11.6
+- `docs/contracts/media-api.md` and `docs/contracts/post-api.md` are minimally aligned
+- trash DTOs, mappers, and Retrofit shell methods exist
+- fake trash list / restore / remove / undo behavior still works as the default flow
+- app still builds and runs

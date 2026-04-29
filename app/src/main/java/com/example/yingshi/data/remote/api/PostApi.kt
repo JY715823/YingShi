@@ -2,14 +2,17 @@ package com.example.yingshi.data.remote.api
 
 import com.example.yingshi.data.remote.dto.ApiEnvelopeDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
+import com.example.yingshi.data.remote.dto.DeletePostRequestDto
 import com.example.yingshi.data.remote.dto.PostDetailDto
 import com.example.yingshi.data.remote.dto.PostDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
+import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostMediaOrderRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -49,4 +52,10 @@ interface PostApi {
         @Path("postId") postId: String,
         @Body request: UpdatePostMediaOrderRequestDto,
     ): ApiEnvelopeDto<PostDetailDto>
+
+    @HTTP(method = "DELETE", path = "v1/posts/{postId}", hasBody = true)
+    suspend fun deletePost(
+        @Path("postId") postId: String,
+        @Body request: DeletePostRequestDto = DeletePostRequestDto(),
+    ): ApiEnvelopeDto<TrashItemDto>
 }

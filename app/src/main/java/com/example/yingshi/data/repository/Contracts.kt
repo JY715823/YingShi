@@ -12,6 +12,8 @@ import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
+import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
@@ -90,6 +92,11 @@ interface CommentRepository {
 
 interface TrashRepository {
     suspend fun getTrashItems(type: String? = null): ApiResult<List<RemoteTrashItem>>
+    suspend fun getTrashDetail(trashItemId: String): ApiResult<RemoteTrashDetail>
+    suspend fun restoreTrashItem(trashItemId: String): ApiResult<RemoteTrashItem>
+    suspend fun moveTrashItemOut(trashItemId: String): ApiResult<RemotePendingCleanup>
+    suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem>
+    suspend fun getPendingCleanupItems(): ApiResult<List<RemotePendingCleanup>>
 }
 
 interface UploadRepository {

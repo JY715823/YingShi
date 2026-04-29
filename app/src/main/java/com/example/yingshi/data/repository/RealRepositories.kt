@@ -12,6 +12,8 @@ import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
+import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
@@ -30,14 +32,15 @@ import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.ConfirmUploadRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.RestoreRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostAlbumsRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostMediaOrderRequestDto
 import com.example.yingshi.data.remote.mapper.toRemoteModel
-import com.example.yingshi.data.remote.mapper.toRemotePage
 import com.example.yingshi.data.remote.mapper.toRemoteDetail
+import com.example.yingshi.data.remote.mapper.toRemotePage
 import com.example.yingshi.data.remote.mapper.toRemoteSummary
 import com.example.yingshi.data.remote.result.ApiResult
 
@@ -370,7 +373,96 @@ class RealTrashRepository(
     private val trashApi: TrashApi,
 ) : TrashRepository {
     override suspend fun getTrashItems(type: String?): ApiResult<List<RemoteTrashItem>> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real trash repository is a shell only")
+        return runCatching {
+            trashApi.getTrashItems(type = type).data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_LIST_REQUEST_FAILED",
+                    message = "Stage 11.6 real trash list request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getTrashDetail(trashItemId: String): ApiResult<RemoteTrashDetail> {
+        return runCatching {
+            trashApi.getTrashDetail(trashItemId).data.toRemoteDetail()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_DETAIL_REQUEST_FAILED",
+                    message = "Stage 11.6 real trash detail request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun restoreTrashItem(trashItemId: String): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            trashApi.restoreTrashItem(
+                trashItemId = trashItemId,
+                request = RestoreRequestDto(),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_RESTORE_REQUEST_FAILED",
+                    message = "Stage 11.6 real trash restore request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun moveTrashItemOut(trashItemId: String): ApiResult<RemotePendingCleanup> {
+        return runCatching {
+            trashApi.removeTrashItem(trashItemId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_REMOVE_REQUEST_FAILED",
+                    message = "Stage 11.6 real remove-from-trash request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            trashApi.undoRemoveTrashItem(trashItemId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_UNDO_REMOVE_REQUEST_FAILED",
+                    message = "Stage 11.6 real undo-remove request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getPendingCleanupItems(): ApiResult<List<RemotePendingCleanup>> {
+        return runCatching {
+            trashApi.getPendingCleanupItems().data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_PENDING_REQUEST_FAILED",
+                    message = "Stage 11.6 real pending-cleanup request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 }
 

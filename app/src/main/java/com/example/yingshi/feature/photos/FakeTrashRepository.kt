@@ -49,6 +49,15 @@ object FakeTrashRepository {
             }
     }
 
+    fun getPendingCleanupEntry(entryId: String): TrashPendingCleanupUiModel? {
+        return pendingRemovals.firstOrNull { it.entry.id == entryId }?.let { pending ->
+            TrashPendingCleanupUiModel(
+                entry = pending.entry,
+                removedAtMillis = pending.removedAtMillis,
+            )
+        }
+    }
+
     fun getSnackbarMessage(): TrashSnackbarMessageUiModel? = latestSnackbarMessage
 
     fun consumeSnackbarMessage(entryId: String) {

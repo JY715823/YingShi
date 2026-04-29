@@ -74,3 +74,8 @@ data class UpdatePostMediaOrderRequestDto(
 data class UpdatePostAlbumsRequestDto(
     val albumIds: List<String>,
 )
+
+data class DeletePostRequestDto(
+    val deleteMode: String = "moveToTrash",
+    val operatorNote: String? = null,
+)

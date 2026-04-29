@@ -71,12 +71,54 @@ Response draft:
 }
 ```
 
+### `DELETE /v1/posts/{postId}/media`
+- use case: remove media from one post only
+- auth: required
+- Stage 11.6 draft only
+
+Request draft:
+
+```json
+{
+  "mediaIds": ["media_001", "media_002"],
+  "deleteScope": "postRelation",
+  "sourcePostId": "post_001",
+  "moveToTrash": true,
+  "operatorNote": null
+}
+```
+
+Response draft:
+- return created trash entries as `List<TrashItemDto>`
+
+### `DELETE /v1/media`
+- use case: system-level media delete from app-content
+- auth: required
+- Stage 11.6 draft only
+
+Request draft:
+
+```json
+{
+  "mediaIds": ["media_010"],
+  "deleteScope": "systemMedia",
+  "sourcePostId": null,
+  "moveToTrash": true,
+  "operatorNote": null
+}
+```
+
+Response draft:
+- return created trash entries as `List<TrashItemDto>`
+
 ## Field Notes
 - `mediaType`: `image` or `video`
 - `previewUrl`: preview or thumbnail resource
 - `originalUrl`: original image resource, null for video-only items
 - `videoUrl`: actual playable asset, null for images
 - `coverUrl`: optional video cover
+- post-relation delete and system-media delete must not be mixed into one trash semantic path
+- media removed from one post should not imply the media body itself was system-deleted
 
 ## Pagination Placeholder
 - `page/pageSize` and `cursor` are both kept as placeholders in Stage 11.1
@@ -84,6 +126,8 @@ Response draft:
 ## Error Code Placeholders
 - `MEDIA_NOT_FOUND`
 - `INVALID_MEDIA_TYPE`
+- `MEDIA_DELETE_SCOPE_INVALID`
+- `MEDIA_DELETE_CONFLICT`
 - `UNAUTHORIZED`
 - `NOT_IMPLEMENTED`
 
@@ -91,3 +135,4 @@ Response draft:
 - preview/original/video cache state is not part of the remote contract yet
 - real CDN, signed URL, and transformed thumbnail strategy remain follow-up work
 - system-media import should only enter app-content media after upload-confirm success
+- delete-to-trash routing is aligned in Stage 11.6, but no live delete backend is required yet
