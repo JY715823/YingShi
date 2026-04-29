@@ -263,6 +263,7 @@ private tailrec fun android.content.Context.findActivity(): Activity? {
 fun PhotoViewerScreen(
     route: PhotoViewerRoute,
     onBack: () -> Unit,
+    onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (route.mediaItems.isEmpty()) {
@@ -280,6 +281,7 @@ fun PhotoViewerScreen(
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
+    var showCacheActionSheet by remember { mutableStateOf(false) }
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
@@ -295,6 +297,10 @@ fun PhotoViewerScreen(
     val currentItem = route.mediaItems[currentIndex]
     val currentVideoDurationMillis = currentItem.viewerVideoDurationMillis()
     val currentOriginalState = FakeOriginalLoadRepository.getState(currentItem.mediaId)
+    val currentCacheState = FakeMediaCacheRepository.getState(
+        mediaId = currentItem.mediaId,
+        mediaType = currentItem.mediaType,
+    )
     val mediaComments = FakeCommentRepository.getMediaComments(currentItem.mediaId)
     val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
     val edgeActionsBottomPadding = if (route.showPostSegments) {
@@ -334,6 +340,7 @@ fun PhotoViewerScreen(
         showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
+        showCacheActionSheet = false
         videoPlaybackState = ViewerVideoPlaybackState(
             mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
         )
@@ -423,7 +430,7 @@ fun PhotoViewerScreen(
             onBack = onBack,
             timeLabel = overlayUiModel.timeLabel,
             onOpenSettings = {
-                Toast.makeText(context, "设置入口占位", Toast.LENGTH_SHORT).show()
+                showCacheActionSheet = true
             },
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -572,6 +579,41 @@ fun PhotoViewerScreen(
                     Toast.makeText(context, "将进入「${post.title}」（占位）", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { showRelatedPostsSheet = false },
+            )
+        }
+
+        if (showCacheActionSheet) {
+            ViewerCacheActionSheet(
+                cacheState = currentCacheState,
+                onDismiss = { showCacheActionSheet = false },
+                onClearPreviewCache = {
+                    FakeMediaCacheRepository.clearPreviewCache(currentItem.mediaId)
+                    Toast.makeText(context, "已清理预览缓存", Toast.LENGTH_SHORT).show()
+                },
+                onClearOriginalCache = {
+                    FakeMediaCacheRepository.clearOriginalCache(currentItem.mediaId)
+                    Toast.makeText(context, "已清理原图缓存", Toast.LENGTH_SHORT).show()
+                },
+                onClearVideoCache = if (currentItem.mediaType == AppMediaType.VIDEO) {
+                    {
+                        FakeMediaCacheRepository.clearVideoCache(currentItem.mediaId)
+                        Toast.makeText(context, "已清理视频缓存", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    null
+                },
+                onOpenGlobalCacheManagement = {
+                    showCacheActionSheet = false
+                    onOpenCacheManagement(
+                        CacheManagementRoute(
+                            source = if (route.showPostSegments) {
+                                "in-post-viewer"
+                            } else {
+                                "photo-flow-viewer"
+                            },
+                        ),
+                    )
+                },
             )
         }
     }
@@ -1244,6 +1286,109 @@ private fun ViewerCommentPreviewLayer(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ViewerCacheActionSheet(
+    cacheState: AppMediaCacheState,
+    onDismiss: () -> Unit,
+    onClearPreviewCache: () -> Unit,
+    onClearOriginalCache: () -> Unit,
+    onClearVideoCache: (() -> Unit)?,
+    onOpenGlobalCacheManagement: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ViewerNightTop,
+        contentColor = ViewerSurface,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "清理缓存",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = ViewerSurface.copy(alpha = 0.94f),
+            )
+            Text(
+                text = "当前媒体 fake 缓存 ${cacheState.cacheSizeLabel} · 只做本地状态变化",
+                style = MaterialTheme.typography.labelMedium,
+                color = ViewerSurface.copy(alpha = 0.62f),
+            )
+            ViewerCacheActionRow(
+                title = "清理预览缓存",
+                subtitle = if (cacheState.previewCached) "当前标记为已缓存" else "当前已是未缓存状态",
+                onClick = onClearPreviewCache,
+            )
+            ViewerCacheActionRow(
+                title = "清理原图缓存",
+                subtitle = if (cacheState.originalCached) {
+                    "清理后会回到“加载原图”"
+                } else {
+                    "当前原图尚未缓存"
+                },
+                onClick = onClearOriginalCache,
+            )
+            if (onClearVideoCache != null) {
+                ViewerCacheActionRow(
+                    title = "清理视频缓存",
+                    subtitle = if (cacheState.videoCached) "当前视频缓存可清理" else "当前视频已是未缓存状态",
+                    onClick = onClearVideoCache,
+                )
+            }
+            ViewerCacheActionRow(
+                title = "打开全局缓存管理",
+                subtitle = "查看 fake 总量并清理全部预览 / 原图 / 视频缓存",
+                onClick = onOpenGlobalCacheManagement,
+            )
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(text = "关闭", color = ViewerSurface.copy(alpha = 0.88f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerCacheActionRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(radius.lg))
+            .background(ViewerSurface.copy(alpha = 0.08f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = spacing.md, vertical = spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = ViewerSurface.copy(alpha = 0.90f),
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = ViewerSurface.copy(alpha = 0.62f),
+        )
     }
 }
 

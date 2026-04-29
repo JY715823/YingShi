@@ -47,6 +47,7 @@ fun GearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
     onOpenMediaManagement: (MediaManagementRoute) -> Unit,
+    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     onDeleteCurrentPost: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -198,6 +199,13 @@ fun GearEditScreen(
                 subtitle = "进入独立媒体管理页，管理当前帖子的媒体。",
                 onClick = {
                     onOpenMediaManagement(MediaManagementRoute(route.postId))
+                },
+            )
+            GearEditEntryRow(
+                title = "全局缓存管理",
+                subtitle = "查看 app 内容区 fake 缓存总量，并清理预览 / 原图 / 视频缓存占位状态。",
+                onClick = {
+                    onOpenCacheManagement(CacheManagementRoute(source = "gear-edit"))
                 },
             )
             GearEditEntryRow(
@@ -496,6 +504,7 @@ private fun GearEditScreenPreview() {
             route = GearEditRoute(postId = "post-window-light"),
             onBack = {},
             onOpenMediaManagement = {},
+            onOpenCacheManagement = {},
             onDeleteCurrentPost = { _, _ -> },
         )
     }

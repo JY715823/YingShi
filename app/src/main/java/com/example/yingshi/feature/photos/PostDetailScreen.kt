@@ -23,9 +23,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +57,7 @@ fun PostDetailScreen(
     route: PostDetailPlaceholderRoute,
     onBack: () -> Unit,
     onOpenGearEdit: (GearEditRoute) -> Unit,
+    onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val detail = FakeAlbumRepository.getPostDetail(route)
@@ -89,6 +92,7 @@ fun PostDetailScreen(
             PhotoViewerScreen(
                 route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
                 onBack = { inPostViewerInitialPage = null },
+                onOpenCacheManagement = onOpenCacheManagement,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -161,6 +165,7 @@ private fun PostDetailContent(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
+    var showPostCacheDialog by rememberSaveable(detail.postId) { mutableStateOf(false) }
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
@@ -171,6 +176,7 @@ private fun PostDetailContent(
     }
     val currentOriginalState = FakeOriginalLoadRepository.getState(currentMedia.id)
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
+    val postCacheSummary = FakeMediaCacheRepository.getSummary(postMediaIds)
 
 
     Column(
@@ -247,13 +253,71 @@ private fun PostDetailContent(
         PostInfoSection(
             detail = detail,
             originalSummary = postOriginalSummary,
+            cacheSummary = postCacheSummary,
             onLoadAllOriginals = {
                 FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
                 Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
             },
+            onClearPostCache = { showPostCacheDialog = true },
         )
 
         PostCommentSection(postId = detail.postId)
+    }
+
+    if (showPostCacheDialog) {
+        AlertDialog(
+            onDismissRequest = { showPostCacheDialog = false },
+            title = { Text("清理本帖缓存") },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+                ) {
+                    Text("当前帖子共 ${postCacheSummary.mediaCount} 个媒体，fake 缓存总量 ${postCacheSummary.totalSizeLabel}。")
+                    Text(
+                        text = "这里只清理当前帖内媒体的原图 / 视频缓存状态，不影响媒体本体和评论。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
+                    TextButton(
+                        onClick = {
+                            FakeMediaCacheRepository.clearPostOriginalCaches(postMediaIds)
+                            showPostCacheDialog = false
+                            Toast.makeText(context, "已清理本帖原图缓存", Toast.LENGTH_SHORT).show()
+                        },
+                    ) {
+                        Text("清原图")
+                    }
+                    TextButton(
+                        onClick = {
+                            FakeMediaCacheRepository.clearPostVideoCaches(postMediaIds)
+                            showPostCacheDialog = false
+                            Toast.makeText(context, "已清理本帖视频缓存", Toast.LENGTH_SHORT).show()
+                        },
+                    ) {
+                        Text("清视频")
+                    }
+                    TextButton(
+                        onClick = {
+                            FakeMediaCacheRepository.clearPostOriginalCaches(postMediaIds)
+                            FakeMediaCacheRepository.clearPostVideoCaches(postMediaIds)
+                            showPostCacheDialog = false
+                            Toast.makeText(context, "已清理本帖缓存", Toast.LENGTH_SHORT).show()
+                        },
+                    ) {
+                        Text("全清")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPostCacheDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 }
 
@@ -418,7 +482,9 @@ private fun PostMediaInfoRow(
 private fun PostInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
+    cacheSummary: AppMediaCacheSummary,
     onLoadAllOriginals: () -> Unit,
+    onClearPostCache: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -463,7 +529,14 @@ private fun PostInfoSection(
                     PostMetaCapsule(text = chip)
                 }
             }
-            PostActionChip(text = originalSummary.buttonLabel, onClick = onLoadAllOriginals)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PostActionChip(text = originalSummary.buttonLabel, onClick = onLoadAllOriginals)
+                PostMetaCapsule(text = "缓存 ${cacheSummary.totalSizeLabel}")
+                PostActionChip(text = "清理本帖缓存", onClick = onClearPostCache)
+            }
         }
     }
 }

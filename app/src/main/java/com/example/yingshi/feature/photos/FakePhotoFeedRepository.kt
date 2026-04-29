@@ -23,6 +23,10 @@ object FakePhotoFeedRepository {
                     return@mapNotNull null
                 }
                 val parts = dateParts(latestEntry.mediaDisplayTimeMillis)
+                FakeMediaCacheRepository.registerMedia(
+                    mediaId = latestEntry.mediaId,
+                    mediaType = latestEntry.mediaType,
+                )
 
                 PhotoFeedItem(
                     mediaId = latestEntry.mediaId,

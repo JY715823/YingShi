@@ -1254,3 +1254,8 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Early video controls should feel lighter than a full player OSD: a compact play / pause entry plus simple progress is enough for this stage.
 - Switching away from a video should immediately stop its local playback session, and video state should never leak when swiping between image and video items.
 
+## Stage 9.4 implementation note
+- Cache status belongs to app-content management surfaces, not to photo-feed cards; list cards should stay visually clean and should not start surfacing preview/original/video cache badges.
+- Viewer cache actions can live behind a restrained settings / more entry and should use lightweight local feedback after clearing cache, while the immersive dark shell and existing overlays remain intact.
+- Post-level and global cache cleanup remain placeholder management flows for this stage: clear wording, fake size summary, and safe local state changes are enough before any real settings page or storage cleaner exists.
+
