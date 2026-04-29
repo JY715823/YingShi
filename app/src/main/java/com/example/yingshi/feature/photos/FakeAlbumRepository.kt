@@ -27,6 +27,8 @@ object FakeAlbumRepository {
         val commentCount: Int,
         val palette: PhotoThumbnailPalette,
         val aspectRatio: Float,
+        val width: Int? = null,
+        val height: Int? = null,
         val isCover: Boolean,
     )
 
@@ -223,6 +225,8 @@ object FakeAlbumRepository {
                 commentCount = FakeCommentRepository.mediaCommentCount(media.id),
                 palette = media.palette,
                 aspectRatio = media.aspectRatio,
+                width = media.width,
+                height = media.height,
             )
         }.filterNot { media ->
             FakePhotoFeedRepository.isMediaHidden(media.id)
@@ -558,6 +562,12 @@ object FakeAlbumRepository {
         val mediaState = mutableStateListOf<ManagedPostMediaState>().apply {
             repeat(mediaCount) { index ->
                 val mediaId = fakeMediaIdForPost(postId, index)
+                val aspectRatio = listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4]
+                val dimensions = fakeManagedMediaDimensions(
+                    postId = postId,
+                    index = index,
+                    aspectRatio = aspectRatio,
+                )
                 add(
                     ManagedPostMediaState(
                         id = mediaId,
@@ -568,7 +578,9 @@ object FakeAlbumRepository {
                         } else {
                             shiftedPalette(basePalette = basePalette, index = index)
                         },
-                        aspectRatio = listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4],
+                        aspectRatio = aspectRatio,
+                        width = dimensions.first,
+                        height = dimensions.second,
                         isCover = index == 0,
                     ),
                 )
@@ -673,6 +685,8 @@ object FakeAlbumRepository {
             displayTimeMillis = displayTimeMillis,
             palette = palette,
             aspectRatio = aspectRatio,
+            width = width,
+            height = height,
             isCover = isCover,
             sourcePostId = sourcePostId,
             sourcePostTitle = sourcePostTitle.ifBlank { "当前帖子" },
@@ -686,6 +700,8 @@ object FakeAlbumRepository {
             commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
             palette = palette,
             aspectRatio = aspectRatio,
+            width = width,
+            height = height,
             isCover = isCover,
         )
     }
@@ -708,6 +724,8 @@ object FakeAlbumRepository {
             commentCount = FakeCommentRepository.mediaCommentCount(id),
             palette = palette,
             aspectRatio = aspectRatio,
+            width = width,
+            height = height,
             isCover = isCover,
         )
     }
@@ -719,6 +737,26 @@ object FakeAlbumRepository {
         val dateLabel = java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA)
             .format(java.util.Date(displayTimeMillis))
         return "系统导入 $dateLabel · $mediaCount 项"
+    }
+
+    private fun fakeManagedMediaDimensions(
+        postId: String,
+        index: Int,
+        aspectRatio: Float,
+    ): Pair<Int?, Int?> {
+        val longImagePosts = setOf(
+            "post-night-walk",
+            "post-sunday-brunch",
+            "post-new-year",
+            "post-rooftop-night",
+        )
+        if (index == 1 && postId in longImagePosts) {
+            return 1080 to 3240
+        }
+
+        val width = 1200
+        val height = (width / aspectRatio.coerceAtLeast(0.56f)).toInt()
+        return width to height
     }
 
     private fun shiftedPalette(

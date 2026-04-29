@@ -57,6 +57,7 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -77,6 +78,7 @@ private val ViewerSurface = Color(0xFFFFFFFF)
 private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
+private const val ViewerLongImageThreshold = 2.5f
 
 private object ViewerLayoutTuning {
     val topBarStartInset = 4.dp
@@ -115,6 +117,7 @@ private class ViewerZoomState {
         zoomChange: Float,
         panChange: Offset,
         containerSize: IntSize,
+        contentSize: IntSize,
     ) {
         val nextScale = (scale * zoomChange).coerceIn(MinViewerScale, MaxViewerScale)
         if (nextScale <= ViewerZoomResetThreshold) {
@@ -123,15 +126,16 @@ private class ViewerZoomState {
         }
 
         scale = nextScale
-        offset = clampOffset(offset + panChange, nextScale, containerSize)
+        offset = clampOffset(offset + panChange, nextScale, containerSize, contentSize)
     }
 
     fun panBy(
         panChange: Offset,
         containerSize: IntSize,
+        contentSize: IntSize,
     ) {
         if (!isZoomed) return
-        offset = clampOffset(offset + panChange, scale, containerSize)
+        offset = clampOffset(offset + panChange, scale, containerSize, contentSize)
     }
 
     fun reset() {
@@ -143,9 +147,12 @@ private class ViewerZoomState {
         value: Offset,
         currentScale: Float,
         containerSize: IntSize,
+        contentSize: IntSize,
     ): Offset {
-        val maxX = containerSize.width * (currentScale - MinViewerScale) / 2f
-        val maxY = containerSize.height * (currentScale - MinViewerScale) / 2f
+        val scaledWidth = contentSize.width * currentScale
+        val scaledHeight = contentSize.height * currentScale
+        val maxX = ((scaledWidth - containerSize.width) / 2f).coerceAtLeast(0f)
+        val maxY = ((scaledHeight - containerSize.height) / 2f).coerceAtLeast(0f)
         return Offset(
             x = value.x.coerceIn(-maxX, maxX),
             y = value.y.coerceIn(-maxY, maxY),
@@ -153,7 +160,10 @@ private class ViewerZoomState {
     }
 }
 
-private fun Modifier.viewerZoomGesture(zoomState: ViewerZoomState): Modifier = pointerInput(zoomState) {
+private fun Modifier.viewerZoomGesture(
+    zoomState: ViewerZoomState,
+    contentSize: IntSize,
+): Modifier = pointerInput(zoomState, contentSize) {
     awaitEachGesture {
         while (true) {
             val event = awaitPointerEvent()
@@ -175,12 +185,14 @@ private fun Modifier.viewerZoomGesture(zoomState: ViewerZoomState): Modifier = p
                     zoomChange = zoomChange,
                     panChange = currentCentroid - previousCentroid,
                     containerSize = size,
+                    contentSize = contentSize,
                 )
                 activeChanges.forEach { it.consume() }
             } else if (zoomState.isZoomed) {
                 zoomState.panBy(
                     panChange = activeChanges.first().positionChange(),
                     containerSize = size,
+                    contentSize = contentSize,
                 )
                 activeChanges.forEach { it.consume() }
             }
@@ -647,19 +659,14 @@ private fun PhotoViewerCanvas(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val canvasAspectRatio = media.aspectRatio.coerceIn(0.75f, 1.35f)
-    val zoomModifier = if (zoomState != null) {
-        Modifier
-            .graphicsLayer {
-                scaleX = zoomState.scale
-                scaleY = zoomState.scale
-                translationX = zoomState.offset.x
-                translationY = zoomState.offset.y
-            }
-            .viewerZoomGesture(zoomState)
+    val density = LocalDensity.current
+    val isLongImage = media.isViewerLongImage()
+    val canvasAspectRatio = if (isLongImage) {
+        media.viewerAspectRatio()
     } else {
-        Modifier
+        media.viewerAspectRatio().coerceIn(0.75f, 1.35f)
     }
+    val longImageScrollState = rememberScrollState()
 
     BoxWithConstraints(
         modifier = modifier.padding(
@@ -668,34 +675,73 @@ private fun PhotoViewerCanvas(
             end = ViewerLayoutTuning.canvasHorizontalPadding,
             bottom = ViewerLayoutTuning.canvasBottomPadding,
         ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = if (isLongImage) Alignment.TopCenter else Alignment.Center,
     ) {
-        val fillWidthHeight = maxWidth / canvasAspectRatio
-        val canvasWidth = if (fillWidthHeight <= maxHeight) {
+        val canvasWidth = if (isLongImage) {
             maxWidth
         } else {
-            maxHeight * canvasAspectRatio
+            val fillWidthHeight = maxWidth / canvasAspectRatio
+            if (fillWidthHeight <= maxHeight) {
+                maxWidth
+            } else {
+                maxHeight * canvasAspectRatio
+            }
         }
-        val canvasHeight = if (fillWidthHeight <= maxHeight) {
-            fillWidthHeight
+        val canvasHeight = if (isLongImage) {
+            canvasWidth / canvasAspectRatio.coerceAtLeast(0.2f)
         } else {
-            maxHeight
+            val fillWidthHeight = maxWidth / canvasAspectRatio
+            if (fillWidthHeight <= maxHeight) {
+                fillWidthHeight
+            } else {
+                maxHeight
+            }
+        }
+        val contentSize = with(density) {
+            IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
+        }
+        val zoomModifier = if (zoomState != null) {
+            Modifier
+                .graphicsLayer {
+                    scaleX = zoomState.scale
+                    scaleY = zoomState.scale
+                    translationX = zoomState.offset.x
+                    translationY = zoomState.offset.y
+                }
+                .viewerZoomGesture(
+                    zoomState = zoomState,
+                    contentSize = contentSize,
+                )
+        } else {
+            Modifier
         }
 
         Box(
             modifier = Modifier
-                .width(canvasWidth)
-                .height(canvasHeight)
-                .then(zoomModifier)
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            media.palette.start.copy(alpha = 0.98f),
-                            media.palette.end.copy(alpha = 0.90f),
+                .fillMaxSize()
+                .then(
+                    if (isLongImage && zoomState?.isZoomed != true) {
+                        Modifier.verticalScroll(longImageScrollState)
+                    } else {
+                        Modifier
+                    },
+                ),
+            contentAlignment = if (isLongImage) Alignment.TopCenter else Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(canvasWidth)
+                    .height(canvasHeight)
+                    .then(zoomModifier)
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                media.palette.start.copy(alpha = 0.98f),
+                                media.palette.end.copy(alpha = 0.90f),
+                            ),
                         ),
                     ),
-                ),
-        ) {
+            ) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -742,9 +788,28 @@ private fun PhotoViewerCanvas(
                         style = MaterialTheme.typography.labelMedium,
                         color = ViewerSurface.copy(alpha = 0.82f),
                     )
-        }
+                }
+            }
         }
     }
+}
+
+private fun PhotoFeedItem.viewerAspectRatio(): Float {
+    val widthValue = width
+    val heightValue = height
+    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
+        return widthValue.toFloat() / heightValue.toFloat()
+    }
+    return aspectRatio.coerceAtLeast(0.2f)
+}
+
+private fun PhotoFeedItem.isViewerLongImage(): Boolean {
+    val widthValue = width
+    val heightValue = height
+    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
+        return heightValue.toFloat() / widthValue.toFloat() >= ViewerLongImageThreshold
+    }
+    return aspectRatio > 0f && (1f / aspectRatio) >= ViewerLongImageThreshold
 }
 
 @Composable

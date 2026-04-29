@@ -1,35 +1,35 @@
-# Current Task - Stage 9.1 Original Loading Foundation
+# Current Task - Stage 9.2 Long Image and Zoom Basics
 
 ## Goal
-Build the first local-state version of original media loading for app content media.
+Support basic long-image viewing and stabilize zoom/pan behavior in app-content viewers.
 
 ## Scope
-- originalLoadState per app media
-- single-media load original action
-- shared original state by mediaId
-- post-level load all originals
-- simple loading / loaded / failed UI states
-- shared state across photo-flow viewer, in-post viewer, and post detail
-- post detail supports a local fake "load all originals" flow
+- long-image detection
+- fake long-image samples
+- long-image viewer layout
+- vertical browsing for long images
+- zoom/pan mode stabilization
+- reset zoom/scroll state on media switch
+- record follow-up long-image performance TODOs
 - minimal doc updates
 
 ## Product intent
-- App content media uses preview-first and original-on-demand.
-- Original loading state belongs to app media, not system media.
-- The same mediaId should share original state across photo-flow viewer, in-post viewer, and post detail.
-- Photo feed cards remain clean and do not show original state.
+- Long images should be readable, not squeezed into one screen.
+- Viewer remains immersive and image-first.
+- Zoomed state should prioritize detailed viewing over media switching.
+- Heavy long-image optimization comes later.
 
 ## Do not do
-- no real download
-- no real cache
-- no backend / Room / Retrofit / OSS
-- no WorkManager
-- no long-image tiling
-- no video original handling
+- no real tiling
+- no real original download
+- no video playback
+- no system media long-image special handling
+- no backend / Room / Retrofit
 
 ## Done when
-- Single media original-load state works
-- Same mediaId shows shared state in multiple app-content contexts
-- Post detail can load all originals for current post
-- System media does not show original-load actions
+- Long images can be opened in Viewer
+- Long images fit width and scroll vertically
+- Normal images still zoom/pan
+- Zoomed state blocks accidental media switching
+- Switching media resets abnormal zoom/scroll state
 - App builds and runs

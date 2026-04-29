@@ -17,6 +17,8 @@ data class PhotoFeedSourceEntry(
     val postId: String?,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float = 1f,
+    val width: Int? = null,
+    val height: Int? = null,
 )
 
 @Immutable
@@ -30,6 +32,8 @@ data class PhotoFeedItem(
     val postIds: List<String>,
     val palette: PhotoThumbnailPalette,
     val aspectRatio: Float = 1f,
+    val width: Int? = null,
+    val height: Int? = null,
 )
 
 enum class PhotoFeedDensity(

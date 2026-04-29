@@ -1243,3 +1243,8 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Photo feed cards remain clean and do not surface original-load state.
 - System-media screens do not show app-content original-load actions.
 
+## Stage 9.2 implementation note
+- Long-image behavior belongs in app-content viewers only and should stay immersive on a dark background.
+- Width-fit plus vertical browsing is the default long-image mode; pinch-zoom and panning become the secondary detail mode.
+- Overlays should already stay hidden or weakened while zoomed, and deeper work such as tiling, decode control, and OOM protection remains a later pass.
+

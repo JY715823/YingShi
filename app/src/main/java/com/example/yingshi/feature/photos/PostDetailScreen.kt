@@ -775,6 +775,8 @@ private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewe
                 postIds = listOf(postId),
                 palette = media.palette,
                 aspectRatio = media.aspectRatio,
+                width = media.width,
+                height = media.height,
             )
         },
         initialIndex = initialIndex,

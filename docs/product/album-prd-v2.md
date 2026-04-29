@@ -6,6 +6,11 @@
 - Post detail provides a local fake load-all-originals entry for all media in the current post.
 - System media stays outside this original-loading strategy.
 
+## Stage 9.2 implementation note
+- App-content viewers should detect long images from media dimensions and treat them as a dedicated reading mode.
+- Long images should fit the screen width first, then allow vertical browsing instead of being squeezed into one screen.
+- Zoomed viewing still takes priority over media switching, while heavier long-image decoding and memory work remain follow-up tasks.
+
 ## 1. 鏂囨。璇存槑
 
 ### 1.1 鏂囨。鐩爣

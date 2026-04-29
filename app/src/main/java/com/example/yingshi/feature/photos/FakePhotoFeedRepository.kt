@@ -37,6 +37,8 @@ object FakePhotoFeedRepository {
                         .distinct(),
                     palette = latestEntry.palette,
                     aspectRatio = latestEntry.aspectRatio,
+                    width = latestEntry.width,
+                    height = latestEntry.height,
                 )
             }
             .toList()
@@ -61,6 +63,8 @@ object FakePhotoFeedRepository {
                             postId = postId,
                             palette = item.palette,
                             aspectRatio = item.aspectRatio,
+                            width = item.width,
+                            height = item.height,
                         ),
                     )
                 }
@@ -125,6 +129,8 @@ object FakePhotoFeedRepository {
                             postId = postId,
                             palette = seed.palette,
                             aspectRatio = seed.aspectRatio,
+                            width = seed.width,
+                            height = seed.height,
                         ),
                     )
                 }
@@ -142,6 +148,8 @@ object FakePhotoFeedRepository {
         val postIds: List<String>,
         val palette: PhotoThumbnailPalette,
         val aspectRatio: Float = 1f,
+        val width: Int? = null,
+        val height: Int? = null,
     )
 
     private data class DateParts(
@@ -210,7 +218,19 @@ object FakePhotoFeedRepository {
         FeedSeed("media-2026-04-20-a", 2026, 4, 20, 10, 6, emptyList(), rainSlate, aspectRatio = 0.8f),
         FeedSeed("media-2026-04-18-a", 2026, 4, 18, 21, 12, listOf("post-night-walk", "post-april-window"), blueMist),
         FeedSeed("media-2026-04-18-b", 2026, 4, 18, 20, 44, listOf("post-night-walk"), twilightLavender),
-        FeedSeed("media-2026-04-18-c", 2026, 4, 18, 18, 16, listOf("post-april-window"), teaBrown),
+        FeedSeed(
+            "media-2026-04-18-c",
+            2026,
+            4,
+            18,
+            18,
+            16,
+            listOf("post-april-window"),
+            teaBrown,
+            aspectRatio = 0.92f,
+            width = 1080,
+            height = 3240,
+        ),
         FeedSeed("media-2026-04-12-a", 2026, 4, 12, 16, 25, listOf("post-sunday-brunch"), dawnPeach),
         FeedSeed("media-2026-04-12-b", 2026, 4, 12, 15, 10, listOf("post-sunday-brunch", "post-flower-table"), grassHaze),
         FeedSeed("media-2026-04-03-a", 2026, 4, 3, 9, 48, listOf("post-morning-metro"), rainSlate),
@@ -229,7 +249,19 @@ object FakePhotoFeedRepository {
         FeedSeed("media-2025-12-24-a", 2025, 12, 24, 20, 22, listOf("post-christmas-eve", "post-home-lights"), dawnPeach),
         FeedSeed("media-2025-12-24-b", 2025, 12, 24, 19, 55, listOf("post-home-lights"), teaBrown),
         FeedSeed("media-2025-11-02-a", 2025, 11, 2, 17, 45, listOf("post-autumn-park"), grassHaze),
-        FeedSeed("media-2025-11-02-b", 2025, 11, 2, 16, 16, listOf("post-autumn-park", "post-long-road"), blueMist),
+        FeedSeed(
+            "media-2025-11-02-b",
+            2025,
+            11,
+            2,
+            16,
+            16,
+            listOf("post-autumn-park", "post-long-road"),
+            blueMist,
+            aspectRatio = 0.88f,
+            width = 1242,
+            height = 3600,
+        ),
         FeedSeed("media-2025-10-19-a", 2025, 10, 19, 10, 2, listOf("post-quiet-sunday"), rainSlate),
         FeedSeed("media-2025-08-08-a", 2025, 8, 8, 19, 14, listOf("post-summer-rain"), blueMist),
         FeedSeed("media-2025-08-08-b", 2025, 8, 8, 18, 51, listOf("post-summer-rain", "post-balcony-wind"), grassHaze),
@@ -240,7 +272,19 @@ object FakePhotoFeedRepository {
         FeedSeed("media-2024-10-03-a", 2024, 10, 3, 15, 50, listOf("post-october-trip"), rainSlate),
         FeedSeed("media-2024-10-03-b", 2024, 10, 3, 15, 12, listOf("post-october-trip", "post-bridge-light"), blueMist),
         FeedSeed("media-2024-09-21-a", 2024, 9, 21, 22, 11, listOf("post-rooftop-night"), twilightLavender),
-        FeedSeed("media-2024-09-21-b", 2024, 9, 21, 21, 37, listOf("post-rooftop-night"), rainSlate),
+        FeedSeed(
+            "media-2024-09-21-b",
+            2024,
+            9,
+            21,
+            21,
+            37,
+            listOf("post-rooftop-night"),
+            rainSlate,
+            aspectRatio = 0.9f,
+            width = 1170,
+            height = 3280,
+        ),
         FeedSeed("media-2024-06-15-a", 2024, 6, 15, 14, 18, listOf("post-lake-afternoon", "post-june-sun"), grassHaze),
         FeedSeed("media-2024-06-15-b", 2024, 6, 15, 13, 55, listOf("post-lake-afternoon"), blueMist),
         FeedSeed("media-2024-04-02-a", 2024, 4, 2, 9, 14, listOf("post-early-spring"), dawnPeach),
