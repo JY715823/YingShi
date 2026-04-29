@@ -1,15 +1,20 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
-import com.example.yingshi.data.model.RemotePost
+import com.example.yingshi.data.model.RemotePostDetail
+import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.UpdatePostAlbumsPayload
+import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
+import com.example.yingshi.data.remote.api.AlbumApi
 import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
 import com.example.yingshi.data.remote.api.MediaApi
@@ -17,11 +22,18 @@ import com.example.yingshi.data.remote.api.PostApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
 import com.example.yingshi.data.remote.dto.CreateCommentRequestDto
+import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
+import com.example.yingshi.data.remote.dto.UpdatePostAlbumsRequestDto
+import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
+import com.example.yingshi.data.remote.dto.UpdatePostMediaOrderRequestDto
 import com.example.yingshi.data.remote.mapper.toRemoteModel
 import com.example.yingshi.data.remote.mapper.toRemotePage
+import com.example.yingshi.data.remote.mapper.toRemoteDetail
+import com.example.yingshi.data.remote.mapper.toRemoteSummary
 import com.example.yingshi.data.remote.dto.UploadTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 
@@ -42,16 +54,180 @@ class RealMediaRepository(
 class RealPostRepository(
     private val postApi: PostApi,
 ) : PostRepository {
+    override suspend fun getPosts(): ApiResult<List<RemotePostSummary>> {
+        return runCatching {
+            postApi.getPosts().data.map { it.toRemoteSummary() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_LIST_REQUEST_FAILED",
+                    message = "Stage 11.4 real post list request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getPostDetail(postId: String): ApiResult<RemotePostDetail> {
+        return runCatching {
+            postApi.getPostDetail(postId).data.toRemoteDetail()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_DETAIL_REQUEST_FAILED",
+                    message = "Stage 11.4 real post detail request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun createPost(payload: CreatePostPayload): ApiResult<RemotePostSummary> {
+        return runCatching {
+            postApi.createPost(
+                CreatePostRequestDto(
+                    title = payload.title,
+                    summary = payload.summary,
+                    displayTimeMillis = payload.displayTimeMillis,
+                    albumIds = payload.albumIds,
+                    initialMediaIds = payload.initialMediaIds,
+                ),
+            ).data.toRemoteSummary()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_CREATE_REQUEST_FAILED",
+                    message = "Stage 11.4 real post create failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun updatePostBasicInfo(
+        postId: String,
+        payload: UpdatePostBasicInfoPayload,
+    ): ApiResult<RemotePostSummary> {
+        return runCatching {
+            postApi.updatePostBasicInfo(
+                postId = postId,
+                request = UpdatePostBasicInfoRequestDto(
+                    title = payload.title,
+                    summary = payload.summary,
+                    displayTimeMillis = payload.displayTimeMillis,
+                    albumIds = payload.albumIds,
+                ),
+            ).data.toRemoteSummary()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_UPDATE_REQUEST_FAILED",
+                    message = "Stage 11.4 real post basic-info update failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun setPostCover(
+        postId: String,
+        coverMediaId: String,
+    ): ApiResult<RemotePostDetail> {
+        return runCatching {
+            postApi.setPostCover(
+                postId = postId,
+                request = SetPostCoverRequestDto(coverMediaId = coverMediaId),
+            ).data.toRemoteDetail()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_COVER_REQUEST_FAILED",
+                    message = "Stage 11.4 real post cover update failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun updatePostMediaOrder(
+        postId: String,
+        orderedMediaIds: List<String>,
+    ): ApiResult<RemotePostDetail> {
+        return runCatching {
+            postApi.updatePostMediaOrder(
+                postId = postId,
+                request = UpdatePostMediaOrderRequestDto(orderedMediaIds = orderedMediaIds),
+            ).data.toRemoteDetail()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_MEDIA_ORDER_REQUEST_FAILED",
+                    message = "Stage 11.4 real post media-order update failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+}
+
+class RealAlbumRepository(
+    private val albumApi: AlbumApi,
+) : AlbumRepository {
     override suspend fun getAlbums(): ApiResult<List<RemoteAlbum>> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real albums repository is a shell only")
+        return runCatching {
+            albumApi.getAlbums().data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "ALBUM_LIST_REQUEST_FAILED",
+                    message = "Stage 11.4 real album list request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 
-    override suspend fun getPosts(albumId: String?): ApiResult<List<RemotePost>> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real posts repository is a shell only")
+    override suspend fun getAlbumPosts(albumId: String): ApiResult<List<RemotePostSummary>> {
+        return runCatching {
+            albumApi.getAlbumPosts(albumId = albumId).data.map { it.toRemoteSummary() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "ALBUM_POSTS_REQUEST_FAILED",
+                    message = "Stage 11.4 real album-posts request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 
-    override suspend fun getPostDetail(postId: String): ApiResult<RemotePost> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.1 real post detail repository is a shell only")
+    override suspend fun updatePostAlbums(
+        postId: String,
+        payload: UpdatePostAlbumsPayload,
+    ): ApiResult<RemotePostSummary> {
+        return runCatching {
+            albumApi.updatePostAlbums(
+                postId = postId,
+                request = UpdatePostAlbumsRequestDto(albumIds = payload.albumIds),
+            ).data.toRemoteSummary()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_ALBUMS_REQUEST_FAILED",
+                    message = "Stage 11.4 real post-album update failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 }
 

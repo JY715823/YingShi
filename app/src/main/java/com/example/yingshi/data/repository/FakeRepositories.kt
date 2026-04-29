@@ -1,15 +1,20 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
-import com.example.yingshi.data.model.RemotePost
+import com.example.yingshi.data.model.RemotePostDetail
+import com.example.yingshi.data.model.RemotePostMedia
+import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
+import com.example.yingshi.data.model.UpdatePostAlbumsPayload
+import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
@@ -50,7 +55,7 @@ class FakeMediaRepositoryShell : MediaRepository {
     }
 }
 
-class FakePostRepositoryShell : PostRepository {
+class FakeAlbumRepositoryShell : AlbumRepository {
     override suspend fun getAlbums(): ApiResult<List<RemoteAlbum>> {
         return ApiResult.Success(
             FakeAlbumRepository.getAlbums().map { album ->
@@ -65,55 +70,98 @@ class FakePostRepositoryShell : PostRepository {
         )
     }
 
-    override suspend fun getPosts(albumId: String?): ApiResult<List<RemotePost>> {
-        val posts = FakeAlbumRepository.getPosts()
-            .filter { albumId == null || it.albumIds.contains(albumId) }
-            .map { post ->
-                RemotePost(
-                    postId = post.id,
-                    title = post.title,
-                    summary = post.summary,
-                    contributorLabel = null,
-                    displayTimeMillis = post.postDisplayTimeMillis,
-                    albumIds = post.albumIds,
-                    coverMediaId = null,
-                    mediaItems = emptyList(),
-                )
-            }
-        return ApiResult.Success(posts)
+    override suspend fun getAlbumPosts(albumId: String): ApiResult<List<RemotePostSummary>> {
+        return ApiResult.Success(
+            FakeAlbumRepository.getPosts()
+                .filter { it.albumIds.contains(albumId) }
+                .map { it.toRemotePostSummary() },
+        )
     }
 
-    override suspend fun getPostDetail(postId: String): ApiResult<RemotePost> {
+    override suspend fun updatePostAlbums(
+        postId: String,
+        payload: UpdatePostAlbumsPayload,
+    ): ApiResult<RemotePostSummary> {
+        val draft = FakeAlbumRepository.getEditablePostDraft(postId)
+            ?: return ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found")
+        FakeAlbumRepository.updatePostBasicInfo(
+            postId = postId,
+            title = draft.title,
+            summary = draft.summary,
+            postDisplayTimeMillis = draft.postDisplayTimeMillis,
+            albumIds = payload.albumIds,
+        )
+        return FakeAlbumRepository.getPost(postId)
+            ?.toRemotePostSummary()
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found after album update")
+    }
+}
+
+class FakePostRepositoryShell : PostRepository {
+    override suspend fun getPosts(): ApiResult<List<RemotePostSummary>> {
+        return ApiResult.Success(
+            FakeAlbumRepository.getPosts().map { it.toRemotePostSummary() },
+        )
+    }
+
+    override suspend fun getPostDetail(postId: String): ApiResult<RemotePostDetail> {
         val post = FakeAlbumRepository.getPost(postId)
             ?: return ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found")
         val detailRoute = FakeAlbumRepository.toPostDetailRoute(post)
         val detail = FakeAlbumRepository.getPostDetail(detailRoute)
         return ApiResult.Success(
-            RemotePost(
-                postId = detail.postId,
-                title = detail.title,
-                summary = detail.summary,
-                contributorLabel = detail.contributorLabel,
-                displayTimeMillis = detail.postDisplayTimeMillis,
-                albumIds = detail.albumIds,
-                coverMediaId = null,
-                mediaItems = detail.mediaItems.map { media ->
-                    RemoteMedia(
-                        mediaId = media.id,
-                        mediaType = media.mediaType.toRemoteMediaType(),
-                        previewUrl = null,
-                        originalUrl = null,
-                        videoUrl = null,
-                        width = media.width,
-                        height = media.height,
-                        aspectRatio = media.aspectRatio,
-                        displayTimeMillis = media.displayTimeMillis,
-                        commentCount = media.commentCount,
-                        postIds = listOf(detail.postId),
-                    )
-                },
-            ),
+            detail.toRemotePostDetail(),
         )
+    }
+
+    override suspend fun createPost(payload: CreatePostPayload): ApiResult<RemotePostSummary> {
+        val post = FakeAlbumRepository.createPlaceholderPost(
+            title = payload.title,
+            summary = payload.summary,
+            postDisplayTimeMillis = payload.displayTimeMillis,
+            albumIds = payload.albumIds,
+        )
+        return ApiResult.Success(post.toRemotePostSummary())
+    }
+
+    override suspend fun updatePostBasicInfo(
+        postId: String,
+        payload: UpdatePostBasicInfoPayload,
+    ): ApiResult<RemotePostSummary> {
+        FakeAlbumRepository.updatePostBasicInfo(
+            postId = postId,
+            title = payload.title,
+            summary = payload.summary,
+            postDisplayTimeMillis = payload.displayTimeMillis,
+            albumIds = payload.albumIds,
+        )
+        return FakeAlbumRepository.getPost(postId)
+            ?.toRemotePostSummary()
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found after basic info update")
+    }
+
+    override suspend fun setPostCover(
+        postId: String,
+        coverMediaId: String,
+    ): ApiResult<RemotePostDetail> {
+        val updated = FakeAlbumRepository.setPostCover(postId, coverMediaId)
+        if (!updated) {
+            return ApiResult.Error(code = "POST_COVER_INVALID", message = "Fake post cover update failed")
+        }
+        return getPostDetail(postId)
+    }
+
+    override suspend fun updatePostMediaOrder(
+        postId: String,
+        orderedMediaIds: List<String>,
+    ): ApiResult<RemotePostDetail> {
+        val updated = FakeAlbumRepository.updatePostMediaOrder(postId, orderedMediaIds)
+        if (!updated) {
+            return ApiResult.Error(code = "POST_MEDIA_ORDER_INVALID", message = "Fake post media order update failed")
+        }
+        return getPostDetail(postId)
     }
 }
 
@@ -350,6 +398,48 @@ private fun AppMediaType.toRemoteMediaType(): String {
         AppMediaType.IMAGE -> "image"
         AppMediaType.VIDEO -> "video"
     }
+}
+
+private fun AlbumPostCardUiModel.toRemotePostSummary(): RemotePostSummary {
+    return RemotePostSummary(
+        postId = id,
+        title = title,
+        summary = summary,
+        contributorLabel = null,
+        displayTimeMillis = postDisplayTimeMillis,
+        albumIds = albumIds,
+        coverMediaId = null,
+        mediaCount = mediaCount,
+    )
+}
+
+private fun PostDetailUiModel.toRemotePostDetail(): RemotePostDetail {
+    val coverMediaId = mediaItems.firstOrNull()?.id
+    return RemotePostDetail(
+        postId = postId,
+        title = title,
+        summary = summary,
+        contributorLabel = contributorLabel,
+        displayTimeMillis = postDisplayTimeMillis,
+        albumIds = albumIds,
+        coverMediaId = coverMediaId,
+        mediaItems = mediaItems.mapIndexed { index, media ->
+            RemotePostMedia(
+                mediaId = media.id,
+                mediaType = media.mediaType.toRemoteMediaType(),
+                previewUrl = null,
+                originalUrl = null,
+                videoUrl = null,
+                width = media.width,
+                height = media.height,
+                aspectRatio = media.aspectRatio,
+                displayTimeMillis = media.displayTimeMillis,
+                commentCount = media.commentCount,
+                isCover = index == 0,
+                videoDurationMillis = media.videoDurationMillis,
+            )
+        },
+    )
 }
 
 private fun paginateComments(

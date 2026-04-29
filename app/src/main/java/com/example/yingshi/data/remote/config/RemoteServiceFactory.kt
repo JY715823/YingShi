@@ -1,5 +1,6 @@
 package com.example.yingshi.data.remote.config
 
+import com.example.yingshi.data.remote.api.AlbumApi
 import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
 import com.example.yingshi.data.remote.api.MediaApi
@@ -30,6 +31,7 @@ object RemoteServiceFactory {
     val authApi: AuthApi by lazy { retrofit.create(AuthApi::class.java) }
     val mediaApi: MediaApi by lazy { retrofit.create(MediaApi::class.java) }
     val postApi: PostApi by lazy { retrofit.create(PostApi::class.java) }
+    val albumApi: AlbumApi by lazy { retrofit.create(AlbumApi::class.java) }
     val commentApi: CommentApi by lazy { retrofit.create(CommentApi::class.java) }
     val trashApi: TrashApi by lazy { retrofit.create(TrashApi::class.java) }
     val uploadApi: UploadApi by lazy { retrofit.create(UploadApi::class.java) }

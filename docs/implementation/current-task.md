@@ -1,40 +1,39 @@
-# Current Task - Stage 11.3 Comment API Shell
+# Current Task - Stage 11.4 Post and Album API Shell
 
 ## Goal
-Build the first real-comment integration shell for post comments and media comments, while keeping the current fake comment flow as the default runnable path.
+Prepare post and album backend integration boundaries with clearer contracts, DTOs, mappers, and Fake/Real repository shells, while keeping the current fake-first app flow unchanged.
 
 ## Scope
-- update `docs/contracts/comment-api.md`
-- lock comment pagination draft to one placeholder style
-- keep post comments and media comments as separate streams
-- add comment request / response DTOs for list and mutation
-- refine `CommentApi` Retrofit shell
-- add DTO -> domain and domain -> UI comment mapping boundaries
-- extend `CommentRepository` with list / create / update / delete methods
-- keep `FakeCommentRepository` as the default local behavior source
-- add `RealCommentRepository` placeholder methods for future backend wiring
-- reserve loading / error / empty state structures without forcing a large UI rewrite
-- keep current post comment and media comment interactions working
+- update `docs/contracts/post-api.md`
+- create `docs/contracts/album-api.md`
+- split post and album API responsibilities
+- refine post and album DTOs
+- add post detail / post summary / post media transport models
+- add request DTOs for post create, edit, cover update, media-order update, and album assignment update
+- add DTO -> domain mapper boundaries
+- split `PostRepository` and `AlbumRepository`
+- keep fake repositories as the default runnable path
+- keep real repositories as API-call shells only
 
 ## Product intent
-- Post comments and media comments do not mix.
-- Latest comments appear first.
-- The same `mediaId` still shares one media-comment state across photo-flow Viewer and in-post Viewer.
-- UI must not depend on transport DTOs.
-- Real API wiring should be able to replace fake data incrementally later.
+- posts and albums remain separate but related entities
+- post detail keeps its own media ordering and cover semantics
+- album APIs focus on album directory and post-to-album relationships
+- UI must not depend on Retrofit DTOs
+- existing fake pages must keep running without switching to real APIs
 
 ## Do not do
 - no live backend dependency
 - no forced real repository switch
-- no Room
-- no real paging implementation
-- no replies, thread nesting, or quote replies
-- no large comment UI restructure
+- no full fake-data migration
+- no large UI refactor
+- no hardcoded production server address
 
 ## Done when
-- `comment-api.md` clearly defines list / create / update / delete drafts
-- comment DTOs, request DTOs, and mapper boundaries exist
-- `CommentApi` has explicit post-comment and media-comment endpoints
-- Fake / Real `CommentRepository` boundaries are clear
-- existing fake post comment and media comment add / edit / delete still work
-- the app still builds and runs
+- post and album contract docs exist
+- `PostApi` and `AlbumApi` shells exist
+- post / album DTOs and request DTOs exist
+- mappers exist
+- fake / real repository boundaries are clear
+- fake app flow remains runnable
+- app builds successfully

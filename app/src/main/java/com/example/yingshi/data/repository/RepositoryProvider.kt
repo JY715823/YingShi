@@ -26,6 +26,13 @@ object RepositoryProvider {
         }
     }
 
+    val albumRepository: AlbumRepository by lazy {
+        when (currentMode) {
+            RepositoryMode.FAKE -> FakeAlbumRepositoryShell()
+            RepositoryMode.REAL -> RealAlbumRepository(RemoteServiceFactory.albumApi)
+        }
+    }
+
     val commentRepository: CommentRepository by lazy {
         when (currentMode) {
             RepositoryMode.FAKE -> FakeCommentRepositoryShell()
