@@ -1,55 +1,41 @@
-# Current Task - Stage 10.1 Notification Center and Settings Shell
+# Current Task - Stage 10.2 Settings Preferences
 
 ## Goal
-Add independent notification-center and settings-shell pages for the app.
+Move the settings page from shell-only into a basic usable tool page by connecting browsing preferences, viewer behavior preferences, cache cleanup, permission status, and about/diagnostics placeholders.
 
 ## Scope
-- Connect the bell button in the photos-module top bar to an independent notification-center page.
-- Build the notification-center page as a standalone route with no global bottom navigation and no photos secondary navigation.
-- Use fake notification data with at least these categories:
-  - comments
-  - content updates
-  - delete / restore
-  - system
-- Show notification type, title, short body, time, and read / unread state.
-- Support marking one notification as read.
-- Support marking all notifications as read.
-- Add a reachable settings entry if none exists yet.
-- Build the settings page as a standalone route with no global bottom navigation and no photos secondary navigation.
-- Organize settings into grouped placeholder sections.
-- Connect the settings cache / storage section to the existing Stage 9.4 global cache-management placeholder.
-- Sync the minimum required PRD / UI / current-task docs together with code.
+- in-memory settings state model for the current app session
+- default photo-page grid density preference
+- default album-page column preference
+- viewer preference group with minimal behavior wiring
+- settings-page cache and storage actions
+- permission status presentation
+- about and diagnostics placeholder presentation
+- minimal PRD / UI doc sync
 
 ## Product intent
-- Notification center is a focused low-noise list page, not a feed mixed into photos or posts.
-- Settings is a clear tool page, not a backend-style control panel.
-- Both pages are independent shells that prepare room for later real permissions, browsing preferences, cache policies, and notification categories.
-- Stage 10.1 stays local-first and fake-safe: it defines routes, grouping, and page boundaries before real push or account systems exist.
+- Settings should now help shape the app-content browsing experience instead of only listing future placeholders.
+- Browsing defaults should influence first entry into photo and album pages, but should not keep fighting temporary per-page user adjustments.
+- Viewer preferences can land in two layers for this stage: some can affect current viewer behavior now, and some can remain clearly labeled placeholders for later real player work.
+- Cache cleanup stays local-first and fake, but settings should become the formal home for that management entry.
 
 ## Do not do
-- no real push notification
-- no account system
-- no real permission request
-- no real diagnostics / crash reporting
+- no DataStore or restart persistence yet
+- no real account system
+- no real notification permission flow
+- no real background task or download permission flow
+- no real crash reporting or analytics service
 - no backend / Room / Retrofit
-- no large main-navigation refactor
-- no regression to photos / albums / viewer / system-media flows
+- no large viewer or navigation refactor
 
-## Acceptance
-- The bell button opens notification center.
-- The notification list is visible.
-- Notifications can be marked read.
-- Mark-all-read works.
-- Settings page is reachable.
-- Settings groups are clear.
-- The cache cleanup entry opens the existing Stage 9.4 global cache-management placeholder.
-- Related docs are minimally updated in the same change.
-- The project builds and remains runnable.
-
-## Follow-up after Stage 10.1
-- Real push / notification channel strategy
-- Real notification filtering, grouping, and jump targets
-- Real account and shared-space settings
-- Real browsing preferences persistence
-- Real permission status / request wiring
-- Real diagnostics and export entries
+## Done when
+- settings groups are clear and usable
+- default photo density can be changed to 2 / 3 / 4 / 8 / 16
+- default album columns can be changed to 2 / 3 / 4
+- viewer preference group exists with clear real-vs-placeholder behavior
+- settings page shows fake cache summary and cleanup actions
+- permission status shows system media access as fully granted
+- about and diagnostics placeholders exist with clearer structure
+- settings state survives within the current app session
+- related docs are minimally updated
+- app builds and runs

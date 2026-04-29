@@ -1264,3 +1264,9 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Settings should read as a restrained tool page inside the Yingshi visual system, with grouped entries instead of management-dashboard density.
 - The settings cache / storage group can hand off into the existing cache-management placeholder page; the rest of the settings groups stay as shell rows without expanding into real account, permission, or diagnostics flows yet.
 
+## Stage 10.2 implementation note
+- Settings should now feel like a quiet tool surface instead of a placeholder list: grouped cards, low-noise copy, and direct access to the most useful session-level toggles and defaults.
+- Browsing-default controls are configuration, not per-page live dashboards, so the UI should explain that they affect first entry or reset behavior rather than constantly overriding local page tweaks.
+- Viewer-preference copy should distinguish what already works now from what is still a placeholder, so users are not misled into expecting a full player-settings system.
+- Cache and storage rows can become denser than the rest of settings, but the page should still stay restrained, readable, and within the existing light mist-blue Yingshi tool aesthetic.
+

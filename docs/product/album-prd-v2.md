@@ -2116,4 +2116,11 @@ Spring Data Redis 寰堟垚鐔燂紝浣嗕綘鐨勯鐗堜笉鏄珮骞跺�
 - Filter state, local posted markers, local hidden system-trash state, and basic scroll position should survive leaving and re-entering the tool within the same app session.
 - A lightweight manual refresh entry is enough for this stage; deeper incremental loading, paging, or thumbnail prefetch stays for later optimization work.
 
+## Stage 10.2 implementation note
+
+- Settings preferences remain local-first for now: one in-memory session state is enough to coordinate photo-page defaults, album-page defaults, and lightweight viewer behavior preferences before DataStore exists.
+- Browsing defaults should apply when entering photo or album pages fresh, but temporary in-page density changes still belong to that page session and should not be force-reset while the user is actively browsing.
+- Viewer preferences can be mixed-stage in this pass: overlay behavior may wire into the current viewer immediately, while comment-preview defaults and richer video-switch behavior can stay clearly documented placeholders.
+- Cache and storage now formally live under settings, but all cleanup in this stage still changes fake app-content cache state only and must stay separate from the system-media tool area.
+
 
