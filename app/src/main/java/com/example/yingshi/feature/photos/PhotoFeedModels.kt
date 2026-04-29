@@ -10,15 +10,22 @@ data class PhotoThumbnailPalette(
     val accent: Color,
 )
 
+enum class AppMediaType {
+    IMAGE,
+    VIDEO,
+}
+
 @Immutable
 data class PhotoFeedSourceEntry(
     val mediaId: String,
     val mediaDisplayTimeMillis: Long,
     val postId: String?,
     val palette: PhotoThumbnailPalette,
+    val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
     val width: Int? = null,
     val height: Int? = null,
+    val videoDurationMillis: Long? = null,
 )
 
 @Immutable
@@ -31,9 +38,11 @@ data class PhotoFeedItem(
     val commentCount: Int,
     val postIds: List<String>,
     val palette: PhotoThumbnailPalette,
+    val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
     val width: Int? = null,
     val height: Int? = null,
+    val videoDurationMillis: Long? = null,
 )
 
 enum class PhotoFeedDensity(

@@ -345,7 +345,13 @@ private fun PostMediaCard(
 
     Box(
         modifier = modifier
-            .aspectRatio(media.aspectRatio.coerceIn(0.86f, 1.18f))
+            .aspectRatio(
+                if (media.mediaType == AppMediaType.VIDEO) {
+                    media.aspectRatio.coerceIn(1.33f, 1.78f)
+                } else {
+                    media.aspectRatio.coerceIn(0.86f, 1.18f)
+                },
+            )
             .clip(RoundedCornerShape(radius.lg))
             .clickable(onClick = onClick)
             .background(
@@ -354,6 +360,14 @@ private fun PostMediaCard(
                 ),
             ),
     ) {
+        if (media.mediaType == AppMediaType.VIDEO) {
+            VideoMediaMarker(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(spacing.md),
+            )
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -774,9 +788,11 @@ private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewe
                 commentCount = media.commentCount,
                 postIds = listOf(postId),
                 palette = media.palette,
+                mediaType = media.mediaType,
                 aspectRatio = media.aspectRatio,
                 width = media.width,
                 height = media.height,
+                videoDurationMillis = media.videoDurationMillis,
             )
         },
         initialIndex = initialIndex,

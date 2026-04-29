@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -79,6 +80,7 @@ private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
 private const val ViewerLongImageThreshold = 2.5f
+private const val DefaultViewerVideoDurationMillis = 18_000L
 
 private object ViewerLayoutTuning {
     val topBarStartInset = 4.dp
@@ -102,6 +104,12 @@ private object ViewerLayoutTuning {
 
 private data class ViewerCommentPanelState(
     val selectedCommentId: String? = null,
+)
+
+private data class ViewerVideoPlaybackState(
+    val mediaId: String? = null,
+    val isPlaying: Boolean = false,
+    val progressMillis: Long = 0L,
 )
 
 private class ViewerZoomState {
@@ -272,6 +280,9 @@ fun PhotoViewerScreen(
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
+    var videoPlaybackState by remember {
+        mutableStateOf(ViewerVideoPlaybackState())
+    }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { route.mediaItems.size },
@@ -282,6 +293,7 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = route.mediaItems[currentIndex]
+    val currentVideoDurationMillis = currentItem.viewerVideoDurationMillis()
     val currentOriginalState = FakeOriginalLoadRepository.getState(currentItem.mediaId)
     val mediaComments = FakeCommentRepository.getMediaComments(currentItem.mediaId)
     val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
@@ -322,6 +334,31 @@ fun PhotoViewerScreen(
         showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
+        videoPlaybackState = ViewerVideoPlaybackState(
+            mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
+        )
+    }
+    LaunchedEffect(
+        currentItem.mediaId,
+        currentItem.mediaType,
+        currentVideoDurationMillis,
+        videoPlaybackState.isPlaying,
+        videoPlaybackState.progressMillis,
+    ) {
+        if (currentItem.mediaType != AppMediaType.VIDEO) return@LaunchedEffect
+        if (videoPlaybackState.mediaId != currentItem.mediaId) return@LaunchedEffect
+        if (!videoPlaybackState.isPlaying) return@LaunchedEffect
+        if (videoPlaybackState.progressMillis >= currentVideoDurationMillis) {
+            videoPlaybackState = videoPlaybackState.copy(isPlaying = false)
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(220)
+        val nextProgress = (videoPlaybackState.progressMillis + 220L)
+            .coerceAtMost(currentVideoDurationMillis)
+        videoPlaybackState = videoPlaybackState.copy(
+            progressMillis = nextProgress,
+            isPlaying = nextProgress < currentVideoDurationMillis,
+        )
     }
     BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
@@ -361,6 +398,7 @@ fun PhotoViewerScreen(
             PhotoViewerCanvas(
                 media = route.mediaItems[page],
                 zoomState = if (page == currentIndex) zoomState else null,
+                videoPlaybackState = if (page == currentIndex) videoPlaybackState else null,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -413,6 +451,34 @@ fun PhotoViewerScreen(
                             start = spacing.lg,
                             bottom = edgeActionsBottomPadding + 64.dp,
                         ),
+                )
+            }
+
+            if (currentItem.mediaType == AppMediaType.VIDEO) {
+                ViewerVideoControls(
+                    playbackState = videoPlaybackState,
+                    durationMillis = currentVideoDurationMillis,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            start = spacing.xxl,
+                            end = spacing.xxl,
+                            bottom = edgeActionsBottomPadding + 78.dp,
+                        ),
+                    onTogglePlayback = {
+                        val shouldRestart = videoPlaybackState.progressMillis >= currentVideoDurationMillis
+                        videoPlaybackState = if (videoPlaybackState.isPlaying) {
+                            videoPlaybackState.copy(isPlaying = false)
+                        } else {
+                            videoPlaybackState.copy(
+                                mediaId = currentItem.mediaId,
+                                isPlaying = true,
+                                progressMillis = if (shouldRestart) 0L else {
+                                    videoPlaybackState.progressMillis
+                                },
+                            )
+                        }
+                    },
                 )
             }
 
@@ -656,10 +722,12 @@ private fun PhotoViewerTopBar(
 private fun PhotoViewerCanvas(
     media: PhotoFeedItem,
     zoomState: ViewerZoomState?,
+    videoPlaybackState: ViewerVideoPlaybackState?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val density = LocalDensity.current
+    val isVideo = media.mediaType == AppMediaType.VIDEO
     val isLongImage = media.isViewerLongImage()
     val canvasAspectRatio = if (isLongImage) {
         media.viewerAspectRatio()
@@ -728,68 +796,254 @@ private fun PhotoViewerCanvas(
                 ),
             contentAlignment = if (isLongImage) Alignment.TopCenter else Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .width(canvasWidth)
-                    .height(canvasHeight)
-                    .then(zoomModifier)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                media.palette.start.copy(alpha = 0.98f),
-                                media.palette.end.copy(alpha = 0.90f),
-                            ),
-                        ),
-                    ),
-            ) {
-                Box(
+            if (isVideo) {
+                ViewerVideoCanvas(
+                    media = media,
+                    playbackState = videoPlaybackState,
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = spacing.lg, end = spacing.lg)
-                        .size(92.dp)
-                        .clip(CircleShape)
-                        .background(media.palette.accent.copy(alpha = 0.20f)),
+                        .width(canvasWidth)
+                        .height(canvasHeight),
                 )
-
+            } else {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = spacing.lg, bottom = spacing.lg)
-                        .fillMaxWidth(0.46f)
-                        .aspectRatio(2.5f)
-                        .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-                        .background(media.palette.accent.copy(alpha = 0.14f)),
-                )
-
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
+                        .width(canvasWidth)
+                        .height(canvasHeight)
+                        .then(zoomModifier)
                         .background(
-                            brush = Brush.verticalGradient(
+                            brush = Brush.linearGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = 0.10f),
-                                    Color.Transparent,
-                                    ViewerNightTop.copy(alpha = 0.12f),
+                                    media.palette.start.copy(alpha = 0.98f),
+                                    media.palette.end.copy(alpha = 0.90f),
                                 ),
                             ),
                         ),
-                )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = spacing.lg, end = spacing.lg)
+                            .size(92.dp)
+                            .clip(CircleShape)
+                            .background(media.palette.accent.copy(alpha = 0.20f)),
+                    )
 
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = spacing.lg, bottom = spacing.lg)
+                            .fillMaxWidth(0.46f)
+                            .aspectRatio(2.5f)
+                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
+                            .background(media.palette.accent.copy(alpha = 0.14f)),
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.10f),
+                                        Color.Transparent,
+                                        ViewerNightTop.copy(alpha = 0.12f),
+                                    ),
+                                ),
+                            ),
+                    )
+
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = spacing.md, bottom = spacing.md),
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                        color = ViewerNightTop.copy(alpha = 0.18f),
+                    ) {
+                        Text(
+                            text = "媒体预览占位",
+                            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ViewerSurface.copy(alpha = 0.82f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewerVideoCanvas(
+    media: PhotoFeedItem,
+    playbackState: ViewerVideoPlaybackState?,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val isPlaying = playbackState?.isPlaying == true
+    val progressFraction = if (playbackState == null) {
+        0f
+    } else {
+        (playbackState.progressMillis.toFloat() / media.viewerVideoDurationMillis().toFloat())
+            .coerceIn(0f, 1f)
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(radius.xl))
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        ViewerNightTop.copy(alpha = 0.96f),
+                        media.palette.end.copy(alpha = 0.34f),
+                        ViewerNightBottom.copy(alpha = 0.98f),
+                    ),
+                ),
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = spacing.lg, end = spacing.lg)
+                .size(96.dp)
+                .clip(CircleShape)
+                .background(media.palette.accent.copy(alpha = 0.12f)),
+        )
+
+        VideoMediaMarker(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(spacing.md),
+            showLabel = true,
+        )
+
+        Surface(
+            modifier = Modifier.align(Alignment.Center),
+            shape = CircleShape,
+            color = Color.White.copy(alpha = if (isPlaying) 0.14f else 0.18f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(76.dp)
+                    .padding(22.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                VideoGlyph(
+                    state = if (isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
+                    tint = ViewerSurface.copy(alpha = 0.92f),
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        Text(
+            text = if (isPlaying) "正在播放本地视频壳子" else "视频预览占位",
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(top = 112.dp)
+                .background(
+                    color = Color.Black.copy(alpha = 0.18f),
+                    shape = RoundedCornerShape(radius.capsule),
+                )
+                .padding(horizontal = spacing.sm, vertical = spacing.xs),
+            style = MaterialTheme.typography.labelLarge,
+            color = ViewerSurface.copy(alpha = 0.84f),
+        )
+
+        LinearProgressIndicator(
+            progress = { progressFraction },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.82f)
+                .padding(bottom = spacing.lg)
+                .height(4.dp)
+                .clip(RoundedCornerShape(radius.capsule)),
+            color = ViewerSurface.copy(alpha = 0.88f),
+            trackColor = ViewerSurface.copy(alpha = 0.16f),
+        )
+    }
+}
+
+@Composable
+private fun ViewerVideoControls(
+    playbackState: ViewerVideoPlaybackState,
+    durationMillis: Long,
+    onTogglePlayback: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val progressFraction = if (durationMillis <= 0L) {
+        0f
+    } else {
+        (playbackState.progressMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(radius.xl),
+        color = Color.Black.copy(alpha = 0.22f),
+        border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = spacing.md, bottom = spacing.md),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = ViewerNightTop.copy(alpha = 0.18f),
+                    modifier = Modifier.clickable(onClick = onTogglePlayback),
+                    shape = CircleShape,
+                    color = ViewerSurface.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .padding(11.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VideoGlyph(
+                            state = if (playbackState.isPlaying) {
+                                VideoGlyphState.PAUSE
+                            } else {
+                                VideoGlyphState.PLAY
+                            },
+                            tint = ViewerSurface.copy(alpha = 0.92f),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = "媒体预览占位",
-                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                        text = if (playbackState.isPlaying) "播放中" else "已暂停",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = ViewerSurface.copy(alpha = 0.92f),
+                    )
+                    Text(
+                        text = "${formatVideoProgress(playbackState.progressMillis)} / ${formatVideoProgress(durationMillis)}",
                         style = MaterialTheme.typography.labelMedium,
-                        color = ViewerSurface.copy(alpha = 0.82f),
+                        color = ViewerSurface.copy(alpha = 0.68f),
                     )
                 }
             }
+
+            LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(radius.capsule)),
+                color = ViewerSurface.copy(alpha = 0.88f),
+                trackColor = ViewerSurface.copy(alpha = 0.18f),
+            )
         }
     }
 }
@@ -804,12 +1058,24 @@ private fun PhotoFeedItem.viewerAspectRatio(): Float {
 }
 
 private fun PhotoFeedItem.isViewerLongImage(): Boolean {
+    if (mediaType == AppMediaType.VIDEO) return false
     val widthValue = width
     val heightValue = height
     if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
         return heightValue.toFloat() / widthValue.toFloat() >= ViewerLongImageThreshold
     }
     return aspectRatio > 0f && (1f / aspectRatio) >= ViewerLongImageThreshold
+}
+
+private fun PhotoFeedItem.viewerVideoDurationMillis(): Long {
+    return videoDurationMillis ?: DefaultViewerVideoDurationMillis
+}
+
+private fun formatVideoProgress(timeMillis: Long): String {
+    val totalSeconds = (timeMillis / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "%02d:%02d".format(minutes, seconds)
 }
 
 @Composable
@@ -1264,6 +1530,9 @@ private fun placeholderPostTitle(postId: String): String {
         "post-river-night" -> "河边夜色"
         "post-new-year" -> "新年第一刻"
         "post-fireworks" -> "烟花倒影"
+        "post-firework-reflection" -> "烟火倒影"
+        "post-window-light" -> "四月窗边"
+        "post-hill-road" -> "上坡那段路"
         else -> postId
             .removePrefix("post-")
             .split("-")

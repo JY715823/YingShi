@@ -26,9 +26,11 @@ object FakeAlbumRepository {
         val displayTimeMillis: Long,
         val commentCount: Int,
         val palette: PhotoThumbnailPalette,
+        val mediaType: AppMediaType,
         val aspectRatio: Float,
         val width: Int? = null,
         val height: Int? = null,
+        val videoDurationMillis: Long? = null,
         val isCover: Boolean,
     )
 
@@ -125,6 +127,7 @@ object FakeAlbumRepository {
             postDisplayTimeMillis = postTime,
             mediaCount = normalizedMedia.size,
             coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
         )
         postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
@@ -159,6 +162,7 @@ object FakeAlbumRepository {
             postId = postId,
             mediaCount = nextItems.size,
             coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
         )
         return appendedMedia.size
@@ -203,6 +207,7 @@ object FakeAlbumRepository {
         syncPostCardCover(
             postId = postId,
             coverPalette = target.palette,
+            coverMediaType = target.mediaType,
             coverAspectRatio = target.aspectRatio,
         )
         return true
@@ -224,9 +229,11 @@ object FakeAlbumRepository {
                 displayTimeMillis = media.displayTimeMillis,
                 commentCount = FakeCommentRepository.mediaCommentCount(media.id),
                 palette = media.palette,
+                mediaType = media.mediaType,
                 aspectRatio = media.aspectRatio,
                 width = media.width,
                 height = media.height,
+                videoDurationMillis = media.videoDurationMillis,
             )
         }.filterNot { media ->
             FakePhotoFeedRepository.isMediaHidden(media.id)
@@ -255,6 +262,7 @@ object FakeAlbumRepository {
             postDisplayTimeMillis = post.postDisplayTimeMillis,
             mediaCount = post.mediaCount,
             coverPalette = post.coverPalette,
+            coverMediaType = post.coverMediaType,
             coverAspectRatio = post.coverAspectRatio,
         )
     }
@@ -309,6 +317,7 @@ object FakeAlbumRepository {
             syncPostCardCover(
                 postId = postId,
                 coverPalette = cover.palette,
+                coverMediaType = cover.mediaType,
                 coverAspectRatio = cover.aspectRatio,
             )
         }
@@ -478,6 +487,7 @@ object FakeAlbumRepository {
         val normalizedPost = snapshot.post.copy(
             mediaCount = visibleMedia.size.takeIf { it > 0 } ?: restoredMedia.size,
             coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
         )
         val existingIndex = posts.indexOfFirst { it.id == normalizedPost.id }
@@ -506,6 +516,7 @@ object FakeAlbumRepository {
             postId = postId,
             mediaCount = normalized.size,
             coverPalette = normalized.first().palette,
+            coverMediaType = normalized.first().mediaType,
             coverAspectRatio = normalized.first().aspectRatio,
         )
         return true
@@ -562,7 +573,16 @@ object FakeAlbumRepository {
         val mediaState = mutableStateListOf<ManagedPostMediaState>().apply {
             repeat(mediaCount) { index ->
                 val mediaId = fakeMediaIdForPost(postId, index)
-                val aspectRatio = listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4]
+                val descriptor = fakeManagedMediaDescriptor(
+                    postId = postId,
+                    index = index,
+                    mediaId = mediaId,
+                )
+                val aspectRatio = if (descriptor.mediaType == AppMediaType.VIDEO) {
+                    16f / 9f
+                } else {
+                    listOf(0.92f, 1.0f, 1.08f, 0.96f)[index % 4]
+                }
                 val dimensions = fakeManagedMediaDimensions(
                     postId = postId,
                     index = index,
@@ -578,9 +598,11 @@ object FakeAlbumRepository {
                         } else {
                             shiftedPalette(basePalette = basePalette, index = index)
                         },
+                        mediaType = descriptor.mediaType,
                         aspectRatio = aspectRatio,
                         width = dimensions.first,
                         height = dimensions.second,
+                        videoDurationMillis = descriptor.videoDurationMillis,
                         isCover = index == 0,
                     ),
                 )
@@ -623,6 +645,7 @@ object FakeAlbumRepository {
             postId = postId,
             mediaCount = normalized.size,
             coverPalette = normalized.first().palette,
+            coverMediaType = normalized.first().mediaType,
             coverAspectRatio = normalized.first().aspectRatio,
         )
     }
@@ -640,12 +663,14 @@ object FakeAlbumRepository {
     private fun syncPostCardCover(
         postId: String,
         coverPalette: PhotoThumbnailPalette,
+        coverMediaType: AppMediaType,
         coverAspectRatio: Float,
     ) {
         val index = posts.indexOfFirst { it.id == postId }
         if (index < 0) return
         posts[index] = posts[index].copy(
             coverPalette = coverPalette,
+            coverMediaType = coverMediaType,
             coverAspectRatio = coverAspectRatio,
         )
     }
@@ -654,6 +679,7 @@ object FakeAlbumRepository {
         postId: String,
         mediaCount: Int,
         coverPalette: PhotoThumbnailPalette,
+        coverMediaType: AppMediaType,
         coverAspectRatio: Float,
     ) {
         val index = posts.indexOfFirst { it.id == postId }
@@ -661,6 +687,7 @@ object FakeAlbumRepository {
         posts[index] = posts[index].copy(
             mediaCount = mediaCount,
             coverPalette = coverPalette,
+            coverMediaType = coverMediaType,
             coverAspectRatio = coverAspectRatio,
         )
     }
@@ -671,8 +698,10 @@ object FakeAlbumRepository {
             displayTimeMillis = displayTimeMillis,
             commentCount = FakeCommentRepository.mediaCommentCount(id),
             palette = palette,
+            mediaType = mediaType,
             aspectRatio = aspectRatio,
             isCover = isCover,
+            videoDurationMillis = videoDurationMillis,
         )
     }
 
@@ -684,9 +713,11 @@ object FakeAlbumRepository {
             mediaId = id,
             displayTimeMillis = displayTimeMillis,
             palette = palette,
+            mediaType = mediaType,
             aspectRatio = aspectRatio,
             width = width,
             height = height,
+            videoDurationMillis = videoDurationMillis,
             isCover = isCover,
             sourcePostId = sourcePostId,
             sourcePostTitle = sourcePostTitle.ifBlank { "当前帖子" },
@@ -699,9 +730,11 @@ object FakeAlbumRepository {
             displayTimeMillis = displayTimeMillis,
             commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
             palette = palette,
+            mediaType = mediaType,
             aspectRatio = aspectRatio,
             width = width,
             height = height,
+            videoDurationMillis = videoDurationMillis,
             isCover = isCover,
         )
     }
@@ -723,9 +756,14 @@ object FakeAlbumRepository {
             displayTimeMillis = displayTimeMillis,
             commentCount = FakeCommentRepository.mediaCommentCount(id),
             palette = palette,
+            mediaType = when (type) {
+                SystemMediaType.IMAGE -> AppMediaType.IMAGE
+                SystemMediaType.VIDEO -> AppMediaType.VIDEO
+            },
             aspectRatio = aspectRatio,
             width = width,
             height = height,
+            videoDurationMillis = null,
             isCover = isCover,
         )
     }
@@ -737,6 +775,48 @@ object FakeAlbumRepository {
         val dateLabel = java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA)
             .format(java.util.Date(displayTimeMillis))
         return "系统导入 $dateLabel · $mediaCount 项"
+    }
+
+    private data class FakeManagedMediaDescriptor(
+        val mediaType: AppMediaType,
+        val videoDurationMillis: Long? = null,
+    )
+
+    private fun fakeManagedMediaDescriptor(
+        postId: String,
+        index: Int,
+        mediaId: String,
+    ): FakeManagedMediaDescriptor {
+        knownVideoDurationForMediaId(mediaId)?.let { durationMillis ->
+            return FakeManagedMediaDescriptor(
+                mediaType = AppMediaType.VIDEO,
+                videoDurationMillis = durationMillis,
+            )
+        }
+
+        val generatedVideoDurationMillis = when (postId) {
+            "post-sunday-brunch" -> if (index == 2) 22_000L else null
+            "post-window-light" -> if (index == 1) 17_000L else null
+            "post-hill-road" -> if (index == 3) 16_000L else null
+            else -> null
+        }
+        return if (generatedVideoDurationMillis != null) {
+            FakeManagedMediaDescriptor(
+                mediaType = AppMediaType.VIDEO,
+                videoDurationMillis = generatedVideoDurationMillis,
+            )
+        } else {
+            FakeManagedMediaDescriptor(mediaType = AppMediaType.IMAGE)
+        }
+    }
+
+    private fun knownVideoDurationForMediaId(mediaId: String): Long? {
+        return when (mediaId) {
+            "media-2026-04-18-b" -> 24_000L
+            "media-2026-03-30-b" -> 19_000L
+            "media-2026-01-01-b" -> 14_000L
+            else -> null
+        }
     }
 
     private fun fakeManagedMediaDimensions(
@@ -824,6 +904,7 @@ object FakeAlbumRepository {
                 postDisplayTimeMillis = 1714200600000,
                 mediaCount = 8,
                 coverPalette = albums[1].accent,
+                coverMediaType = AppMediaType.VIDEO,
                 coverAspectRatio = 1.05f,
             ),
             AlbumPostCardUiModel(
@@ -938,6 +1019,7 @@ object FakeAlbumRepository {
                     end = Color(0xFF6D4966),
                     accent = Color(0xFFF0B38E),
                 ),
+                coverMediaType = AppMediaType.VIDEO,
                 coverAspectRatio = 1.06f,
             ),
         )

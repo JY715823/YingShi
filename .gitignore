@@ -13,3 +13,40 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+
+# Gradle
+.gradle/
+.gradle-user/
+**/build/
+
+# Local SDK / machine-specific
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keystore / signing
+*.jks
+*.keystore
+*.p12
+
+# Generated / temp
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Kotlin / Java crash or temp
+hs_err_pid*
+replay_pid*

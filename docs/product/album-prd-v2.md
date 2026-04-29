@@ -11,6 +11,12 @@
 - Long images should fit the screen width first, then allow vertical browsing instead of being squeezed into one screen.
 - Zoomed viewing still takes priority over media switching, while heavier long-image decoding and memory work remain follow-up tasks.
 
+## Stage 9.3 implementation note
+- App-content media should explicitly distinguish image and video while still staying in one shared media stream.
+- Photo feed cards and post covers only add a lightweight video marker; they should not grow into information-heavy video cards.
+- Photo-flow viewer and in-post viewer should both accept video media and keep the same dark immersive overlay structure.
+- Stage 9.3 only requires a local-first video viewing shell with basic play / pause and simple session progress; real player engine, cache, background playback, and advanced controls stay follow-up work.
+
 ## 1. 鏂囨。璇存槑
 
 ### 1.1 鏂囨。鐩爣

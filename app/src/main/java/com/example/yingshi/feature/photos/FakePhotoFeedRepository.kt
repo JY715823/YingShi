@@ -36,9 +36,11 @@ object FakePhotoFeedRepository {
                         .filterNot { hiddenPostIds.contains(it) }
                         .distinct(),
                     palette = latestEntry.palette,
+                    mediaType = latestEntry.mediaType,
                     aspectRatio = latestEntry.aspectRatio,
                     width = latestEntry.width,
                     height = latestEntry.height,
+                    videoDurationMillis = latestEntry.videoDurationMillis,
                 )
             }
             .toList()
@@ -62,6 +64,7 @@ object FakePhotoFeedRepository {
                             mediaDisplayTimeMillis = item.displayTimeMillis,
                             postId = postId,
                             palette = item.palette,
+                            mediaType = item.type.toAppMediaType(),
                             aspectRatio = item.aspectRatio,
                             width = item.width,
                             height = item.height,
@@ -128,9 +131,11 @@ object FakePhotoFeedRepository {
                             ),
                             postId = postId,
                             palette = seed.palette,
+                            mediaType = seed.mediaType,
                             aspectRatio = seed.aspectRatio,
                             width = seed.width,
                             height = seed.height,
+                            videoDurationMillis = seed.videoDurationMillis,
                         ),
                     )
                 }
@@ -147,9 +152,11 @@ object FakePhotoFeedRepository {
         val minute: Int,
         val postIds: List<String>,
         val palette: PhotoThumbnailPalette,
+        val mediaType: AppMediaType = AppMediaType.IMAGE,
         val aspectRatio: Float = 1f,
         val width: Int? = null,
         val height: Int? = null,
+        val videoDurationMillis: Long? = null,
     )
 
     private data class DateParts(
@@ -214,10 +221,24 @@ object FakePhotoFeedRepository {
         accent = Color(0xFFE7F0F6),
     )
 
+    private fun videoDurationSeconds(seconds: Int): Long = seconds * 1000L
+
     private val feedSeeds = listOf(
         FeedSeed("media-2026-04-20-a", 2026, 4, 20, 10, 6, emptyList(), rainSlate, aspectRatio = 0.8f),
         FeedSeed("media-2026-04-18-a", 2026, 4, 18, 21, 12, listOf("post-night-walk", "post-april-window"), blueMist),
-        FeedSeed("media-2026-04-18-b", 2026, 4, 18, 20, 44, listOf("post-night-walk"), twilightLavender),
+        FeedSeed(
+            "media-2026-04-18-b",
+            2026,
+            4,
+            18,
+            20,
+            44,
+            listOf("post-night-walk"),
+            twilightLavender,
+            mediaType = AppMediaType.VIDEO,
+            aspectRatio = 16f / 9f,
+            videoDurationMillis = videoDurationSeconds(24),
+        ),
         FeedSeed(
             "media-2026-04-18-c",
             2026,
@@ -235,7 +256,19 @@ object FakePhotoFeedRepository {
         FeedSeed("media-2026-04-12-b", 2026, 4, 12, 15, 10, listOf("post-sunday-brunch", "post-flower-table"), grassHaze),
         FeedSeed("media-2026-04-03-a", 2026, 4, 3, 9, 48, listOf("post-morning-metro"), rainSlate),
         FeedSeed("media-2026-03-30-a", 2026, 3, 30, 22, 8, listOf("post-late-return"), blueMist),
-        FeedSeed("media-2026-03-30-b", 2026, 3, 30, 21, 46, listOf("post-late-return", "post-river-night"), rainSlate),
+        FeedSeed(
+            "media-2026-03-30-b",
+            2026,
+            3,
+            30,
+            21,
+            46,
+            listOf("post-late-return", "post-river-night"),
+            rainSlate,
+            mediaType = AppMediaType.VIDEO,
+            aspectRatio = 16f / 9f,
+            videoDurationMillis = videoDurationSeconds(19),
+        ),
         FeedSeed("media-2026-03-14-a", 2026, 3, 14, 14, 36, listOf("post-white-shirt-day"), teaBrown),
         FeedSeed("media-2026-03-14-b", 2026, 3, 14, 12, 5, listOf("post-white-shirt-day"), dawnPeach),
         FeedSeed("media-2026-03-05-a", 2026, 3, 5, 8, 32, listOf("post-quiet-commute"), rainSlate),
@@ -244,7 +277,19 @@ object FakePhotoFeedRepository {
         FeedSeed("media-2026-02-11-a", 2026, 2, 11, 13, 7, listOf("post-noodle-lunch", "post-snow-light"), dawnPeach),
         FeedSeed("media-2026-02-11-b", 2026, 2, 11, 12, 40, listOf("post-noodle-lunch"), teaBrown),
         FeedSeed("media-2026-01-01-a", 2026, 1, 1, 0, 14, listOf("post-new-year"), twilightLavender),
-        FeedSeed("media-2026-01-01-b", 2026, 1, 1, 0, 5, listOf("post-new-year", "post-fireworks"), blueMist),
+        FeedSeed(
+            "media-2026-01-01-b",
+            2026,
+            1,
+            1,
+            0,
+            5,
+            listOf("post-new-year", "post-fireworks", "post-firework-reflection"),
+            blueMist,
+            mediaType = AppMediaType.VIDEO,
+            aspectRatio = 16f / 9f,
+            videoDurationMillis = videoDurationSeconds(14),
+        ),
         FeedSeed("media-2025-12-31-a", 2025, 12, 31, 23, 31, listOf("post-year-end"), rainSlate),
         FeedSeed("media-2025-12-24-a", 2025, 12, 24, 20, 22, listOf("post-christmas-eve", "post-home-lights"), dawnPeach),
         FeedSeed("media-2025-12-24-b", 2025, 12, 24, 19, 55, listOf("post-home-lights"), teaBrown),
@@ -291,4 +336,11 @@ object FakePhotoFeedRepository {
         FeedSeed("media-2024-01-01-a", 2024, 1, 1, 8, 20, listOf("post-first-sunrise"), teaBrown),
         FeedSeed("media-2024-01-01-b", 2024, 1, 1, 7, 58, listOf("post-first-sunrise", "post-new-calendar"), blueMist),
     )
+
+    private fun SystemMediaType.toAppMediaType(): AppMediaType {
+        return when (this) {
+            SystemMediaType.IMAGE -> AppMediaType.IMAGE
+            SystemMediaType.VIDEO -> AppMediaType.VIDEO
+        }
+    }
 }
