@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -18,10 +19,12 @@ data class SystemMediaDestinationUiState(
 @Composable
 fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState> {
     val mode = RepositoryProvider.currentMode
+    val backendMutationVersion = RealBackendMutationBus.version.collectAsState().value
     return produceState(
         initialValue = initialDestinationState(mode),
         key1 = mode,
         key2 = AuthSessionManager.isLoggedIn,
+        key3 = backendMutationVersion,
     ) {
         if (mode == RepositoryMode.FAKE) {
             value = SystemMediaDestinationUiState(

@@ -70,6 +70,7 @@ fun PostDetailScreen(
         RealPostDetailScreen(
             route = route,
             onBack = onBack,
+            onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
             onOpenCacheManagement = onOpenCacheManagement,
             modifier = modifier,
         )
@@ -145,6 +146,7 @@ fun PostDetailScreen(
 private fun RealPostDetailScreen(
     route: PostDetailPlaceholderRoute,
     onBack: () -> Unit,
+    onOpenGearEdit: () -> Unit,
     onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -154,6 +156,7 @@ private fun RealPostDetailScreen(
         factory = PostDetailRealViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
@@ -177,6 +180,11 @@ private fun RealPostDetailScreen(
     }
     BackHandler(enabled = inPostViewerInitialPage != null) {
         inPostViewerInitialPage = null
+    }
+    LaunchedEffect(backendMutationVersion) {
+        if (backendMutationVersion > 0) {
+            viewModel.refresh()
+        }
     }
 
     Box(
@@ -239,6 +247,7 @@ private fun RealPostDetailScreen(
                         uiState = uiState,
                         onBack = onBack,
                         onRefresh = viewModel::refresh,
+                        onOpenGearEdit = onOpenGearEdit,
                         onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
                         onOpenMediaComments = { page -> mediaCommentPage = page },
                         onCreatePostComment = viewModel::createPostComment,
@@ -282,6 +291,7 @@ private fun RealPostDetailContent(
     uiState: PostDetailRealUiState,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
     onOpenMediaComments: (Int) -> Unit,
     onCreatePostComment: (String) -> Unit,
@@ -331,9 +341,7 @@ private fun RealPostDetailContent(
             onExport = {
                 Toast.makeText(context, "导出仍保留 fake 占位能力。", Toast.LENGTH_SHORT).show()
             },
-            onEdit = {
-                Toast.makeText(context, "REAL 帖子编辑这轮还没接入。", Toast.LENGTH_SHORT).show()
-            },
+            onEdit = onOpenGearEdit,
         )
 
         if (uiState.errorMessage != null) {

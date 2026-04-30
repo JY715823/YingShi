@@ -61,6 +61,17 @@ class FakeMediaRepositoryShell : MediaRepository {
         return ApiResult.Success(items)
     }
 
+    override suspend fun deleteMediaFromPost(
+        postId: String,
+        mediaId: String,
+        deleteMode: String,
+    ): ApiResult<RemoteTrashItem> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "FAKE post-media delete keeps using local fake flow in this stage",
+        )
+    }
+
     override suspend fun systemDeleteMedia(mediaId: String): ApiResult<RemoteTrashItem> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",
@@ -187,6 +198,13 @@ class FakePostRepositoryShell : PostRepository {
             return ApiResult.Error(code = "POST_MEDIA_ORDER_INVALID", message = "Fake post media order update failed")
         }
         return getPostDetail(postId)
+    }
+
+    override suspend fun deletePost(postId: String): ApiResult<RemoteTrashItem> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "FAKE post delete keeps using local fake flow in this stage",
+        )
     }
 }
 

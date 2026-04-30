@@ -23,6 +23,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -36,6 +37,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -51,6 +55,17 @@ fun GearEditScreen(
     onDeleteCurrentPost: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealGearEditScreen(
+            route = route,
+            onBack = onBack,
+            onOpenMediaManagement = onOpenMediaManagement,
+            onOpenCacheManagement = onOpenCacheManagement,
+            modifier = modifier,
+        )
+        return
+    }
+
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val initialDraft = remember(route.postId) {
@@ -268,6 +283,212 @@ fun GearEditScreen(
 }
 
 @Composable
+private fun RealGearEditScreen(
+    route: GearEditRoute,
+    onBack: () -> Unit,
+    onOpenMediaManagement: (MediaManagementRoute) -> Unit,
+    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val context = LocalContext.current
+    val viewModel: RealGearEditViewModel = viewModel(
+        key = "real-gear-edit-${route.postId}",
+        factory = RealGearEditViewModel.factory(route),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
+
+    val handleClose = {
+        if (uiState.hasChanges) {
+            Toast.makeText(context, "未保存修改已丢弃", Toast.LENGTH_SHORT).show()
+        }
+        onBack()
+    }
+
+    BackHandler(onBack = handleClose)
+
+    if (uiState.isLoading && !uiState.draftLoaded) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            GearEditTopBar(
+                onCancel = handleClose,
+                onSave = {},
+            )
+            Text(
+                text = "正在读取后端帖子编辑信息…",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
+    if (uiState.tokenMissing || (!uiState.draftLoaded && uiState.errorMessage != null)) {
+        GearEditMissingState(
+            onBack = onBack,
+            modifier = modifier,
+        )
+        return
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        GearEditTopBar(
+            onCancel = handleClose,
+            onSave = {
+                viewModel.save(onSuccess = onBack)
+            },
+        )
+
+        uiState.errorMessage?.let { errorMessage ->
+            GearEditSection(
+                title = "保存状态",
+                subtitle = errorMessage,
+            ) {}
+        }
+
+        uiState.statusMessage?.let { statusMessage ->
+            GearEditSection(
+                title = "操作结果",
+                subtitle = statusMessage,
+            ) {}
+        }
+
+        GearEditSection(
+            title = "基础信息",
+            subtitle = "REAL 模式会直接保存到后端帖子详情。",
+        ) {
+            OutlinedTextField(
+                value = uiState.title,
+                onValueChange = viewModel::updateTitle,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("标题") },
+                placeholder = { Text("可留空") },
+                minLines = 1,
+                maxLines = 2,
+            )
+            OutlinedTextField(
+                value = uiState.summary,
+                onValueChange = viewModel::updateSummary,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("简介") },
+                placeholder = { Text("可留空") },
+                minLines = 3,
+                maxLines = 5,
+            )
+        }
+
+        GearEditSection(
+            title = "时间设置",
+            subtitle = "本轮继续使用轻量时间调整，保存后同步到后端。",
+        ) {
+            Text(
+                text = formatGearEditTime(uiState.displayTimeMillis),
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                GearEditChip(text = "-1小时") { viewModel.shiftDisplayTime(-(60 * 60 * 1000L)) }
+                GearEditChip(text = "+1小时") { viewModel.shiftDisplayTime(60 * 60 * 1000L) }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                GearEditChip(text = "-1天") { viewModel.shiftDisplayTime(-(24 * 60 * 60 * 1000L)) }
+                GearEditChip(text = "+1天") { viewModel.shiftDisplayTime(24 * 60 * 60 * 1000L) }
+                GearEditChip(text = "设为现在") { viewModel.setDisplayTimeNow() }
+            }
+        }
+
+        GearEditSection(
+            title = "所属相册",
+            subtitle = "后端要求帖子至少归属一个相册。",
+        ) {
+            if (uiState.selectedAlbumIds.isEmpty()) {
+                Text(
+                    text = "请至少选择一个相册后再保存。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            AlbumSelectionFlow(
+                albums = uiState.albums,
+                selectedAlbumIds = uiState.selectedAlbumIds,
+                onToggleAlbum = viewModel::toggleAlbum,
+            )
+        }
+
+        GearEditSection(
+            title = "后续入口",
+            subtitle = "媒体管理已接 REAL，缓存管理仍保持原有占位入口。",
+        ) {
+            GearEditEntryRow(
+                title = "媒体管理",
+                subtitle = "管理当前帖子里的真实媒体，设置封面、排序或删除。",
+                onClick = { onOpenMediaManagement(MediaManagementRoute(route.postId)) },
+            )
+            GearEditEntryRow(
+                title = "缓存管理",
+                subtitle = "继续复用现有缓存管理页，不改主流程。",
+                onClick = {
+                    onOpenCacheManagement(CacheManagementRoute(source = "gear-edit-real"))
+                },
+            )
+            GearEditEntryRow(
+                title = "删除整个帖子",
+                subtitle = "REAL 模式下会把帖子移入后端回收站。",
+                danger = true,
+                onClick = { showDeletePostDialog = true },
+            )
+        }
+    }
+
+    if (showDeletePostDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeletePostDialog = false },
+            title = { Text("删除整个帖子") },
+            text = {
+                Text("确认后会把当前帖子移入后端回收站，帖子详情、相册页和回收站会同步刷新。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeletePostDialog = false
+                        viewModel.deletePost(onSuccess = onBack)
+                    },
+                    enabled = !uiState.isDeleting,
+                ) {
+                    Text(if (uiState.isDeleting) "处理中…" else "确认删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeletePostDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+}
+
+@Composable
 private fun GearEditTopBar(
     onCancel: () -> Unit,
     onSave: () -> Unit,
@@ -281,7 +502,7 @@ private fun GearEditTopBar(
             Text("取消")
         }
         Text(
-            text = "Gear Edit",
+            text = "帖子编辑",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground,
         )

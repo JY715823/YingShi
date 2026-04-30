@@ -29,6 +29,12 @@ interface MediaRepository {
         pageSize: Int = 20,
     ): ApiResult<List<RemoteMedia>>
 
+    suspend fun deleteMediaFromPost(
+        postId: String,
+        mediaId: String,
+        deleteMode: String,
+    ): ApiResult<RemoteTrashItem>
+
     suspend fun systemDeleteMedia(
         mediaId: String,
     ): ApiResult<RemoteTrashItem>
@@ -64,6 +70,10 @@ interface PostRepository {
         postId: String,
         orderedMediaIds: List<String>,
     ): ApiResult<RemotePostDetail>
+
+    suspend fun deletePost(
+        postId: String,
+    ): ApiResult<RemoteTrashItem>
 }
 
 interface CommentRepository {

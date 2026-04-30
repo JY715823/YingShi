@@ -87,6 +87,7 @@ class RealTrashListViewModel(
         viewModelScope.launch {
             when (val result = trashRepository.undoMoveTrashItemOut(trashItemId)) {
                 is ApiResult.Success -> {
+                    RealBackendMutationBus.notifyChanged()
                     refresh(selectedType)
                     _uiState.update { it.copy(statusMessage = "已撤销移出回收站。") }
                 }
@@ -190,6 +191,7 @@ class RealTrashDetailViewModel(
             }
             when (val result = block()) {
                 is ApiResult.Success -> {
+                    RealBackendMutationBus.notifyChanged()
                     _uiState.update {
                         it.copy(
                             isMutating = false,

@@ -67,6 +67,29 @@ class RealMediaRepository(
         )
     }
 
+    override suspend fun deleteMediaFromPost(
+        postId: String,
+        mediaId: String,
+        deleteMode: String,
+    ): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            mediaApi.deleteMediaFromPost(
+                postId = postId,
+                mediaId = mediaId,
+                deleteMode = deleteMode,
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_MEDIA_DELETE_REQUEST_FAILED",
+                    message = "REAL post-media delete request failed",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
     override suspend fun systemDeleteMedia(mediaId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
             mediaApi.deleteMediaFromSystem(mediaId).data.toRemoteModel()
@@ -221,6 +244,21 @@ class RealPostRepository(
                 ApiResult.Error(
                     code = "POST_MEDIA_ORDER_REQUEST_FAILED",
                     message = "Stage 11.4 real post media-order update failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun deletePost(postId: String): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            postApi.deletePost(postId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_DELETE_REQUEST_FAILED",
+                    message = "REAL post delete request failed",
                     throwable = it,
                 )
             },

@@ -502,6 +502,7 @@ object LocalSystemMediaBridgeRepository {
         when (val result = finalizeAction(uploadedMediaIds)) {
             is ApiResult.Success -> {
                 mutationVersion += 1
+                RealBackendMutationBus.notifyChanged()
             }
             is ApiResult.Error -> {
                 finalizedOperationIds.remove(operationId)
