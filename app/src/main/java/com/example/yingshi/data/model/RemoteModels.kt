@@ -36,6 +36,7 @@ data class RemoteComment(
 data class RemoteTrashItem(
     val trashItemId: String,
     val itemType: String,
+    val state: String?,
     val sourcePostId: String?,
     val sourceMediaId: String?,
     val title: String,
@@ -48,8 +49,7 @@ data class RemoteTrashItem(
 data class RemoteUploadToken(
     val uploadId: String,
     val provider: String,
-    val bucket: String,
-    val objectKey: String,
     val uploadUrl: String,
     val expireAtMillis: Long,
+    val state: String,
 )

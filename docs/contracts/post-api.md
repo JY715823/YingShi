@@ -1,121 +1,99 @@
-# Post API Draft
+# Post API Contract
 
 ## Status
-- Stage 11.4 draft only
-- no live backend required
-- current app still defaults to fake local post data
+- unified with current `yingshi-server` code
+- local-dev usable
 
-## Purpose
-Define post list, post detail, post create, basic info update, cover update, and media-order update contracts for future backend integration.
+## Base Rules
+- base path: `/api/posts`
+- bearer auth required for all endpoints
+- current backend has no `GET /api/posts` list endpoint
+- create, update, cover update, media order update, and add-media all return the same `PostDetailDto`
 
-## Endpoints
-
-### `GET /v1/posts`
-- use case: global post list
-- auth: required
-- query:
-  - `page`
-  - `size`
-
-Response draft:
+## Post Detail DTO
 
 ```json
 {
-  "requestId": "req_posts",
-  "data": [
+  "postId": "post_001",
+  "title": "Night Walk",
+  "summary": "A quiet walk home",
+  "contributorLabel": "Demo A and Demo B",
+  "displayTimeMillis": 1777412800000,
+  "albumIds": ["album_001"],
+  "coverMediaId": "media_001",
+  "mediaCount": 3,
+  "mediaItems": [
     {
-      "postId": "post_001",
-      "title": "Night Walk",
-      "summary": "A quiet walk home",
-      "contributorLabel": "You and Me",
-      "displayTimeMillis": 1777412800000,
-      "albumIds": ["album_001"],
-      "coverMediaId": "media_001",
-      "mediaCount": 6
-    }
-  ],
-  "page": {
-    "page": 1,
-    "pageSize": 20,
-    "nextCursor": null,
-    "hasMore": false
-  }
-}
-```
-
-### `GET /v1/posts/{postId}`
-- use case: post detail
-- auth: required
-
-Response draft:
-
-```json
-{
-  "requestId": "req_post_detail",
-  "data": {
-    "postId": "post_001",
-    "title": "Night Walk",
-    "summary": "A quiet walk home",
-    "contributorLabel": "You and Me",
-    "displayTimeMillis": 1777412800000,
-    "albumIds": ["album_001"],
-    "coverMediaId": "media_001",
-    "mediaItems": [
-      {
+      "sortOrder": 0,
+      "isCover": true,
+      "media": {
         "mediaId": "media_001",
         "mediaType": "image",
-        "previewUrl": "https://placeholder/media_001_preview.jpg",
-        "originalUrl": null,
+        "url": "/api/media/files/media_001",
+        "previewUrl": "/api/media/files/media_001",
+        "originalUrl": "/api/media/files/media_001",
         "videoUrl": null,
+        "coverUrl": null,
+        "mimeType": "image/jpeg",
+        "sizeBytes": 3145728,
         "width": 1440,
         "height": 1920,
         "aspectRatio": 0.75,
+        "durationMillis": null,
         "displayTimeMillis": 1777412800000,
-        "commentCount": 4,
-        "isCover": true,
-        "videoDurationMillis": null
+        "postIds": ["post_001"]
       }
-    ]
-  }
+    }
+  ]
 }
 ```
 
-### `POST /v1/posts`
-- use case: create post shell
-- auth: required
+## Endpoints
 
-Request draft:
+### `GET /api/posts/{postId}`
+
+Response:
+- returns one `PostDetailDto`
+
+### `POST /api/posts`
+
+Request:
 
 ```json
 {
   "title": "Night Walk",
   "summary": "A quiet walk home",
+  "contributorLabel": "Demo A and Demo B",
   "displayTimeMillis": 1777412800000,
   "albumIds": ["album_001"],
-  "initialMediaIds": ["media_001", "media_002"]
+  "initialMediaIds": ["media_001", "media_002"],
+  "coverMediaId": "media_001"
 }
 ```
 
-### `PATCH /v1/posts/{postId}`
-- use case: update post basic info
-- auth: required
+Response:
+- returns one `PostDetailDto`
 
-Request draft:
+### `PATCH /api/posts/{postId}`
+
+Request:
 
 ```json
 {
   "title": "Night Walk Updated",
   "summary": "A quiet walk home with one more note",
+  "contributorLabel": "Demo A and Demo B",
   "displayTimeMillis": 1777412800000,
-  "albumIds": ["album_001"]
+  "albumIds": ["album_001", "album_002"]
 }
 ```
 
-### `PATCH /v1/posts/{postId}/cover`
-- use case: set post cover media
-- auth: required
+Response:
+- returns one `PostDetailDto`
 
-Request draft:
+### `PATCH /api/posts/{postId}/cover`
+
+Request:
 
 ```json
 {
@@ -123,11 +101,12 @@ Request draft:
 }
 ```
 
-### `PATCH /v1/posts/{postId}/media-order`
-- use case: update media order inside one post
-- auth: required
+Response:
+- returns one `PostDetailDto`
 
-Request draft:
+### `PATCH /api/posts/{postId}/media-order`
+
+Request:
 
 ```json
 {
@@ -135,41 +114,49 @@ Request draft:
 }
 ```
 
-### `DELETE /v1/posts/{postId}`
-- use case: move one post into app-content trash
-- auth: required
-- Stage 11.6 draft only
+Response:
+- returns one `PostDetailDto`
 
-Request draft:
+### `POST /api/posts/{postId}/media`
+
+Request:
 
 ```json
 {
-  "deleteMode": "moveToTrash",
-  "operatorNote": null
+  "mediaIds": ["media_uploaded_001", "media_uploaded_002"],
+  "coverMediaId": "media_uploaded_001"
 }
 ```
 
-Response draft:
-- return the created trash entry as `TrashItemDto`
+Response:
+- returns one `PostDetailDto`
 
-## Field Notes
-- post list and post detail are different DTO shapes
-- `coverMediaId` is preferred over duplicating full cover blocks on summaries
-- post detail media order belongs to the post itself
-- album membership update now lives in `album-api.md`
-- post delete is separated from media delete and always creates a post-scoped trash entry in this draft
+### `DELETE /api/posts/{postId}`
 
-## Error Code Placeholders
+Behavior:
+- soft deletes the post
+- keeps relations and comments restorable
+- creates one trash item with `itemType = postDeleted`
+
+Response:
+- returns one `TrashItemDto`
+
+### `DELETE /api/posts/{postId}/media/{mediaId}?deleteMode=directory|system`
+
+Behavior:
+- `directory`: remove only this post-media relation and create `mediaRemoved`
+- `system`: system delete the media globally and create `mediaSystemDeleted`
+
+Response:
+- returns one `TrashItemDto`
+
+## Error Codes
 - `POST_NOT_FOUND`
-- `POST_MEDIA_NOT_FOUND`
+- `POST_ALREADY_DELETED`
 - `POST_MEDIA_ORDER_INVALID`
 - `POST_COVER_INVALID`
-- `POST_DELETE_CONFLICT`
+- `ALBUM_ASSIGNMENT_INVALID`
+- `MEDIA_NOT_FOUND`
+- `MEDIA_ALREADY_DELETED`
 - `VALIDATION_ERROR`
 - `AUTH_UNAUTHORIZED`
-- `NOT_IMPLEMENTED`
-
-## Stage 11.4 Draft-Only Notes
-- no collaborator/member mutation in this stage
-- no rich post editor payload in this stage
-- delete request shape and restore semantics are aligned in Stage 11.6, but no live backend is required yet

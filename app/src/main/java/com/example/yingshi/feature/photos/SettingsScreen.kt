@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import com.example.yingshi.BuildConfig
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -42,6 +43,7 @@ fun SettingsScreen(
     route: SettingsRoute,
     onBack: () -> Unit,
     onOpenCacheManagement: (CacheManagementRoute) -> Unit,
+    onOpenBackendDiagnostics: (BackendDiagnosticsRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -240,6 +242,20 @@ fun SettingsScreen(
                 subtitle = "后续再接真实埋点与统计配置。",
                 value = "未接入",
             )
+        }
+        if (BuildConfig.DEBUG) {
+            SettingsSection(
+                title = "后端联调",
+                subtitle = "保留 fake 主流程不动，同时提供单独的后端诊断入口给模拟器和真机联调使用。",
+            ) {
+                SettingsEntryRow(
+                    title = "打开后端联调诊断",
+                    subtitle = "查看或修改 baseUrl，切换 fake/real，并直接测试 health、login、albums、media、comments、trash。",
+                    onClick = {
+                        onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings"))
+                    },
+                )
+            }
         }
     }
 }
@@ -645,6 +661,7 @@ private fun SettingsScreenPreview() {
             route = SettingsRoute(),
             onBack = { },
             onOpenCacheManagement = { },
+            onOpenBackendDiagnostics = { },
         )
     }
 }

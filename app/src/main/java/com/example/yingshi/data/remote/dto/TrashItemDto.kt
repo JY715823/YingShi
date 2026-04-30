@@ -3,6 +3,7 @@ package com.example.yingshi.data.remote.dto
 data class TrashItemDto(
     val trashItemId: String,
     val itemType: String,
+    val state: String? = null,
     val sourcePostId: String? = null,
     val sourceMediaId: String? = null,
     val title: String,
@@ -10,6 +11,14 @@ data class TrashItemDto(
     val deletedAtMillis: Long,
     val relatedPostIds: List<String> = emptyList(),
     val relatedMediaIds: List<String> = emptyList(),
+)
+
+data class TrashPageResponseDto(
+    val items: List<TrashItemDto> = emptyList(),
+    val page: Int = 1,
+    val size: Int = 10,
+    val totalElements: Long = 0,
+    val hasMore: Boolean = false,
 )
 
 data class TrashDetailDto(
@@ -24,9 +33,4 @@ data class PendingCleanupDto(
     val removedAtMillis: Long,
     val undoDeadlineMillis: Long,
     val item: TrashItemDto,
-)
-
-data class RestoreRequestDto(
-    val restoreRelations: Boolean = true,
-    val operatorNote: String? = null,
 )

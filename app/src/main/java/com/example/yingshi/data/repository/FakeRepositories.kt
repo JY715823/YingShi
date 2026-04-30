@@ -390,11 +390,10 @@ class FakeUploadRepositoryShell : UploadRepository {
         return ApiResult.Success(
             RemoteUploadToken(
                 uploadId = uploadId,
-                provider = "oss",
-                bucket = "placeholder-bucket",
-                objectKey = "uploads/fake/${payload.fileName}",
-                uploadUrl = "https://upload-placeholder.yingshi.local/",
+                provider = "local",
+                uploadUrl = "/api/uploads/$uploadId/file",
                 expireAtMillis = System.currentTimeMillis() + 15 * 60 * 1000L,
+                state = "waiting",
             ),
         )
     }
@@ -548,8 +547,8 @@ private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment():
     return RemoteComment(
         commentId = id,
         targetType = when (targetType) {
-            CommentTargetType.Post -> "post"
-            CommentTargetType.Media -> "media"
+            CommentTargetType.Post -> "POST"
+            CommentTargetType.Media -> "MEDIA"
         },
         targetId = targetId,
         authorName = author,
@@ -564,10 +563,13 @@ private fun String.toTrashEntryTypeOrNull(): TrashEntryType? {
     return TrashEntryType.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
 }
 
-private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashItem(): RemoteTrashItem {
+private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashItem(
+    state: String = "inTrash",
+): RemoteTrashItem {
     return RemoteTrashItem(
         trashItemId = id,
         itemType = type.name,
+        state = state,
         sourcePostId = sourcePostId,
         sourceMediaId = sourceMediaId,
         title = title,
@@ -583,7 +585,7 @@ private fun com.example.yingshi.feature.photos.TrashPendingCleanupUiModel.toRemo
         trashItemId = entry.id,
         removedAtMillis = removedAtMillis,
         undoDeadlineMillis = removedAtMillis + 24L * 60L * 60L * 1000L,
-        item = entry.toRemoteTrashItem(),
+        item = entry.toRemoteTrashItem(state = "pendingCleanup"),
     )
 }
 

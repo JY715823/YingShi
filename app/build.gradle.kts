@@ -21,21 +21,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+    buildTypes {
+        debug {
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"FAKE\"")
+        }
+        release {
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://api-placeholder.yingshi.local/\"")
+            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"FAKE\"")
+        }
     }
 }
 

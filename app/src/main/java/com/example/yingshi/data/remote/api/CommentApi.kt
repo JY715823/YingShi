@@ -14,40 +14,40 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface CommentApi {
-    @GET("v1/posts/{postId}/comments")
+    @GET("api/posts/{postId}/comments")
     suspend fun getPostComments(
         @Path("postId") postId: String,
         @Query("page") page: Int = 1,
-        @Query("size") size: Int = 20,
+        @Query("size") size: Int = 10,
     ): ApiEnvelopeDto<CommentListResponseDto>
 
-    @GET("v1/media/{mediaId}/comments")
+    @GET("api/media/{mediaId}/comments")
     suspend fun getMediaComments(
         @Path("mediaId") mediaId: String,
         @Query("page") page: Int = 1,
-        @Query("size") size: Int = 20,
+        @Query("size") size: Int = 10,
     ): ApiEnvelopeDto<CommentListResponseDto>
 
-    @POST("v1/posts/{postId}/comments")
+    @POST("api/posts/{postId}/comments")
     suspend fun createPostComment(
         @Path("postId") postId: String,
         @Body request: CreateCommentRequestDto,
     ): ApiEnvelopeDto<CommentDto>
 
-    @POST("v1/media/{mediaId}/comments")
+    @POST("api/media/{mediaId}/comments")
     suspend fun createMediaComment(
         @Path("mediaId") mediaId: String,
         @Body request: CreateCommentRequestDto,
     ): ApiEnvelopeDto<CommentDto>
 
-    @PATCH("v1/comments/{commentId}")
+    @PATCH("api/comments/{commentId}")
     suspend fun updateComment(
         @Path("commentId") commentId: String,
         @Body request: UpdateCommentRequestDto,
     ): ApiEnvelopeDto<CommentDto>
 
-    @DELETE("v1/comments/{commentId}")
+    @DELETE("api/comments/{commentId}")
     suspend fun deleteComment(
         @Path("commentId") commentId: String,
-    ): ApiEnvelopeDto<Unit>
+    ): ApiEnvelopeDto<CommentDto>
 }

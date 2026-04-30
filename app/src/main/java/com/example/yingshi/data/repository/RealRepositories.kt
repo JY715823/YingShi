@@ -26,16 +26,14 @@ import com.example.yingshi.data.remote.api.MediaApi
 import com.example.yingshi.data.remote.api.PostApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.dto.CreateCommentRequestDto
 import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
-import com.example.yingshi.data.remote.dto.ConfirmUploadRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
-import com.example.yingshi.data.remote.dto.RestoreRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
-import com.example.yingshi.data.remote.dto.UpdatePostAlbumsRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostMediaOrderRequestDto
 import com.example.yingshi.data.remote.mapper.toRemoteModel
@@ -51,9 +49,17 @@ class RealMediaRepository(
         page: Int,
         pageSize: Int,
     ): ApiResult<List<RemoteMedia>> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "Stage 11.1 real media repository is a shell only",
+        return runCatching {
+            mediaApi.getMediaFeed().data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "MEDIA_FEED_REQUEST_FAILED",
+                    message = "Stage 11.4 real media feed request failed before backend is ready",
+                    throwable = it,
+                )
+            },
         )
     }
 }
@@ -62,17 +68,9 @@ class RealPostRepository(
     private val postApi: PostApi,
 ) : PostRepository {
     override suspend fun getPosts(): ApiResult<List<RemotePostSummary>> {
-        return runCatching {
-            postApi.getPosts().data.map { it.toRemoteSummary() }
-        }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "POST_LIST_REQUEST_FAILED",
-                    message = "Stage 11.4 real post list request failed before backend is ready",
-                    throwable = it,
-                )
-            },
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "Current backend does not provide GET /api/posts list yet",
         )
     }
 
@@ -97,9 +95,11 @@ class RealPostRepository(
                 CreatePostRequestDto(
                     title = payload.title,
                     summary = payload.summary,
+                    contributorLabel = null,
                     displayTimeMillis = payload.displayTimeMillis,
                     albumIds = payload.albumIds,
                     initialMediaIds = payload.initialMediaIds,
+                    coverMediaId = null,
                 ),
             ).data.toRemoteSummary()
         }.fold(
@@ -124,6 +124,7 @@ class RealPostRepository(
                 request = UpdatePostBasicInfoRequestDto(
                     title = payload.title,
                     summary = payload.summary,
+                    contributorLabel = null,
                     displayTimeMillis = payload.displayTimeMillis,
                     albumIds = payload.albumIds,
                 ),
@@ -220,20 +221,9 @@ class RealAlbumRepository(
         postId: String,
         payload: UpdatePostAlbumsPayload,
     ): ApiResult<RemotePostSummary> {
-        return runCatching {
-            albumApi.updatePostAlbums(
-                postId = postId,
-                request = UpdatePostAlbumsRequestDto(albumIds = payload.albumIds),
-            ).data.toRemoteSummary()
-        }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "POST_ALBUMS_REQUEST_FAILED",
-                    message = "Stage 11.4 real post-album update failed before backend is ready",
-                    throwable = it,
-                )
-            },
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "Current backend updates album membership through PATCH /api/posts/{postId}",
         )
     }
 }
@@ -247,12 +237,7 @@ class RealCommentRepository(
         size: Int,
     ): ApiResult<RemoteCommentPage> {
         return runCatching {
-            val response = commentApi.getPostComments(postId = postId, page = page, size = size)
-            response.data.toRemotePage(
-                page = response.page?.page ?: page,
-                size = response.page?.pageSize ?: size,
-                hasMore = response.page?.hasMore ?: false,
-            )
+            commentApi.getPostComments(postId = postId, page = page, size = size).data.toRemotePage()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -271,12 +256,7 @@ class RealCommentRepository(
         size: Int,
     ): ApiResult<RemoteCommentPage> {
         return runCatching {
-            val response = commentApi.getMediaComments(mediaId = mediaId, page = page, size = size)
-            response.data.toRemotePage(
-                page = response.page?.page ?: page,
-                size = response.page?.pageSize ?: size,
-                hasMore = response.page?.hasMore ?: false,
-            )
+            commentApi.getMediaComments(mediaId = mediaId, page = page, size = size).data.toRemotePage()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -374,7 +354,7 @@ class RealTrashRepository(
 ) : TrashRepository {
     override suspend fun getTrashItems(type: String?): ApiResult<List<RemoteTrashItem>> {
         return runCatching {
-            trashApi.getTrashItems(type = type).data.map { it.toRemoteModel() }
+            trashApi.getTrashItems(itemType = type).data.items.map { it.toRemoteModel() }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -404,10 +384,7 @@ class RealTrashRepository(
 
     override suspend fun restoreTrashItem(trashItemId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
-            trashApi.restoreTrashItem(
-                trashItemId = trashItemId,
-                request = RestoreRequestDto(),
-            ).data.toRemoteModel()
+            trashApi.restoreTrashItem(trashItemId = trashItemId).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -479,6 +456,10 @@ class RealUploadRepository(
                     mimeType = payload.mimeType,
                     fileSizeBytes = payload.fileSizeBytes,
                     mediaType = payload.mediaType,
+                    width = 1,
+                    height = 1,
+                    durationMillis = null,
+                    displayTimeMillis = System.currentTimeMillis(),
                 ),
             ).data.toRemoteModel()
         }.fold(
@@ -497,53 +478,23 @@ class RealUploadRepository(
         uploadId: String,
         payload: ConfirmUploadPayload,
     ): ApiResult<RemoteUploadTask> {
-        return runCatching {
-            uploadApi.confirmUpload(
-                uploadId = uploadId,
-                request = ConfirmUploadRequestDto(
-                    etag = payload.etag,
-                    objectKey = payload.objectKey,
-                ),
-            ).data.toRemoteModel()
-        }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "UPLOAD_CONFIRM_REQUEST_FAILED",
-                    message = "Stage 11.5 real upload confirm failed before backend is ready",
-                    throwable = it,
-                )
-            },
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "Current backend uses multipart POST /api/uploads/{uploadId}/file instead of confirm-upload",
         )
     }
 
     override suspend fun cancelUpload(uploadId: String): ApiResult<RemoteUploadTask> {
-        return runCatching {
-            uploadApi.cancelUpload(uploadId).data.toRemoteModel()
-        }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "UPLOAD_CANCEL_REQUEST_FAILED",
-                    message = "Stage 11.5 real upload cancel failed before backend is ready",
-                    throwable = it,
-                )
-            },
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "Current backend has no upload cancel endpoint",
         )
     }
 
     override suspend fun getUploadTask(uploadId: String): ApiResult<RemoteUploadTask> {
-        return runCatching {
-            uploadApi.getUploadTask(uploadId).data.toRemoteModel()
-        }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "UPLOAD_STATUS_REQUEST_FAILED",
-                    message = "Stage 11.5 real upload status request failed before backend is ready",
-                    throwable = it,
-                )
-            },
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "Current backend has no upload status endpoint",
         )
     }
 }
@@ -554,20 +505,82 @@ class RealAuthRepository(
     override suspend fun login(
         request: LoginRequestDto,
     ): ApiResult<RemoteLoginSession> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.2 real auth repository is a shell only")
+        return runCatching {
+            val response = authApi.login(request).data
+            val tokens = AuthTokens(
+                accessToken = response.accessToken,
+                refreshToken = response.refreshToken,
+                accessTokenExpireAtMillis = response.accessTokenExpireAtMillis,
+                refreshTokenExpireAtMillis = response.refreshTokenExpireAtMillis,
+            )
+            AuthSessionManager.saveTokens(tokens)
+            RemoteLoginSession(
+                userId = response.userId,
+                displayName = response.displayName,
+                spaceId = response.spaceId,
+                tokens = tokens,
+            )
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_LOGIN_REQUEST_FAILED",
+                    message = "Stage 11.2 real login request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 
     override suspend fun refreshToken(
         request: RefreshTokenRequestDto,
     ): ApiResult<AuthTokens> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.2 real token refresh repository is a shell only")
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "Current backend does not provide POST /api/auth/refresh-token",
+        )
     }
 
     override suspend fun logout(): ApiResult<Unit> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.2 real logout repository is a shell only")
+        return runCatching {
+            authApi.logout(
+                request = com.example.yingshi.data.remote.dto.LogoutRequestDto(
+                    refreshToken = AuthSessionManager.getRefreshToken().orEmpty(),
+                ),
+            )
+            AuthSessionManager.clearTokens()
+            Unit
+        }.fold(
+            onSuccess = { ApiResult.Success(Unit) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_LOGOUT_REQUEST_FAILED",
+                    message = "Stage 11.2 real logout request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 
     override suspend fun getCurrentUser(): ApiResult<RemoteCurrentUser> {
-        return ApiResult.Error(code = "NOT_IMPLEMENTED", message = "Stage 11.2 real current-user repository is a shell only")
+        return runCatching {
+            val response = authApi.getCurrentUser().data
+            RemoteCurrentUser(
+                userId = response.userId,
+                displayName = response.displayName,
+                avatarUrl = response.avatarUrl,
+                spaceId = response.spaceId,
+                spaceDisplayName = response.spaceDisplayName,
+            )
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_ME_REQUEST_FAILED",
+                    message = "Stage 11.2 real current-user request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
     }
 }

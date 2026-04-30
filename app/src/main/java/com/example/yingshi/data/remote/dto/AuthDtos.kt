@@ -3,14 +3,14 @@ package com.example.yingshi.data.remote.dto
 data class LoginRequestDto(
     val account: String,
     val password: String,
-    val deviceName: String? = null,
-    val clientVersion: String? = null,
 )
 
 data class LoginResponseDto(
     val userId: String,
+    val account: String,
     val displayName: String,
     val spaceId: String,
+    val spaceDisplayName: String? = null,
     val accessToken: String,
     val refreshToken: String,
     val accessTokenExpireAtMillis: Long,
@@ -38,6 +38,7 @@ data class LogoutResponseDto(
 
 data class CurrentUserDto(
     val userId: String,
+    val account: String,
     val displayName: String,
     val avatarUrl: String? = null,
     val spaceId: String,

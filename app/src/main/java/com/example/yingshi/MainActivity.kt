@@ -5,11 +5,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.example.yingshi.app.YingShiApp
+import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.ui.theme.YingShiTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BackendDebugConfig.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             YingShiTheme {

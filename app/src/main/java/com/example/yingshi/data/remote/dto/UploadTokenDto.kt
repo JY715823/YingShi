@@ -3,13 +3,9 @@ package com.example.yingshi.data.remote.dto
 data class UploadTokenDto(
     val uploadId: String,
     val provider: String,
-    val bucket: String,
-    val objectKey: String,
     val uploadUrl: String,
-    val accessKeyId: String? = null,
-    val policy: String? = null,
-    val signature: String? = null,
     val expireAtMillis: Long,
+    val state: String,
 )
 
 data class CreateUploadTokenRequestDto(
@@ -17,11 +13,16 @@ data class CreateUploadTokenRequestDto(
     val mimeType: String,
     val fileSizeBytes: Long,
     val mediaType: String,
+    val width: Int,
+    val height: Int,
+    val durationMillis: Long? = null,
+    val displayTimeMillis: Long,
 )
 
-data class ConfirmUploadRequestDto(
-    val etag: String,
-    val objectKey: String,
+data class UploadCompleteResponseDto(
+    val uploadId: String,
+    val state: String,
+    val media: MediaDto,
 )
 
 data class UploadTaskDto(

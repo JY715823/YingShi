@@ -17,6 +17,8 @@ import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.CacheManagementRoute
 import com.example.yingshi.feature.photos.CacheManagementScreen
+import com.example.yingshi.feature.photos.BackendDiagnosticsRoute
+import com.example.yingshi.feature.photos.BackendDiagnosticsScreen
 import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.MediaManagementRoute
@@ -88,6 +90,9 @@ fun YingShiApp() {
     var cacheManagementRoute by remember {
         mutableStateOf<CacheManagementRoute?>(null)
     }
+    var backendDiagnosticsRoute by remember {
+        mutableStateOf<BackendDiagnosticsRoute?>(null)
+    }
     var trashDetailRoute by remember {
         mutableStateOf<TrashDetailRoute?>(null)
     }
@@ -148,6 +153,11 @@ fun YingShiApp() {
             settingsRoute = null
         }
     }
+    if (backendDiagnosticsRoute != null) {
+        BackHandler {
+            backendDiagnosticsRoute = null
+        }
+    }
     if (cacheManagementRoute != null) {
         BackHandler {
             cacheManagementRoute = null
@@ -166,9 +176,19 @@ fun YingShiApp() {
             notificationCenterRoute == null &&
             notificationDetailRoute == null &&
             settingsRoute == null &&
+            backendDiagnosticsRoute == null &&
             cacheManagementRoute == null,
     ) {
         when {
+            backendDiagnosticsRoute != null -> {
+                backendDiagnosticsRoute?.let { route ->
+                    BackendDiagnosticsScreen(
+                        route = route,
+                        onBack = { backendDiagnosticsRoute = null },
+                    )
+                }
+            }
+
             cacheManagementRoute != null -> {
                 cacheManagementRoute?.let { route ->
                     CacheManagementScreen(
@@ -184,6 +204,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { settingsRoute = null },
                         onOpenCacheManagement = { cacheManagementRoute = it },
+                        onOpenBackendDiagnostics = { backendDiagnosticsRoute = it },
                     )
                 }
             }

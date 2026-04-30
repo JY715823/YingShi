@@ -18,12 +18,12 @@ import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
 import com.example.yingshi.data.remote.dto.MediaDto
 import com.example.yingshi.data.remote.dto.PostDetailDto
-import com.example.yingshi.data.remote.dto.PostDto
 import com.example.yingshi.data.remote.dto.PostMediaDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.PendingCleanupDto
 import com.example.yingshi.data.remote.dto.TrashDetailDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
+import com.example.yingshi.data.remote.dto.UploadCompleteResponseDto
 import com.example.yingshi.data.remote.dto.UploadTaskDto
 import com.example.yingshi.data.remote.dto.UploadTokenDto
 
@@ -38,7 +38,7 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         height = height,
         aspectRatio = aspectRatio,
         displayTimeMillis = displayTimeMillis,
-        commentCount = commentCount,
+        commentCount = 0,
         postIds = postIds,
     )
 }
@@ -50,19 +50,6 @@ fun AlbumDto.toRemoteModel(): RemoteAlbum {
         subtitle = subtitle,
         coverMediaId = coverMediaId,
         postCount = postCount,
-    )
-}
-
-fun PostDto.toRemoteSummary(): RemotePostSummary {
-    return RemotePostSummary(
-        postId = postId,
-        title = title,
-        summary = summary,
-        contributorLabel = contributorLabel,
-        displayTimeMillis = displayTimeMillis,
-        albumIds = albumIds,
-        coverMediaId = coverMediaId,
-        mediaCount = mediaCount,
     )
 }
 
@@ -81,18 +68,18 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
 
 fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
     return RemotePostMedia(
-        mediaId = mediaId,
-        mediaType = mediaType,
-        previewUrl = previewUrl,
-        originalUrl = originalUrl,
-        videoUrl = videoUrl,
-        width = width,
-        height = height,
-        aspectRatio = aspectRatio,
-        displayTimeMillis = displayTimeMillis,
-        commentCount = commentCount,
+        mediaId = media.mediaId,
+        mediaType = media.mediaType,
+        previewUrl = media.previewUrl,
+        originalUrl = media.originalUrl,
+        videoUrl = media.videoUrl,
+        width = media.width,
+        height = media.height,
+        aspectRatio = media.aspectRatio,
+        displayTimeMillis = media.displayTimeMillis,
+        commentCount = 0,
         isCover = isCover,
-        videoDurationMillis = videoDurationMillis,
+        videoDurationMillis = media.durationMillis,
     )
 }
 
@@ -109,24 +96,33 @@ fun PostDetailDto.toRemoteDetail(): RemotePostDetail {
     )
 }
 
+fun PostDetailDto.toRemoteSummary(): RemotePostSummary {
+    return RemotePostSummary(
+        postId = postId,
+        title = title,
+        summary = summary,
+        contributorLabel = contributorLabel,
+        displayTimeMillis = displayTimeMillis,
+        albumIds = albumIds,
+        coverMediaId = coverMediaId,
+        mediaCount = mediaCount,
+    )
+}
+
 fun CommentDto.toRemoteModel(): RemoteComment {
     return RemoteComment(
         commentId = commentId,
         targetType = targetType,
-        targetId = targetId,
+        targetId = postId ?: mediaId.orEmpty(),
         authorName = authorName,
-        content = content,
+        content = content.orEmpty(),
         createdAtMillis = createdAtMillis,
         updatedAtMillis = updatedAtMillis,
         isDeleted = isDeleted,
     )
 }
 
-fun CommentListResponseDto.toRemotePage(
-    page: Int = 1,
-    size: Int = comments.size,
-    hasMore: Boolean = false,
-): RemoteCommentPage {
+fun CommentListResponseDto.toRemotePage(): RemoteCommentPage {
     return RemoteCommentPage(
         comments = comments.map(CommentDto::toRemoteModel),
         page = page,
@@ -139,6 +135,7 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
     return RemoteTrashItem(
         trashItemId = trashItemId,
         itemType = itemType,
+        state = state,
         sourcePostId = sourcePostId,
         sourceMediaId = sourceMediaId,
         title = title,
@@ -171,10 +168,21 @@ fun UploadTokenDto.toRemoteModel(): RemoteUploadToken {
     return RemoteUploadToken(
         uploadId = uploadId,
         provider = provider,
-        bucket = bucket,
-        objectKey = objectKey,
         uploadUrl = uploadUrl,
         expireAtMillis = expireAtMillis,
+        state = state,
+    )
+}
+
+fun UploadCompleteResponseDto.toRemoteModel(): RemoteUploadTask {
+    return RemoteUploadTask(
+        uploadId = uploadId,
+        fileName = media.mediaId,
+        mediaType = media.mediaType,
+        objectKey = media.url,
+        state = state.toUploadState(),
+        progressPercent = if (state.equals("success", ignoreCase = true)) 100 else 0,
+        errorMessage = null,
     )
 }
 
