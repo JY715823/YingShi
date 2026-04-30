@@ -114,6 +114,7 @@ fun CommentDto.toRemoteModel(): RemoteComment {
         commentId = commentId,
         targetType = targetType,
         targetId = postId ?: mediaId.orEmpty(),
+        authorId = authorId,
         authorName = authorName,
         content = content.orEmpty(),
         createdAtMillis = createdAtMillis,

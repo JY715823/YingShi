@@ -2,7 +2,9 @@ package com.example.yingshi.feature.photos
 
 import com.example.yingshi.data.model.RemoteComment
 
-fun RemoteComment.toCommentUiModel(): CommentUiModel {
+fun RemoteComment.toCommentUiModel(
+    currentUserId: String? = null,
+): CommentUiModel {
     return CommentUiModel(
         id = commentId,
         targetType = when (targetType.lowercase()) {
@@ -13,6 +15,6 @@ fun RemoteComment.toCommentUiModel(): CommentUiModel {
         author = authorName,
         content = content,
         createdAtMillis = createdAtMillis,
-        isMine = false,
+        isMine = !currentUserId.isNullOrBlank() && currentUserId == authorId,
     )
 }

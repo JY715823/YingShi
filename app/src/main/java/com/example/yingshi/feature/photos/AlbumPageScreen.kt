@@ -28,11 +28,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +49,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -61,6 +66,15 @@ fun AlbumPageScreen(
     onManageAlbums: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealAlbumPageScreen(
+            onOpenPost = onOpenPost,
+            onManageAlbums = onManageAlbums,
+            modifier = modifier,
+        )
+        return
+    }
+
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
     var selectedAlbumId by rememberSaveable(albums) {
@@ -166,6 +180,247 @@ fun AlbumPageScreen(
                             onClick = { onOpenPost(FakeAlbumRepository.toPostDetailRoute(post)) },
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RealAlbumPageScreen(
+    onOpenPost: (PostDetailPlaceholderRoute) -> Unit,
+    onManageAlbums: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val viewModel: AlbumPageRealViewModel = viewModel(
+        key = "real-album-page",
+        factory = AlbumPageRealViewModel.factory(),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    val spacing = YingShiThemeTokens.spacing
+    val settingsState = FakeSettingsRepository.getSettingsState()
+    var densityName by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+    LaunchedEffect(Unit) {
+        if (densityName == null) {
+            densityName = settingsState.defaultAlbumGridDensity.name
+        }
+    }
+    val gridDensity = AlbumGridDensity.valueOf(
+        densityName ?: settingsState.defaultAlbumGridDensity.name,
+    )
+    val gridState = rememberLazyGridState()
+    val chipRows = remember(uiState.albums) { buildAlbumChipRows(uiState.albums) }
+    val selectedAlbum = remember(uiState.albums, uiState.selectedAlbumId) {
+        uiState.albums.firstOrNull { it.id == uiState.selectedAlbumId } ?: uiState.albums.firstOrNull()
+    }
+
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Text(
+                    text = "Albums",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Text(
+                    text = selectedAlbum?.subtitle
+                        ?: "REAL mode reads albums and album posts from the backend.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            AlbumManageButton(onClick = onManageAlbums)
+        }
+
+        when {
+            uiState.tokenMissing -> {
+                AlbumPageNoticeCard(
+                    text = uiState.errorMessage
+                        ?: "Please log in from Backend integration diagnostics before using REAL mode.",
+                    actionLabel = "Retry",
+                    onAction = viewModel::refresh,
+                )
+            }
+
+            uiState.isLoading && uiState.albums.isEmpty() -> {
+                AlbumPageLoadingCard()
+            }
+
+            uiState.errorMessage != null && uiState.albums.isEmpty() -> {
+                val errorMessage = uiState.errorMessage ?: "Failed to load albums from backend."
+                AlbumPageNoticeCard(
+                    text = errorMessage,
+                    actionLabel = "Retry",
+                    onAction = viewModel::refresh,
+                )
+            }
+
+            uiState.albums.isEmpty() -> {
+                AlbumPageNoticeCard(
+                    text = "Backend returned no albums for the current account.",
+                    actionLabel = "Retry",
+                    onAction = viewModel::refresh,
+                )
+            }
+
+            else -> {
+                AlbumSwitchSection(
+                    rows = chipRows,
+                    selectedAlbumId = uiState.selectedAlbumId.orEmpty(),
+                    onSelectAlbum = viewModel::selectAlbum,
+                )
+
+                AlbumGridDensitySwitcher(
+                    selectedDensity = gridDensity,
+                    onDensitySelected = { densityName = it.name },
+                )
+
+                when {
+                    uiState.isPostsLoading -> {
+                        AlbumPageLoadingCard(
+                            text = "Loading posts in this album...",
+                        )
+                    }
+
+                    uiState.postsErrorMessage != null -> {
+                        val postsErrorMessage = uiState.postsErrorMessage
+                            ?: "Failed to load posts in this album."
+                        AlbumPageNoticeCard(
+                            text = postsErrorMessage,
+                            actionLabel = "Retry",
+                            onAction = {
+                                uiState.selectedAlbumId?.let(viewModel::selectAlbum)
+                            },
+                        )
+                    }
+
+                    uiState.posts.isEmpty() -> {
+                        AlbumPageNoticeCard(
+                            text = "This album is empty on the backend right now.",
+                        )
+                    }
+
+                    else -> {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .discreteZoomLevelGesture(
+                                    enabled = true,
+                                    levels = AlbumGridDensity.entries.toList(),
+                                    currentLevel = gridDensity,
+                                    onLevelChange = { densityName = it.name },
+                                ),
+                        ) {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(gridDensity.columns),
+                                state = gridState,
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.spacedBy(cardSpacing(gridDensity)),
+                                verticalArrangement = Arrangement.spacedBy(cardSpacing(gridDensity)),
+                                contentPadding = PaddingValues(bottom = spacing.lg),
+                            ) {
+                                items(uiState.posts, key = { it.id }) { post ->
+                                    AlbumPostCard(
+                                        post = post,
+                                        density = gridDensity,
+                                        onClick = {
+                                            val selectedAlbumId = uiState.selectedAlbumId ?: post.albumId
+                                            onOpenPost(
+                                                PostDetailPlaceholderRoute(
+                                                    postId = post.id,
+                                                    albumId = selectedAlbumId,
+                                                    albumIds = post.albumIds,
+                                                    title = post.title,
+                                                    summary = post.summary,
+                                                    postDisplayTimeMillis = post.postDisplayTimeMillis,
+                                                    mediaCount = post.mediaCount,
+                                                    coverPalette = post.coverPalette,
+                                                    coverMediaType = post.coverMediaType,
+                                                    coverAspectRatio = post.coverAspectRatio,
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumPageLoadingCard(
+    text: String = "Loading albums from backend...",
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlbumPageNoticeCard(
+    text: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (actionLabel != null && onAction != null) {
+                TextButton(onClick = onAction) {
+                    Text(actionLabel)
                 }
             }
         }

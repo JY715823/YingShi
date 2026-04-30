@@ -551,6 +551,7 @@ private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment():
             CommentTargetType.Media -> "MEDIA"
         },
         targetId = targetId,
+        authorId = if (isMine) "fake-self" else null,
         authorName = author,
         content = content,
         createdAtMillis = createdAtMillis,

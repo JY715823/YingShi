@@ -24,11 +24,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +48,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.util.Calendar
@@ -60,6 +66,16 @@ fun PostDetailScreen(
     onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealPostDetailScreen(
+            route = route,
+            onBack = onBack,
+            onOpenCacheManagement = onOpenCacheManagement,
+            modifier = modifier,
+        )
+        return
+    }
+
     val detail = FakeAlbumRepository.getPostDetail(route)
     if (detail.mediaItems.isEmpty()) {
         PostDetailMissingState(
@@ -120,6 +136,654 @@ fun PostDetailScreen(
                         .padding(horizontal = YingShiThemeTokens.spacing.lg)
                         .padding(bottom = YingShiThemeTokens.spacing.lg),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RealPostDetailScreen(
+    route: PostDetailPlaceholderRoute,
+    onBack: () -> Unit,
+    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val viewModel: PostDetailRealViewModel = viewModel(
+        key = "real-post-detail-${route.postId}",
+        factory = PostDetailRealViewModel.factory(route),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    var inPostViewerInitialPage by rememberSaveable(route.postId) {
+        mutableStateOf<Int?>(null)
+    }
+    var mediaCommentPage by rememberSaveable(route.postId) {
+        mutableStateOf<Int?>(null)
+    }
+
+    val detail = uiState.detail
+    val selectedMedia = mediaCommentPage?.let { page ->
+        detail?.mediaItems?.getOrNull(page.coerceAtLeast(0))
+    }
+
+    selectedMedia?.let { media ->
+        LaunchedEffect(media.id) {
+            viewModel.ensureMediaComments(media.id)
+        }
+    }
+
+    BackHandler(enabled = mediaCommentPage != null) {
+        mediaCommentPage = null
+    }
+    BackHandler(enabled = inPostViewerInitialPage != null) {
+        inPostViewerInitialPage = null
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        val viewerInitialPage = inPostViewerInitialPage
+        if (viewerInitialPage != null && detail != null) {
+            PhotoViewerScreen(
+                route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
+                onBack = { inPostViewerInitialPage = null },
+                onOpenCacheManagement = onOpenCacheManagement,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            when {
+                uiState.tokenMissing -> {
+                    PostDetailInfoState(
+                        title = "REAL mode requires login",
+                        message = uiState.errorMessage
+                            ?: "Please log in from Backend integration diagnostics before opening this post.",
+                        onBack = onBack,
+                        actionLabel = "Retry",
+                        onAction = viewModel::refresh,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                uiState.isLoading && detail == null -> {
+                    PostDetailLoadingState(
+                        onBack = onBack,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                uiState.errorMessage != null && detail == null -> {
+                    val errorMessage = uiState.errorMessage
+                        ?: "Failed to load post detail from backend."
+                    PostDetailInfoState(
+                        title = "Backend request failed",
+                        message = errorMessage,
+                        onBack = onBack,
+                        actionLabel = "Retry",
+                        onAction = viewModel::refresh,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                detail == null || detail.mediaItems.isEmpty() -> {
+                    PostDetailMissingState(
+                        onBack = onBack,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
+                else -> {
+                    RealPostDetailContent(
+                        detail = detail,
+                        uiState = uiState,
+                        onBack = onBack,
+                        onRefresh = viewModel::refresh,
+                        onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
+                        onOpenMediaComments = { page -> mediaCommentPage = page },
+                        onCreatePostComment = viewModel::createPostComment,
+                        onUpdatePostComment = viewModel::updatePostComment,
+                        onDeletePostComment = viewModel::deletePostComment,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            selectedMedia?.let { media ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.18f))
+                        .clickable { mediaCommentPage = null },
+                )
+                RealMediaCommentSheet(
+                    media = media,
+                    state = uiState.mediaComments[media.id] ?: RealCommentThreadUiState(isLoading = true),
+                    onClose = { mediaCommentPage = null },
+                    onRetry = { viewModel.retryMediaComments(media.id) },
+                    onCreateComment = { content -> viewModel.createMediaComment(media.id, content) },
+                    onUpdateComment = { commentId, content ->
+                        viewModel.updateMediaComment(media.id, commentId, content)
+                    },
+                    onDeleteComment = { commentId -> viewModel.deleteMediaComment(media.id, commentId) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                        .padding(bottom = YingShiThemeTokens.spacing.lg),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RealPostDetailContent(
+    detail: PostDetailUiModel,
+    uiState: PostDetailRealUiState,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenMediaViewer: (Int) -> Unit,
+    onOpenMediaComments: (Int) -> Unit,
+    onCreatePostComment: (String) -> Unit,
+    onUpdatePostComment: (String, String) -> Unit,
+    onDeletePostComment: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val context = LocalContext.current
+    val pagerState = rememberPagerState(
+        pageCount = { detail.mediaItems.size },
+    )
+    val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
+    val currentMedia = detail.mediaItems[currentPage]
+    val currentMediaCommentState = uiState.mediaComments[currentMedia.id]
+    val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia.commentCount
+    val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
+    val placeholderOriginalSummary = remember(postMediaIds) {
+        PostOriginalLoadSummary(
+            totalCount = postMediaIds.size,
+            loadedCount = 0,
+            loadingCount = 0,
+            failedCount = 0,
+        )
+    }
+    val placeholderCacheSummary = remember(postMediaIds) {
+        AppMediaCacheSummary(
+            mediaCount = postMediaIds.size,
+            previewCachedCount = 0,
+            originalCachedCount = 0,
+            videoCachedCount = 0,
+            totalBytes = 0L,
+            totalSizeLabel = "0 B",
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .statusBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.xs, bottom = spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        PostDetailTopBar(
+            onBack = onBack,
+            onExport = {
+                Toast.makeText(context, "Export is still fake-only in this stage.", Toast.LENGTH_SHORT).show()
+            },
+            onEdit = {
+                Toast.makeText(context, "REAL post edit is not connected in this stage.", Toast.LENGTH_SHORT).show()
+            },
+        )
+
+        if (uiState.errorMessage != null) {
+            PostInlineNotice(
+                text = uiState.errorMessage,
+                actionLabel = "Retry",
+                onAction = onRefresh,
+            )
+        }
+
+        PostMediaArea(
+            detail = detail,
+            currentPage = currentPage,
+            modifier = Modifier.fillMaxWidth(),
+            onOpenMedia = { onOpenMediaViewer(currentPage) },
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(372.dp),
+                beyondViewportPageCount = 1,
+                key = { page -> detail.mediaItems[page].id },
+            ) { page ->
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PostMediaCard(
+                        media = detail.mediaItems[page],
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onOpenMediaViewer(page) },
+                    )
+                }
+            }
+        }
+
+        PostMediaInfoRow(
+            media = currentMedia,
+            commentCount = currentMediaCommentCount,
+            originalLoadState = OriginalLoadState.NotLoaded,
+            onCommentClick = { onOpenMediaComments(currentPage) },
+            onOriginalClick = {
+                Toast.makeText(context, "REAL original loading is not connected in this stage.", Toast.LENGTH_SHORT).show()
+            },
+        )
+
+        PostInfoSection(
+            detail = detail,
+            originalSummary = placeholderOriginalSummary,
+            cacheSummary = placeholderCacheSummary,
+            onLoadAllOriginals = {
+                Toast.makeText(context, "REAL original loading is not connected in this stage.", Toast.LENGTH_SHORT).show()
+            },
+            onClearPostCache = {
+                Toast.makeText(context, "REAL cache management is not connected in this stage.", Toast.LENGTH_SHORT).show()
+            },
+        )
+
+        RealCommentThreadCard(
+            title = "Post comments",
+            subtitle = "Comments below belong to the whole post.",
+            stateKeyPrefix = "real-post-comment-${detail.postId}",
+            emptyText = "No post comments yet. Send the first one from REAL mode.",
+            state = uiState.postComments,
+            onRetry = onRefresh,
+            onCreateComment = onCreatePostComment,
+            onUpdateComment = onUpdatePostComment,
+            onDeleteComment = onDeletePostComment,
+        )
+    }
+}
+
+@Composable
+private fun RealMediaCommentSheet(
+    media: PostDetailMediaUiModel,
+    state: RealCommentThreadUiState,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        shadowElevation = 8.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Media comments",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "These comments belong only to media ${media.id.takeLast(6)}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                PostActionChip(text = "Close", onClick = onClose)
+            }
+
+            RealCommentThreadContent(
+                state = state,
+                stateKeyPrefix = "real-media-comment-${media.id}",
+                emptyText = "No media comments yet. Send the first one from REAL mode.",
+                onRetry = onRetry,
+                onCreateComment = onCreateComment,
+                onUpdateComment = onUpdateComment,
+                onDeleteComment = onDeleteComment,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RealCommentThreadCard(
+    title: String,
+    subtitle: String,
+    stateKeyPrefix: String,
+    emptyText: String,
+    state: RealCommentThreadUiState,
+    onRetry: () -> Unit,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            RealCommentThreadContent(
+                state = state,
+                stateKeyPrefix = stateKeyPrefix,
+                emptyText = emptyText,
+                onRetry = onRetry,
+                onCreateComment = onCreateComment,
+                onUpdateComment = onUpdateComment,
+                onDeleteComment = onDeleteComment,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RealCommentThreadContent(
+    state: RealCommentThreadUiState,
+    stateKeyPrefix: String,
+    emptyText: String,
+    onRetry: () -> Unit,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val copyComment = rememberCommentCopyHandler()
+    var expanded by rememberSaveable(stateKeyPrefix) { mutableStateOf(false) }
+    var actionCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
+    var editingCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
+    var editingDraft by rememberSaveable(stateKeyPrefix) { mutableStateOf("") }
+    var selectedCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
+    var selectedCommentValue by rememberSaveable(stateKeyPrefix, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
+    val visibleComments = state.comments.visibleComments(expanded)
+
+    BackHandler(enabled = selectedCommentId != null) {
+        selectedCommentId = null
+        selectedCommentValue = TextFieldValue("")
+    }
+    BackHandler(enabled = actionCommentId != null) {
+        actionCommentId = null
+    }
+
+    if (state.statusMessage != null) {
+        Text(
+            text = state.statusMessage,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+
+    if (state.errorMessage != null) {
+        PostInlineNotice(
+            text = state.errorMessage,
+            actionLabel = "Retry",
+            onAction = onRetry,
+        )
+    }
+
+    when {
+        state.isLoading -> {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    text = "Loading comments...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        visibleComments.isEmpty() -> {
+            Text(
+                text = emptyText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        else -> {
+            visibleComments.forEach { comment ->
+                CommentListItem(
+                    comment = comment,
+                    timeLabel = formatPostTime(comment.createdAtMillis),
+                    onLongPress = {
+                        selectedCommentId = null
+                        selectedCommentValue = TextFieldValue("")
+                        editingCommentId = null
+                        editingDraft = ""
+                        actionCommentId = comment.id
+                    },
+                    onClick = {
+                        if (selectedCommentId != null) {
+                            selectedCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                        }
+                        actionCommentId = null
+                    },
+                    showInlineActionMenu = actionCommentId == comment.id &&
+                        selectedCommentId != comment.id &&
+                        editingCommentId != comment.id,
+                    onCopyFull = {
+                        copyComment(comment.content)
+                        actionCommentId = null
+                    },
+                    onSelectText = {
+                        selectedCommentId = comment.id
+                        selectedCommentValue = fullCommentSelectionValue(comment.content)
+                        editingCommentId = null
+                        editingDraft = ""
+                        actionCommentId = null
+                    },
+                    onEdit = {
+                        editingCommentId = comment.id
+                        editingDraft = comment.content
+                        selectedCommentId = null
+                        selectedCommentValue = TextFieldValue("")
+                        actionCommentId = null
+                    },
+                    onDelete = {
+                        onDeleteComment(comment.id)
+                        if (selectedCommentId == comment.id) {
+                            selectedCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                        }
+                        if (editingCommentId == comment.id) {
+                            editingCommentId = null
+                            editingDraft = ""
+                        }
+                        actionCommentId = null
+                    },
+                    isEditing = editingCommentId == comment.id,
+                    editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
+                    onEditingValueChange = { editingDraft = it },
+                    onSaveEdit = {
+                        onUpdateComment(comment.id, editingDraft)
+                        editingCommentId = null
+                        editingDraft = ""
+                        actionCommentId = null
+                    },
+                    onCancelEdit = {
+                        editingCommentId = null
+                        editingDraft = ""
+                    },
+                    selectionMode = selectedCommentId == comment.id,
+                    selectionFieldValue = if (selectedCommentId == comment.id) {
+                        selectedCommentValue
+                    } else {
+                        TextFieldValue(comment.content)
+                    },
+                    onSelectionFieldValueChange = { selectedCommentValue = it },
+                    onCopySelection = if (selectedCommentId == comment.id) {
+                        {
+                            selectedCommentValue.selectedTextOrNull()?.let(copyComment)
+                            selectedCommentId = null
+                            selectedCommentValue = TextFieldValue("")
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+
+    if (state.comments.hasHiddenComments(expanded)) {
+        PostActionChip(text = "More", onClick = { expanded = true })
+    }
+    if (state.comments.canCollapseComments(expanded)) {
+        PostActionChip(text = "Collapse", onClick = { expanded = false })
+    }
+    if (state.isMutating) {
+        Text(
+            text = "Submitting...",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    CommentInputBar(
+        stateKey = "$stateKeyPrefix-input",
+        placeholder = "Write a comment",
+        onSend = onCreateComment,
+    )
+}
+
+@Composable
+private fun PostDetailLoadingState(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PostDetailInfoState(
+        title = "Loading post detail",
+        message = "Fetching post detail and comments from backend...",
+        onBack = onBack,
+        modifier = modifier,
+        loading = true,
+    )
+}
+
+@Composable
+private fun PostDetailInfoState(
+    title: String,
+    message: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    loading: Boolean = false,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        PostDetailTopBar(
+            onBack = onBack,
+            onExport = {},
+            onEdit = {},
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+                if (actionLabel != null && onAction != null) {
+                    TextButton(onClick = onAction) {
+                        Text(actionLabel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostInlineNotice(
+    text: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (actionLabel != null && onAction != null) {
+                TextButton(onClick = onAction) {
+                    Text(actionLabel)
+                }
             }
         }
     }

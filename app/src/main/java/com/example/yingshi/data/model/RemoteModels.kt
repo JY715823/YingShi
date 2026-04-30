@@ -26,6 +26,7 @@ data class RemoteComment(
     val commentId: String,
     val targetType: String,
     val targetId: String,
+    val authorId: String?,
     val authorName: String,
     val content: String,
     val createdAtMillis: Long,
