@@ -302,7 +302,8 @@ fun PhotoViewerScreen(
         mediaId = currentItem.mediaId,
         mediaType = currentItem.mediaType,
     )
-    val mediaComments = CommentGateway.getMediaComments(currentItem.mediaId)
+    val commentBindings = rememberViewerCommentBindings(currentItem.mediaId)
+    val mediaComments = commentBindings.comments
     val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
     val edgeActionsBottomPadding = if (route.showPostSegments) {
         ViewerLayoutTuning.inPostEdgeActionsBottomPadding
@@ -580,6 +581,14 @@ fun PhotoViewerScreen(
                 comments = mediaComments,
                 selectedCommentId = panelState.selectedCommentId,
                 onDismiss = { commentPanelState = null },
+                isLoading = commentBindings.isLoading,
+                isMutating = commentBindings.isMutating,
+                errorMessage = commentBindings.errorMessage,
+                statusMessage = commentBindings.statusMessage,
+                onRetry = commentBindings.onRetry,
+                onCreateComment = commentBindings.onCreateComment,
+                onUpdateComment = commentBindings.onUpdateComment,
+                onDeleteComment = commentBindings.onDeleteComment,
             )
         }
 
@@ -1411,6 +1420,14 @@ private fun PhotoViewerCommentSheet(
     comments: List<CommentUiModel>,
     selectedCommentId: String?,
     onDismiss: () -> Unit,
+    isLoading: Boolean = false,
+    isMutating: Boolean = false,
+    errorMessage: String? = null,
+    statusMessage: String? = null,
+    onRetry: (() -> Unit)? = null,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
@@ -1453,6 +1470,13 @@ private fun PhotoViewerCommentSheet(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
+            if (statusMessage != null) {
+                Text(
+                    text = statusMessage,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ViewerSurface.copy(alpha = 0.88f),
+                )
+            }
             if (selectedCommentId != null) {
                 Text(
                     text = "已定位到预览评论，占位高亮如下",
@@ -1460,7 +1484,27 @@ private fun PhotoViewerCommentSheet(
                     color = ViewerSurface.copy(alpha = 0.58f),
                 )
             }
-            if (visibleComments.isEmpty()) {
+            if (errorMessage != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ViewerSurface.copy(alpha = 0.82f),
+                    )
+                    if (onRetry != null) {
+                        TextButton(onClick = onRetry) {
+                            Text(text = "重试", color = ViewerSurface.copy(alpha = 0.88f))
+                        }
+                    }
+                }
+            }
+            if (isLoading) {
+                Text(
+                    text = "正在读取媒体评论…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ViewerSurface.copy(alpha = 0.68f),
+                )
+            } else if (visibleComments.isEmpty()) {
                 Text(
                     text = "当前媒体还没有评论，先写下第一条本地媒体评论。",
                     style = MaterialTheme.typography.bodyMedium,
@@ -1509,7 +1553,7 @@ private fun PhotoViewerCommentSheet(
                             actionCommentId = null
                         },
                         onDelete = {
-                            CommentGateway.deleteMediaComment(mediaId, comment.id)
+                            onDeleteComment(comment.id)
                             if (selectedForCopyCommentId == comment.id) {
                                 selectedForCopyCommentId = null
                                 selectedCommentValue = TextFieldValue("")
@@ -1519,21 +1563,17 @@ private fun PhotoViewerCommentSheet(
                                 editingDraft = ""
                             }
                             actionCommentId = null
-                            Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "评论操作已提交", Toast.LENGTH_SHORT).show()
                         },
                         isEditing = editingCommentId == comment.id,
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
                         onEditingValueChange = { editingDraft = it },
                         onSaveEdit = {
-                            CommentGateway.updateMediaComment(
-                                mediaId = mediaId,
-                                commentId = comment.id,
-                                content = editingDraft,
-                            )
+                            onUpdateComment(comment.id, editingDraft)
                             editingCommentId = null
                             editingDraft = ""
                             actionCommentId = null
-                            Toast.makeText(context, "评论已更新", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "评论操作已提交", Toast.LENGTH_SHORT).show()
                         },
                         onCancelEdit = {
                             editingCommentId = null
@@ -1568,12 +1608,19 @@ private fun PhotoViewerCommentSheet(
                     Text(text = "收起到最新 10 条", color = ViewerSurface.copy(alpha = 0.72f))
                 }
             }
+            if (isMutating) {
+                Text(
+                    text = "正在提交评论操作…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ViewerSurface.copy(alpha = 0.72f),
+                )
+            }
             CommentInputBar(
                 stateKey = "media-comment-input-$mediaId",
                 placeholder = "写一条媒体评论",
                 darkMode = true,
                 onSend = { content ->
-                    CommentGateway.addMediaComment(mediaId, content)
+                    onCreateComment(content)
                     expanded = false
                 },
             )
@@ -1678,6 +1725,9 @@ private fun fakeViewerRelatedPosts(media: PhotoFeedItem): List<ViewerRelatedPost
 
 private fun placeholderPostTitle(postId: String): String {
     return when (postId) {
+        "post_001" -> "春日散步"
+        "post_002" -> "灯下小物"
+        "post_003" -> "车窗一瞬"
         "post-night-walk" -> "夜晚散步"
         "post-april-window" -> "四月窗边"
         "post-sunday-brunch" -> "周日早午餐"

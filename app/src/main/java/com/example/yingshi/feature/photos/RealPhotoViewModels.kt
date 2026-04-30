@@ -71,7 +71,7 @@ class AlbumPageRealViewModel(
         if (!AuthSessionManager.isLoggedIn) {
             _uiState.value = AlbumPageRealUiState(
                 tokenMissing = true,
-                errorMessage = "Please log in from Backend integration diagnostics before opening REAL albums.",
+                errorMessage = "请先到后端联调诊断页登录，再打开 REAL 相册页。",
             )
             return
         }
@@ -104,7 +104,7 @@ class AlbumPageRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = AlbumPageRealUiState(
                         isLoading = false,
-                        errorMessage = result.toUiMessage("Failed to load albums from backend."),
+                        errorMessage = result.toUiMessage("读取后端相册失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -149,7 +149,7 @@ class AlbumPageRealViewModel(
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,
-                            postsErrorMessage = result.toUiMessage("Failed to load posts in this album."),
+                            postsErrorMessage = result.toUiMessage("读取相册下帖子失败。"),
                         )
                     }
                 }
@@ -188,7 +188,7 @@ class PostDetailRealViewModel(
         if (!AuthSessionManager.isLoggedIn) {
             _uiState.value = PostDetailRealUiState(
                 tokenMissing = true,
-                errorMessage = "Please log in from Backend integration diagnostics before opening REAL post detail.",
+                errorMessage = "请先到后端联调诊断页登录，再打开 REAL 帖子详情。",
             )
             return
         }
@@ -225,7 +225,7 @@ class PostDetailRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = PostDetailRealUiState(
                         isLoading = false,
-                        errorMessage = result.toUiMessage("Failed to load post detail from backend."),
+                        errorMessage = result.toUiMessage("读取后端帖子详情失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -250,7 +250,7 @@ class PostDetailRealViewModel(
     fun createPostComment(content: String) {
         val normalized = content.trim()
         if (normalized.isEmpty()) return
-        mutatePostComments("Comment sent.") {
+        mutatePostComments("评论已发送。") {
             commentRepository.createPostComment(route.postId, normalized)
         }
     }
@@ -258,7 +258,7 @@ class PostDetailRealViewModel(
     fun createMediaComment(mediaId: String, content: String) {
         val normalized = content.trim()
         if (normalized.isEmpty()) return
-        mutateMediaComments(mediaId, "Comment sent.") {
+        mutateMediaComments(mediaId, "评论已发送。") {
             commentRepository.createMediaComment(mediaId, normalized)
         }
     }
@@ -266,7 +266,7 @@ class PostDetailRealViewModel(
     fun updatePostComment(commentId: String, content: String) {
         val normalized = content.trim()
         if (normalized.isEmpty()) return
-        mutatePostComments("Comment updated.") {
+        mutatePostComments("评论已更新。") {
             commentRepository.updateComment(commentId, normalized)
         }
     }
@@ -274,19 +274,19 @@ class PostDetailRealViewModel(
     fun updateMediaComment(mediaId: String, commentId: String, content: String) {
         val normalized = content.trim()
         if (normalized.isEmpty()) return
-        mutateMediaComments(mediaId, "Comment updated.") {
+        mutateMediaComments(mediaId, "评论已更新。") {
             commentRepository.updateComment(commentId, normalized)
         }
     }
 
     fun deletePostComment(commentId: String) {
-        mutatePostComments("Comment deleted.") {
+        mutatePostComments("评论已删除。") {
             commentRepository.deleteComment(commentId)
         }
     }
 
     fun deleteMediaComment(mediaId: String, commentId: String) {
-        mutateMediaComments(mediaId, "Comment deleted.") {
+        mutateMediaComments(mediaId, "评论已删除。") {
             commentRepository.deleteComment(commentId)
         }
     }
@@ -354,7 +354,7 @@ class PostDetailRealViewModel(
             _uiState.update {
                 it.copy(
                     postComments = it.postComments.copy(
-                        errorMessage = "Login token is missing. Please log in again from diagnostics.",
+                        errorMessage = "登录状态缺失，请先到联调诊断页重新登录。",
                     ),
                 )
             }
@@ -371,7 +371,7 @@ class PostDetailRealViewModel(
                         it.copy(
                             postComments = it.postComments.copy(
                                 isMutating = false,
-                                errorMessage = result.toUiMessage("Comment action failed."),
+                                errorMessage = result.toUiMessage("评论操作失败。"),
                             ),
                         )
                     }
@@ -391,7 +391,7 @@ class PostDetailRealViewModel(
                 state.copy(
                     mediaComments = state.mediaComments + (
                         mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                            errorMessage = "Login token is missing. Please log in again from diagnostics.",
+                            errorMessage = "登录状态缺失，请先到联调诊断页重新登录。",
                         )
                     ),
                 )
@@ -417,7 +417,7 @@ class PostDetailRealViewModel(
                             mediaComments = state.mediaComments + (
                                 mediaId to state.mediaComments[mediaId].orEmpty().copy(
                                     isMutating = false,
-                                    errorMessage = result.toUiMessage("Comment action failed."),
+                                    errorMessage = result.toUiMessage("评论操作失败。"),
                                 )
                             ),
                         )
@@ -494,12 +494,12 @@ private fun Throwable?.toNetworkDetail(): String? {
     return when (this) {
         null -> null
         is HttpException -> when (code()) {
-            401 -> "Login token is invalid or expired. Please log in again from diagnostics."
-            403 -> "Current account does not have permission for this action."
-            404 -> "The backend resource was not found."
-            else -> "Backend request failed with HTTP ${code()}."
+            401 -> "登录状态已失效，请先到联调诊断页重新登录。"
+            403 -> "当前账号没有权限执行这个操作。"
+            404 -> "后端资源不存在，可能已经被删除或恢复。"
+            else -> "后端请求失败，HTTP ${code()}。"
         }
-        is IOException -> message ?: "Network request failed. Check baseUrl, Wi-Fi, and server status."
+        is IOException -> message ?: "网络请求失败，请检查 baseUrl、同一 Wi-Fi 和服务端状态。"
         else -> message
     }
 }

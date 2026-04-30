@@ -28,6 +28,10 @@ interface MediaRepository {
         page: Int = 1,
         pageSize: Int = 20,
     ): ApiResult<List<RemoteMedia>>
+
+    suspend fun systemDeleteMedia(
+        mediaId: String,
+    ): ApiResult<RemoteTrashItem>
 }
 
 interface AlbumRepository {
@@ -43,6 +47,11 @@ interface PostRepository {
     suspend fun getPosts(): ApiResult<List<RemotePostSummary>>
     suspend fun getPostDetail(postId: String): ApiResult<RemotePostDetail>
     suspend fun createPost(payload: CreatePostPayload): ApiResult<RemotePostSummary>
+    suspend fun addMediaToPost(
+        postId: String,
+        mediaIds: List<String>,
+        coverMediaId: String? = null,
+    ): ApiResult<RemotePostDetail>
     suspend fun updatePostBasicInfo(
         postId: String,
         payload: UpdatePostBasicInfoPayload,
@@ -103,6 +112,13 @@ interface UploadRepository {
     suspend fun createUploadToken(
         payload: CreateUploadTokenPayload,
     ): ApiResult<RemoteUploadToken>
+
+    suspend fun uploadLocalFile(
+        uploadId: String,
+        fileName: String,
+        mimeType: String,
+        fileBytes: ByteArray,
+    ): ApiResult<RemoteMedia>
 
     suspend fun confirmUpload(
         uploadId: String,

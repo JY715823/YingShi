@@ -2,16 +2,20 @@ package com.example.yingshi.feature.photos
 
 import androidx.compose.ui.graphics.Color
 import com.example.yingshi.data.model.RemoteAlbum
+import com.example.yingshi.data.model.RemoteMedia
+import com.example.yingshi.data.model.RemotePendingCleanup
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
+import com.example.yingshi.data.model.RemoteTrashItem
+import java.util.Calendar
 
 fun RemoteAlbum.toAlbumSummaryUiModel(): AlbumSummaryUiModel {
     val palette = realPaletteFor(albumId)
     return AlbumSummaryUiModel(
         id = albumId,
         title = title,
-        subtitle = subtitle.ifBlank { "$postCount posts" },
+        subtitle = subtitle.ifBlank { "共 $postCount 个帖子" },
         accent = palette,
     )
 }
@@ -25,7 +29,7 @@ fun RemotePostSummary.toAlbumPostCardUiModel(
         albumId = selectedAlbumId,
         albumIds = albumIds.ifEmpty { listOf(selectedAlbumId) },
         title = title,
-        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "No summary yet." } },
+        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "还没有简介" } },
         postDisplayTimeMillis = displayTimeMillis,
         mediaCount = mediaCount,
         coverPalette = palette,
@@ -43,7 +47,7 @@ fun RemotePostSummary.toPostDetailPlaceholderRoute(
         albumId = selectedAlbumId,
         albumIds = albumIds.ifEmpty { listOf(selectedAlbumId) },
         title = title,
-        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "No summary yet." } },
+        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "还没有简介" } },
         postDisplayTimeMillis = displayTimeMillis,
         mediaCount = mediaCount,
         coverPalette = palette,
@@ -58,13 +62,59 @@ fun RemotePostDetail.toPostDetailUiModel(
     return PostDetailUiModel(
         postId = postId,
         title = title,
-        summary = summary.ifBlank { "No summary yet." },
-        contributorLabel = contributorLabel.orEmpty().ifBlank { "Shared memory" },
+        summary = summary.ifBlank { "还没有简介" },
+        contributorLabel = contributorLabel.orEmpty().ifBlank { "共享记录" },
         postDisplayTimeMillis = displayTimeMillis,
         albumIds = albumIds,
         albumChips = albumIds.map { albumId -> albumTitleById[albumId] ?: albumId },
         mediaItems = mediaItems.map(RemotePostMedia::toPostDetailMediaUiModel),
         comments = emptyList(),
+    )
+}
+
+fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
+    val calendar = Calendar.getInstance().apply {
+        timeInMillis = displayTimeMillis
+    }
+    return PhotoFeedItem(
+        mediaId = mediaId,
+        mediaDisplayTimeMillis = displayTimeMillis,
+        displayYear = calendar.get(Calendar.YEAR),
+        displayMonth = calendar.get(Calendar.MONTH) + 1,
+        displayDay = calendar.get(Calendar.DAY_OF_MONTH),
+        commentCount = commentCount,
+        postIds = postIds,
+        palette = realPaletteFor(mediaId),
+        mediaType = when (mediaType.lowercase()) {
+            "video" -> AppMediaType.VIDEO
+            else -> AppMediaType.IMAGE
+        },
+        aspectRatio = (aspectRatio ?: 1f).coerceIn(0.56f, 1.8f),
+        width = width,
+        height = height,
+        videoDurationMillis = null,
+    )
+}
+
+fun RemoteTrashItem.toTrashEntryUiModel(): TrashEntryUiModel {
+    return TrashEntryUiModel(
+        id = trashItemId,
+        type = toTrashEntryType(),
+        deletedAtMillis = deletedAtMillis,
+        title = title.ifBlank { defaultTrashTitle() },
+        previewInfo = previewInfo.ifBlank { defaultTrashPreview() },
+        sourcePostId = sourcePostId,
+        sourceMediaId = sourceMediaId,
+        relatedPostIds = relatedPostIds,
+        relatedMediaIds = relatedMediaIds,
+        palette = realPaletteFor(sourceMediaId ?: sourcePostId ?: trashItemId),
+    )
+}
+
+fun RemotePendingCleanup.toTrashPendingCleanupUiModel(): TrashPendingCleanupUiModel {
+    return TrashPendingCleanupUiModel(
+        entry = item.toTrashEntryUiModel(),
+        removedAtMillis = removedAtMillis,
     )
 }
 
@@ -86,7 +136,7 @@ fun RemotePostMedia.toPostDetailMediaUiModel(): PostDetailMediaUiModel {
     )
 }
 
-private fun realPaletteFor(key: String): PhotoThumbnailPalette {
+internal fun realPaletteFor(key: String): PhotoThumbnailPalette {
     val palettes = listOf(
         PhotoThumbnailPalette(
             start = Color(0xFFB8D8F8),
@@ -120,4 +170,28 @@ private fun realPaletteFor(key: String): PhotoThumbnailPalette {
         ),
     )
     return palettes[key.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) } % palettes.size]
+}
+
+private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {
+    return when (itemType) {
+        "mediaRemoved" -> TrashEntryType.MEDIA_REMOVED
+        "mediaSystemDeleted" -> TrashEntryType.MEDIA_SYSTEM_DELETED
+        else -> TrashEntryType.POST_DELETED
+    }
+}
+
+private fun RemoteTrashItem.defaultTrashTitle(): String {
+    return when (toTrashEntryType()) {
+        TrashEntryType.POST_DELETED -> "已删除帖子"
+        TrashEntryType.MEDIA_REMOVED -> "已移出媒体"
+        TrashEntryType.MEDIA_SYSTEM_DELETED -> "已删除媒体"
+    }
+}
+
+private fun RemoteTrashItem.defaultTrashPreview(): String {
+    return when (toTrashEntryType()) {
+        TrashEntryType.POST_DELETED -> "帖子已移入回收站"
+        TrashEntryType.MEDIA_REMOVED -> "媒体已从帖子中移出"
+        TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从空间中删除"
+    }
 }

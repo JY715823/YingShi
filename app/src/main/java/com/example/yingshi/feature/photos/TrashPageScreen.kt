@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -41,6 +43,18 @@ fun TrashPageScreen(
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
 ) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealTrashPageScreen(
+            modifier = modifier,
+            selectedTypeName = selectedTypeName,
+            onSelectedTypeNameChange = onSelectedTypeNameChange,
+            showPendingCleanup = showPendingCleanup,
+            onShowPendingCleanupChange = onShowPendingCleanupChange,
+            onOpenTrashDetail = onOpenTrashDetail,
+        )
+        return
+    }
+
     val spacing = YingShiThemeTokens.spacing
     var transientMessage by rememberSaveable {
         mutableStateOf<String?>(null)

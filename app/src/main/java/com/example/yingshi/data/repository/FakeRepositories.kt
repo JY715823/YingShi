@@ -60,6 +60,13 @@ class FakeMediaRepositoryShell : MediaRepository {
             }
         return ApiResult.Success(items)
     }
+
+    override suspend fun systemDeleteMedia(mediaId: String): ApiResult<RemoteTrashItem> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "FAKE media delete keeps using local fake flow in this stage",
+        )
+    }
 }
 
 class FakeAlbumRepositoryShell : AlbumRepository {
@@ -130,6 +137,17 @@ class FakePostRepositoryShell : PostRepository {
             albumIds = payload.albumIds,
         )
         return ApiResult.Success(post.toRemotePostSummary())
+    }
+
+    override suspend fun addMediaToPost(
+        postId: String,
+        mediaIds: List<String>,
+        coverMediaId: String?,
+    ): ApiResult<RemotePostDetail> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "FAKE add-media flow keeps using local fake mutation in this stage",
+        )
     }
 
     override suspend fun updatePostBasicInfo(
@@ -395,6 +413,18 @@ class FakeUploadRepositoryShell : UploadRepository {
                 expireAtMillis = System.currentTimeMillis() + 15 * 60 * 1000L,
                 state = "waiting",
             ),
+        )
+    }
+
+    override suspend fun uploadLocalFile(
+        uploadId: String,
+        fileName: String,
+        mimeType: String,
+        fileBytes: ByteArray,
+    ): ApiResult<RemoteMedia> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "FAKE upload keeps using confirm-upload placeholder in this stage",
         )
     }
 

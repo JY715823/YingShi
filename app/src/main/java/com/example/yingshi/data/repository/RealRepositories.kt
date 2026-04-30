@@ -32,6 +32,7 @@ import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
@@ -41,6 +42,9 @@ import com.example.yingshi.data.remote.mapper.toRemoteDetail
 import com.example.yingshi.data.remote.mapper.toRemotePage
 import com.example.yingshi.data.remote.mapper.toRemoteSummary
 import com.example.yingshi.data.remote.result.ApiResult
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class RealMediaRepository(
     private val mediaApi: MediaApi,
@@ -57,6 +61,21 @@ class RealMediaRepository(
                 ApiResult.Error(
                     code = "MEDIA_FEED_REQUEST_FAILED",
                     message = "Stage 11.4 real media feed request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun systemDeleteMedia(mediaId: String): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            mediaApi.deleteMediaFromSystem(mediaId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "MEDIA_DELETE_REQUEST_FAILED",
+                    message = "REAL media delete request failed",
                     throwable = it,
                 )
             },
@@ -108,6 +127,31 @@ class RealPostRepository(
                 ApiResult.Error(
                     code = "POST_CREATE_REQUEST_FAILED",
                     message = "Stage 11.4 real post create failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun addMediaToPost(
+        postId: String,
+        mediaIds: List<String>,
+        coverMediaId: String?,
+    ): ApiResult<RemotePostDetail> {
+        return runCatching {
+            postApi.addMediaToPost(
+                postId = postId,
+                request = AddPostMediaRequestDto(
+                    mediaIds = mediaIds,
+                    coverMediaId = coverMediaId,
+                ),
+            ).data.toRemoteDetail()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_ADD_MEDIA_REQUEST_FAILED",
+                    message = "REAL add-media-to-post request failed",
                     throwable = it,
                 )
             },
@@ -456,10 +500,10 @@ class RealUploadRepository(
                     mimeType = payload.mimeType,
                     fileSizeBytes = payload.fileSizeBytes,
                     mediaType = payload.mediaType,
-                    width = 1,
-                    height = 1,
-                    durationMillis = null,
-                    displayTimeMillis = System.currentTimeMillis(),
+                    width = payload.width,
+                    height = payload.height,
+                    durationMillis = payload.durationMillis,
+                    displayTimeMillis = payload.displayTimeMillis,
                 ),
             ).data.toRemoteModel()
         }.fold(
@@ -468,6 +512,34 @@ class RealUploadRepository(
                 ApiResult.Error(
                     code = "UPLOAD_TOKEN_REQUEST_FAILED",
                     message = "Stage 11.5 real upload-token request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun uploadLocalFile(
+        uploadId: String,
+        fileName: String,
+        mimeType: String,
+        fileBytes: ByteArray,
+    ): ApiResult<RemoteMedia> {
+        return runCatching {
+            val filePart = MultipartBody.Part.createFormData(
+                name = "file",
+                filename = fileName,
+                body = fileBytes.toRequestBody(mimeType.toMediaTypeOrNull()),
+            )
+            uploadApi.uploadFile(
+                uploadId = uploadId,
+                file = filePart,
+            ).data.media.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_FILE_REQUEST_FAILED",
+                    message = "REAL local file upload failed",
                     throwable = it,
                 )
             },

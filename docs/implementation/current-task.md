@@ -1,27 +1,47 @@
-# Current Task - Stage 11.6 Trash / Delete-Restore API Shell
+# Current Task - Stage 11B-3 Real Feed Upload Trash Integration
 
 ## Goal
-Prepare API, DTO, mapper, and repository boundaries for future real delete, trash, restore, and 24h undo cleanup flows while keeping the current fake trash experience runnable by default.
+Continue Android real-backend integration for photo feed, upload/import, and trash while keeping FAKE as the default safe path.
 
 ## Scope
-- update trash contract with list, detail, restore, remove-from-trash, undo-remove, and pending-cleanup drafts
-- align post/media delete contract drafts with trash entry creation semantics
-- add trash detail and pending-cleanup DTOs plus delete request DTOs
-- expand TrashApi Retrofit shell
-- expand trash DTO -> domain mapper boundary
-- expand TrashRepository fake/real interface while keeping fake as the default path
+- real media feed
+- real photo-flow viewer media context
+- real media comments from viewer context
+- upload/import backend shell integration
+- system media create-post / add-to-post real backend path
+- real trash list/detail/restore/remove/undo
+- Chinese REAL data display check
+- same-space comment edit/delete policy alignment
+- minimal docs update
+
+## Product intent
+- FAKE mode remains the safe default.
+- REAL mode should gradually replace fake data per module.
+- Photo feed in REAL mode should come from backend media feed.
+- Trash in REAL mode should use backend trash APIs.
+- Upload/import can remain local-dev backend flow before OSS.
+- Real backend seed data should be natural Chinese for app preview.
 
 ## Do not do
-- no real backend integration
+- no full UI redesign
+- no removal of fake repositories
+- no real OSS
 - no real Android system delete
-- no real 24h cleanup worker or background job
-- no forced switch to real repositories
-- no large trash UI refactor
-- no hardcoded production server address
+- no complex permission system
+- no real notification implementation
 
 ## Done when
-- `docs/contracts/trash-api.md` is complete for Stage 11.6
-- `docs/contracts/media-api.md` and `docs/contracts/post-api.md` are minimally aligned
-- trash DTOs, mappers, and Retrofit shell methods exist
-- fake trash list / restore / remove / undo behavior still works as the default flow
-- app still builds and runs
+- FAKE mode still works
+- REAL mode photo feed loads backend media
+- REAL mode viewer opens backend media context
+- REAL mode viewer comments work with mediaId
+- REAL mode upload/import path is wired or has safe error states
+- REAL mode trash flow works
+- Chinese backend seed data is visible
+- Same-space users can edit/delete each other's comments
+- Android builds
+
+## Stage Notes
+- development REAL data should read naturally in Chinese, not placeholder English
+- comment edit/delete follows space membership, not author-only restriction
+- notification to original author after non-author edit/delete stays as TODO for a later stage
