@@ -72,6 +72,35 @@ fun RemotePostDetail.toPostDetailUiModel(
     )
 }
 
+fun RemotePostDetail.toEditablePostDraft(): EditablePostDraft {
+    return EditablePostDraft(
+        postId = postId,
+        title = title,
+        summary = summary,
+        postDisplayTimeMillis = displayTimeMillis,
+        albumIds = albumIds,
+    )
+}
+
+fun RemotePostDetail.toManagedPostMediaUiModels(): List<ManagedPostMediaUiModel> {
+    return mediaItems.map { media ->
+        val mediaKind = when (media.mediaType.lowercase()) {
+            "video" -> AppMediaType.VIDEO
+            else -> AppMediaType.IMAGE
+        }
+        ManagedPostMediaUiModel(
+            id = media.mediaId,
+            displayTimeMillis = media.displayTimeMillis,
+            commentCount = media.commentCount,
+            palette = realPaletteFor(media.mediaId),
+            mediaType = mediaKind,
+            aspectRatio = (media.aspectRatio ?: 1f).coerceIn(0.56f, 1.8f),
+            isCover = media.isCover,
+            videoDurationMillis = media.videoDurationMillis,
+        )
+    }
+}
+
 fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
     val calendar = Calendar.getInstance().apply {
         timeInMillis = displayTimeMillis

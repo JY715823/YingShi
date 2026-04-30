@@ -113,6 +113,9 @@ class RealPhotoFeedViewModel(
                     },
                 )
             }
+            if (successCount > 0) {
+                RealBackendMutationBus.notifyChanged()
+            }
         }
     }
 

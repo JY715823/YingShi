@@ -40,11 +40,17 @@ fun RealTrashPageScreen(
         factory = RealTrashListViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
     val spacing = YingShiThemeTokens.spacing
 
     LaunchedEffect(selectedTypeName) {
         viewModel.refresh(selectedType)
+    }
+    LaunchedEffect(backendMutationVersion) {
+        if (backendMutationVersion > 0) {
+            viewModel.refresh(selectedType)
+        }
     }
 
     LazyColumn(

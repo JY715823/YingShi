@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -63,6 +67,15 @@ fun MediaManagementScreen(
     onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealMediaManagementScreen(
+            route = route,
+            onBack = onBack,
+            modifier = modifier,
+        )
+        return
+    }
+
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val post = FakeAlbumRepository.getPost(route.postId)
@@ -394,6 +407,268 @@ fun MediaManagementScreen(
                     },
                 ) {
                     Text("取消本次删除")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RealMediaManagementScreen(
+    route: MediaManagementRoute,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val spacing = YingShiThemeTokens.spacing
+    val viewModel: RealMediaManagementViewModel = viewModel(
+        key = "real-media-management-${route.postId}",
+        factory = RealMediaManagementViewModel.factory(route),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
+    var modeName by rememberSaveable(route.postId) {
+        mutableStateOf(MediaManagementMode.NORMAL.name)
+    }
+    val mode = MediaManagementMode.valueOf(modeName)
+    var selectedForDelete by rememberSaveable(route.postId) {
+        mutableStateOf<List<String>>(emptyList())
+    }
+    var sortDraftOrder by rememberSaveable(route.postId) {
+        mutableStateOf<List<String>>(emptyList())
+    }
+    var showDeleteSemanticDialog by rememberSaveable(route.postId) {
+        mutableStateOf(false)
+    }
+    val gridState = rememberLazyGridState()
+
+    androidx.compose.runtime.LaunchedEffect(backendMutationVersion) {
+        if (backendMutationVersion > 0) {
+            viewModel.refresh()
+        }
+    }
+
+    val mediaItems = remember(uiState.mediaItems, mode, sortDraftOrder) {
+        if (mode == MediaManagementMode.SORT && sortDraftOrder.isNotEmpty()) {
+            sortDraftOrder.mapNotNull { mediaId ->
+                uiState.mediaItems.firstOrNull { it.id == mediaId }
+            }
+        } else {
+            uiState.mediaItems
+        }
+    }
+
+    fun exitMode() {
+        modeName = MediaManagementMode.NORMAL.name
+        selectedForDelete = emptyList()
+        sortDraftOrder = emptyList()
+        showDeleteSemanticDialog = false
+    }
+
+    BackHandler(enabled = mode != MediaManagementMode.NORMAL || showDeleteSemanticDialog) {
+        if (showDeleteSemanticDialog) {
+            showDeleteSemanticDialog = false
+        } else {
+            exitMode()
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        MediaManagementTopBar(
+            mode = mode,
+            deleteCount = selectedForDelete.size,
+            onBack = {
+                if (mode == MediaManagementMode.NORMAL) {
+                    onBack()
+                } else {
+                    exitMode()
+                }
+            },
+            onDelete = { showDeleteSemanticDialog = true },
+            onCancelMode = { exitMode() },
+            onFinishMode = {
+                if (mode == MediaManagementMode.SORT) {
+                    viewModel.saveMediaOrder(sortDraftOrder.ifEmpty { uiState.mediaItems.map { it.id } })
+                }
+                exitMode()
+            },
+        )
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Text(
+                    text = uiState.postTitle.ifBlank { "当前帖子" },
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = when {
+                        uiState.tokenMissing -> "REAL 模式需要先登录，才能管理后端帖子媒体。"
+                        uiState.isLoading -> "正在读取后端媒体列表…"
+                        uiState.errorMessage != null -> uiState.errorMessage ?: "读取媒体管理数据失败。"
+                        uiState.statusMessage != null -> uiState.statusMessage ?: ""
+                        else -> modeDescription(mode)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (uiState.errorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                if (mode == MediaManagementMode.NORMAL && !uiState.tokenMissing && uiState.errorMessage == null) {
+                    MediaManagementEntryRow(
+                        onAddMedia = {
+                            Toast.makeText(
+                                context,
+                                "请从照片页顶部的系统导入入口添加真实媒体。",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                        onDeleteMode = {
+                            selectedForDelete = emptyList()
+                            modeName = MediaManagementMode.DELETE.name
+                        },
+                        onSortMode = {
+                            selectedForDelete = emptyList()
+                            sortDraftOrder = uiState.mediaItems.map { it.id }
+                            modeName = MediaManagementMode.SORT.name
+                        },
+                        onSetCoverMode = {
+                            selectedForDelete = emptyList()
+                            modeName = MediaManagementMode.SET_COVER.name
+                        },
+                        onEditTimeMode = {
+                            selectedForDelete = emptyList()
+                            modeName = MediaManagementMode.EDIT_TIME.name
+                        },
+                    )
+                }
+            }
+        }
+
+        when {
+            uiState.tokenMissing -> {
+                MediaManagementMissingState(
+                    onBack = onBack,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            uiState.isLoading && uiState.mediaItems.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "正在读取后端媒体列表…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            uiState.mediaItems.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "当前帖子还没有可管理的真实媒体。",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            else -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    state = gridState,
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    items(mediaItems, key = { it.id }) { media ->
+                        MediaManagementCard(
+                            media = media,
+                            mode = mode,
+                            selected = selectedForDelete.contains(media.id),
+                            canMoveUp = mode == MediaManagementMode.SORT && mediaItems.firstOrNull()?.id != media.id,
+                            canMoveDown = mode == MediaManagementMode.SORT && mediaItems.lastOrNull()?.id != media.id,
+                            onClick = {
+                                when (mode) {
+                                    MediaManagementMode.NORMAL -> Unit
+                                    MediaManagementMode.DELETE -> {
+                                        selectedForDelete = selectedForDelete.toggleMediaSelection(media.id)
+                                    }
+                                    MediaManagementMode.SORT -> Unit
+                                    MediaManagementMode.SET_COVER -> {
+                                        viewModel.setCover(media.id)
+                                        exitMode()
+                                    }
+                                    MediaManagementMode.EDIT_TIME -> {
+                                        Toast.makeText(
+                                            context,
+                                            "真实媒体时间编辑暂时还没接入，本轮先保留入口。",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                        exitMode()
+                                    }
+                                }
+                            },
+                            onMoveUp = {
+                                sortDraftOrder = sortDraftOrder.moveMedia(media.id, direction = -1)
+                            },
+                            onMoveDown = {
+                                sortDraftOrder = sortDraftOrder.moveMedia(media.id, direction = 1)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDeleteSemanticDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSemanticDialog = false },
+            title = { Text("选择删除语义") },
+            text = {
+                Text("目录移除只删除当前帖子里的关联；系统删除会把媒体从整个空间删除，并写入后端回收站。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteSemanticDialog = false
+                        viewModel.deleteMedia(selectedForDelete, deleteMode = "system")
+                        exitMode()
+                    },
+                ) {
+                    Text("系统删除媒体")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteSemanticDialog = false
+                        viewModel.deleteMedia(selectedForDelete, deleteMode = "directory")
+                        exitMode()
+                    },
+                ) {
+                    Text("仅从当前帖子移除")
                 }
             },
         )

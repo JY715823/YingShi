@@ -42,8 +42,15 @@ fun RealPhotoFeedPage(
         factory = RealPhotoFeedViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     val spacing = YingShiThemeTokens.spacing
+
+    androidx.compose.runtime.LaunchedEffect(backendMutationVersion) {
+        if (backendMutationVersion > 0) {
+            viewModel.refresh()
+        }
+    }
 
     if (showDeleteConfirm) {
         AlertDialog(

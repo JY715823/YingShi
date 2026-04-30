@@ -197,6 +197,7 @@ private fun RealAlbumPageScreen(
         factory = AlbumPageRealViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
     var densityName by rememberSaveable {
@@ -205,6 +206,11 @@ private fun RealAlbumPageScreen(
     LaunchedEffect(Unit) {
         if (densityName == null) {
             densityName = settingsState.defaultAlbumGridDensity.name
+        }
+    }
+    LaunchedEffect(backendMutationVersion) {
+        if (backendMutationVersion > 0) {
+            viewModel.refresh()
         }
     }
     val gridDensity = AlbumGridDensity.valueOf(
