@@ -64,8 +64,9 @@ fun SystemMediaViewerScreen(
         mutableStateOf(false)
     }
     val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
-    val albums = FakeAlbumRepository.getAlbums()
-    val posts = FakeAlbumRepository.getPosts()
+    val destinationUiState by rememberSystemMediaDestinationUiState()
+    val albums = destinationUiState.albums
+    val posts = destinationUiState.posts
 
     if (showAddToPostDialog && currentItem != null) {
         SystemMediaPostDestinationDialog(
@@ -74,6 +75,7 @@ fun SystemMediaViewerScreen(
             onDismiss = { showAddToPostDialog = false },
             onPostSelected = { postId ->
                 val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
+                    context = context,
                     postId = postId,
                     mediaItems = listOf(currentItem),
                 )
@@ -246,7 +248,8 @@ fun SystemMediaViewerScreen(
                             text = "发成新帖子",
                             onClick = {
                                 val post = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
-                                    listOf(item),
+                                    context = context,
+                                    mediaItems = listOf(item),
                                 )
                                 Toast.makeText(
                                     context,
@@ -262,7 +265,11 @@ fun SystemMediaViewerScreen(
                         SystemMediaViewerActionChip(
                             text = "加入已有帖子",
                             onClick = {
-                                showAddToPostDialog = true
+                                if (destinationUiState.errorMessage != null && posts.isEmpty()) {
+                                    Toast.makeText(context, destinationUiState.errorMessage, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    showAddToPostDialog = true
+                                }
                             },
                         )
                         SystemMediaViewerActionChip(

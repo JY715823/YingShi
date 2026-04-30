@@ -13,6 +13,10 @@ data class CreateUploadTokenPayload(
     val mimeType: String,
     val fileSizeBytes: Long,
     val mediaType: String,
+    val width: Int,
+    val height: Int,
+    val durationMillis: Long? = null,
+    val displayTimeMillis: Long,
 )
 
 data class ConfirmUploadPayload(

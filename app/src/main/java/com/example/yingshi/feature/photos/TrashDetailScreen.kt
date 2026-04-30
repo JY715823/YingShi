@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -48,6 +50,16 @@ fun TrashDetailScreen(
     onEntryRemoved: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealTrashDetailScreen(
+            route = route,
+            onBack = onBack,
+            onEntryRemoved = onEntryRemoved,
+            modifier = modifier,
+        )
+        return
+    }
+
     val context = LocalContext.current
     val entry = FakeTrashRepository.resolveDetailEntry(route)
 

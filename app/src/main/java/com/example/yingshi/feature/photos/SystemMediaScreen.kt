@@ -83,8 +83,9 @@ fun SystemMediaScreen(
     val uiState by viewModel.uiState.collectAsState()
     val mutationVersion = LocalSystemMediaBridgeRepository.mutationVersion
     val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
-    val albums = FakeAlbumRepository.getAlbums()
-    val posts = FakeAlbumRepository.getPosts()
+    val destinationUiState by rememberSystemMediaDestinationUiState()
+    val albums = destinationUiState.albums
+    val posts = destinationUiState.posts
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = LocalSystemMediaPageStateStore.firstVisibleItemIndex,
         initialFirstVisibleItemScrollOffset = LocalSystemMediaPageStateStore.firstVisibleItemScrollOffset,
@@ -159,6 +160,7 @@ fun SystemMediaScreen(
             onDismiss = { showAddToPostDialog = false },
             onPostSelected = { postId ->
                 val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
+                    context = context,
                     postId = postId,
                     mediaItems = selectedItems,
                 )
@@ -366,7 +368,10 @@ fun SystemMediaScreen(
             SystemMediaSelectionBar(
                 selectedCount = selectedIds.size,
                 onCreatePost = {
-                    val post = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(selectedItems)
+                    val post = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
+                        context = context,
+                        mediaItems = selectedItems,
+                    )
                     selectedIds = emptyList()
                     selectionMode = false
                     Toast.makeText(
@@ -379,7 +384,13 @@ fun SystemMediaScreen(
                         Toast.LENGTH_SHORT,
                     ).show()
                 },
-                onAddToPost = { showAddToPostDialog = true },
+                onAddToPost = {
+                    if (destinationUiState.errorMessage != null && posts.isEmpty()) {
+                        Toast.makeText(context, destinationUiState.errorMessage, Toast.LENGTH_SHORT).show()
+                    } else {
+                        showAddToPostDialog = true
+                    }
+                },
                 onMoveToTrash = { showMoveToTrashDialog = true },
                 onCancel = {
                     selectionMode = false

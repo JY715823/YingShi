@@ -48,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.ui.components.TitleTabs
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -223,39 +225,48 @@ fun PhotosRootScreen(
             ) { page ->
                 when (PhotosTopDestination.entries[page]) {
                     PhotosTopDestination.PHOTOS -> {
-                        val feedItems = FakePhotoFeedRepository.getPhotoFeed()
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            PhotoFeedScreen(
-                                feedItems = feedItems,
+                        if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                            RealPhotoFeedPage(
                                 modifier = Modifier.fillMaxSize(),
                                 selectionState = photoSelectionState,
-                                bottomOverlayPadding = if (isPhotoSelectionMode) {
-                                    PhotoSelectionActionBarPadding
-                                } else {
-                                    0.dp
-                                },
                                 onSelectionStateChange = { photoSelectionState = it },
                                 onOpenViewer = onOpenViewer,
                             )
-
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = isPhotoSelectionMode,
-                                enter = fadeIn(),
-                                exit = fadeOut(),
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = spacing.sm),
-                            ) {
-                                PhotoSelectionActionBar(
-                                    selectedCount = photoSelectionState.selectedCount,
-                                    onDelete = {
-                                        if (photoSelectionState.selectedMediaIds.isEmpty()) {
-                                            photoSelectionState = photoSelectionState.clear()
-                                        } else {
-                                            showDeleteConfirm = true
-                                        }
+                        } else {
+                            val feedItems = FakePhotoFeedRepository.getPhotoFeed()
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                PhotoFeedScreen(
+                                    feedItems = feedItems,
+                                    modifier = Modifier.fillMaxSize(),
+                                    selectionState = photoSelectionState,
+                                    bottomOverlayPadding = if (isPhotoSelectionMode) {
+                                        PhotoSelectionActionBarPadding
+                                    } else {
+                                        0.dp
                                     },
+                                    onSelectionStateChange = { photoSelectionState = it },
+                                    onOpenViewer = onOpenViewer,
                                 )
+
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = isPhotoSelectionMode,
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = spacing.sm),
+                                ) {
+                                    PhotoSelectionActionBar(
+                                        selectedCount = photoSelectionState.selectedCount,
+                                        onDelete = {
+                                            if (photoSelectionState.selectedMediaIds.isEmpty()) {
+                                                photoSelectionState = photoSelectionState.clear()
+                                            } else {
+                                                showDeleteConfirm = true
+                                            }
+                                        },
+                                    )
+                                }
                             }
                         }
                     }

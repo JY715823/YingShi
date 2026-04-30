@@ -230,13 +230,13 @@ private fun RealAlbumPageScreen(
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
                 Text(
-                    text = "Albums",
+                    text = "相册",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Text(
                     text = selectedAlbum?.subtitle
-                        ?: "REAL mode reads albums and album posts from the backend.",
+                        ?: "REAL 模式会直接读取后端相册和相册下帖子。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -249,8 +249,8 @@ private fun RealAlbumPageScreen(
             uiState.tokenMissing -> {
                 AlbumPageNoticeCard(
                     text = uiState.errorMessage
-                        ?: "Please log in from Backend integration diagnostics before using REAL mode.",
-                    actionLabel = "Retry",
+                        ?: "请先到后端联调诊断页登录，再使用 REAL 模式。",
+                    actionLabel = "重试",
                     onAction = viewModel::refresh,
                 )
             }
@@ -260,10 +260,10 @@ private fun RealAlbumPageScreen(
             }
 
             uiState.errorMessage != null && uiState.albums.isEmpty() -> {
-                val errorMessage = uiState.errorMessage ?: "Failed to load albums from backend."
+                val errorMessage = uiState.errorMessage ?: "读取后端相册失败。"
                 AlbumPageNoticeCard(
                     text = errorMessage,
-                    actionLabel = "Retry",
+                    actionLabel = "重试",
                     onAction = viewModel::refresh,
                 )
             }
@@ -271,7 +271,7 @@ private fun RealAlbumPageScreen(
             uiState.albums.isEmpty() -> {
                 AlbumPageNoticeCard(
                     text = "Backend returned no albums for the current account.",
-                    actionLabel = "Retry",
+                    actionLabel = "重试",
                     onAction = viewModel::refresh,
                 )
             }
@@ -297,10 +297,10 @@ private fun RealAlbumPageScreen(
 
                     uiState.postsErrorMessage != null -> {
                         val postsErrorMessage = uiState.postsErrorMessage
-                            ?: "Failed to load posts in this album."
+                            ?: "读取这个相册下的帖子失败。"
                         AlbumPageNoticeCard(
                             text = postsErrorMessage,
-                            actionLabel = "Retry",
+                            actionLabel = "重试",
                             onAction = {
                                 uiState.selectedAlbumId?.let(viewModel::selectAlbum)
                             },
@@ -309,7 +309,7 @@ private fun RealAlbumPageScreen(
 
                     uiState.posts.isEmpty() -> {
                         AlbumPageNoticeCard(
-                            text = "This album is empty on the backend right now.",
+                            text = "这个相册当前还没有后端帖子。",
                         )
                     }
 
@@ -366,7 +366,7 @@ private fun RealAlbumPageScreen(
 
 @Composable
 private fun AlbumPageLoadingCard(
-    text: String = "Loading albums from backend...",
+    text: String = "正在读取后端相册…",
 ) {
     val spacing = YingShiThemeTokens.spacing
     Surface(

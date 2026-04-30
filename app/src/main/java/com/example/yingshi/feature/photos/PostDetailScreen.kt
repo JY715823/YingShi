@@ -196,11 +196,11 @@ private fun RealPostDetailScreen(
             when {
                 uiState.tokenMissing -> {
                     PostDetailInfoState(
-                        title = "REAL mode requires login",
+                        title = "REAL 模式需要登录",
                         message = uiState.errorMessage
-                            ?: "Please log in from Backend integration diagnostics before opening this post.",
+                            ?: "请先到后端联调诊断页登录，再打开这个帖子。",
                         onBack = onBack,
-                        actionLabel = "Retry",
+                        actionLabel = "重试",
                         onAction = viewModel::refresh,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -215,12 +215,12 @@ private fun RealPostDetailScreen(
 
                 uiState.errorMessage != null && detail == null -> {
                     val errorMessage = uiState.errorMessage
-                        ?: "Failed to load post detail from backend."
+                        ?: "读取后端帖子详情失败。"
                     PostDetailInfoState(
-                        title = "Backend request failed",
+                        title = "后端请求失败",
                         message = errorMessage,
                         onBack = onBack,
-                        actionLabel = "Retry",
+                        actionLabel = "重试",
                         onAction = viewModel::refresh,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -329,17 +329,17 @@ private fun RealPostDetailContent(
         PostDetailTopBar(
             onBack = onBack,
             onExport = {
-                Toast.makeText(context, "Export is still fake-only in this stage.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "导出仍保留 fake 占位能力。", Toast.LENGTH_SHORT).show()
             },
             onEdit = {
-                Toast.makeText(context, "REAL post edit is not connected in this stage.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "REAL 帖子编辑这轮还没接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
         if (uiState.errorMessage != null) {
             PostInlineNotice(
                 text = uiState.errorMessage,
-                actionLabel = "Retry",
+                actionLabel = "重试",
                 onAction = onRefresh,
             )
         }
@@ -377,7 +377,7 @@ private fun RealPostDetailContent(
             originalLoadState = OriginalLoadState.NotLoaded,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
-                Toast.makeText(context, "REAL original loading is not connected in this stage.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
@@ -386,18 +386,18 @@ private fun RealPostDetailContent(
             originalSummary = placeholderOriginalSummary,
             cacheSummary = placeholderCacheSummary,
             onLoadAllOriginals = {
-                Toast.makeText(context, "REAL original loading is not connected in this stage.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
             },
             onClearPostCache = {
-                Toast.makeText(context, "REAL cache management is not connected in this stage.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "REAL 缓存管理这轮还没接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
         RealCommentThreadCard(
-            title = "Post comments",
-            subtitle = "Comments below belong to the whole post.",
+            title = "帖子评论",
+            subtitle = "这里展示的是整篇帖子的评论，不和媒体评论混合。",
             stateKeyPrefix = "real-post-comment-${detail.postId}",
-            emptyText = "No post comments yet. Send the first one from REAL mode.",
+            emptyText = "当前还没有帖子评论，来发第一条吧。",
             state = uiState.postComments,
             onRetry = onRefresh,
             onCreateComment = onCreatePostComment,
@@ -439,23 +439,23 @@ private fun RealMediaCommentSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Media comments",
+                        text = "媒体评论",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "These comments belong only to media ${media.id.takeLast(6)}.",
+                        text = "这些评论只属于当前媒体 ${media.id.takeLast(6)}。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                PostActionChip(text = "Close", onClick = onClose)
+                PostActionChip(text = "关闭", onClick = onClose)
             }
 
             RealCommentThreadContent(
                 state = state,
                 stateKeyPrefix = "real-media-comment-${media.id}",
-                emptyText = "No media comments yet. Send the first one from REAL mode.",
+                emptyText = "当前还没有媒体评论，来发第一条吧。",
                 onRetry = onRetry,
                 onCreateComment = onCreateComment,
                 onUpdateComment = onUpdateComment,
@@ -567,7 +567,7 @@ private fun RealCommentThreadContent(
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text(
-                    text = "Loading comments...",
+                    text = "正在读取评论…",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -669,21 +669,21 @@ private fun RealCommentThreadContent(
     }
 
     if (state.comments.hasHiddenComments(expanded)) {
-        PostActionChip(text = "More", onClick = { expanded = true })
+        PostActionChip(text = "展开更多", onClick = { expanded = true })
     }
     if (state.comments.canCollapseComments(expanded)) {
-        PostActionChip(text = "Collapse", onClick = { expanded = false })
+        PostActionChip(text = "收起", onClick = { expanded = false })
     }
     if (state.isMutating) {
         Text(
-            text = "Submitting...",
+            text = "正在提交…",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
     CommentInputBar(
         stateKey = "$stateKeyPrefix-input",
-        placeholder = "Write a comment",
+        placeholder = "写一条评论",
         onSend = onCreateComment,
     )
 }
@@ -694,8 +694,8 @@ private fun PostDetailLoadingState(
     modifier: Modifier = Modifier,
 ) {
     PostDetailInfoState(
-        title = "Loading post detail",
-        message = "Fetching post detail and comments from backend...",
+        title = "正在读取帖子详情",
+        message = "正在从后端获取帖子详情和评论…",
         onBack = onBack,
         modifier = modifier,
         loading = true,
