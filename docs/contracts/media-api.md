@@ -16,8 +16,11 @@
 {
   "mediaId": "media_001",
   "mediaType": "image",
+  "type": "image",
   "url": "/api/media/files/media_001",
+  "mediaUrl": "/api/media/files/media_001",
   "previewUrl": "/api/media/files/media_001",
+  "thumbnailUrl": "/api/media/files/media_001",
   "originalUrl": "/api/media/files/media_001",
   "videoUrl": null,
   "coverUrl": null,
@@ -31,6 +34,15 @@
   "postIds": ["post_001", "post_002"]
 }
 ```
+
+Android REAL compatibility notes:
+- Android accepts either `mediaType` or `type` as the media kind hint.
+- Android accepts either `url` or `mediaUrl` as the canonical media URL.
+- Android accepts either `previewUrl` or `thumbnailUrl` as the thumbnail or poster URL.
+- `durationMillis` remains the preferred duration field; Android also tolerates `duration` during this stabilization pass.
+- App-content Viewer image preview priority is `thumbnailUrl -> mediaUrl -> originalUrl`.
+- App-content Viewer original-load priority is `originalUrl -> mediaUrl`, and original loading is triggered only by the Viewer original action.
+- Viewer original loading state is client-local and keyed by `mediaId`; it is not a server DTO field.
 
 Example meaning:
 - one shared media can belong to multiple posts
@@ -61,6 +73,11 @@ Response:
 
 ## Notes
 - `url` is the canonical file URL
+- Android treats `previewUrl` or `thumbnailUrl` as the first thumbnail choice, `coverUrl` as the preferred video poster fallback, and `url` or `mediaUrl` as the last image fallback.
+- If the backend returns a relative path such as `/api/media/files/media_001`, Android joins it against the configured diagnostics `baseUrl`.
+- If the backend returns an absolute URL such as `http://host:8080/api/media/files/media_001`, Android uses it directly and does not prepend `baseUrl` again.
+- Empty or invalid thumbnail fields must be tolerated; Android will show a safe placeholder instead of crashing.
+- Video media should provide `thumbnailUrl`, `previewUrl`, or `coverUrl` whenever possible. Without a poster URL, Android now falls back to a video placeholder instead of trying to decode the video file as a normal image.
 - `postIds` only includes active posts
 - system-deleted media stays restorable through trash
 

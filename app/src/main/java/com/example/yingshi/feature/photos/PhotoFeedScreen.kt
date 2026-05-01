@@ -47,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -583,11 +582,6 @@ private fun PhotoFeedCard(
         modifier = modifier
             .aspectRatio(item.aspectRatio)
             .clip(shape)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(item.palette.start, item.palette.end),
-                ),
-            )
             .border(
                 border = BorderStroke(1.dp, outlineColor),
                 shape = shape,
@@ -597,18 +591,12 @@ private fun PhotoFeedCard(
                 onLongClick = onLongPress,
             ),
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.10f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.08f),
-                        ),
-                    ),
-                ),
+        AppContentMediaThumbnail(
+            mediaSource = item.mediaSource,
+            mediaType = item.mediaType,
+            palette = item.palette,
+            modifier = Modifier.matchParentSize(),
+            contentDescription = item.mediaId,
         )
 
         if (isInSelectionMode) {

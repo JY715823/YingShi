@@ -31,8 +31,11 @@
       "media": {
         "mediaId": "media_001",
         "mediaType": "image",
+        "type": "image",
         "url": "/api/media/files/media_001",
+        "mediaUrl": "/api/media/files/media_001",
         "previewUrl": "/api/media/files/media_001",
+        "thumbnailUrl": "/api/media/files/media_001",
         "originalUrl": "/api/media/files/media_001",
         "videoUrl": null,
         "coverUrl": null,
@@ -49,6 +52,12 @@
   ]
 }
 ```
+
+Android REAL compatibility notes for nested `media`:
+- the same `mediaType` or `type`, `url` or `mediaUrl`, and `previewUrl` or `thumbnailUrl` compatibility rules from the media contract apply here as well
+- Android uses these nested media URLs directly for post detail media cards and Gear Edit media management thumbnails
+- for video items, Android prefers `thumbnailUrl`, `previewUrl`, or `coverUrl` as the poster and does not treat `videoUrl` as a normal image URL
+- in-post Viewer uses the same app-content Viewer image rules as the photo-flow Viewer: preview first, original only after the original action, with state isolated by `mediaId`
 
 ## Endpoints
 

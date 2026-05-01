@@ -1028,12 +1028,16 @@ private fun PostMediaCard(
             )
             .clip(RoundedCornerShape(radius.lg))
             .clickable(onClick = onClick)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(media.palette.start, media.palette.end),
-                ),
-            ),
     ) {
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = media.palette,
+            modifier = Modifier.fillMaxSize(),
+            contentDescription = media.id,
+            showStatusBadge = true,
+        )
+
         if (media.mediaType == AppMediaType.VIDEO) {
             VideoMediaMarker(
                 modifier = Modifier
@@ -1472,6 +1476,7 @@ private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewe
                 width = media.width,
                 height = media.height,
                 videoDurationMillis = media.videoDurationMillis,
+                mediaSource = media.mediaSource,
             )
         },
         initialIndex = initialIndex,

@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -31,6 +32,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,6 +46,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +62,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -68,7 +72,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import coil.size.Precision
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -118,6 +127,13 @@ private data class ViewerVideoPlaybackState(
     val isPlaying: Boolean = false,
     val progressMillis: Long = 0L,
 )
+
+private enum class ViewerImageFailureReason {
+    NONE,
+    MISSING_URL,
+    PREVIEW_FAILED,
+    ORIGINAL_FAILED,
+}
 
 private class ViewerZoomState {
     var scale by mutableStateOf(MinViewerScale)
@@ -298,6 +314,9 @@ fun PhotoViewerScreen(
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
+    val realOriginalStates = remember(route) {
+        mutableStateMapOf<String, OriginalLoadState>()
+    }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { viewerItems.size },
@@ -309,7 +328,14 @@ fun PhotoViewerScreen(
     }
     val currentItem = viewerItems[currentIndex]
     val currentVideoDurationMillis = currentItem.viewerVideoDurationMillis()
-    val currentOriginalState = FakeOriginalLoadRepository.getState(currentItem.mediaId)
+    val currentOriginalState = if (
+        RepositoryProvider.currentMode == RepositoryMode.REAL &&
+        currentItem.mediaType == AppMediaType.IMAGE
+    ) {
+        realOriginalStates[currentItem.mediaId] ?: OriginalLoadState.NotLoaded
+    } else {
+        FakeOriginalLoadRepository.getState(currentItem.mediaId)
+    }
     val currentCacheState = FakeMediaCacheRepository.getState(
         mediaId = currentItem.mediaId,
         mediaType = currentItem.mediaType,
@@ -464,7 +490,6 @@ fun PhotoViewerScreen(
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         ViewerNightTop,
-                        currentItem.palette.end.copy(alpha = 0.22f),
                         ViewerNightMiddle,
                         ViewerNightBottom,
                     ),
@@ -482,6 +507,11 @@ fun PhotoViewerScreen(
                 media = viewerItems[page],
                 zoomState = if (page == currentIndex) zoomState else null,
                 videoPlaybackState = if (page == currentIndex) videoPlaybackState else null,
+                originalLoadState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                    realOriginalStates[viewerItems[page].mediaId] ?: OriginalLoadState.NotLoaded
+                } else {
+                    FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
+                },
                 overlaysVisible = overlaysVisible,
                 onTogglePlayback = {
                     val shouldRestart = videoPlaybackState.progressMillis >= currentVideoDurationMillis
@@ -493,6 +523,11 @@ fun PhotoViewerScreen(
                             isPlaying = true,
                             progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
                         )
+                    }
+                },
+                onOriginalLoadStateChange = { mediaId, state ->
+                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                        realOriginalStates[mediaId] = state
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -576,23 +611,49 @@ fun PhotoViewerScreen(
                     openCommentComposerOnSheet = false
                 },
                 onOpenOriginal = {
-                    when (currentOriginalState) {
-                        OriginalLoadState.NotLoaded -> {
-                            FakeOriginalLoadRepository.loadOriginal(currentItem.mediaId)
-                            Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                        }
+                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                        when {
+                            currentItem.mediaType == AppMediaType.VIDEO -> {
+                                Toast.makeText(context, "视频本轮暂不支持原图加载", Toast.LENGTH_SHORT).show()
+                            }
 
-                        OriginalLoadState.Loading -> {
-                            Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
-                        }
+                            currentItem.mediaSource.viewerOriginalImageUrl(currentItem.mediaType) == null -> {
+                                realOriginalStates[currentItem.mediaId] = OriginalLoadState.Failed
+                                Toast.makeText(context, "暂无可用原图地址", Toast.LENGTH_SHORT).show()
+                            }
 
-                        OriginalLoadState.Loaded -> {
-                            Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                        }
+                            currentOriginalState == OriginalLoadState.Loading -> {
+                                Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
+                            }
 
-                        OriginalLoadState.Failed -> {
-                            FakeOriginalLoadRepository.retryOriginal(currentItem.mediaId)
-                            Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            currentOriginalState == OriginalLoadState.Loaded -> {
+                                Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
+                            }
+
+                            else -> {
+                                realOriginalStates[currentItem.mediaId] = OriginalLoadState.Loading
+                                Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        when (currentOriginalState) {
+                            OriginalLoadState.NotLoaded -> {
+                                FakeOriginalLoadRepository.loadOriginal(currentItem.mediaId)
+                                Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            }
+
+                            OriginalLoadState.Loading -> {
+                                Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
+                            }
+
+                            OriginalLoadState.Loaded -> {
+                                Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            }
+
+                            OriginalLoadState.Failed -> {
+                                FakeOriginalLoadRepository.retryOriginal(currentItem.mediaId)
+                                Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 },
@@ -813,8 +874,10 @@ private fun PhotoViewerCanvas(
     media: PhotoFeedItem,
     zoomState: ViewerZoomState?,
     videoPlaybackState: ViewerVideoPlaybackState?,
+    originalLoadState: OriginalLoadState,
     overlaysVisible: Boolean,
     onTogglePlayback: () -> Unit,
+    onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -923,65 +986,256 @@ private fun PhotoViewerCanvas(
                         .width(canvasWidth)
                         .height(canvasHeight)
                         .then(zoomTransformModifier)
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    media.palette.start.copy(alpha = 0.98f),
-                                    media.palette.end.copy(alpha = 0.90f),
-                                ),
-                            ),
-                        ),
+                        .background(ViewerNightBottom),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = spacing.lg, end = spacing.lg)
-                            .size(92.dp)
-                            .clip(CircleShape)
-                            .background(media.palette.accent.copy(alpha = 0.20f)),
-                    )
+                    if (media.mediaSource != null) {
+                        ViewerImageCanvas(
+                            media = media,
+                            originalLoadState = originalLoadState,
+                            onOriginalLoadStateChange = onOriginalLoadStateChange,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = spacing.lg, end = spacing.lg)
+                                .size(92.dp)
+                                .clip(CircleShape)
+                                .background(media.palette.accent.copy(alpha = 0.20f)),
+                        )
 
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = spacing.lg, bottom = spacing.lg)
-                            .fillMaxWidth(0.46f)
-                            .aspectRatio(2.5f)
-                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-                            .background(media.palette.accent.copy(alpha = 0.14f)),
-                    )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = spacing.lg, bottom = spacing.lg)
+                                .fillMaxWidth(0.46f)
+                                .aspectRatio(2.5f)
+                                .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
+                                .background(media.palette.accent.copy(alpha = 0.14f)),
+                        )
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = 0.10f),
-                                        Color.Transparent,
-                                        ViewerNightTop.copy(alpha = 0.12f),
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.10f),
+                                            Color.Transparent,
+                                            ViewerNightTop.copy(alpha = 0.12f),
+                                        ),
                                     ),
                                 ),
-                            ),
-                    )
-
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = spacing.md, bottom = spacing.md),
-                        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                        color = ViewerNightTop.copy(alpha = 0.18f),
-                    ) {
-                        Text(
-                            text = "媒体预览占位",
-                            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ViewerSurface.copy(alpha = 0.82f),
                         )
+
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = spacing.md, bottom = spacing.md),
+                            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                            color = ViewerNightTop.copy(alpha = 0.18f),
+                        ) {
+                            Text(
+                                text = "媒体预览占位",
+                                modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = ViewerSurface.copy(alpha = 0.82f),
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ViewerImageCanvas(
+    media: PhotoFeedItem,
+    originalLoadState: OriginalLoadState,
+    onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val mediaSource = media.mediaSource
+    val previewUrl = remember(mediaSource, media.mediaType) {
+        mediaSource.viewerPreviewImageUrl(media.mediaType)
+    }
+    val originalUrl = remember(mediaSource, media.mediaType) {
+        mediaSource.viewerOriginalImageUrl(media.mediaType)
+    }
+    val shouldRequestOriginal = originalLoadState == OriginalLoadState.Loading ||
+        originalLoadState == OriginalLoadState.Loaded
+    val sessionVersion = AuthSessionManager.sessionVersion
+    val accessToken = remember(sessionVersion) {
+        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+    }
+    val previewRequest = remember(context, previewUrl, accessToken) {
+        viewerImageRequest(
+            context = context,
+            url = previewUrl,
+            accessToken = accessToken,
+        )
+    }
+    val originalRequest = remember(context, originalUrl, shouldRequestOriginal, accessToken) {
+        if (shouldRequestOriginal) {
+            viewerImageRequest(
+                context = context,
+                url = originalUrl,
+                accessToken = accessToken,
+            )
+        } else {
+            null
+        }
+    }
+    val previewPainter = rememberAsyncImagePainter(model = previewRequest)
+    val originalPainter = rememberAsyncImagePainter(model = originalRequest)
+    val previewState = previewPainter.state
+    val originalState = originalPainter.state
+    val showOriginal = originalLoadState == OriginalLoadState.Loaded &&
+        originalState is AsyncImagePainter.State.Success
+    val showPreview = previewRequest != null &&
+        previewState !is AsyncImagePainter.State.Error &&
+        !showOriginal
+    val failureReason = when {
+        previewUrl == null && originalUrl == null -> ViewerImageFailureReason.MISSING_URL
+        showOriginal || showPreview -> ViewerImageFailureReason.NONE
+        originalLoadState == OriginalLoadState.Failed -> ViewerImageFailureReason.ORIGINAL_FAILED
+        previewRequest != null && previewState is AsyncImagePainter.State.Error -> ViewerImageFailureReason.PREVIEW_FAILED
+        else -> ViewerImageFailureReason.NONE
+    }
+
+    LaunchedEffect(media.mediaId, originalUrl, originalLoadState, originalState) {
+        if (originalLoadState != OriginalLoadState.Loading &&
+            originalLoadState != OriginalLoadState.Loaded
+        ) {
+            return@LaunchedEffect
+        }
+        when (originalState) {
+            is AsyncImagePainter.State.Success -> {
+                if (originalLoadState != OriginalLoadState.Loaded) {
+                    onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Loaded)
+                    FakeMediaCacheRepository.markOriginalCached(media.mediaId)
+                }
+            }
+
+            is AsyncImagePainter.State.Error -> {
+                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
+            }
+
+            else -> Unit
+        }
+    }
+
+    Box(
+        modifier = modifier.background(ViewerNightBottom),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (showPreview) {
+            Image(
+                painter = previewPainter,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+
+        if (showOriginal) {
+            Image(
+                painter = originalPainter,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
+
+        if (previewRequest != null && previewState is AsyncImagePainter.State.Loading && !showOriginal) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                color = ViewerSurface.copy(alpha = 0.90f),
+                strokeWidth = 2.dp,
+            )
+        }
+
+        if (originalLoadState == OriginalLoadState.Loading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = spacing.md),
+                shape = RoundedCornerShape(radius.capsule),
+                color = Color.Black.copy(alpha = 0.34f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        color = ViewerSurface.copy(alpha = 0.88f),
+                        strokeWidth = 1.5.dp,
+                    )
+                    Text(
+                        text = "原图加载中",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ViewerSurface.copy(alpha = 0.88f),
+                    )
+                }
+            }
+        }
+
+        if (failureReason != ViewerImageFailureReason.NONE) {
+            ViewerImageFallback(
+                reason = failureReason,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+    }
+}
+
+private fun viewerImageRequest(
+    context: android.content.Context,
+    url: String?,
+    accessToken: String?,
+): ImageRequest? {
+    if (url.isNullOrBlank()) return null
+    return ImageRequest.Builder(context).apply {
+        data(url)
+        precision(Precision.INEXACT)
+        crossfade(false)
+        accessToken
+            ?.takeIf { url.startsWith("http", ignoreCase = true) }
+            ?.let { token -> addHeader("Authorization", "${RemoteConfig.AUTH_SCHEME} $token") }
+    }.build()
+}
+
+@Composable
+private fun ViewerImageFallback(
+    reason: ViewerImageFailureReason,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val label = when (reason) {
+        ViewerImageFailureReason.MISSING_URL -> "暂无可用图片"
+        ViewerImageFailureReason.PREVIEW_FAILED -> "图片加载失败"
+        ViewerImageFailureReason.ORIGINAL_FAILED -> "原图加载失败，已保留预览"
+        ViewerImageFailureReason.NONE -> null
+    } ?: return
+
+    Surface(
+        modifier = modifier.padding(spacing.lg),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = Color.Black.copy(alpha = 0.32f),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+            color = ViewerSurface.copy(alpha = 0.88f),
+        )
     }
 }
 

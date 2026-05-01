@@ -15,6 +15,7 @@ import com.example.yingshi.data.repository.PostRepository
 import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +58,7 @@ data class PostDetailRealUiState(
 
 class AlbumPageRealViewModel(
     private val albumRepository: AlbumRepository = RepositoryProvider.albumRepository,
+    private val postRepository: PostRepository = RepositoryProvider.postRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AlbumPageRealUiState(isLoading = true))
     val uiState: StateFlow<AlbumPageRealUiState> = _uiState.asStateFlow()
@@ -138,10 +140,30 @@ class AlbumPageRealViewModel(
             }
             when (val result = albumRepository.getAlbumPosts(albumId)) {
                 is ApiResult.Success -> {
+                    val posts = supervisorScope {
+                        val coverRequests = result.data.associate { summary ->
+                            summary.postId to async {
+                                when (val detailResult = postRepository.getPostDetail(summary.postId)) {
+                                    is ApiResult.Success -> {
+                                        val detail = detailResult.data
+                                        detail.mediaItems.firstOrNull { it.mediaId == detail.coverMediaId }
+                                            ?: detail.mediaItems.firstOrNull()
+                                    }
+                                    else -> null
+                                }
+                            }
+                        }
+                        result.data.map { post ->
+                            post.toAlbumPostCardUiModel(
+                                selectedAlbumId = albumId,
+                                coverMedia = coverRequests[post.postId]?.await(),
+                            )
+                        }
+                    }
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,
-                            posts = result.data.map { post -> post.toAlbumPostCardUiModel(albumId) },
+                            posts = posts,
                         )
                     }
                 }

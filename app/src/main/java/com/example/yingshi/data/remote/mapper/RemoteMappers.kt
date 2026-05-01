@@ -28,18 +28,25 @@ import com.example.yingshi.data.remote.dto.UploadTaskDto
 import com.example.yingshi.data.remote.dto.UploadTokenDto
 
 fun MediaDto.toRemoteModel(): RemoteMedia {
+    val normalizedDisplayTime = displayTimeMillis.takeIf { it > 0L } ?: createdAtMillis ?: 0L
     return RemoteMedia(
         mediaId = mediaId,
-        mediaType = mediaType,
-        previewUrl = previewUrl,
+        mediaType = mediaType?.ifBlank { type.orEmpty() }.orEmpty().ifBlank { "image" },
+        previewUrl = previewUrl ?: thumbnailUrl,
         originalUrl = originalUrl,
         videoUrl = videoUrl,
         width = width,
         height = height,
         aspectRatio = aspectRatio,
-        displayTimeMillis = displayTimeMillis,
+        displayTimeMillis = normalizedDisplayTime,
         commentCount = 0,
         postIds = postIds,
+        thumbnailUrl = thumbnailUrl ?: previewUrl,
+        mediaUrl = mediaUrl ?: url,
+        coverUrl = coverUrl,
+        mimeType = mimeType,
+        durationMillis = durationMillis ?: duration,
+        createdAtMillis = createdAtMillis,
     )
 }
 
@@ -67,19 +74,25 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
 }
 
 fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
+    val normalizedDisplayTime = media.displayTimeMillis.takeIf { it > 0L } ?: media.createdAtMillis ?: 0L
     return RemotePostMedia(
         mediaId = media.mediaId,
-        mediaType = media.mediaType,
-        previewUrl = media.previewUrl,
+        mediaType = media.mediaType?.ifBlank { media.type.orEmpty() }.orEmpty().ifBlank { "image" },
+        previewUrl = media.previewUrl ?: media.thumbnailUrl,
         originalUrl = media.originalUrl,
         videoUrl = media.videoUrl,
         width = media.width,
         height = media.height,
         aspectRatio = media.aspectRatio,
-        displayTimeMillis = media.displayTimeMillis,
+        displayTimeMillis = normalizedDisplayTime,
         commentCount = 0,
         isCover = isCover,
-        videoDurationMillis = media.durationMillis,
+        videoDurationMillis = media.durationMillis ?: media.duration,
+        thumbnailUrl = media.thumbnailUrl ?: media.previewUrl,
+        mediaUrl = media.mediaUrl ?: media.url,
+        coverUrl = media.coverUrl,
+        mimeType = media.mimeType,
+        createdAtMillis = media.createdAtMillis,
     )
 }
 
@@ -179,7 +192,7 @@ fun UploadCompleteResponseDto.toRemoteModel(): RemoteUploadTask {
     return RemoteUploadTask(
         uploadId = uploadId,
         fileName = media.mediaId,
-        mediaType = media.mediaType,
+        mediaType = media.mediaType?.ifBlank { media.type.orEmpty() }.orEmpty().ifBlank { "image" },
         objectKey = media.url,
         state = state.toUploadState(),
         progressPercent = if (state.equals("success", ignoreCase = true)) 100 else 0,

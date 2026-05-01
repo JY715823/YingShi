@@ -618,12 +618,15 @@ private fun AlbumPostCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(coverAspectRatio)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(post.coverPalette.start, post.coverPalette.end),
-                        ),
-                    ),
             ) {
+                AppContentMediaThumbnail(
+                    mediaSource = post.coverMediaSource,
+                    mediaType = post.coverMediaType,
+                    palette = post.coverPalette,
+                    modifier = Modifier.fillMaxSize(),
+                    contentDescription = post.title,
+                )
+
                 if (post.coverMediaType == AppMediaType.VIDEO) {
                     VideoMediaMarker(
                         modifier = Modifier

@@ -24,6 +24,11 @@ data class RemotePostMedia(
     val commentCount: Int,
     val isCover: Boolean,
     val videoDurationMillis: Long?,
+    val thumbnailUrl: String? = null,
+    val mediaUrl: String? = null,
+    val coverUrl: String? = null,
+    val mimeType: String? = null,
+    val createdAtMillis: Long? = null,
 )
 
 data class RemotePostDetail(

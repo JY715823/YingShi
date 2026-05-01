@@ -163,7 +163,15 @@ Use this exact checklist:
 22. Tap `Run all smoke actions`.
 23. Confirm the page lists each smoke item as `success` or `failed`, and the summary contains `health=UP`, `upload=success`, and `trash=`.
 24. If you want to verify future real repository wiring, switch mode to `REAL`, then reopen the target screen so it picks up the new repository session.
-25. Switch mode back to `FAKE` when finished.
+25. Open `照片` and confirm the feed shows real thumbnails or safe placeholders instead of flat fake gradients.
+26. Open `相册` and confirm post cards show real cover thumbnails. If some cards are briefly plain then recover after load, that is the current per-post detail enrichment path.
+27. Open one post detail page and confirm the media area shows real thumbnails, while missing URLs and failed image requests stay on a safe placeholder.
+28. Open `Gear Edit -> 媒体管理` and confirm the grid shows the same real thumbnails or safe placeholders without crashing.
+29. Open one image from the photo feed Viewer and confirm it first shows the preview image on a dark immersive background.
+30. Tap the original action and confirm the Viewer shows an original-loading state, then either the original image or a safe retry/failure state while keeping the preview available when possible.
+31. Swipe between several Viewer media items and confirm original loading / failed / loaded states do not leak between different `mediaId` values.
+32. Open an in-post Viewer from a post detail media item and repeat the preview, original-load, and dark-background checks.
+33. Switch mode back to `FAKE` when finished.
 
 ## 8. Common Problems
 
@@ -185,6 +193,18 @@ Health passes but later requests fail:
 - login was not run yet
 - token is stale after a backend restart
 - repository mode changed but the target screen was not reopened after the switch
+
+Thumbnails still do not appear in REAL:
+- backend returned only relative paths but Android `baseUrl` points to the wrong host
+- backend returned video items without `thumbnailUrl`, `previewUrl`, or `coverUrl`, so Android can only show a video placeholder
+- album cards currently resolve real covers through extra `post detail` requests, so a post-detail failure can leave that one card on a safe placeholder
+
+Viewer image does not show the expected REAL photo:
+- confirm the app is in `REAL` mode and the target screen was reopened after switching modes
+- confirm the media DTO contains at least one preview URL candidate: `thumbnailUrl`, `mediaUrl`, or `originalUrl`
+- confirm the original action has an original URL candidate: `originalUrl` or `mediaUrl`
+- if preview works but original fails, the Viewer should keep the preview and move only that media item into the retry/failure state
+- if dark letterbox areas show colored demo backgrounds, reinstall the latest debug build because Stage 12.1 second-round Viewer uses the shared immersive background
 
 Repeated smoke runs change media count:
 - upload smoke adds media while the dev server stays up
