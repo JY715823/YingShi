@@ -47,6 +47,7 @@ The script verifies:
 - albums
 - album posts
 - post detail
+- post update
 - media feed
 - post comments
 - media comments
@@ -102,6 +103,8 @@ Current behavior:
 - default mode stays `FAKE`
 - diagnostics page can switch `FAKE` / `REAL`
 - the switch is stored in debug runtime settings
+- changing `Repository mode` rebuilds the REAL page session so old fake/real view-model caches do not mix
+- changing `Base URL` clears the current token and rebuilds Retrofit immediately
 
 Files:
 - config state: `app/src/main/java/com/example/yingshi/data/remote/config/BackendDebugConfig.kt`
@@ -150,16 +153,17 @@ Use this exact checklist:
 12. Confirm `Last result` shows `[health] success`.
 13. Tap `Login and verify /me`.
 14. Confirm `Token state` becomes `Logged in`.
-15. Tap `Albums and post detail`.
-16. Confirm `Last result` includes `albums=` and `post=`.
-17. Tap `Media and comments`.
-18. Confirm `Last result` includes `media=`, `postComments=`, and `mediaComments=`.
-19. Tap `Trash`.
-20. Confirm `Last result` includes `trash=` without a failure message.
-21. Tap `Run all smoke actions`.
-22. Confirm `Last result` contains `health=UP`, `upload=success`, and `trash=`.
-23. If you want to verify future real repository wiring, switch mode to `REAL`, reopen the target screen, and test only that screen.
-24. Switch mode back to `FAKE` when finished.
+15. If you later change `Base URL`, log in again because the app now clears the old token on base-url change.
+16. Tap `Albums and post detail`.
+17. Confirm `Last result` includes `albums=` and `post=`.
+18. Tap `Media and comments`.
+19. Confirm `Last result` includes `media=`, `postComments=`, and `mediaComments=`.
+20. Tap `Trash`.
+21. Confirm `Last result` includes `trash=` without a failure message.
+22. Tap `Run all smoke actions`.
+23. Confirm the page lists each smoke item as `success` or `failed`, and the summary contains `health=UP`, `upload=success`, and `trash=`.
+24. If you want to verify future real repository wiring, switch mode to `REAL`, then reopen the target screen so it picks up the new repository session.
+25. Switch mode back to `FAKE` when finished.
 
 ## 8. Common Problems
 
@@ -180,7 +184,7 @@ Login fails:
 Health passes but later requests fail:
 - login was not run yet
 - token is stale after a backend restart
-- repository mode changed but the target screen was already open before the switch
+- repository mode changed but the target screen was not reopened after the switch
 
 Repeated smoke runs change media count:
 - upload smoke adds media while the dev server stays up

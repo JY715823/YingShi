@@ -54,47 +54,57 @@ fun CacheManagementScreen(
         )
 
         CacheSection(
-            title = "当前缓存总量",
-            subtitle = "当前只处理 app 内容区 fake 缓存状态，不扫描真实磁盘，也不影响系统媒体工具区。",
+            title = "当前缓存概览",
+            subtitle = "当前只处理 app 内容区的本地 fake 缓存状态，不扫描真实磁盘，也不影响系统媒体工具区。",
         ) {
             CacheSummaryBlock(summary = summary)
         }
 
         CacheSection(
-            title = "全局清理入口",
-            subtitle = "这轮只做本地状态变化，为后续真实原图 / 视频 / OSS 缓存清理预留结构。",
+            title = "缓存分类",
+            subtitle = "先把入口和分类结构摆对，方便后续再接真实缓存统计。",
+        ) {
+            CacheInfoRow(title = "总缓存占位", value = summary.totalSizeLabel)
+            CacheInfoRow(title = "预览缓存", value = "${summary.previewCachedCount} 项")
+            CacheInfoRow(title = "原图缓存", value = "${summary.originalCachedCount} 项")
+            CacheInfoRow(title = "视频缓存", value = "${summary.videoCachedCount} 项")
+        }
+
+        CacheSection(
+            title = "清理入口",
+            subtitle = "这轮仍只做本地状态变化，为后续真实预览、原图、视频缓存清理预留结构。",
         ) {
             CacheActionRow(
-                title = "清理全部预览缓存",
+                title = "清理预览缓存",
                 subtitle = "当前可清理 ${summary.previewCachedCount} 项预览缓存状态。",
                 onClick = {
                     FakeMediaCacheRepository.clearAllPreviewCaches()
-                    Toast.makeText(context, "已清理全部预览缓存状态", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "已清理全部预览缓存状态。", Toast.LENGTH_SHORT).show()
                 },
             )
             CacheActionRow(
-                title = "清理全部原图缓存",
+                title = "清理原图缓存",
                 subtitle = "当前可清理 ${summary.originalCachedCount} 项原图缓存，并重置原图加载状态。",
                 onClick = {
                     FakeMediaCacheRepository.clearAllOriginalCaches()
-                    Toast.makeText(context, "已清理全部原图缓存状态", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "已清理全部原图缓存状态。", Toast.LENGTH_SHORT).show()
                 },
             )
             CacheActionRow(
-                title = "清理全部视频缓存",
+                title = "清理视频缓存",
                 subtitle = "当前可清理 ${summary.videoCachedCount} 项视频缓存状态。",
                 onClick = {
                     FakeMediaCacheRepository.clearAllVideoCaches()
-                    Toast.makeText(context, "已清理全部视频缓存状态", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "已清理全部视频缓存状态。", Toast.LENGTH_SHORT).show()
                 },
             )
             CacheActionRow(
                 title = "清理全部缓存",
-                subtitle = "一次性清理预览 / 原图 / 视频全部 fake 缓存状态。",
+                subtitle = "一次性清理预览、原图、视频全部 fake 缓存状态。",
                 danger = true,
                 onClick = {
                     FakeMediaCacheRepository.clearAllCaches()
-                    Toast.makeText(context, "已清理全部缓存状态", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "已清理全部缓存状态。", Toast.LENGTH_SHORT).show()
                 },
             )
         }
@@ -184,13 +194,47 @@ private fun CacheSummaryBlock(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "已登记 ${summary.mediaCount} 个 app 内容媒体",
+                text = "已登记 ${summary.mediaCount} 项 app 内容媒体",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = "预览 ${summary.previewCachedCount} · 原图 ${summary.originalCachedCount} · 视频 ${summary.videoCachedCount}",
                 style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CacheInfoRow(
+    title: String,
+    value: String,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.lg),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md, vertical = spacing.sm),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                 color = MaterialTheme.colorScheme.primary,
             )
         }
@@ -265,6 +309,7 @@ private fun String.toCacheSourceLabel(): String {
         "settings" -> "设置页"
         "settings-storage" -> "设置页 / 缓存与存储"
         "viewer-settings" -> "Viewer 设置入口"
+        "my-page" -> "我的页"
         else -> this
     }
 }

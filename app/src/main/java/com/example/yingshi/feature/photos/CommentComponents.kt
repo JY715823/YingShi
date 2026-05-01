@@ -67,6 +67,7 @@ fun CommentInputBar(
     onSend: (String) -> Unit,
     modifier: Modifier = Modifier,
     darkMode: Boolean = false,
+    requestFocusOnShow: Boolean = false,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -87,6 +88,15 @@ fun CommentInputBar(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(stateKey, requestFocusOnShow) {
+        if (requestFocusOnShow) {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -103,6 +113,7 @@ fun CommentInputBar(
                 onValueChange = { value = it },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(focusRequester)
                     .padding(horizontal = spacing.md, vertical = spacing.sm),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
                 cursorBrush = SolidColor(textColor),

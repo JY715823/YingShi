@@ -2,9 +2,11 @@ package com.example.yingshi.data.remote.config
 
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.yingshi.BuildConfig
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.repository.RepositoryMode
 
 data class BackendDebugSettings(
@@ -18,6 +20,8 @@ object BackendDebugConfig {
     private const val KEY_REPOSITORY_MODE = "repository_mode"
 
     private var appContext: Context? = null
+    var sessionVersion by mutableIntStateOf(0)
+        private set
 
     var settings by mutableStateOf(
         BackendDebugSettings(
@@ -47,14 +51,23 @@ object BackendDebugConfig {
 
     fun updateBaseUrl(rawBaseUrl: String) {
         val nextValue = normalizeBaseUrl(rawBaseUrl)
+        if (nextValue == settings.baseUrl) {
+            return
+        }
         settings = settings.copy(baseUrl = nextValue)
         preferencesOrNull()?.edit()?.putString(KEY_BASE_URL, nextValue)?.apply()
+        AuthSessionManager.clearTokens()
+        sessionVersion += 1
         RemoteServiceFactory.invalidate()
     }
 
     fun updateRepositoryMode(mode: RepositoryMode) {
+        if (mode == settings.repositoryMode) {
+            return
+        }
         settings = settings.copy(repositoryMode = mode)
         preferencesOrNull()?.edit()?.putString(KEY_REPOSITORY_MODE, mode.name)?.apply()
+        sessionVersion += 1
     }
 
     fun resetBaseUrlToDefault() {

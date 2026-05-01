@@ -1,8 +1,5 @@
 package com.example.yingshi.feature.photos
 
-import android.widget.Toast
-import com.example.yingshi.BuildConfig
-import com.example.yingshi.data.remote.auth.AuthSessionManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,31 +24,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.BuildConfig
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 data class SettingsRoute(
-    val source: String = "notification-center",
+    val source: String = "my-page",
 )
 
 @Composable
 fun SettingsScreen(
     route: SettingsRoute,
     onBack: () -> Unit,
-    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     onOpenBackendDiagnostics: (BackendDiagnosticsRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val context = LocalContext.current
-    val cacheSummary = FakeMediaCacheRepository.getGlobalSummary()
     val settingsState = FakeSettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
-    val loginStatusValue = if (AuthSessionManager.isLoggedIn) "本地占位" else "未接真实账号"
+    val loginStatusValue = if (AuthSessionManager.isLoggedIn) {
+        "诊断页已登录"
+    } else {
+        "当前未登录真实后端"
+    }
 
     Column(
         modifier = modifier
@@ -69,32 +68,27 @@ fun SettingsScreen(
 
         SettingsSection(
             title = "账号与空间",
-            subtitle = "先保留为工具页占位分组，后续再接共享空间、成员和账号体系。",
+            subtitle = "当前仍以轻量壳层为主，后续再接真实账号、共享空间和成员管理。",
         ) {
             SettingsInfoRow(
                 title = "共享空间",
-                subtitle = "当前阶段仍是本地壳层，暂不接真实账号与双人空间。",
+                subtitle = "这轮先保留结构位置，不展开真实空间切换。",
                 value = "占位",
             )
             SettingsInfoRow(
-                title = "身份与成员状态",
-                subtitle = "后续在这里接入双方身份、邀请状态和空间归属信息。",
-                value = "未接入",
-            )
-            SettingsInfoRow(
                 title = "登录状态",
-                subtitle = "当前只显示本地占位鉴权状态，不接真实登录页和真实账号系统。",
+                subtitle = "REAL 模式是否已拿到 token，会以后端联调诊断页的登录结果为准。",
                 value = loginStatusValue,
             )
         }
 
         SettingsSection(
             title = "浏览偏好",
-            subtitle = "用于首次进入或重置后的默认值，不会持续覆盖当前页面里临时切换的密度。",
+            subtitle = "这些默认值影响重新进入页面时的初始状态，不强行覆盖你当前会话里的临时操作。",
         ) {
             SettingsChoiceRow(
                 title = "照片页默认网格密度",
-                subtitle = "支持 2 / 3 / 4 / 8 / 16 列，下一次重新进入照片页时优先使用。",
+                subtitle = "支持 2 / 3 / 4 / 8 / 16 列。",
                 options = PhotoFeedDensity.entries,
                 selectedOption = settingsState.defaultPhotoFeedDensity,
                 optionLabel = { it.label },
@@ -102,7 +96,7 @@ fun SettingsScreen(
             )
             SettingsChoiceRow(
                 title = "相册页默认列数",
-                subtitle = "支持 2 / 3 / 4 列，下一次重新进入相册页时优先使用。",
+                subtitle = "支持 2 / 3 / 4 列。",
                 options = AlbumGridDensity.entries,
                 selectedOption = settingsState.defaultAlbumGridDensity,
                 optionLabel = { it.label },
@@ -112,148 +106,62 @@ fun SettingsScreen(
 
         SettingsSection(
             title = "Viewer 偏好",
-            subtitle = "这轮先保存到当前 app 会话。能立即生效的会直接接进现有 Viewer，其余保留清晰占位说明。",
+            subtitle = "这里只保留当前阶段真正生效的浏览偏好，避免把设置页做成过重的播放控制面板。",
         ) {
             SettingsInfoRow(
-                title = "评论预览默认关闭",
-                subtitle = "当前仍固定沿用关闭策略，点击评论气泡后再展开预览，不单独提供开关。",
-                value = "固定策略",
+                title = "评论预览默认状态",
+                subtitle = "当前固定为默认关闭，通过评论气泡再展开预览层。",
+                value = "默认关闭",
             )
             SettingsSwitchRow(
-                title = "缩放时隐藏操作层",
-                subtitle = if (viewerPreferences.hideOverlaysWhenZoomed) {
-                    "已生效：缩放时会隐藏或弱化操作层，恢复到普通查看后再显示。"
-                } else {
-                    "已生效：缩放时继续保留操作层，方便对照评论、原图和所属帖子入口。"
-                },
+                title = "缩放时弱化操作层",
+                subtitle = "缩放后优先查看内容，恢复到适配屏幕后再把操作层完整显示回来。",
                 checked = viewerPreferences.hideOverlaysWhenZoomed,
                 onCheckedChange = { FakeSettingsRepository.updateHideViewerOverlaysWhenZoomed(it) },
             )
             SettingsSwitchRow(
-                title = "视频切换时自动暂停",
-                subtitle = if (viewerPreferences.autoPauseVideoOnMediaSwitch) {
-                    "当前会话已保存为开启；现阶段 Viewer 仍固定按自动暂停策略处理。"
-                } else {
-                    "当前会话已保存为关闭；真实播放器接入前，Viewer 仍固定按自动暂停策略处理。"
-                },
+                title = "切换媒体时自动暂停视频",
+                subtitle = "避免视频播放状态串到下一张媒体上。",
                 checked = viewerPreferences.autoPauseVideoOnMediaSwitch,
                 onCheckedChange = { FakeSettingsRepository.updateAutoPauseVideoOnMediaSwitch(it) },
             )
         }
 
         SettingsSection(
-            title = "缓存与存储",
-            subtitle = "这里正式承接 Stage 9.4 的全局缓存清理占位能力，当前只做 app 内容区本地 fake 状态变化。",
-        ) {
-            SettingsSummaryBlock(
-                title = "当前缓存总量",
-                value = cacheSummary.totalSizeLabel,
-                detail = "已登记 ${cacheSummary.mediaCount} 个 app 内容媒体",
-            )
-            SettingsActionRow(
-                title = "清理全部预览缓存",
-                subtitle = "当前可清理 ${cacheSummary.previewCachedCount} 项预览缓存状态。",
-                onClick = {
-                    FakeMediaCacheRepository.clearAllPreviewCaches()
-                    Toast.makeText(context, "已清理全部预览缓存状态", Toast.LENGTH_SHORT).show()
-                },
-            )
-            SettingsActionRow(
-                title = "清理全部原图缓存",
-                subtitle = "当前可清理 ${cacheSummary.originalCachedCount} 项原图缓存，并重置原图加载状态。",
-                onClick = {
-                    FakeMediaCacheRepository.clearAllOriginalCaches()
-                    Toast.makeText(context, "已清理全部原图缓存状态", Toast.LENGTH_SHORT).show()
-                },
-            )
-            SettingsActionRow(
-                title = "清理全部视频缓存",
-                subtitle = "当前可清理 ${cacheSummary.videoCachedCount} 项视频缓存状态。",
-                onClick = {
-                    FakeMediaCacheRepository.clearAllVideoCaches()
-                    Toast.makeText(context, "已清理全部视频缓存状态", Toast.LENGTH_SHORT).show()
-                },
-            )
-            SettingsActionRow(
-                title = "清理全部缓存",
-                subtitle = "一次性清理预览 / 原图 / 视频全部 fake 缓存状态。",
-                danger = true,
-                onClick = {
-                    FakeMediaCacheRepository.clearAllCaches()
-                    Toast.makeText(context, "已清理全部缓存状态", Toast.LENGTH_SHORT).show()
-                },
-            )
-            SettingsEntryRow(
-                title = "打开完整缓存清理页",
-                subtitle = "进入独立缓存管理页，继续沿用 Stage 9.4 的全局清理入口。",
-                onClick = {
-                    onOpenCacheManagement(CacheManagementRoute(source = "settings-storage"))
-                },
-            )
-        }
-
-        SettingsSection(
             title = "权限状态",
-            subtitle = "当前只展示状态，不做真实权限申请流程。",
+            subtitle = "这里只展示当前阶段的说明，不在设置页里强行展开复杂授权流程。",
         ) {
             SettingsInfoRow(
                 title = "系统媒体访问",
-                subtitle = "系统媒体工具区按当前阶段假定为已具备全部媒体访问能力。",
-                value = "已授权全部媒体",
+                subtitle = "系统媒体工具区会根据权限结果显示空态、错误态或授权提示。",
+                value = "按运行时状态处理",
             )
             SettingsInfoRow(
                 title = "通知权限",
-                subtitle = "通知中心仍是本地 fake 数据，后续再接真实权限读取与申请。",
-                value = "占位",
-            )
-            SettingsInfoRow(
-                title = "后台任务 / 下载权限",
-                subtitle = "为后续原图下载、视频缓存和后台任务占位，当前未接真实系统能力。",
+                subtitle = "通知中心当前仍是本地 fake 数据，真实通知权限接入留到后续阶段。",
                 value = "占位",
             )
         }
 
         SettingsSection(
             title = "关于与诊断",
-            subtitle = "先把版本、构建和诊断位置定住，真实服务留到后续阶段。",
+            subtitle = "先把构建信息和联调入口收好，避免它们继续散落在通知页或内容页里。",
         ) {
             SettingsInfoRow(
-                title = "App 名称",
-                subtitle = "当前项目名称。",
+                title = "应用名称",
+                subtitle = "当前阶段的产品名。",
                 value = "映世",
             )
             SettingsInfoRow(
-                title = "当前版本",
-                subtitle = "当前先使用 Stage 10 占位版本文案，后续再接真实版本与渠道说明。",
-                value = "1.0（占位）",
-            )
-            SettingsInfoRow(
                 title = "构建信息",
-                subtitle = "当前先给出轻量占位说明，不接真实诊断导出。",
-                value = "debug / local shell（占位）",
+                subtitle = "保持轻量说明，暂不做复杂诊断导出。",
+                value = "debug / local shell",
             )
-            SettingsInfoRow(
-                title = "崩溃上报",
-                subtitle = "后续再接真实崩溃上报服务。",
-                value = "未接入",
-            )
-            SettingsInfoRow(
-                title = "埋点统计",
-                subtitle = "后续再接真实埋点与统计配置。",
-                value = "未接入",
-            )
-        }
-        if (BuildConfig.DEBUG) {
-            SettingsSection(
-                title = "后端联调",
-                subtitle = "保留 fake 主流程不动，同时提供单独的后端诊断入口给模拟器和真机联调使用。",
-            ) {
+            if (BuildConfig.DEBUG) {
                 SettingsEntryRow(
-                    title = "打开后端联调诊断",
-                    subtitle = "查看或修改 baseUrl，切换 fake/real，并直接测试 health、login、albums、media、comments、trash。",
-                    onClick = {
-                        onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings"))
-                    },
+                    title = "后端联调诊断",
+                    subtitle = "查看或修改 baseUrl，切换 fake / real，并直接测试 health、login、albums、media、comments、trash。",
+                    onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
                 )
             }
         }
@@ -317,42 +225,6 @@ private fun SettingsSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             content()
-        }
-    }
-}
-
-@Composable
-private fun SettingsSummaryBlock(
-    title: String,
-    value: String,
-    detail: String,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Surface(
-        shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -520,59 +392,6 @@ private fun SettingsInfoRow(
 }
 
 @Composable
-private fun SettingsActionRow(
-    title: String,
-    subtitle: String,
-    danger: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(radius.lg))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(radius.lg),
-        color = if (danger) {
-            MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
-        },
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.md, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = "执行",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-            )
-        }
-    }
-}
-
-@Composable
 private fun SettingsEntryRow(
     title: String,
     subtitle: String,
@@ -649,6 +468,7 @@ private fun String.toSettingsSourceLabel(): String {
         "notification-center" -> "通知中心"
         "notification-center-topbar" -> "通知中心顶部"
         "photos-home" -> "照片页"
+        "my-page" -> "我的页"
         else -> this
     }
 }
@@ -660,7 +480,6 @@ private fun SettingsScreenPreview() {
         SettingsScreen(
             route = SettingsRoute(),
             onBack = { },
-            onOpenCacheManagement = { },
             onOpenBackendDiagnostics = { },
         )
     }

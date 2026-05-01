@@ -421,8 +421,9 @@ private fun RealMediaManagementScreen(
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val sessionKey = realBackendSessionKey("real-media-management-${route.postId}")
     val viewModel: RealMediaManagementViewModel = viewModel(
-        key = "real-media-management-${route.postId}",
+        key = sessionKey,
         factory = RealMediaManagementViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()

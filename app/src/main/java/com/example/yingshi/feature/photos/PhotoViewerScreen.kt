@@ -30,6 +30,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.LinearProgressIndicator
@@ -45,6 +46,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,11 +68,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private val ViewerNightTop = Color(0xFF07111C)
 private val ViewerNightBottom = Color(0xFF03070E)
@@ -276,26 +283,31 @@ fun PhotoViewerScreen(
 
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val coroutineScope = rememberCoroutineScope()
     val settingsState = FakeSettingsRepository.getSettingsState()
-    val initialPage = route.initialIndex.coerceIn(0, route.mediaItems.lastIndex)
+    var viewerItems by remember(route) {
+        mutableStateOf(route.mediaItems)
+    }
+    val initialPage = route.initialIndex.coerceIn(0, viewerItems.lastIndex)
     val zoomState = remember { ViewerZoomState() }
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
-    var showCacheActionSheet by remember { mutableStateOf(false) }
+    var openCommentComposerOnSheet by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
-        pageCount = { route.mediaItems.size },
+        pageCount = { viewerItems.size },
     )
-    val currentIndex by remember(route.mediaItems, pagerState) {
+    val currentIndex by remember(viewerItems, pagerState) {
         derivedStateOf {
-            pagerState.currentPage.coerceIn(0, route.mediaItems.lastIndex)
+            pagerState.currentPage.coerceIn(0, viewerItems.lastIndex)
         }
     }
-    val currentItem = route.mediaItems[currentIndex]
+    val currentItem = viewerItems[currentIndex]
     val currentVideoDurationMillis = currentItem.viewerVideoDurationMillis()
     val currentOriginalState = FakeOriginalLoadRepository.getState(currentItem.mediaId)
     val currentCacheState = FakeMediaCacheRepository.getState(
@@ -349,7 +361,7 @@ fun PhotoViewerScreen(
         showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
-        showCacheActionSheet = false
+        openCommentComposerOnSheet = false
         videoPlaybackState = ViewerVideoPlaybackState(
             mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
         )
@@ -390,6 +402,61 @@ fun PhotoViewerScreen(
     }
     ViewerStatusBarEffect()
 
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(text = "确认删除该媒体？") },
+            text = { Text(text = "删除后会进入回收站，可在回收站中恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        val deletingItem = currentItem
+                        if (route.showPostSegments) return@TextButton
+                        when (RepositoryProvider.currentMode) {
+                            RepositoryMode.FAKE -> {
+                                deleteFakeViewerMedia(deletingItem)
+                                val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
+                                if (nextItems.isEmpty()) {
+                                    onBack()
+                                } else {
+                                    viewerItems = nextItems
+                                    coroutineScope.launch {
+                                        pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
+                                    }
+                                }
+                                Toast.makeText(context, "已删除当前媒体，并写入回收站。", Toast.LENGTH_SHORT).show()
+                            }
+                            RepositoryMode.REAL -> {
+                                coroutineScope.launch {
+                                    val message = deleteRealViewerMedia(deletingItem.mediaId)
+                                    if (message != null) {
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        return@launch
+                                    }
+                                    val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
+                                    if (nextItems.isEmpty()) {
+                                        onBack()
+                                    } else {
+                                        viewerItems = nextItems
+                                        pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
+                                    }
+                                }
+                            }
+                        }
+                    },
+                ) {
+                    Text(text = "删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(text = "取消")
+                }
+            },
+        )
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -408,13 +475,26 @@ fun PhotoViewerScreen(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
             beyondViewportPageCount = 1,
-            userScrollEnabled = route.mediaItems.size > 1 && !zoomState.isZoomed,
-            key = { page -> route.mediaItems[page].mediaId },
+            userScrollEnabled = viewerItems.size > 1 && !zoomState.isZoomed,
+            key = { page -> viewerItems[page].mediaId },
         ) { page ->
             PhotoViewerCanvas(
-                media = route.mediaItems[page],
+                media = viewerItems[page],
                 zoomState = if (page == currentIndex) zoomState else null,
                 videoPlaybackState = if (page == currentIndex) videoPlaybackState else null,
+                overlaysVisible = overlaysVisible,
+                onTogglePlayback = {
+                    val shouldRestart = videoPlaybackState.progressMillis >= currentVideoDurationMillis
+                    videoPlaybackState = if (videoPlaybackState.isPlaying) {
+                        videoPlaybackState.copy(isPlaying = false)
+                    } else {
+                        videoPlaybackState.copy(
+                            mediaId = currentItem.mediaId,
+                            isPlaying = true,
+                            progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -438,9 +518,8 @@ fun PhotoViewerScreen(
         PhotoViewerTopBar(
             onBack = onBack,
             timeLabel = overlayUiModel.timeLabel,
-            onOpenSettings = {
-                showCacheActionSheet = true
-            },
+            showDeleteAction = !route.showPostSegments,
+            onDelete = { showDeleteConfirm = true },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -458,7 +537,12 @@ fun PhotoViewerScreen(
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
                     onOpenComment = { commentId ->
+                        openCommentComposerOnSheet = false
                         commentPanelState = ViewerCommentPanelState(selectedCommentId = commentId)
+                    },
+                    onAddComment = {
+                        openCommentComposerOnSheet = true
+                        commentPanelState = ViewerCommentPanelState()
                     },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -467,34 +551,6 @@ fun PhotoViewerScreen(
                             start = spacing.lg,
                             bottom = edgeActionsBottomPadding + 64.dp,
                         ),
-                )
-            }
-
-            if (currentItem.mediaType == AppMediaType.VIDEO) {
-                ViewerVideoControls(
-                    playbackState = videoPlaybackState,
-                    durationMillis = currentVideoDurationMillis,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(
-                            start = spacing.xxl,
-                            end = spacing.xxl,
-                            bottom = edgeActionsBottomPadding + 78.dp,
-                        ),
-                    onTogglePlayback = {
-                        val shouldRestart = videoPlaybackState.progressMillis >= currentVideoDurationMillis
-                        videoPlaybackState = if (videoPlaybackState.isPlaying) {
-                            videoPlaybackState.copy(isPlaying = false)
-                        } else {
-                            videoPlaybackState.copy(
-                                mediaId = currentItem.mediaId,
-                                isPlaying = true,
-                                progressMillis = if (shouldRestart) 0L else {
-                                    videoPlaybackState.progressMillis
-                                },
-                            )
-                        }
-                    },
                 )
             }
 
@@ -517,6 +573,7 @@ fun PhotoViewerScreen(
                     } else {
                         showCommentPreview = false
                     }
+                    openCommentComposerOnSheet = false
                 },
                 onOpenOriginal = {
                     when (currentOriginalState) {
@@ -580,6 +637,7 @@ fun PhotoViewerScreen(
                 mediaId = currentItem.mediaId,
                 comments = mediaComments,
                 selectedCommentId = panelState.selectedCommentId,
+                autoFocusInput = openCommentComposerOnSheet,
                 onDismiss = { commentPanelState = null },
                 isLoading = commentBindings.isLoading,
                 isMutating = commentBindings.isMutating,
@@ -603,40 +661,6 @@ fun PhotoViewerScreen(
             )
         }
 
-        if (showCacheActionSheet) {
-            ViewerCacheActionSheet(
-                cacheState = currentCacheState,
-                onDismiss = { showCacheActionSheet = false },
-                onClearPreviewCache = {
-                    FakeMediaCacheRepository.clearPreviewCache(currentItem.mediaId)
-                    Toast.makeText(context, "已清理预览缓存", Toast.LENGTH_SHORT).show()
-                },
-                onClearOriginalCache = {
-                    FakeMediaCacheRepository.clearOriginalCache(currentItem.mediaId)
-                    Toast.makeText(context, "已清理原图缓存", Toast.LENGTH_SHORT).show()
-                },
-                onClearVideoCache = if (currentItem.mediaType == AppMediaType.VIDEO) {
-                    {
-                        FakeMediaCacheRepository.clearVideoCache(currentItem.mediaId)
-                        Toast.makeText(context, "已清理视频缓存", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    null
-                },
-                onOpenGlobalCacheManagement = {
-                    showCacheActionSheet = false
-                    onOpenCacheManagement(
-                        CacheManagementRoute(
-                            source = if (route.showPostSegments) {
-                                "in-post-viewer"
-                            } else {
-                                "photo-flow-viewer"
-                            },
-                        ),
-                    )
-                },
-            )
-        }
     }
 }
 
@@ -740,7 +764,8 @@ private fun EmptyPhotoViewerScreen(
 private fun PhotoViewerTopBar(
     onBack: () -> Unit,
     timeLabel: String,
-    onOpenSettings: () -> Unit,
+    showDeleteAction: Boolean,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     overlayAlpha: Float = 1f,
 ) {
@@ -770,14 +795,16 @@ private fun PhotoViewerTopBar(
             contentAlpha = 0.78f,
         )
 
-        ViewerCapsule(
-            text = "设置",
-            emphasized = false,
-            modifier = Modifier.align(Alignment.TopEnd),
-            surfaceAlpha = 0.08f,
-            contentAlpha = 0.80f,
-            onClick = onOpenSettings,
-        )
+        if (showDeleteAction) {
+            ViewerCapsule(
+                text = "🗑",
+                emphasized = false,
+                modifier = Modifier.align(Alignment.TopEnd),
+                surfaceAlpha = 0.08f,
+                contentAlpha = 0.80f,
+                onClick = onDelete,
+            )
+        }
     }
 }
 
@@ -786,6 +813,8 @@ private fun PhotoViewerCanvas(
     media: PhotoFeedItem,
     zoomState: ViewerZoomState?,
     videoPlaybackState: ViewerVideoPlaybackState?,
+    overlaysVisible: Boolean,
+    onTogglePlayback: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -831,7 +860,7 @@ private fun PhotoViewerCanvas(
         val contentSize = with(density) {
             IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
         }
-        val zoomModifier = if (zoomState != null) {
+        val zoomTransformModifier = if (zoomState != null) {
             Modifier
                 .graphicsLayer {
                     scaleX = zoomState.scale
@@ -839,10 +868,14 @@ private fun PhotoViewerCanvas(
                     translationX = zoomState.offset.x
                     translationY = zoomState.offset.y
                 }
-                .viewerZoomGesture(
-                    zoomState = zoomState,
-                    contentSize = contentSize,
-                )
+        } else {
+            Modifier
+        }
+        val gestureModifier = if (zoomState != null) {
+            Modifier.viewerZoomGesture(
+                zoomState = zoomState,
+                contentSize = contentSize,
+            )
         } else {
             Modifier
         }
@@ -856,23 +889,40 @@ private fun PhotoViewerCanvas(
                     } else {
                         Modifier
                     },
-                ),
+                )
+                .then(gestureModifier),
             contentAlignment = if (isLongImage) Alignment.TopCenter else Alignment.Center,
         ) {
             if (isVideo) {
-                ViewerVideoCanvas(
-                    media = media,
-                    playbackState = videoPlaybackState,
+                Box(
                     modifier = Modifier
                         .width(canvasWidth)
                         .height(canvasHeight),
-                )
+                ) {
+                    ViewerVideoCanvas(
+                        media = media,
+                        playbackState = videoPlaybackState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .then(zoomTransformModifier),
+                    )
+                    if (overlaysVisible && videoPlaybackState != null) {
+                        ViewerVideoControls(
+                            playbackState = videoPlaybackState,
+                            durationMillis = media.viewerVideoDurationMillis(),
+                            onTogglePlayback = onTogglePlayback,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = spacing.lg, vertical = spacing.lg),
+                        )
+                    }
+                }
             } else {
                 Box(
                     modifier = Modifier
                         .width(canvasWidth)
                         .height(canvasHeight)
-                        .then(zoomModifier)
+                        .then(zoomTransformModifier)
                         .background(
                             brush = Brush.linearGradient(
                                 colors = listOf(
@@ -903,7 +953,7 @@ private fun PhotoViewerCanvas(
 
                     Box(
                         modifier = Modifier
-                            .matchParentSize()
+                            .fillMaxSize()
                             .background(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
@@ -1270,6 +1320,7 @@ private fun ViewerCapsule(
 private fun ViewerCommentPreviewLayer(
     comments: List<CommentUiModel>,
     onOpenComment: (String) -> Unit,
+    onAddComment: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -1286,6 +1337,24 @@ private fun ViewerCommentPreviewLayer(
             .padding(horizontal = spacing.md, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "媒体评论",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = ViewerSurface.copy(alpha = 0.88f),
+            )
+            ViewerCapsule(
+                text = "添加评论",
+                emphasized = false,
+                surfaceAlpha = 0.12f,
+                contentAlpha = 0.88f,
+                onClick = onAddComment,
+            )
+        }
         if (comments.isEmpty()) {
             Text(
                 text = "当前媒体还没有评论",
@@ -1419,6 +1488,7 @@ private fun PhotoViewerCommentSheet(
     mediaId: String,
     comments: List<CommentUiModel>,
     selectedCommentId: String?,
+    autoFocusInput: Boolean,
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
     isMutating: Boolean = false,
@@ -1619,6 +1689,7 @@ private fun PhotoViewerCommentSheet(
                 stateKey = "media-comment-input-$mediaId",
                 placeholder = "写一条媒体评论",
                 darkMode = true,
+                requestFocusOnShow = autoFocusInput,
                 onSend = { content ->
                     onCreateComment(content)
                     expanded = false
@@ -1744,6 +1815,48 @@ private fun placeholderPostTitle(postId: String): String {
             .removePrefix("post-")
             .split("-")
             .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
+    }
+}
+
+private fun deleteFakeViewerMedia(item: PhotoFeedItem) {
+    val selectedIds = setOf(item.mediaId)
+    val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
+    val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(FakeAlbumRepository::snapshotPost)
+    val relationSnapshotsByMediaId = FakeAlbumRepository.snapshotMediaRelations(selectedIds)
+
+    FakeTrashRepository.recordSystemDeletedMedia(
+        mediaSnapshots = listOf(
+            TrashMediaSnapshot(
+                mediaId = item.mediaId,
+                displayTimeMillis = item.mediaDisplayTimeMillis,
+                palette = item.palette,
+                mediaType = item.mediaType,
+                aspectRatio = item.aspectRatio,
+                width = item.width,
+                height = item.height,
+                videoDurationMillis = item.videoDurationMillis,
+                sourcePostId = item.postIds.firstOrNull(),
+                sourcePostTitle = item.postIds.firstOrNull()?.let(FakeAlbumRepository::getPost)?.title,
+            ),
+        ),
+        relationSnapshotsByMediaId = relationSnapshotsByMediaId,
+    )
+    deletedPostSnapshots.forEach(FakeTrashRepository::recordDeletedPost)
+    val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
+    FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
+}
+
+private suspend fun deleteRealViewerMedia(mediaId: String): String? {
+    if (!AuthSessionManager.isLoggedIn) {
+        return "请先到后端联调诊断页登录，再删除真实媒体。"
+    }
+    return when (val result = RepositoryProvider.mediaRepository.systemDeleteMedia(mediaId)) {
+        is ApiResult.Success -> {
+            RealBackendMutationBus.notifyChanged()
+            null
+        }
+        is ApiResult.Error -> result.toBackendUiMessage("删除真实媒体失败。")
+        ApiResult.Loading -> null
     }
 }
 

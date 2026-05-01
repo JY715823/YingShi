@@ -54,6 +54,7 @@ private object LocalSystemMediaQueryCache {
 class MediaStoreSystemMediaDataSource(
     context: Context,
 ) : SystemMediaDataSource {
+    private val appContext = context.applicationContext
     private val contentResolver = context.contentResolver
 
     override suspend fun queryMedia(): List<SystemMediaItem> {
@@ -110,18 +111,29 @@ class MediaStoreSystemMediaDataSource(
                     "未命名媒体"
                 }
                 val bucketName = cursor.getStringOrNull(bucketNameIndex)
-                val width = cursor.getIntOrNull(widthIndex)
-                val height = cursor.getIntOrNull(heightIndex)
+                val rawWidth = cursor.getIntOrNull(widthIndex)
+                val rawHeight = cursor.getIntOrNull(heightIndex)
                 val displayTimeMillis = resolveTimeMillis(
                     dateTakenMillis = cursor.getLongOrNull(dateTakenIndex),
                     dateModifiedSeconds = cursor.getLongOrNull(dateModifiedIndex),
                 )
                 val dateParts = displayTimeMillis.toDateParts()
+                val contentUri = buildContentUri(type, mediaStoreId)
+                val (resolvedWidth, resolvedHeight) = if (type == SystemMediaType.VIDEO) {
+                    resolveSystemVideoDimensions(
+                        context = appContext,
+                        uri = contentUri,
+                    )
+                } else {
+                    null to null
+                }
+                val width = resolvedWidth ?: rawWidth
+                val height = resolvedHeight ?: rawHeight
 
                 items += SystemMediaItem(
                     id = "${type.name.lowercase(Locale.ROOT)}-$mediaStoreId",
                     mediaStoreId = mediaStoreId,
-                    uri = buildContentUri(type, mediaStoreId),
+                    uri = contentUri,
                     type = type,
                     mimeType = mimeType,
                     displayName = displayName,

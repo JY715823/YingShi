@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.RemoteTrashDetail
-import com.example.yingshi.data.repository.RepositoryProvider
-import com.example.yingshi.data.repository.TrashRepository
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.data.repository.TrashRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

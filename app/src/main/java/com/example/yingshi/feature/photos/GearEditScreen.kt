@@ -292,8 +292,9 @@ private fun RealGearEditScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
+    val sessionKey = realBackendSessionKey("real-gear-edit-${route.postId}")
     val viewModel: RealGearEditViewModel = viewModel(
-        key = "real-gear-edit-${route.postId}",
+        key = sessionKey,
         factory = RealGearEditViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -660,6 +661,9 @@ private fun GearEditEntryRow(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
+    if (title.contains("缓存") || title.contains("缂撳瓨")) {
+        return
+    }
     val spacing = YingShiThemeTokens.spacing
     Surface(
         modifier = Modifier

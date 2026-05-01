@@ -148,6 +148,12 @@ object LocalSystemMediaBridgeRepository {
         return changedCount
     }
 
+    fun markMovedToSystemTrash(
+        mediaIds: Collection<String>,
+    ): Int {
+        return moveToSimulatedSystemTrash(mediaIds)
+    }
+
     private fun linkMediaToPost(
         mediaIds: Collection<String>,
         postId: String,

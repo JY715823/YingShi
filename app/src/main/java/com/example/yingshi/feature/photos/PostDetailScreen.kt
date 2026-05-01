@@ -151,8 +151,9 @@ private fun RealPostDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val sessionKey = realBackendSessionKey("real-post-detail-${route.postId}")
     val viewModel: PostDetailRealViewModel = viewModel(
-        key = "real-post-detail-${route.postId}",
+        key = sessionKey,
         factory = PostDetailRealViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -392,12 +393,8 @@ private fun RealPostDetailContent(
         PostInfoSection(
             detail = detail,
             originalSummary = placeholderOriginalSummary,
-            cacheSummary = placeholderCacheSummary,
             onLoadAllOriginals = {
                 Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
-            },
-            onClearPostCache = {
-                Toast.makeText(context, "REAL 缓存管理这轮还没接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
@@ -837,7 +834,6 @@ private fun PostDetailContent(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
-    var showPostCacheDialog by rememberSaveable(detail.postId) { mutableStateOf(false) }
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
@@ -925,71 +921,13 @@ private fun PostDetailContent(
         PostInfoSection(
             detail = detail,
             originalSummary = postOriginalSummary,
-            cacheSummary = postCacheSummary,
             onLoadAllOriginals = {
                 FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
                 Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
             },
-            onClearPostCache = { showPostCacheDialog = true },
         )
 
         PostCommentSection(postId = detail.postId)
-    }
-
-    if (showPostCacheDialog) {
-        AlertDialog(
-            onDismissRequest = { showPostCacheDialog = false },
-            title = { Text("清理本帖缓存") },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
-                ) {
-                    Text("当前帖子共 ${postCacheSummary.mediaCount} 个媒体，fake 缓存总量 ${postCacheSummary.totalSizeLabel}。")
-                    Text(
-                        text = "这里只清理当前帖内媒体的原图 / 视频缓存状态，不影响媒体本体和评论。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
-                    TextButton(
-                        onClick = {
-                            FakeMediaCacheRepository.clearPostOriginalCaches(postMediaIds)
-                            showPostCacheDialog = false
-                            Toast.makeText(context, "已清理本帖原图缓存", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text("清原图")
-                    }
-                    TextButton(
-                        onClick = {
-                            FakeMediaCacheRepository.clearPostVideoCaches(postMediaIds)
-                            showPostCacheDialog = false
-                            Toast.makeText(context, "已清理本帖视频缓存", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text("清视频")
-                    }
-                    TextButton(
-                        onClick = {
-                            FakeMediaCacheRepository.clearPostOriginalCaches(postMediaIds)
-                            FakeMediaCacheRepository.clearPostVideoCaches(postMediaIds)
-                            showPostCacheDialog = false
-                            Toast.makeText(context, "已清理本帖缓存", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text("全清")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPostCacheDialog = false }) {
-                    Text("取消")
-                }
-            },
-        )
     }
 }
 
@@ -1154,9 +1092,7 @@ private fun PostMediaInfoRow(
 private fun PostInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
-    cacheSummary: AppMediaCacheSummary,
     onLoadAllOriginals: () -> Unit,
-    onClearPostCache: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -1206,8 +1142,6 @@ private fun PostInfoSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PostActionChip(text = originalSummary.buttonLabel, onClick = onLoadAllOriginals)
-                PostMetaCapsule(text = "缓存 ${cacheSummary.totalSizeLabel}")
-                PostActionChip(text = "清理本帖缓存", onClick = onClearPostCache)
             }
         }
     }

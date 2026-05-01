@@ -192,8 +192,9 @@ private fun RealAlbumPageScreen(
     onManageAlbums: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val sessionKey = realBackendSessionKey("real-album-page")
     val viewModel: AlbumPageRealViewModel = viewModel(
-        key = "real-album-page",
+        key = sessionKey,
         factory = AlbumPageRealViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()
