@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.photos
 
+import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -7,6 +8,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -35,13 +37,14 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +61,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -74,6 +80,7 @@ fun SystemMediaScreen(
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext as Application
+    val lifecycleOwner = LocalLifecycleOwner.current
     val viewModel: SystemMediaViewModel = viewModel(
         factory = SystemMediaViewModel.factory(
             application = appContext,
@@ -105,8 +112,8 @@ fun SystemMediaScreen(
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
-    var showMoveToTrashDialog by rememberSaveable {
-        mutableStateOf(false)
+    var pendingTrashIds by rememberSaveable {
+        mutableStateOf(emptyList<String>())
     }
     val spacing = YingShiThemeTokens.spacing
     val selectedIdSet = selectedIds.toSet()
@@ -120,11 +127,90 @@ fun SystemMediaScreen(
         }
     }
 
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = hasSystemMediaReadAccess(context)
+                hasPermission = granted
+                if (granted) {
+                    viewModel.ensureLoaded()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    val trashLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val processedIds = pendingTrashIds
+        pendingTrashIds = emptyList()
+        if (processedIds.isEmpty()) return@rememberLauncherForActivityResult
+
+        if (result.resultCode == Activity.RESULT_OK) {
+            val hiddenCount = LocalSystemMediaBridgeRepository.markMovedToSystemTrash(processedIds)
+            selectionMode = false
+            selectedIds = emptyList()
+            viewModel.refresh(forceRefresh = true)
+            Toast.makeText(
+                context,
+                if (hiddenCount > 0) {
+                    "已移到系统回收站。"
+                } else {
+                    "这些媒体已经处理过了。"
+                },
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            Toast.makeText(context, "已取消移到系统回收站。", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun launchSystemTrashRequest(items: List<SystemMediaItem>) {
+        if (items.isEmpty()) {
+            Toast.makeText(context, "请先选择要移到系统回收站的媒体。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        createSystemMediaTrashRequest(context, items)
+            .onSuccess { pendingIntent ->
+                pendingTrashIds = items.map { it.id }
+                runCatching {
+                    trashLauncher.launch(
+                        IntentSenderRequest.Builder(pendingIntent.intentSender).build(),
+                    )
+                }.onFailure { throwable ->
+                    pendingTrashIds = emptyList()
+                    Toast.makeText(
+                        context,
+                        throwable.message ?: "无法拉起系统回收站确认流程。",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+            .onFailure { throwable ->
+                Toast.makeText(
+                    context,
+                    throwable.message ?: systemMediaTrashUnsupportedMessage(),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+    }
+
     LaunchedEffect(hasPermission) {
         if (!hasPermission && !permissionRequestedOnce) {
             permissionRequestedOnce = true
             permissionLauncher.launch(requiredSystemMediaPermissions())
         } else if (hasPermission) {
+            viewModel.ensureLoaded()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val granted = hasSystemMediaReadAccess(context)
+        hasPermission = granted
+        if (granted) {
             viewModel.ensureLoaded()
         }
     }
@@ -170,52 +256,12 @@ fun SystemMediaScreen(
                 Toast.makeText(
                     context,
                     if (addedCount > 0) {
-                        "已加入已有帖子，并同步进入照片页"
+                        "已加入已有帖子，并同步刷新到照片与相册页。"
                     } else {
-                        "这些媒体已在目标帖子里"
+                        "这些媒体已经在目标帖子里了。"
                     },
                     Toast.LENGTH_SHORT,
                 ).show()
-            },
-        )
-    }
-
-    if (showMoveToTrashDialog) {
-        AlertDialog(
-            onDismissRequest = { showMoveToTrashDialog = false },
-            title = {
-                Text(text = "确认移到系统回收站？")
-            },
-            text = {
-                Text(text = "当前仅做本地模拟：这些媒体会从系统媒体工具区隐藏，不会进入 app 回收站，也不会执行真实 Android 系统删除。")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val hiddenCount = LocalSystemMediaBridgeRepository.moveToSimulatedSystemTrash(
-                            selectedIds,
-                        )
-                        showMoveToTrashDialog = false
-                        selectedIds = emptyList()
-                        selectionMode = false
-                        Toast.makeText(
-                            context,
-                            if (hiddenCount > 0) {
-                                "已从系统媒体工具区本地隐藏"
-                            } else {
-                                "这些媒体已处于本地隐藏状态"
-                            },
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    },
-                ) {
-                    Text(text = "移到系统回收站")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMoveToTrashDialog = false }) {
-                    Text(text = "取消")
-                }
             },
         )
     }
@@ -252,7 +298,7 @@ fun SystemMediaScreen(
             )
 
             Text(
-                text = "默认按时间降序显示本地图片和视频",
+                text = "默认按时间倒序显示本地图片和视频，系统回收站操作会走 Android 官方确认流程。",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -290,9 +336,9 @@ fun SystemMediaScreen(
                 uiState.filteredItems.isEmpty() -> {
                     SystemMediaEmptyState(
                         text = if (uiState.selectedFilter == SystemMediaFilter.ALL) {
-                            "当前没有可显示的本地媒体"
+                            "当前没有可显示的本地媒体。"
                         } else {
-                            "当前筛选下没有可显示的媒体"
+                            "当前筛选下没有可显示的媒体。"
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -368,7 +414,7 @@ fun SystemMediaScreen(
             SystemMediaSelectionBar(
                 selectedCount = selectedIds.size,
                 onCreatePost = {
-                    val post = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
+                    val postCount = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
                         context = context,
                         mediaItems = selectedItems,
                     )
@@ -376,10 +422,10 @@ fun SystemMediaScreen(
                     selectionMode = false
                     Toast.makeText(
                         context,
-                        if (post > 0) {
-                            "已发成新帖子，并同步进入照片页和相册页"
+                        if (postCount > 0) {
+                            "已发成新帖子，并同步刷新到照片与相册页。"
                         } else {
-                            "当前没有可处理的媒体"
+                            "当前没有可处理的媒体。"
                         },
                         Toast.LENGTH_SHORT,
                     ).show()
@@ -391,7 +437,9 @@ fun SystemMediaScreen(
                         showAddToPostDialog = true
                     }
                 },
-                onMoveToTrash = { showMoveToTrashDialog = true },
+                onMoveToTrash = {
+                    launchSystemTrashRequest(selectedItems)
+                },
                 onCancel = {
                     selectionMode = false
                     selectedIds = emptyList()
@@ -524,6 +572,11 @@ private fun SystemMediaCard(
 ) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.lg)
+    val videoThumbnail = if (item.type == SystemMediaType.VIDEO) {
+        rememberSystemVideoThumbnail(context, item.uri)
+    } else {
+        null
+    }
 
     Box(
         modifier = Modifier
@@ -535,22 +588,31 @@ private fun SystemMediaCard(
                 onLongClick = onLongPress,
             ),
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(item.uri)
-                .size(512)
-                .precision(Precision.INEXACT)
-                .crossfade(false)
-                .build(),
-            contentDescription = item.displayName,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
+        if (videoThumbnail != null) {
+            Image(
+                bitmap = videoThumbnail.toComposeBitmap(),
+                contentDescription = item.displayName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(item.uri)
+                    .size(512)
+                    .precision(Precision.INEXACT)
+                    .crossfade(false)
+                    .build(),
+                contentDescription = item.displayName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
 
         if (selectionMode) {
             Box(
                 modifier = Modifier
-                    .matchParentSize()
+                    .fillMaxSize()
                     .background(
                         if (selected) {
                             MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
@@ -770,7 +832,7 @@ private fun SystemMediaSelectionBadge(
     ) {
         if (selected) {
             Text(
-                text = "√",
+                text = "✓",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                 color = Color.White,
             )
@@ -868,6 +930,6 @@ private fun List<String>.toggleSystemMediaId(id: String): List<String> {
 @Composable
 private fun SystemMediaEmptyStatePreview() {
     YingShiTheme {
-        SystemMediaEmptyState(text = "当前没有可显示的本地媒体")
+        SystemMediaEmptyState(text = "当前没有可显示的本地媒体。")
     }
 }

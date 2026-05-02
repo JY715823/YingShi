@@ -10,8 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -47,16 +46,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import coil.imageLoader
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import coil.size.Precision
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.config.RemoteConfig
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
@@ -64,6 +71,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private const val PhotoFeedLeadingItemCount = 2
+private const val PhotoFeedPrefetchCount = 36
 
 @Composable
 fun PhotoFeedScreen(
@@ -76,6 +84,7 @@ fun PhotoFeedScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
+    PrefetchPhotoFeedThumbnails(feedItems)
     val mediaPositionLookup = remember(feedItems) {
         feedItems.mapIndexed { index, item ->
             item.mediaId to index
@@ -86,7 +95,7 @@ fun PhotoFeedScreen(
     var scrubberInteracting by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (densityName == null) {
-            densityName = settingsState.defaultPhotoFeedDensity.name
+            densityName = PhotoFeedDensity.DENSE_4.name
         }
     }
     val density = PhotoFeedDensity.valueOf(
@@ -253,6 +262,79 @@ fun PhotoFeedScreen(
             )
         }
     }
+}
+
+@Composable
+private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
+    if (RepositoryProvider.currentMode != RepositoryMode.REAL) return
+
+    val context = LocalContext.current
+    val sessionVersion = AuthSessionManager.sessionVersion
+    val accessToken = remember(sessionVersion) {
+        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+    }
+    val prefetchTargets = remember(feedItems) {
+        feedItems
+            .take(PhotoFeedPrefetchCount)
+            .mapNotNull { item ->
+                val url = item.mediaSource.thumbnailModelUrl(item.mediaType) ?: return@mapNotNull null
+                PrefetchTarget(
+                    url = url,
+                    mediaType = item.mediaType,
+                    mimeType = item.mediaSource?.mimeType,
+                )
+            }
+            .distinctBy { "${it.mediaType}:${it.url}" }
+    }
+
+    LaunchedEffect(context, prefetchTargets, accessToken) {
+        val imageLoader = context.imageLoader
+        prefetchTargets.forEach { target ->
+            if (target.mediaType == AppMediaType.VIDEO &&
+                (target.mimeType?.startsWith("video/", ignoreCase = true) == true || target.url.isLikelyVideoUrl())
+            ) {
+                prefetchVideoPoster(
+                    context = context,
+                    url = target.url,
+                    accessToken = accessToken,
+                )
+                return@forEach
+            }
+            imageLoader.enqueue(
+                ImageRequest.Builder(context).apply {
+                    data(target.url)
+                    size(512)
+                    precision(Precision.INEXACT)
+                    crossfade(false)
+                    memoryCacheKey(sharedPreviewMemoryCacheKey(target.url))
+                    diskCacheKey("media:${target.url}")
+                    networkCachePolicy(CachePolicy.ENABLED)
+                    diskCachePolicy(CachePolicy.ENABLED)
+                    memoryCachePolicy(CachePolicy.ENABLED)
+                    accessToken
+                        ?.takeIf { target.url.startsWith("http", ignoreCase = true) }
+                        ?.let { token -> addHeader("Authorization", "${RemoteConfig.AUTH_SCHEME} $token") }
+                }.build(),
+            )
+        }
+    }
+}
+
+private data class PrefetchTarget(
+    val url: String,
+    val mediaType: AppMediaType,
+    val mimeType: String?,
+)
+
+private fun String.isLikelyVideoUrl(): Boolean {
+    val normalized = substringBefore('?').substringBefore('#').lowercase()
+    return normalized.endsWith(".mp4") ||
+        normalized.endsWith(".mov") ||
+        normalized.endsWith(".m4v") ||
+        normalized.endsWith(".webm") ||
+        normalized.endsWith(".3gp") ||
+        normalized.endsWith(".mkv") ||
+        normalized.endsWith(".avi")
 }
 
 @Composable
@@ -562,53 +644,21 @@ private fun PhotoFeedCard(
     onClick: () -> Unit,
     onLongPress: () -> Unit,
 ) {
-    val outlineColor = if (isSelected) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.36f)
-    } else {
-        MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)
-    }
-    val shape = RoundedCornerShape(cardRadius(density))
-    val accentSize = when {
-        density.columns <= 3 -> 28.dp
-        density.columns <= 8 -> 16.dp
-        else -> 10.dp
-    }
-    val ribbonHeight = when {
-        density.columns <= 3 -> 24.dp
-        density.columns <= 8 -> 12.dp
-        else -> 6.dp
-    }
-
     Box(
         modifier = modifier
-            .aspectRatio(item.aspectRatio)
-            .clip(shape)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(item.palette.start, item.palette.end),
-                ),
-            )
-            .border(
-                border = BorderStroke(1.dp, outlineColor),
-                shape = shape,
-            )
+            .aspectRatio(1f)
+            .background(Color.Transparent)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress,
             ),
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.10f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.08f),
-                        ),
-                    ),
-                ),
+        AppContentMediaThumbnail(
+            mediaSource = item.mediaSource,
+            mediaType = item.mediaType,
+            palette = item.palette,
+            modifier = Modifier.matchParentSize(),
+            contentDescription = item.mediaId,
         )
 
         if (isInSelectionMode) {
@@ -624,33 +674,6 @@ private fun PhotoFeedCard(
                 ),
             )
         }
-
-        if (!isInSelectionMode && item.mediaType == AppMediaType.VIDEO) {
-            VideoMediaMarker(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(6.dp)
-                .size(accentSize)
-                .clip(CircleShape)
-                .background(item.palette.accent.copy(alpha = 0.22f)),
-        )
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(6.dp)
-                .fillMaxWidth(0.58f)
-                .height(ribbonHeight)
-                .clip(RoundedCornerShape(999.dp))
-                .background(item.palette.accent.copy(alpha = 0.18f)),
-        )
 
         if (isInSelectionMode) {
             SelectionBadge(
@@ -702,25 +725,17 @@ private fun SelectionBadge(
 
 private fun sectionSpacing(density: PhotoFeedDensity): Dp {
     return when {
-        density.columns <= 4 -> 20.dp
-        density.columns == 8 -> 16.dp
-        else -> 12.dp
+        density.columns <= 4 -> 14.dp
+        density.columns == 8 -> 12.dp
+        else -> 10.dp
     }
 }
 
 private fun rowSpacing(density: PhotoFeedDensity): Dp {
     return when {
-        density.columns <= 3 -> 8.dp
-        density.columns <= 8 -> 4.dp
-        else -> 2.dp
-    }
-}
-
-private fun cardRadius(density: PhotoFeedDensity): Dp {
-    return when {
-        density.columns <= 3 -> 18.dp
-        density.columns <= 8 -> 12.dp
-        else -> 8.dp
+        density.columns <= 4 -> 1.dp
+        density.columns <= 8 -> 1.dp
+        else -> 1.dp
     }
 }
 

@@ -12,6 +12,12 @@ data class RemoteMedia(
     val displayTimeMillis: Long,
     val commentCount: Int,
     val postIds: List<String>,
+    val thumbnailUrl: String? = null,
+    val mediaUrl: String? = null,
+    val coverUrl: String? = null,
+    val mimeType: String? = null,
+    val durationMillis: Long? = null,
+    val createdAtMillis: Long? = null,
 )
 
 data class RemoteAlbum(

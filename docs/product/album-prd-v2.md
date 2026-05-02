@@ -2142,3 +2142,9 @@ Spring Data Redis 寰堟垚鐔燂紝浣嗕綘鐨勯鐗堜笉鏄珮骞跺�
 - Auth contracts, token manager, and interceptor should align with the Stage 11.1 remote layer so future backend integration can switch repository sources gradually rather than rewriting screens.
 
 
+## Stage 11B follow-up interaction note
+- Bottom navigation is now `首页 / 照片 / 生活 / 我的`; settings and cache management move under `我的`, while the bell returns to a notification-only role.
+- The photos-module header keeps `照片 / 相册 / 回收站` as the secondary navigation and adds a lightweight `+` placeholder entry on the next row for future `添加媒体 / 添加帖子`.
+- Cache management should stop leaking into viewer, post detail, and notification-center flows; it is a calmer tool surface, not a content-view action.
+- The app-content viewer keeps media comments, original-load, and related-post actions, but photo-flow delete is promoted to a clear trash action with confirmation.
+- System media viewer stays outside app-content semantics: no comments, no original-load, no related-post action row, and `移到系统回收站` must follow Android system confirmation instead of app trash logic.

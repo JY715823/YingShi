@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
@@ -151,8 +155,9 @@ private fun RealPostDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val sessionKey = realBackendSessionKey("real-post-detail-${route.postId}")
     val viewModel: PostDetailRealViewModel = viewModel(
-        key = "real-post-detail-${route.postId}",
+        key = sessionKey,
         factory = PostDetailRealViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -204,7 +209,7 @@ private fun RealPostDetailScreen(
             when {
                 uiState.tokenMissing -> {
                     PostDetailInfoState(
-                        title = "REAL 模式需要登录",
+                        title = "真实模式需要登录",
                         message = uiState.errorMessage
                             ?: "请先到后端联调诊断页登录，再打开这个帖子。",
                         onBack = onBack,
@@ -339,7 +344,7 @@ private fun RealPostDetailContent(
         PostDetailTopBar(
             onBack = onBack,
             onExport = {
-                Toast.makeText(context, "导出仍保留 fake 占位能力。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "导出能力暂时仍为占位。", Toast.LENGTH_SHORT).show()
             },
             onEdit = onOpenGearEdit,
         )
@@ -385,19 +390,15 @@ private fun RealPostDetailContent(
             originalLoadState = OriginalLoadState.NotLoaded,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
-                Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "帖子详情页原图加载入口暂未接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
         PostInfoSection(
             detail = detail,
             originalSummary = placeholderOriginalSummary,
-            cacheSummary = placeholderCacheSummary,
             onLoadAllOriginals = {
-                Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
-            },
-            onClearPostCache = {
-                Toast.makeText(context, "REAL 缓存管理这轮还没接入。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "帖子详情页批量原图加载暂未接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
@@ -562,7 +563,7 @@ private fun RealCommentThreadContent(
     if (state.errorMessage != null) {
         PostInlineNotice(
             text = state.errorMessage,
-            actionLabel = "Retry",
+            actionLabel = "重试",
             onAction = onRetry,
         )
     }
@@ -837,7 +838,6 @@ private fun PostDetailContent(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
-    var showPostCacheDialog by rememberSaveable(detail.postId) { mutableStateOf(false) }
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
@@ -925,71 +925,13 @@ private fun PostDetailContent(
         PostInfoSection(
             detail = detail,
             originalSummary = postOriginalSummary,
-            cacheSummary = postCacheSummary,
             onLoadAllOriginals = {
                 FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
                 Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
             },
-            onClearPostCache = { showPostCacheDialog = true },
         )
 
         PostCommentSection(postId = detail.postId)
-    }
-
-    if (showPostCacheDialog) {
-        AlertDialog(
-            onDismissRequest = { showPostCacheDialog = false },
-            title = { Text("清理本帖缓存") },
-            text = {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
-                ) {
-                    Text("当前帖子共 ${postCacheSummary.mediaCount} 个媒体，fake 缓存总量 ${postCacheSummary.totalSizeLabel}。")
-                    Text(
-                        text = "这里只清理当前帖内媒体的原图 / 视频缓存状态，不影响媒体本体和评论。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
-                    TextButton(
-                        onClick = {
-                            FakeMediaCacheRepository.clearPostOriginalCaches(postMediaIds)
-                            showPostCacheDialog = false
-                            Toast.makeText(context, "已清理本帖原图缓存", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text("清原图")
-                    }
-                    TextButton(
-                        onClick = {
-                            FakeMediaCacheRepository.clearPostVideoCaches(postMediaIds)
-                            showPostCacheDialog = false
-                            Toast.makeText(context, "已清理本帖视频缓存", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text("清视频")
-                    }
-                    TextButton(
-                        onClick = {
-                            FakeMediaCacheRepository.clearPostOriginalCaches(postMediaIds)
-                            FakeMediaCacheRepository.clearPostVideoCaches(postMediaIds)
-                            showPostCacheDialog = false
-                            Toast.makeText(context, "已清理本帖缓存", Toast.LENGTH_SHORT).show()
-                        },
-                    ) {
-                        Text("全清")
-                    }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPostCacheDialog = false }) {
-                    Text("取消")
-                }
-            },
-        )
     }
 }
 
@@ -1028,7 +970,6 @@ private fun PostMediaArea(
     pager: @Composable () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
 
     Column(
         modifier = modifier,
@@ -1036,14 +977,14 @@ private fun PostMediaArea(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(radius.xl),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RectangleShape,
+            color = Color.White,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
         ) {
             Box(
                 modifier = Modifier
-                    .padding(spacing.xs)
-                    .clip(RoundedCornerShape(radius.lg)),
+                    .fillMaxWidth()
+                    .background(Color.White),
             ) {
                 pager()
             }
@@ -1065,7 +1006,7 @@ private fun PostMediaArea(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
             )
             Spacer(modifier = Modifier.weight(1f))
-            PostActionChip(text = "查看态占位", onClick = onOpenMedia)
+            PostActionChip(text = "查看媒体", onClick = onOpenMedia)
         }
     }
 }
@@ -1076,50 +1017,37 @@ private fun PostMediaCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
+    val cardAspectRatio = media.displayAspectRatio()
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
-            .aspectRatio(
-                if (media.mediaType == AppMediaType.VIDEO) {
-                    media.aspectRatio.coerceIn(1.33f, 1.78f)
-                } else {
-                    media.aspectRatio.coerceIn(0.86f, 1.18f)
-                },
-            )
-            .clip(RoundedCornerShape(radius.lg))
             .clickable(onClick = onClick)
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(media.palette.start, media.palette.end),
-                ),
-            ),
+            .background(Color.White),
     ) {
-        if (media.mediaType == AppMediaType.VIDEO) {
-            VideoMediaMarker(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(spacing.md),
-            )
+        val availableWidth = maxWidth
+        val availableHeight = maxHeight
+        val fittedWidth = if (availableHeight * cardAspectRatio <= availableWidth) {
+            availableHeight * cardAspectRatio
+        } else {
+            availableWidth
+        }
+        val fittedHeight = if (availableWidth / cardAspectRatio <= availableHeight) {
+            availableWidth / cardAspectRatio
+        } else {
+            availableHeight
         }
 
-        Box(
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = media.palette,
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(spacing.lg)
-                .size(74.dp)
-                .clip(CircleShape)
-                .background(media.palette.accent.copy(alpha = 0.16f)),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(spacing.lg)
-                .fillMaxWidth(0.48f)
-                .height(30.dp)
-                .clip(RoundedCornerShape(radius.capsule))
-                .background(Color.White.copy(alpha = 0.13f)),
+                .align(Alignment.Center)
+                .width(fittedWidth)
+                .height(fittedHeight),
+            contentDescription = media.id,
+            showStatusBadge = true,
+            contentScale = ContentScale.Fit,
         )
     }
 }
@@ -1154,9 +1082,7 @@ private fun PostMediaInfoRow(
 private fun PostInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
-    cacheSummary: AppMediaCacheSummary,
     onLoadAllOriginals: () -> Unit,
-    onClearPostCache: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -1206,8 +1132,6 @@ private fun PostInfoSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PostActionChip(text = originalSummary.buttonLabel, onClick = onLoadAllOriginals)
-                PostMetaCapsule(text = "缓存 ${cacheSummary.totalSizeLabel}")
-                PostActionChip(text = "清理本帖缓存", onClick = onClearPostCache)
             }
         }
     }
@@ -1520,6 +1444,15 @@ private fun PostMetaCapsule(text: String) {
     }
 }
 
+private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
+    val actualWidth = width
+    val actualHeight = height
+    if (actualWidth != null && actualHeight != null && actualWidth > 0 && actualHeight > 0) {
+        return (actualWidth.toFloat() / actualHeight.toFloat()).coerceIn(0.05f, 20f)
+    }
+    return aspectRatio.coerceIn(0.05f, 20f)
+}
+
 private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewerRoute {
     return PhotoViewerRoute(
         mediaItems = mediaItems.map { media ->
@@ -1538,6 +1471,7 @@ private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewe
                 width = media.width,
                 height = media.height,
                 videoDurationMillis = media.videoDurationMillis,
+                mediaSource = media.mediaSource,
             )
         },
         initialIndex = initialIndex,

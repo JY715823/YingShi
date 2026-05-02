@@ -62,7 +62,7 @@ fun SystemMediaPostDestinationDialog(
                     text = if (selectedAlbum == null) "选择相册" else "选择帖子",
                 )
                 Text(
-                    text = selectedAlbum?.title ?: "先选择一个相册，再选择帖子",
+                    text = selectedAlbum?.title ?: "先选择一个相册，再选择目标帖子",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -78,7 +78,7 @@ fun SystemMediaPostDestinationDialog(
                 if (selectedAlbum == null) {
                     if (albumCards.isEmpty()) {
                         SystemMediaPickerEmptyState(
-                            text = "当前没有可选相册",
+                            text = "当前没有可选相册。",
                         )
                     } else {
                         albumCards.forEach { choice ->
@@ -107,7 +107,7 @@ fun SystemMediaPostDestinationDialog(
                     }
                 } else if (postsInSelectedAlbum.isEmpty()) {
                     SystemMediaPickerEmptyState(
-                        text = "该相册下还没有帖子",
+                        text = "该相册下还没有帖子。",
                     )
                 } else {
                     postsInSelectedAlbum.forEach { post ->

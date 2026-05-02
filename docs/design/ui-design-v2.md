@@ -1286,3 +1286,10 @@ Stage 4.1 落地时先保持最小可用 UI：
 - Settings can expose a lightweight login-status placeholder so future account work has a clear anchor without turning the page into an account center yet.
 - Auth failure, token expiry, and relogin UI are follow-up work; this stage only needs code-level seams that will later let those states appear consistently.
 
+## Stage 11B follow-up interaction note
+- Bottom navigation expands to four fixed items: `首页 / 照片 / 生活 / 我的`.
+- `我的` is a quiet tool page and should currently expose only two same-level entries: `设置` and `缓存管理`.
+- The photos-module top area keeps the title-style secondary navigation on the first row and places a restrained `+` entry on the next row at the right side.
+- Notification center no longer carries a settings action in its top bar.
+- Photo-flow viewer top-right action should be destructive-media delete, not settings; cache actions should leave the immersive viewer entirely.
+- System-media viewer should read closer to a lightweight system tool: cleaner canvas, default metadata only, and a compact top-right menu that opens bottom-sheet actions.

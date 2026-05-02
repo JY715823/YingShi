@@ -25,8 +25,9 @@ fun rememberViewerCommentBindings(
     mediaId: String,
 ): ViewerCommentBindings {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        val sessionKey = realBackendSessionKey("real-viewer-comments")
         val viewModel: RealViewerCommentViewModel = viewModel(
-            key = "real-viewer-comments",
+            key = sessionKey,
             factory = RealViewerCommentViewModel.factory(),
         )
         val uiState by viewModel.uiState.collectAsState()

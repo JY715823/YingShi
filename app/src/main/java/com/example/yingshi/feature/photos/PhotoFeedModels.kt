@@ -26,6 +26,7 @@ data class PhotoFeedSourceEntry(
     val width: Int? = null,
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
+    val mediaSource: AppContentMediaSource? = null,
 )
 
 @Immutable
@@ -43,6 +44,7 @@ data class PhotoFeedItem(
     val width: Int? = null,
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
+    val mediaSource: AppContentMediaSource? = null,
 )
 
 enum class PhotoFeedDensity(

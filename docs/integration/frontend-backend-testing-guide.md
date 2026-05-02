@@ -47,6 +47,7 @@ The script verifies:
 - albums
 - album posts
 - post detail
+- post update
 - media feed
 - post comments
 - media comments
@@ -102,6 +103,8 @@ Current behavior:
 - default mode stays `FAKE`
 - diagnostics page can switch `FAKE` / `REAL`
 - the switch is stored in debug runtime settings
+- changing `Repository mode` rebuilds the REAL page session so old fake/real view-model caches do not mix
+- changing `Base URL` clears the current token and rebuilds Retrofit immediately
 
 Files:
 - config state: `app/src/main/java/com/example/yingshi/data/remote/config/BackendDebugConfig.kt`
@@ -150,16 +153,29 @@ Use this exact checklist:
 12. Confirm `Last result` shows `[health] success`.
 13. Tap `Login and verify /me`.
 14. Confirm `Token state` becomes `Logged in`.
-15. Tap `Albums and post detail`.
-16. Confirm `Last result` includes `albums=` and `post=`.
-17. Tap `Media and comments`.
-18. Confirm `Last result` includes `media=`, `postComments=`, and `mediaComments=`.
-19. Tap `Trash`.
-20. Confirm `Last result` includes `trash=` without a failure message.
-21. Tap `Run all smoke actions`.
-22. Confirm `Last result` contains `health=UP`, `upload=success`, and `trash=`.
-23. If you want to verify future real repository wiring, switch mode to `REAL`, reopen the target screen, and test only that screen.
-24. Switch mode back to `FAKE` when finished.
+15. If you later change `Base URL`, log in again because the app now clears the old token on base-url change.
+16. Tap `Albums and post detail`.
+17. Confirm `Last result` includes `albums=` and `post=`.
+18. Tap `Media and comments`.
+19. Confirm `Last result` includes `media=`, `postComments=`, and `mediaComments=`.
+20. Tap `Trash`.
+21. Confirm `Last result` includes `trash=` without a failure message.
+22. Tap `Run all smoke actions`.
+23. Confirm the page lists each smoke item as `success` or `failed`, and the summary contains `health=UP`, `upload=success`, and `trash=`.
+24. If you want to verify future real repository wiring, switch mode to `REAL`, then reopen the target screen so it picks up the new repository session.
+25. Open `照片` and confirm the feed shows real thumbnails or safe placeholders instead of flat fake gradients.
+26. Open `相册` and confirm post cards show real cover thumbnails. If some cards are briefly plain then recover after load, that is the current per-post detail enrichment path.
+27. Open one post detail page and confirm the media area shows real thumbnails, while missing URLs and failed image requests stay on a safe placeholder.
+28. Open `Gear Edit -> 媒体管理` and confirm the grid shows the same real thumbnails or safe placeholders without crashing.
+29. Open one image from the photo feed Viewer and confirm it first shows the preview image on a dark immersive background.
+30. Tap the original action and confirm the Viewer shows an original-loading state, then either the original image or a safe retry/failure state while keeping the preview available when possible.
+31. Swipe between several Viewer media items and confirm original loading / failed / loaded states do not leak between different `mediaId` values.
+32. Open an in-post Viewer from a post detail media item and repeat the preview, original-load, and dark-background checks.
+33. Open one REAL video from the photo-flow Viewer and confirm it can load, play, pause, and stop when you swipe away to another media item.
+34. Open one REAL video from an in-post Viewer and confirm play / pause works there too, without carrying the previous media item's loading, error, or progress state.
+35. Open one system-media video Viewer and confirm the video itself can zoom or pan while the playback control bar stays fixed near the lower-left area inside the media canvas.
+36. In any video Viewer, verify that missing URLs or failed playback show Chinese fallback copy and do not crash the page; use the retry entry if the request can be retried.
+37. Switch mode back to `FAKE` when finished.
 
 ## 8. Common Problems
 
@@ -180,7 +196,25 @@ Login fails:
 Health passes but later requests fail:
 - login was not run yet
 - token is stale after a backend restart
-- repository mode changed but the target screen was already open before the switch
+- repository mode changed but the target screen was not reopened after the switch
+
+Thumbnails still do not appear in REAL:
+- backend returned only relative paths but Android `baseUrl` points to the wrong host
+- backend returned video items without `thumbnailUrl`, `previewUrl`, or `coverUrl`, so Android can only show a video placeholder
+- album cards currently resolve real covers through extra `post detail` requests, so a post-detail failure can leave that one card on a safe placeholder
+
+Viewer image does not show the expected REAL photo:
+- confirm the app is in `REAL` mode and the target screen was reopened after switching modes
+- confirm the media DTO contains at least one preview URL candidate: `thumbnailUrl`, `mediaUrl`, or `originalUrl`
+- confirm the original action has an original URL candidate: `originalUrl` or `mediaUrl`
+- if preview works but original fails, the Viewer should keep the preview and move only that media item into the retry/failure state
+- if dark letterbox areas show colored demo backgrounds, reinstall the latest debug build because Stage 12.1 second-round Viewer uses the shared immersive background
+
+Viewer video does not play as expected:
+- confirm the media DTO contains a playable candidate URL in `videoUrl`, `mediaUrl`, or `originalUrl`
+- confirm poster display comes from `thumbnailUrl`, `previewUrl`, or `coverUrl`; without a poster URL the app should still stay safe and show a placeholder
+- if playback fails on one media item, verify the error state does not leak to the next item after swiping
+- if system-media controls appear to move with the zoomed video, reinstall the latest debug build because Stage 12.1 third-round Viewer separates the transformed video layer from the fixed control layer
 
 Repeated smoke runs change media count:
 - upload smoke adds media while the dev server stays up

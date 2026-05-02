@@ -4,10 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.config.BackendDebugConfig
+import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
-import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.result.ApiResult
 
 data class SystemMediaDestinationUiState(
     val isLoading: Boolean = false,
@@ -22,9 +23,10 @@ fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState
     val backendMutationVersion = RealBackendMutationBus.version.collectAsState().value
     return produceState(
         initialValue = initialDestinationState(mode),
-        key1 = mode,
-        key2 = AuthSessionManager.isLoggedIn,
-        key3 = backendMutationVersion,
+        mode,
+        AuthSessionManager.isLoggedIn,
+        backendMutationVersion,
+        BackendDebugConfig.sessionVersion,
     ) {
         if (mode == RepositoryMode.FAKE) {
             value = SystemMediaDestinationUiState(

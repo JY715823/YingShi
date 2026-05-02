@@ -24,14 +24,18 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,6 +90,9 @@ fun PhotosRootScreen(
     var showDeleteConfirm by rememberSaveable {
         mutableStateOf(false)
     }
+    var showQuickAddSheet by rememberSaveable {
+        mutableStateOf(false)
+    }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = remember { FakeAlbumRepository.getAlbums() }
     val albumPosts = remember { FakeAlbumRepository.getPosts() }
@@ -96,6 +103,7 @@ fun PhotosRootScreen(
         initialPage = initialPage,
         pageCount = { PhotosTopDestination.entries.size },
     )
+    val backendSessionKey = realBackendSessionKey("photos-root")
     val selectedSection = PhotosTopDestination.entries[pagerState.currentPage]
     val isPhotoSelectionMode =
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
@@ -105,6 +113,10 @@ fun PhotosRootScreen(
         if (pageName != selectedTopDestinationName) {
             onSelectedTopDestinationChange(pageName)
         }
+    }
+    LaunchedEffect(backendSessionKey) {
+        photoSelectionState = photoSelectionState.clear()
+        showDeleteConfirm = false
     }
 
     if (isPhotoSelectionMode) {
@@ -179,7 +191,7 @@ fun PhotosRootScreen(
                             photoSelectionState = photoSelectionState.clear()
                             Toast.makeText(
                                 context,
-                                "已执行本地系统删，并写入回收站",
+                                "已执行本地系统删，并写入回收站。",
                                 Toast.LENGTH_SHORT,
                             ).show()
                         },
@@ -212,8 +224,12 @@ fun PhotosRootScreen(
             },
             onOpenSystemMedia = onOpenSystemMedia,
             onOpenNotifications = {
-                Toast.makeText(context, "通知中心将在后续阶段接入", Toast.LENGTH_SHORT).show()
+                PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
             },
+        )
+
+        PhotoQuickAddEntry(
+            onClick = { showQuickAddSheet = true },
         )
 
         Box(modifier = Modifier.weight(1f)) {
@@ -223,79 +239,103 @@ fun PhotosRootScreen(
                 beyondViewportPageCount = 1,
                 key = { page -> PhotosTopDestination.entries[page].name },
             ) { page ->
-                when (PhotosTopDestination.entries[page]) {
-                    PhotosTopDestination.PHOTOS -> {
-                        if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                            RealPhotoFeedPage(
-                                modifier = Modifier.fillMaxSize(),
-                                selectionState = photoSelectionState,
-                                onSelectionStateChange = { photoSelectionState = it },
-                                onOpenViewer = onOpenViewer,
-                            )
-                        } else {
-                            val feedItems = FakePhotoFeedRepository.getPhotoFeed()
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                PhotoFeedScreen(
-                                    feedItems = feedItems,
+                key(backendSessionKey, PhotosTopDestination.entries[page].name) {
+                    when (PhotosTopDestination.entries[page]) {
+                        PhotosTopDestination.PHOTOS -> {
+                            if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                                RealPhotoFeedPage(
                                     modifier = Modifier.fillMaxSize(),
                                     selectionState = photoSelectionState,
-                                    bottomOverlayPadding = if (isPhotoSelectionMode) {
-                                        PhotoSelectionActionBarPadding
-                                    } else {
-                                        0.dp
-                                    },
                                     onSelectionStateChange = { photoSelectionState = it },
                                     onOpenViewer = onOpenViewer,
                                 )
-
-                                androidx.compose.animation.AnimatedVisibility(
-                                    visible = isPhotoSelectionMode,
-                                    enter = fadeIn(),
-                                    exit = fadeOut(),
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .padding(bottom = spacing.sm),
-                                ) {
-                                    PhotoSelectionActionBar(
-                                        selectedCount = photoSelectionState.selectedCount,
-                                        onDelete = {
-                                            if (photoSelectionState.selectedMediaIds.isEmpty()) {
-                                                photoSelectionState = photoSelectionState.clear()
-                                            } else {
-                                                showDeleteConfirm = true
-                                            }
+                            } else {
+                                val feedItems = FakePhotoFeedRepository.getPhotoFeed()
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    PhotoFeedScreen(
+                                        feedItems = feedItems,
+                                        modifier = Modifier.fillMaxSize(),
+                                        selectionState = photoSelectionState,
+                                        bottomOverlayPadding = if (isPhotoSelectionMode) {
+                                            PhotoSelectionActionBarPadding
+                                        } else {
+                                            0.dp
                                         },
+                                        onSelectionStateChange = { photoSelectionState = it },
+                                        onOpenViewer = onOpenViewer,
                                     )
+
+                                    androidx.compose.animation.AnimatedVisibility(
+                                        visible = isPhotoSelectionMode,
+                                        enter = fadeIn(),
+                                        exit = fadeOut(),
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = spacing.sm),
+                                    ) {
+                                        PhotoSelectionActionBar(
+                                            selectedCount = photoSelectionState.selectedCount,
+                                            onDelete = {
+                                                if (photoSelectionState.selectedMediaIds.isEmpty()) {
+                                                    photoSelectionState = photoSelectionState.clear()
+                                                } else {
+                                                    showDeleteConfirm = true
+                                                }
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    PhotosTopDestination.ALBUMS -> {
-                        AlbumPageScreen(
-                            albums = albumSummaries,
-                            posts = albumPosts,
-                            onOpenPost = onOpenPostDetail,
-                            onManageAlbums = {
-                                Toast.makeText(context, "相册管理入口占位", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                        PhotosTopDestination.ALBUMS -> {
+                            AlbumPageScreen(
+                                albums = albumSummaries,
+                                posts = albumPosts,
+                                onOpenPost = onOpenPostDetail,
+                                onManageAlbums = {
+                                    Toast.makeText(context, "相册管理入口先保留占位。", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
 
-                    PhotosTopDestination.TRASH -> {
-                        TrashPageScreen(
-                            modifier = Modifier.fillMaxSize(),
-                            selectedTypeName = trashSelectedTypeName,
-                            onSelectedTypeNameChange = onTrashSelectedTypeNameChange,
-                            showPendingCleanup = trashShowPendingCleanup,
-                            onShowPendingCleanupChange = onTrashShowPendingCleanupChange,
-                            onOpenTrashDetail = onOpenTrashDetail,
-                        )
+                        PhotosTopDestination.TRASH -> {
+                            TrashPageScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                selectedTypeName = trashSelectedTypeName,
+                                onSelectedTypeNameChange = onTrashSelectedTypeNameChange,
+                                showPendingCleanup = trashShowPendingCleanup,
+                                onShowPendingCleanupChange = onTrashShowPendingCleanupChange,
+                                onOpenTrashDetail = onOpenTrashDetail,
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showQuickAddSheet) {
+        PhotoQuickAddSheet(
+            onDismiss = { showQuickAddSheet = false },
+            onAddMedia = {
+                showQuickAddSheet = false
+                Toast.makeText(
+                    context,
+                    "添加媒体入口先保留为占位，现有导入流程仍在系统媒体工具区。",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+            onAddPost = {
+                showQuickAddSheet = false
+                Toast.makeText(
+                    context,
+                    "添加帖子入口先保留为占位，后续再接正式新增流程。",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+        )
     }
 }
 
@@ -358,10 +398,89 @@ private fun PhotoTopBar(
             )
             PhotoBellButton(
                 unreadCount = notificationUnreadCount,
-                onClick = {
-                    PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
-                },
+                onClick = onOpenNotifications,
             )
+        }
+    }
+}
+
+@Composable
+private fun PhotoQuickAddEntry(
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PhotoTopToolButton(
+            text = "+",
+            onClick = onClick,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PhotoQuickAddSheet(
+    onDismiss: () -> Unit,
+    onAddMedia: () -> Unit,
+    onAddPost: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "添加入口",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "这轮先把结构放对，不展开完整新增流程。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(radius.lg))
+                    .clickable(onClick = onAddMedia),
+                shape = RoundedCornerShape(radius.lg),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+            ) {
+                Text(
+                    text = "添加媒体",
+                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(radius.lg))
+                    .clickable(onClick = onAddPost),
+                shape = RoundedCornerShape(radius.lg),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+            ) {
+                Text(
+                    text = "添加帖子",
+                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
     }
 }

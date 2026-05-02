@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
+import com.example.yingshi.feature.me.MyScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.CacheManagementRoute
@@ -203,7 +204,6 @@ fun YingShiApp() {
                     SettingsScreen(
                         route = route,
                         onBack = { settingsRoute = null },
-                        onOpenCacheManagement = { cacheManagementRoute = it },
                         onOpenBackendDiagnostics = { backendDiagnosticsRoute = it },
                     )
                 }
@@ -223,7 +223,6 @@ fun YingShiApp() {
                     NotificationCenterScreen(
                         route = route,
                         onBack = { notificationCenterRoute = null },
-                        onOpenSettings = { settingsRoute = it },
                         onOpenNotificationDetail = { notificationDetailRoute = it },
                     )
                 }
@@ -289,6 +288,12 @@ fun YingShiApp() {
                         },
                     )
                     RootDestination.LIFE -> LifeScreen()
+                    RootDestination.ME -> MyScreen(
+                        onOpenSettings = { settingsRoute = SettingsRoute(source = "my-page") },
+                        onOpenCacheManagement = {
+                            cacheManagementRoute = CacheManagementRoute(source = "my-page")
+                        },
+                    )
                 }
 
                 postDetailRoute?.let { route ->

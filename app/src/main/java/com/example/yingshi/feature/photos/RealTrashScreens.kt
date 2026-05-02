@@ -35,8 +35,9 @@ fun RealTrashPageScreen(
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
 ) {
+    val sessionKey = realBackendSessionKey("real-trash-list")
     val viewModel: RealTrashListViewModel = viewModel(
-        key = "real-trash-list",
+        key = sessionKey,
         factory = RealTrashListViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -268,8 +269,9 @@ fun RealTrashDetailScreen(
     onEntryRemoved: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val sessionKey = realBackendSessionKey("real-trash-detail-${route.entryId}")
     val viewModel: RealTrashDetailViewModel = viewModel(
-        key = "real-trash-detail-${route.entryId}",
+        key = sessionKey,
         factory = RealTrashDetailViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()

@@ -13,7 +13,7 @@ data class ViewerPreferenceState(
 
 @Immutable
 data class SettingsUiState(
-    val defaultPhotoFeedDensity: PhotoFeedDensity = PhotoFeedDensity.COMFORT_3,
+    val defaultPhotoFeedDensity: PhotoFeedDensity = PhotoFeedDensity.DENSE_4,
     val defaultAlbumGridDensity: AlbumGridDensity = AlbumGridDensity.COZY_2,
     val viewerPreferences: ViewerPreferenceState = ViewerPreferenceState(),
 )

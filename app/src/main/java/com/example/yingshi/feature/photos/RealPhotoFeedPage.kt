@@ -37,8 +37,9 @@ fun RealPhotoFeedPage(
     onOpenViewer: (PhotoViewerRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val sessionKey = realBackendSessionKey("real-photo-feed")
     val viewModel: RealPhotoFeedViewModel = viewModel(
-        key = "real-photo-feed",
+        key = sessionKey,
         factory = RealPhotoFeedViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()

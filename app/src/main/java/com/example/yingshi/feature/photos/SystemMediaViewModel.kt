@@ -161,8 +161,8 @@ private fun List<SystemMediaItem>.applyFilter(filter: SystemMediaFilter): List<S
 
 private fun Throwable.toSystemMediaMessage(): String {
     return if (this is SecurityException) {
-        "无法读取本地媒体。当前阶段不做权限引导，请先在系统设置中确认已授予图片和视频权限。"
+        "无法读取本地媒体。请先确认已经授予图片和视频权限。"
     } else {
-        "读取本地媒体失败。请稍后重试。"
+        "读取本地媒体失败，请稍后重试。"
     }
 }

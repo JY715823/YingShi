@@ -37,7 +37,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -421,8 +420,9 @@ private fun RealMediaManagementScreen(
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val sessionKey = realBackendSessionKey("real-media-management-${route.postId}")
     val viewModel: RealMediaManagementViewModel = viewModel(
-        key = "real-media-management-${route.postId}",
+        key = sessionKey,
         factory = RealMediaManagementViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -795,12 +795,15 @@ private fun MediaManagementCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(media.aspectRatio.coerceIn(0.92f, 1.12f))
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(media.palette.start, media.palette.end),
-                    ),
-                ),
         ) {
+            AppContentMediaThumbnail(
+                mediaSource = media.mediaSource,
+                mediaType = media.mediaType,
+                palette = media.palette,
+                modifier = Modifier.fillMaxSize(),
+                contentDescription = media.id,
+            )
+
             if (media.isCover) {
                 Surface(
                     modifier = Modifier

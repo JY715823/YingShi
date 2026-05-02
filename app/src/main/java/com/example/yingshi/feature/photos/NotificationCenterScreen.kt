@@ -46,7 +46,6 @@ import java.util.Locale
 fun NotificationCenterScreen(
     route: NotificationCenterRoute,
     onBack: () -> Unit,
-    onOpenSettings: (SettingsRoute) -> Unit,
     onOpenNotificationDetail: (NotificationDetailRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -72,9 +71,6 @@ fun NotificationCenterScreen(
             onMarkAllRead = {
                 FakeNotificationRepository.markAllRead()
                 Toast.makeText(context, "已全部标记为已读", Toast.LENGTH_SHORT).show()
-            },
-            onOpenSettings = {
-                onOpenSettings(SettingsRoute(source = "notification-center"))
             },
         )
 
@@ -126,7 +122,6 @@ private fun NotificationCenterTopBar(
     unreadCount: Int,
     onBack: () -> Unit,
     onMarkAllRead: () -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
 
@@ -154,9 +149,6 @@ private fun NotificationCenterTopBar(
         }
         TextButton(onClick = onMarkAllRead) {
             Text(text = "全部已读")
-        }
-        TextButton(onClick = onOpenSettings) {
-            Text(text = "设置")
         }
     }
 }
@@ -189,7 +181,7 @@ private fun NotificationCenterSummary(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "入口来源：${source.toNotificationSourceLabel()} · 当前只做本地 fake 通知、已读状态和跳转占位。",
+                    text = "入口来源：${source.toNotificationSourceLabel()}，当前只保留本地 fake 通知与跳转语义。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -463,7 +455,7 @@ private fun NotificationCenterEmptyState(
                 text = if (filter == NotificationCenterFilter.ALL) {
                     "后续真实评论、内容更新、删除恢复和系统提醒会从这里汇总。"
                 } else {
-                    "切换其他分类可继续查看本地 fake 通知。"
+                    "切换其他分类可以继续查看当前会话里的 fake 通知。"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -515,7 +507,6 @@ private fun NotificationCenterScreenPreview() {
         NotificationCenterScreen(
             route = NotificationCenterRoute(),
             onBack = { },
-            onOpenSettings = { },
             onOpenNotificationDetail = { },
         )
     }

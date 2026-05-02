@@ -50,6 +50,7 @@ Response data:
 ## Notes
 - album APIs return summaries only
 - album detail media lists still belong to post detail
+- current album-post summaries do not include thumbnail or poster URLs; Android REAL now may call `GET /api/posts/{postId}` per visible post to resolve a stable cover thumbnail for album cards
 - there is no `PATCH /api/posts/{postId}/albums` endpoint in current backend
 
 ## Error Codes

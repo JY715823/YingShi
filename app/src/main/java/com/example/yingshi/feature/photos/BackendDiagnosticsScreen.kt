@@ -53,6 +53,12 @@ data class BackendDiagnosticsRoute(
     val source: String = "settings",
 )
 
+private data class DiagnosticsCheckResult(
+    val name: String,
+    val success: Boolean,
+    val detail: String,
+)
+
 @Composable
 fun BackendDiagnosticsScreen(
     route: BackendDiagnosticsRoute,
@@ -61,12 +67,14 @@ fun BackendDiagnosticsScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val settings = BackendDebugConfig.settings
+    val tokenVersion = AuthSessionManager.sessionVersion
     val scope = rememberCoroutineScope()
     var baseUrlInput by rememberSaveable { mutableStateOf(settings.baseUrl) }
     var accountInput by rememberSaveable { mutableStateOf("demo.a@yingshi.local") }
     var passwordInput by rememberSaveable { mutableStateOf("demo123456") }
     var isRunning by remember { mutableStateOf(false) }
     var lastResult by remember { mutableStateOf("No diagnostics run yet.") }
+    var stepResults by remember { mutableStateOf<List<DiagnosticsCheckResult>>(emptyList()) }
 
     LaunchedEffect(settings.baseUrl) {
         if (baseUrlInput != settings.baseUrl) {
@@ -106,7 +114,8 @@ fun BackendDiagnosticsScreen(
                 enabled = !isRunning,
                 onClick = {
                     BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                    lastResult = "Saved base URL: ${BackendDebugConfig.currentBaseUrl()}"
+                    stepResults = emptyList()
+                    lastResult = "Saved base URL: ${BackendDebugConfig.currentBaseUrl()} (token cleared)"
                 },
             )
             DiagnosticsDualActionRow(
@@ -114,13 +123,15 @@ fun BackendDiagnosticsScreen(
                 onPrimaryClick = {
                     baseUrlInput = RemoteConfig.DEBUG_EMULATOR_BASE_URL
                     BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                    lastResult = "Switched to emulator preset: ${BackendDebugConfig.currentBaseUrl()}"
+                    stepResults = emptyList()
+                    lastResult = "Switched to emulator preset: ${BackendDebugConfig.currentBaseUrl()} (token cleared)"
                 },
                 secondaryLabel = "Device 127.0.0.1",
                 onSecondaryClick = {
                     baseUrlInput = RemoteConfig.DEBUG_DEVICE_LOOPBACK_BASE_URL
                     BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                    lastResult = "Switched to device preset: ${BackendDebugConfig.currentBaseUrl()}"
+                    stepResults = emptyList()
+                    lastResult = "Switched to device preset: ${BackendDebugConfig.currentBaseUrl()} (token cleared)"
                 },
             )
             DiagnosticsInfoRow(
@@ -136,7 +147,11 @@ fun BackendDiagnosticsScreen(
         ) {
             RepositoryModeRow(
                 selectedMode = settings.repositoryMode,
-                onSelected = { BackendDebugConfig.updateRepositoryMode(it) },
+                onSelected = {
+                    BackendDebugConfig.updateRepositoryMode(it)
+                    stepResults = emptyList()
+                    lastResult = "Repository mode changed to ${it.name}. Reopen target pages to rebuild their session."
+                },
             )
             DiagnosticsInfoRow(
                 title = "Current mode",
@@ -171,18 +186,31 @@ fun BackendDiagnosticsScreen(
                 onClick = {
                     scope.launch {
                         isRunning = true
-                        lastResult = runStep("login") {
+                        val result = runDiagnosticCheck("login") {
                             val loginResponse = loginWithCredentials(accountInput, passwordInput)
                             val currentUser = RemoteServiceFactory.authApi.getCurrentUser().data
                             "displayName=${loginResponse.displayName}, spaceId=${currentUser.spaceId}"
                         }
+                        stepResults = listOf(result)
+                        lastResult = formatDiagnosticResults(stepResults)
                         isRunning = false
                     }
                 },
             )
+            DiagnosticsActionRow(
+                title = "Clear token",
+                subtitle = "Clears the in-memory token so you can re-check missing-token and 401 flows.",
+                actionLabel = if (isRunning) "Busy" else "Clear",
+                enabled = !isRunning,
+                onClick = {
+                    AuthSessionManager.clearTokens()
+                    stepResults = emptyList()
+                    lastResult = "Cleared current token."
+                },
+            )
             DiagnosticsInfoRow(
                 title = "Token state",
-                value = if (AuthSessionManager.isLoggedIn) "Logged in" else "Logged out",
+                value = if (tokenVersion >= 0 && AuthSessionManager.isLoggedIn) "Logged in" else "Logged out",
                 subtitle = "If this stays logged out, check whether the backend is running and whether the base URL is correct.",
             )
         }
@@ -199,9 +227,11 @@ fun BackendDiagnosticsScreen(
                 onClick = {
                     scope.launch {
                         isRunning = true
-                        lastResult = runStep("health") {
+                        val result = runDiagnosticCheck("health") {
                             healthSummary()
                         }
+                        stepResults = listOf(result)
+                        lastResult = formatDiagnosticResults(stepResults)
                         isRunning = false
                     }
                 },
@@ -214,7 +244,7 @@ fun BackendDiagnosticsScreen(
                 onClick = {
                     scope.launch {
                         isRunning = true
-                        lastResult = runStep("albums/post") {
+                        val result = runDiagnosticCheck("albums/post") {
                             loginIfNeeded(accountInput, passwordInput)
                             val albums = RemoteServiceFactory.albumApi.getAlbums().data
                             val albumId = albums.firstOrNull()?.albumId ?: "album_001"
@@ -223,6 +253,8 @@ fun BackendDiagnosticsScreen(
                             val detail = RemoteServiceFactory.postApi.getPostDetail(postId).data
                             "albums=${albums.size}, albumPosts=${posts.size}, post=${detail.postId}"
                         }
+                        stepResults = listOf(result)
+                        lastResult = formatDiagnosticResults(stepResults)
                         isRunning = false
                     }
                 },
@@ -235,7 +267,7 @@ fun BackendDiagnosticsScreen(
                 onClick = {
                     scope.launch {
                         isRunning = true
-                        lastResult = runStep("media/comments") {
+                        val result = runDiagnosticCheck("media/comments") {
                             loginIfNeeded(accountInput, passwordInput)
                             val mediaFeed = RemoteServiceFactory.mediaApi.getMediaFeed().data
                             val mediaId = mediaFeed.firstOrNull()?.mediaId ?: "media_001"
@@ -248,6 +280,8 @@ fun BackendDiagnosticsScreen(
                             RemoteServiceFactory.commentApi.deleteComment(createdComment.commentId)
                             "media=${mediaFeed.size}, postComments=${postComments.comments.size}, mediaComments=${mediaComments.comments.size}"
                         }
+                        stepResults = listOf(result)
+                        lastResult = formatDiagnosticResults(stepResults)
                         isRunning = false
                     }
                 },
@@ -260,10 +294,12 @@ fun BackendDiagnosticsScreen(
                 onClick = {
                     scope.launch {
                         isRunning = true
-                        lastResult = runStep("trash") {
+                        val result = runDiagnosticCheck("trash") {
                             loginIfNeeded(accountInput, passwordInput)
                             trashSmokeSummary()
                         }
+                        stepResults = listOf(result)
+                        lastResult = formatDiagnosticResults(stepResults)
                         isRunning = false
                     }
                 },
@@ -276,21 +312,50 @@ fun BackendDiagnosticsScreen(
                 onClick = {
                     scope.launch {
                         isRunning = true
-                        lastResult = runStep("smoke") {
-                            loginIfNeeded(accountInput, passwordInput)
-                            val health = healthSummary()
-                            val albums = RemoteServiceFactory.albumApi.getAlbums().data.size
-                            val media = RemoteServiceFactory.mediaApi.getMediaFeed().data.size
-                            val postComments = RemoteServiceFactory.commentApi.getPostComments("post_001", 1, 20).data.comments.size
-                            val mediaComments = RemoteServiceFactory.commentApi.getMediaComments("media_001", 1, 20).data.comments.size
-                            val upload = uploadSmokeSummary()
-                            val trash = trashSmokeSummary()
-                            "$health; albums=$albums; media=$media; postComments=$postComments; mediaComments=$mediaComments; $upload; $trash"
+                        val results = mutableListOf<DiagnosticsCheckResult>()
+                        results += runDiagnosticCheck("health") { healthSummary() }
+                        results += runDiagnosticCheck("login") {
+                            loginWithCredentials(accountInput, passwordInput)
+                            "token=${AuthSessionManager.getAccessToken()?.length ?: 0}"
                         }
+                        results += runDiagnosticCheck("albums/post") {
+                            val albums = RemoteServiceFactory.albumApi.getAlbums().data
+                            val albumId = albums.firstOrNull()?.albumId ?: "album_001"
+                            val posts = RemoteServiceFactory.albumApi.getAlbumPosts(albumId).data
+                            val postId = posts.firstOrNull()?.postId ?: "post_001"
+                            val detail = RemoteServiceFactory.postApi.getPostDetail(postId).data
+                            "albums=${albums.size}, albumPosts=${posts.size}, post=${detail.postId}"
+                        }
+                        results += runDiagnosticCheck("media/comments") {
+                            val mediaFeed = RemoteServiceFactory.mediaApi.getMediaFeed().data
+                            val mediaId = mediaFeed.firstOrNull()?.mediaId ?: "media_001"
+                            val postComments = RemoteServiceFactory.commentApi.getPostComments("post_001", 1, 20).data
+                            val mediaComments = RemoteServiceFactory.commentApi.getMediaComments(mediaId, 1, 20).data
+                            "media=${mediaFeed.size}, postComments=${postComments.comments.size}, mediaComments=${mediaComments.comments.size}"
+                        }
+                        results += runDiagnosticCheck("upload") { uploadSmokeSummary() }
+                        results += runDiagnosticCheck("trash") { trashSmokeSummary() }
+                        stepResults = results
+                        lastResult = formatDiagnosticResults(stepResults)
                         isRunning = false
                     }
                 },
             )
+        }
+
+        DiagnosticsSection(
+            title = "Step results",
+            subtitle = "Each check reports success or failure separately so you can see which stage broke.",
+        ) {
+            if (stepResults.isEmpty()) {
+                DiagnosticsResultBlock("No step results yet.")
+            } else {
+                stepResults.forEach { result ->
+                    DiagnosticsResultBlock(
+                        text = "[${result.name}] ${if (result.success) "success" else "failed"}: ${result.detail}",
+                    )
+                }
+            }
         }
 
         DiagnosticsSection(
@@ -379,6 +444,23 @@ private suspend fun runStep(stepName: String, block: suspend () -> String): Stri
         onSuccess = { "[$stepName] success: $it" },
         onFailure = { "[$stepName] failed: ${it.message ?: it::class.java.simpleName}" },
     )
+}
+
+private suspend fun runDiagnosticCheck(
+    stepName: String,
+    block: suspend () -> String,
+): DiagnosticsCheckResult {
+    return runCatching { block() }.fold(
+        onSuccess = { DiagnosticsCheckResult(stepName, true, it) },
+        onFailure = { DiagnosticsCheckResult(stepName, false, it.message ?: it::class.java.simpleName) },
+    )
+}
+
+private fun formatDiagnosticResults(results: List<DiagnosticsCheckResult>): String {
+    if (results.isEmpty()) return "No diagnostics run yet."
+    return results.joinToString(separator = "\n") { result ->
+        "[${result.name}] ${if (result.success) "success" else "failed"}: ${result.detail}"
+    }
 }
 
 @Composable

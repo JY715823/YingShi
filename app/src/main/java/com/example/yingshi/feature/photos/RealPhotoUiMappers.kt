@@ -22,8 +22,10 @@ fun RemoteAlbum.toAlbumSummaryUiModel(): AlbumSummaryUiModel {
 
 fun RemotePostSummary.toAlbumPostCardUiModel(
     selectedAlbumId: String,
+    coverMedia: RemotePostMedia? = null,
 ): AlbumPostCardUiModel {
     val palette = realPaletteFor(coverMediaId ?: postId)
+    val resolvedCoverType = coverMedia?.toResolvedAppMediaType() ?: AppMediaType.IMAGE
     return AlbumPostCardUiModel(
         id = postId,
         albumId = selectedAlbumId,
@@ -33,8 +35,9 @@ fun RemotePostSummary.toAlbumPostCardUiModel(
         postDisplayTimeMillis = displayTimeMillis,
         mediaCount = mediaCount,
         coverPalette = palette,
-        coverMediaType = AppMediaType.IMAGE,
-        coverAspectRatio = 1f,
+        coverMediaType = resolvedCoverType,
+        coverAspectRatio = coverMedia?.toResolvedAspectRatio(resolvedCoverType) ?: 1f,
+        coverMediaSource = coverMedia?.toAppContentMediaSource(),
     )
 }
 
@@ -84,19 +87,17 @@ fun RemotePostDetail.toEditablePostDraft(): EditablePostDraft {
 
 fun RemotePostDetail.toManagedPostMediaUiModels(): List<ManagedPostMediaUiModel> {
     return mediaItems.map { media ->
-        val mediaKind = when (media.mediaType.lowercase()) {
-            "video" -> AppMediaType.VIDEO
-            else -> AppMediaType.IMAGE
-        }
+        val mediaKind = media.toResolvedAppMediaType()
         ManagedPostMediaUiModel(
             id = media.mediaId,
             displayTimeMillis = media.displayTimeMillis,
             commentCount = media.commentCount,
             palette = realPaletteFor(media.mediaId),
             mediaType = mediaKind,
-            aspectRatio = (media.aspectRatio ?: 1f).coerceIn(0.56f, 1.8f),
+            aspectRatio = media.toResolvedAspectRatio(mediaKind),
             isCover = media.isCover,
             videoDurationMillis = media.videoDurationMillis,
+            mediaSource = media.toAppContentMediaSource(),
         )
     }
 }
@@ -105,6 +106,7 @@ fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
     val calendar = Calendar.getInstance().apply {
         timeInMillis = displayTimeMillis
     }
+    val mediaKind = toResolvedAppMediaType()
     return PhotoFeedItem(
         mediaId = mediaId,
         mediaDisplayTimeMillis = displayTimeMillis,
@@ -114,14 +116,12 @@ fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
         commentCount = commentCount,
         postIds = postIds,
         palette = realPaletteFor(mediaId),
-        mediaType = when (mediaType.lowercase()) {
-            "video" -> AppMediaType.VIDEO
-            else -> AppMediaType.IMAGE
-        },
-        aspectRatio = (aspectRatio ?: 1f).coerceIn(0.56f, 1.8f),
+        mediaType = mediaKind,
+        aspectRatio = toResolvedAspectRatio(mediaKind),
         width = width,
         height = height,
-        videoDurationMillis = null,
+        videoDurationMillis = durationMillis,
+        mediaSource = toAppContentMediaSource(),
     )
 }
 
@@ -148,20 +148,18 @@ fun RemotePendingCleanup.toTrashPendingCleanupUiModel(): TrashPendingCleanupUiMo
 }
 
 fun RemotePostMedia.toPostDetailMediaUiModel(): PostDetailMediaUiModel {
-    val mediaKind = when (mediaType.lowercase()) {
-        "video" -> AppMediaType.VIDEO
-        else -> AppMediaType.IMAGE
-    }
+    val mediaKind = toResolvedAppMediaType()
     return PostDetailMediaUiModel(
         id = mediaId,
         displayTimeMillis = displayTimeMillis,
         commentCount = commentCount,
         palette = realPaletteFor(mediaId),
         mediaType = mediaKind,
-        aspectRatio = (aspectRatio ?: 1f).coerceIn(0.56f, 1.8f),
+        aspectRatio = toResolvedAspectRatio(mediaKind),
         width = width,
         height = height,
         videoDurationMillis = videoDurationMillis,
+        mediaSource = toAppContentMediaSource(),
     )
 }
 
@@ -199,6 +197,48 @@ internal fun realPaletteFor(key: String): PhotoThumbnailPalette {
         ),
     )
     return palettes[key.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) } % palettes.size]
+}
+
+private fun RemoteMedia.toResolvedAppMediaType(): AppMediaType {
+    return resolveAppMediaType(
+        rawType = mediaType,
+        mimeType = mimeType,
+        thumbnailUrl = thumbnailUrl ?: previewUrl,
+        mediaUrl = mediaUrl,
+        videoUrl = videoUrl,
+        coverUrl = coverUrl,
+        originalUrl = originalUrl,
+    )
+}
+
+private fun RemotePostMedia.toResolvedAppMediaType(): AppMediaType {
+    return resolveAppMediaType(
+        rawType = mediaType,
+        mimeType = mimeType,
+        thumbnailUrl = thumbnailUrl ?: previewUrl,
+        mediaUrl = mediaUrl,
+        videoUrl = videoUrl,
+        coverUrl = coverUrl,
+        originalUrl = originalUrl,
+    )
+}
+
+private fun RemoteMedia.toResolvedAspectRatio(mediaType: AppMediaType): Float {
+    return resolveAppContentAspectRatio(
+        aspectRatio = aspectRatio,
+        width = width,
+        height = height,
+        mediaType = mediaType,
+    )
+}
+
+private fun RemotePostMedia.toResolvedAspectRatio(mediaType: AppMediaType): Float {
+    return resolveAppContentAspectRatio(
+        aspectRatio = aspectRatio,
+        width = width,
+        height = height,
+        mediaType = mediaType,
+    )
 }
 
 private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {

@@ -110,18 +110,21 @@ class MediaStoreSystemMediaDataSource(
                     "未命名媒体"
                 }
                 val bucketName = cursor.getStringOrNull(bucketNameIndex)
-                val width = cursor.getIntOrNull(widthIndex)
-                val height = cursor.getIntOrNull(heightIndex)
+                val rawWidth = cursor.getIntOrNull(widthIndex)
+                val rawHeight = cursor.getIntOrNull(heightIndex)
                 val displayTimeMillis = resolveTimeMillis(
                     dateTakenMillis = cursor.getLongOrNull(dateTakenIndex),
                     dateModifiedSeconds = cursor.getLongOrNull(dateModifiedIndex),
                 )
                 val dateParts = displayTimeMillis.toDateParts()
+                val contentUri = buildContentUri(type, mediaStoreId)
+                val width = rawWidth
+                val height = rawHeight
 
                 items += SystemMediaItem(
                     id = "${type.name.lowercase(Locale.ROOT)}-$mediaStoreId",
                     mediaStoreId = mediaStoreId,
-                    uri = buildContentUri(type, mediaStoreId),
+                    uri = contentUri,
                     type = type,
                     mimeType = mimeType,
                     displayName = displayName,

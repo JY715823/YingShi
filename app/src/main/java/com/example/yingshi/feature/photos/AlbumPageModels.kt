@@ -22,6 +22,7 @@ data class AlbumPostCardUiModel(
     val coverPalette: PhotoThumbnailPalette,
     val coverMediaType: AppMediaType = AppMediaType.IMAGE,
     val coverAspectRatio: Float = 1f,
+    val coverMediaSource: AppContentMediaSource? = null,
 )
 
 @Immutable
@@ -48,6 +49,7 @@ data class PostDetailMediaUiModel(
     val width: Int? = null,
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
+    val mediaSource: AppContentMediaSource? = null,
 )
 
 enum class AlbumGridDensity(
@@ -102,4 +104,5 @@ data class ManagedPostMediaUiModel(
     val aspectRatio: Float,
     val isCover: Boolean,
     val videoDurationMillis: Long? = null,
+    val mediaSource: AppContentMediaSource? = null,
 )
