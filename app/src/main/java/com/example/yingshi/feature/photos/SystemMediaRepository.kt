@@ -54,7 +54,6 @@ private object LocalSystemMediaQueryCache {
 class MediaStoreSystemMediaDataSource(
     context: Context,
 ) : SystemMediaDataSource {
-    private val appContext = context.applicationContext
     private val contentResolver = context.contentResolver
 
     override suspend fun queryMedia(): List<SystemMediaItem> {
@@ -119,16 +118,8 @@ class MediaStoreSystemMediaDataSource(
                 )
                 val dateParts = displayTimeMillis.toDateParts()
                 val contentUri = buildContentUri(type, mediaStoreId)
-                val (resolvedWidth, resolvedHeight) = if (type == SystemMediaType.VIDEO) {
-                    resolveSystemVideoDimensions(
-                        context = appContext,
-                        uri = contentUri,
-                    )
-                } else {
-                    null to null
-                }
-                val width = resolvedWidth ?: rawWidth
-                val height = resolvedHeight ?: rawHeight
+                val width = rawWidth
+                val height = rawHeight
 
                 items += SystemMediaItem(
                     id = "${type.name.lowercase(Locale.ROOT)}-$mediaStoreId",

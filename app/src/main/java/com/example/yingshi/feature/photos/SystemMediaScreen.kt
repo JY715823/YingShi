@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,6 +61,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -76,6 +80,7 @@ fun SystemMediaScreen(
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext as Application
+    val lifecycleOwner = LocalLifecycleOwner.current
     val viewModel: SystemMediaViewModel = viewModel(
         factory = SystemMediaViewModel.factory(
             application = appContext,
@@ -119,6 +124,22 @@ fun SystemMediaScreen(
         hasPermission = hasSystemMediaReadAccess(context)
         if (hasPermission) {
             viewModel.refresh(forceRefresh = true)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val granted = hasSystemMediaReadAccess(context)
+                hasPermission = granted
+                if (granted) {
+                    viewModel.ensureLoaded()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     val trashLauncher = rememberLauncherForActivityResult(
@@ -182,6 +203,14 @@ fun SystemMediaScreen(
             permissionRequestedOnce = true
             permissionLauncher.launch(requiredSystemMediaPermissions())
         } else if (hasPermission) {
+            viewModel.ensureLoaded()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val granted = hasSystemMediaReadAccess(context)
+        hasPermission = granted
+        if (granted) {
             viewModel.ensureLoaded()
         }
     }

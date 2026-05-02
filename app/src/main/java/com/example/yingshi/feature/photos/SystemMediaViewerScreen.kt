@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,6 +29,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
@@ -36,7 +39,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -70,6 +76,14 @@ import kotlinx.coroutines.launch
 private const val MinSystemViewerScale = 1f
 private const val MaxSystemViewerScale = 4f
 private const val SystemViewerResetScale = 1.02f
+
+private data class SystemVideoPlaybackState(
+    val isPlaying: Boolean = false,
+    val progressMillis: Long = 0L,
+    val durationMillis: Long? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+)
 
 private class SystemViewerZoomState {
     var scale by mutableStateOf(MinSystemViewerScale)
@@ -434,6 +448,10 @@ private fun SystemMediaViewerCanvas(
     zoomState: SystemViewerZoomState?,
 ) {
     var containerSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
+    var videoPlaybackState by remember(item.id) {
+        mutableStateOf(SystemVideoPlaybackState())
+    }
+    var videoRetryVersion by remember(item.id) { mutableStateOf(0) }
     val transformModifier = if (zoomState != null) {
         Modifier
             .graphicsLayer(
@@ -489,13 +507,46 @@ private fun SystemMediaViewerCanvas(
                 }
 
                 SystemMediaType.VIDEO -> {
-                    SystemMediaViewerVideoCanvas(
-                        item = item,
-                        isCurrent = isCurrent,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(transformModifier),
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        SystemMediaViewerVideoCanvas(
+                            item = item,
+                            isCurrent = isCurrent,
+                            playbackState = videoPlaybackState,
+                            retryVersion = videoRetryVersion,
+                            onPlaybackStateChange = { videoPlaybackState = it },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(transformModifier),
+                        )
+                        SystemMediaVideoControls(
+                            playbackState = videoPlaybackState,
+                            onTogglePlayback = {
+                                val durationMillis = videoPlaybackState.durationMillis ?: 0L
+                                val shouldRestart = durationMillis > 0L &&
+                                    videoPlaybackState.progressMillis >= durationMillis
+                                videoPlaybackState = if (videoPlaybackState.errorMessage != null) {
+                                    videoRetryVersion += 1
+                                    videoPlaybackState.copy(
+                                        isPlaying = false,
+                                        progressMillis = 0L,
+                                        isLoading = true,
+                                        errorMessage = null,
+                                    )
+                                } else if (videoPlaybackState.isPlaying) {
+                                    videoPlaybackState.copy(isPlaying = false)
+                                } else {
+                                    videoPlaybackState.copy(
+                                        isPlaying = true,
+                                        progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
+                                        errorMessage = null,
+                                    )
+                                }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 16.dp, bottom = 18.dp, end = 16.dp),
+                        )
+                    }
                 }
             }
         }
@@ -506,14 +557,20 @@ private fun SystemMediaViewerCanvas(
 private fun SystemMediaViewerVideoCanvas(
     item: SystemMediaItem,
     isCurrent: Boolean,
+    playbackState: SystemVideoPlaybackState,
+    retryVersion: Int,
+    onPlaybackStateChange: (SystemVideoPlaybackState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var isPlaying by remember(item.id) { mutableStateOf(false) }
     val videoViewRef = remember(item.id) { mutableStateOf<VideoView?>(null) }
-    val context = LocalContext.current
-    val videoThumbnail = rememberSystemVideoThumbnail(context, item.uri)
+    val videoThumbnail = rememberSystemVideoThumbnail(LocalContext.current, item.uri)
+    var isPrepared by remember(item.id, retryVersion) { mutableStateOf(false) }
 
-    DisposableEffect(item.id) {
+    LaunchedEffect(item.id, retryVersion) {
+        onPlaybackStateChange(SystemVideoPlaybackState(isLoading = true))
+    }
+
+    DisposableEffect(item.id, retryVersion) {
         onDispose {
             videoViewRef.value?.pause()
             videoViewRef.value?.stopPlayback()
@@ -524,9 +581,25 @@ private fun SystemMediaViewerVideoCanvas(
     DisposableEffect(isCurrent) {
         if (!isCurrent) {
             videoViewRef.value?.pause()
-            isPlaying = false
+            onPlaybackStateChange(playbackState.copy(isPlaying = false))
         }
         onDispose { }
+    }
+
+    LaunchedEffect(isCurrent, playbackState.isPlaying, playbackState.errorMessage) {
+        while (isCurrent && playbackState.errorMessage == null) {
+            val videoView = videoViewRef.value
+            if (videoView != null && isPrepared) {
+                onPlaybackStateChange(
+                    playbackState.copy(
+                        progressMillis = videoView.currentPosition.toLong().coerceAtLeast(0L),
+                        durationMillis = videoView.duration.toLong().takeIf { it > 0 }
+                            ?: playbackState.durationMillis,
+                    ),
+                )
+            }
+            kotlinx.coroutines.delay(300)
+        }
     }
 
     Box(
@@ -548,12 +621,44 @@ private fun SystemMediaViewerVideoCanvas(
                 contentScale = ContentScale.Fit,
             )
         }
+        key(retryVersion) {
         AndroidView(
             factory = { context ->
                 VideoView(context).apply {
                     setVideoURI(item.uri)
                     setOnPreparedListener { player ->
                         player.isLooping = true
+                        isPrepared = true
+                        onPlaybackStateChange(
+                            playbackState.copy(
+                                isLoading = false,
+                                errorMessage = null,
+                                durationMillis = duration.toLong().takeIf { it > 0 },
+                            ),
+                        )
+                        if (isCurrent && playbackState.isPlaying) {
+                            start()
+                        }
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        isPrepared = false
+                        onPlaybackStateChange(
+                            playbackState.copy(
+                                isPlaying = false,
+                                isLoading = false,
+                                errorMessage = "视频加载失败，请重试",
+                            ),
+                        )
+                        true
+                    }
+                    setOnCompletionListener {
+                        onPlaybackStateChange(
+                            playbackState.copy(
+                                isPlaying = false,
+                                progressMillis = duration.toLong().takeIf { it > 0 }
+                                    ?: playbackState.progressMillis,
+                            ),
+                        )
                     }
                     videoViewRef.value = this
                 }
@@ -561,11 +666,11 @@ private fun SystemMediaViewerVideoCanvas(
             modifier = Modifier.fillMaxSize(),
             update = { videoView ->
                 videoViewRef.value = videoView
-                videoView.alpha = if (isPlaying) 1f else 0f
-                if (isCurrent) {
-                    if (isPlaying && !videoView.isPlaying) {
+                videoView.alpha = if (playbackState.isPlaying) 1f else 0f
+                if (isCurrent && playbackState.errorMessage == null) {
+                    if (playbackState.isPlaying && isPrepared && !videoView.isPlaying) {
                         videoView.start()
-                    } else if (!isPlaying && videoView.isPlaying) {
+                    } else if (!playbackState.isPlaying && videoView.isPlaying) {
                         videoView.pause()
                     }
                 } else if (videoView.isPlaying) {
@@ -573,27 +678,28 @@ private fun SystemMediaViewerVideoCanvas(
                 }
             },
         )
+        }
 
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp),
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-            color = Color.Black.copy(alpha = 0.42f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-            onClick = {
-                val next = !isPlaying
-                isPlaying = next
-                if (next) {
-                    videoViewRef.value?.start()
-                } else {
-                    videoViewRef.value?.pause()
-                }
-            },
-        ) {
+        if (playbackState.isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(28.dp),
+                color = Color.White.copy(alpha = 0.88f),
+                strokeWidth = 2.dp,
+            )
+        }
+
+        if (playbackState.errorMessage != null) {
             Text(
-                text = if (isPlaying) "暂停视频" else "播放视频",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                text = playbackState.errorMessage,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(
+                        color = Color.Black.copy(alpha = 0.42f),
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    )
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = Color.White,
             )
@@ -630,6 +736,92 @@ private fun SystemMediaViewerInfoCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.76f),
             )
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaVideoControls(
+    playbackState: SystemVideoPlaybackState,
+    onTogglePlayback: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val durationMillis = playbackState.durationMillis ?: 0L
+    val progressFraction = if (durationMillis <= 0L) {
+        0f
+    } else {
+        (playbackState.progressMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = Color.Black.copy(alpha = 0.48f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.14f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                onClick = onTogglePlayback,
+            ) {
+                Box(
+                    modifier = Modifier.padding(11.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    VideoGlyph(
+                        state = if (playbackState.isPlaying) {
+                            VideoGlyphState.PAUSE
+                        } else {
+                            VideoGlyphState.PLAY
+                        },
+                        tint = Color.White.copy(alpha = 0.92f),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = when {
+                            playbackState.errorMessage != null -> "播放失败"
+                            playbackState.isLoading -> "加载中"
+                            playbackState.isPlaying -> "播放中"
+                            else -> "已暂停"
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White.copy(alpha = 0.90f),
+                    )
+                    Text(
+                        text = "${formatVideoProgress(playbackState.progressMillis)} / ${formatVideoProgress(durationMillis)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.70f),
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule)),
+                    color = Color.White.copy(alpha = 0.88f),
+                    trackColor = Color.White.copy(alpha = 0.18f),
+                )
+            }
         }
     }
 }
@@ -741,6 +933,13 @@ private fun SystemMediaViewerCircleButton(
 
 private fun formatSystemMediaViewerTime(timeMillis: Long): String {
     return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
+}
+
+private fun formatVideoProgress(timeMillis: Long): String {
+    val totalSeconds = (timeMillis / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "%d:%02d".format(Locale.ROOT, minutes, seconds)
 }
 
 @Preview(showBackground = true)

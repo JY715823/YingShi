@@ -171,7 +171,11 @@ Use this exact checklist:
 30. Tap the original action and confirm the Viewer shows an original-loading state, then either the original image or a safe retry/failure state while keeping the preview available when possible.
 31. Swipe between several Viewer media items and confirm original loading / failed / loaded states do not leak between different `mediaId` values.
 32. Open an in-post Viewer from a post detail media item and repeat the preview, original-load, and dark-background checks.
-33. Switch mode back to `FAKE` when finished.
+33. Open one REAL video from the photo-flow Viewer and confirm it can load, play, pause, and stop when you swipe away to another media item.
+34. Open one REAL video from an in-post Viewer and confirm play / pause works there too, without carrying the previous media item's loading, error, or progress state.
+35. Open one system-media video Viewer and confirm the video itself can zoom or pan while the playback control bar stays fixed near the lower-left area inside the media canvas.
+36. In any video Viewer, verify that missing URLs or failed playback show Chinese fallback copy and do not crash the page; use the retry entry if the request can be retried.
+37. Switch mode back to `FAKE` when finished.
 
 ## 8. Common Problems
 
@@ -205,6 +209,12 @@ Viewer image does not show the expected REAL photo:
 - confirm the original action has an original URL candidate: `originalUrl` or `mediaUrl`
 - if preview works but original fails, the Viewer should keep the preview and move only that media item into the retry/failure state
 - if dark letterbox areas show colored demo backgrounds, reinstall the latest debug build because Stage 12.1 second-round Viewer uses the shared immersive background
+
+Viewer video does not play as expected:
+- confirm the media DTO contains a playable candidate URL in `videoUrl`, `mediaUrl`, or `originalUrl`
+- confirm poster display comes from `thumbnailUrl`, `previewUrl`, or `coverUrl`; without a poster URL the app should still stay safe and show a placeholder
+- if playback fails on one media item, verify the error state does not leak to the next item after swiping
+- if system-media controls appear to move with the zoomed video, reinstall the latest debug build because Stage 12.1 third-round Viewer separates the transformed video layer from the fixed control layer
 
 Repeated smoke runs change media count:
 - upload smoke adds media while the dev server stays up

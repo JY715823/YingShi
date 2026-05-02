@@ -2,6 +2,8 @@
 
 import android.app.Activity
 import android.content.ContextWrapper
+import android.net.Uri
+import android.widget.VideoView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -46,6 +48,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,10 +74,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import coil.imageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.request.SuccessResult
 import coil.size.Precision
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.RemoteConfig
@@ -88,14 +95,13 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val ViewerNightTop = Color(0xFF07111C)
-private val ViewerNightBottom = Color(0xFF03070E)
-private val ViewerNightMiddle = Color(0xFF102032)
+private val ViewerNightTop = Color(0xFF050608)
+private val ViewerNightBottom = Color(0xFF050608)
+private val ViewerNightMiddle = Color(0xFF050608)
 private val ViewerSurface = Color(0xFFFFFFFF)
 private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
-private const val ViewerLongImageThreshold = 2.5f
 private const val DefaultViewerVideoDurationMillis = 18_000L
 
 private object ViewerLayoutTuning {
@@ -104,14 +110,14 @@ private object ViewerLayoutTuning {
     val topBarTopInset = 6.dp
     val backButtonTouchSize = 42.dp
     val canvasHorizontalPadding = 0.dp
-    val canvasTopPadding = 62.dp
-    val canvasBottomPadding = 170.dp
+    val canvasTopPadding = 68.dp
+    val canvasBottomPadding = 104.dp
     const val commentPreviewWidthFraction = 0.70f
     val commentPreviewMaxWidth = 288.dp
     val commentPreviewHeight = 172.dp
-    val photoFlowEdgeActionsBottomPadding = 34.dp
-    val inPostEdgeActionsBottomPadding = 50.dp
-    val postSegmentBottomOffset = 12.dp
+    val photoFlowEdgeActionsBottomPadding = 0.dp
+    val inPostEdgeActionsBottomPadding = 2.dp
+    val postSegmentBottomOffset = 2.dp
     const val commentSheetHeightFraction = 0.68f
     const val relatedPostsSheetHeightFraction = 0.42f
     const val zoomedOverlayAlpha = 0.42f
@@ -126,6 +132,9 @@ private data class ViewerVideoPlaybackState(
     val mediaId: String? = null,
     val isPlaying: Boolean = false,
     val progressMillis: Long = 0L,
+    val durationMillis: Long? = null,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
 )
 
 private enum class ViewerImageFailureReason {
@@ -300,6 +309,10 @@ fun PhotoViewerScreen(
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val coroutineScope = rememberCoroutineScope()
+    val sessionVersion = AuthSessionManager.sessionVersion
+    val viewerAccessToken = remember(sessionVersion) {
+        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+    }
     val settingsState = FakeSettingsRepository.getSettingsState()
     var viewerItems by remember(route) {
         mutableStateOf(route.mediaItems)
@@ -327,7 +340,6 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = viewerItems[currentIndex]
-    val currentVideoDurationMillis = currentItem.viewerVideoDurationMillis()
     val currentOriginalState = if (
         RepositoryProvider.currentMode == RepositoryMode.REAL &&
         currentItem.mediaType == AppMediaType.IMAGE
@@ -390,28 +402,6 @@ fun PhotoViewerScreen(
         openCommentComposerOnSheet = false
         videoPlaybackState = ViewerVideoPlaybackState(
             mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
-        )
-    }
-    LaunchedEffect(
-        currentItem.mediaId,
-        currentItem.mediaType,
-        currentVideoDurationMillis,
-        videoPlaybackState.isPlaying,
-        videoPlaybackState.progressMillis,
-    ) {
-        if (currentItem.mediaType != AppMediaType.VIDEO) return@LaunchedEffect
-        if (videoPlaybackState.mediaId != currentItem.mediaId) return@LaunchedEffect
-        if (!videoPlaybackState.isPlaying) return@LaunchedEffect
-        if (videoPlaybackState.progressMillis >= currentVideoDurationMillis) {
-            videoPlaybackState = videoPlaybackState.copy(isPlaying = false)
-            return@LaunchedEffect
-        }
-        kotlinx.coroutines.delay(220)
-        val nextProgress = (videoPlaybackState.progressMillis + 220L)
-            .coerceAtMost(currentVideoDurationMillis)
-        videoPlaybackState = videoPlaybackState.copy(
-            progressMillis = nextProgress,
-            isPlaying = nextProgress < currentVideoDurationMillis,
         )
     }
     BackHandler(enabled = zoomState.isZoomed) {
@@ -486,15 +476,7 @@ fun PhotoViewerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        ViewerNightTop,
-                        ViewerNightMiddle,
-                        ViewerNightBottom,
-                    ),
-                ),
-            ),
+            .background(ViewerNightBottom),
     ) {
         HorizontalPager(
             state = pagerState,
@@ -514,7 +496,9 @@ fun PhotoViewerScreen(
                 },
                 overlaysVisible = overlaysVisible,
                 onTogglePlayback = {
-                    val shouldRestart = videoPlaybackState.progressMillis >= currentVideoDurationMillis
+                    val durationMillis = videoPlaybackState.durationMillis
+                        ?: currentItem.viewerVideoDurationMillis()
+                    val shouldRestart = videoPlaybackState.progressMillis >= durationMillis
                     videoPlaybackState = if (videoPlaybackState.isPlaying) {
                         videoPlaybackState.copy(isPlaying = false)
                     } else {
@@ -522,7 +506,13 @@ fun PhotoViewerScreen(
                             mediaId = currentItem.mediaId,
                             isPlaying = true,
                             progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
+                            errorMessage = null,
                         )
+                    }
+                },
+                onVideoPlaybackStateChange = { mediaId, state ->
+                    if (mediaId == currentItem.mediaId) {
+                        videoPlaybackState = state
                     }
                 },
                 onOriginalLoadStateChange = { mediaId, state ->
@@ -538,7 +528,7 @@ fun PhotoViewerScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .height(148.dp),
+                .height(124.dp),
         )
 
         if (overlaysVisible) {
@@ -546,7 +536,7 @@ fun PhotoViewerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(236.dp),
+                    .height(188.dp),
             )
         }
 
@@ -612,12 +602,13 @@ fun PhotoViewerScreen(
                 },
                 onOpenOriginal = {
                     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                        val originalUrl = currentItem.mediaSource.viewerOriginalImageUrl(currentItem.mediaType)
                         when {
                             currentItem.mediaType == AppMediaType.VIDEO -> {
                                 Toast.makeText(context, "视频本轮暂不支持原图加载", Toast.LENGTH_SHORT).show()
                             }
 
-                            currentItem.mediaSource.viewerOriginalImageUrl(currentItem.mediaType) == null -> {
+                            originalUrl == null -> {
                                 realOriginalStates[currentItem.mediaId] = OriginalLoadState.Failed
                                 Toast.makeText(context, "暂无可用原图地址", Toast.LENGTH_SHORT).show()
                             }
@@ -633,6 +624,21 @@ fun PhotoViewerScreen(
                             else -> {
                                 realOriginalStates[currentItem.mediaId] = OriginalLoadState.Loading
                                 Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                                coroutineScope.launch {
+                                    val loadSucceeded = loadRealViewerOriginal(
+                                        context = context,
+                                        media = currentItem,
+                                        accessToken = viewerAccessToken,
+                                    )
+                                    realOriginalStates[currentItem.mediaId] = if (loadSucceeded) {
+                                        FakeMediaCacheRepository.markOriginalCached(currentItem.mediaId)
+                                        Toast.makeText(context, "原图加载完成", Toast.LENGTH_SHORT).show()
+                                        OriginalLoadState.Loaded
+                                    } else {
+                                        Toast.makeText(context, "原图加载失败，已保留预览图", Toast.LENGTH_SHORT).show()
+                                        OriginalLoadState.Failed
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -798,11 +804,7 @@ private fun EmptyPhotoViewerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(ViewerNightTop, ViewerNightBottom),
-                ),
-            ),
+            .background(ViewerNightBottom),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -877,19 +879,14 @@ private fun PhotoViewerCanvas(
     originalLoadState: OriginalLoadState,
     overlaysVisible: Boolean,
     onTogglePlayback: () -> Unit,
+    onVideoPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val density = LocalDensity.current
     val isVideo = media.mediaType == AppMediaType.VIDEO
-    val isLongImage = media.isViewerLongImage()
-    val canvasAspectRatio = if (isLongImage) {
-        media.viewerAspectRatio()
-    } else {
-        media.viewerAspectRatio().coerceIn(0.75f, 1.35f)
-    }
-    val longImageScrollState = rememberScrollState()
+    val canvasAspectRatio = media.viewerAspectRatio().coerceIn(0.05f, 20f)
 
     BoxWithConstraints(
         modifier = modifier.padding(
@@ -898,27 +895,17 @@ private fun PhotoViewerCanvas(
             end = ViewerLayoutTuning.canvasHorizontalPadding,
             bottom = ViewerLayoutTuning.canvasBottomPadding,
         ),
-        contentAlignment = if (isLongImage) Alignment.TopCenter else Alignment.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        val canvasWidth = if (isLongImage) {
+        val canvasWidth = if (maxHeight * canvasAspectRatio <= maxWidth) {
+            maxHeight * canvasAspectRatio
+        } else {
             maxWidth
-        } else {
-            val fillWidthHeight = maxWidth / canvasAspectRatio
-            if (fillWidthHeight <= maxHeight) {
-                maxWidth
-            } else {
-                maxHeight * canvasAspectRatio
-            }
         }
-        val canvasHeight = if (isLongImage) {
-            canvasWidth / canvasAspectRatio.coerceAtLeast(0.2f)
+        val canvasHeight = if (maxWidth / canvasAspectRatio <= maxHeight) {
+            maxWidth / canvasAspectRatio
         } else {
-            val fillWidthHeight = maxWidth / canvasAspectRatio
-            if (fillWidthHeight <= maxHeight) {
-                fillWidthHeight
-            } else {
-                maxHeight
-            }
+            maxHeight
         }
         val contentSize = with(density) {
             IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
@@ -946,15 +933,8 @@ private fun PhotoViewerCanvas(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    if (isLongImage && zoomState?.isZoomed != true) {
-                        Modifier.verticalScroll(longImageScrollState)
-                    } else {
-                        Modifier
-                    },
-                )
                 .then(gestureModifier),
-            contentAlignment = if (isLongImage) Alignment.TopCenter else Alignment.Center,
+            contentAlignment = Alignment.Center,
         ) {
             if (isVideo) {
                 Box(
@@ -965,17 +945,21 @@ private fun PhotoViewerCanvas(
                     ViewerVideoCanvas(
                         media = media,
                         playbackState = videoPlaybackState,
+                        isCurrent = zoomState != null,
+                        onPlaybackStateChange = onVideoPlaybackStateChange,
                         modifier = Modifier
                             .fillMaxSize()
                             .then(zoomTransformModifier),
                     )
                     if (overlaysVisible && videoPlaybackState != null) {
+                        val durationMillis = videoPlaybackState.durationMillis
+                            ?: media.viewerVideoDurationMillis()
                         ViewerVideoControls(
                             playbackState = videoPlaybackState,
-                            durationMillis = media.viewerVideoDurationMillis(),
+                            durationMillis = durationMillis,
                             onTogglePlayback = onTogglePlayback,
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
+                                .align(Alignment.BottomStart)
                                 .padding(horizontal = spacing.lg, vertical = spacing.lg),
                         )
                     }
@@ -996,48 +980,13 @@ private fun PhotoViewerCanvas(
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = spacing.lg, end = spacing.lg)
-                                .size(92.dp)
-                                .clip(CircleShape)
-                                .background(media.palette.accent.copy(alpha = 0.20f)),
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = spacing.lg, bottom = spacing.lg)
-                                .fillMaxWidth(0.46f)
-                                .aspectRatio(2.5f)
-                                .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-                                .background(media.palette.accent.copy(alpha = 0.14f)),
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.White.copy(alpha = 0.10f),
-                                            Color.Transparent,
-                                            ViewerNightTop.copy(alpha = 0.12f),
-                                        ),
-                                    ),
-                                ),
-                        )
-
                         Surface(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(end = spacing.md, bottom = spacing.md),
+                            modifier = Modifier.align(Alignment.Center),
                             shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                            color = ViewerNightTop.copy(alpha = 0.18f),
+                            color = Color.Black.copy(alpha = 0.32f),
                         ) {
                             Text(
-                                text = "媒体预览占位",
+                                text = "暂无可用媒体预览",
                                 modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = ViewerSurface.copy(alpha = 0.82f),
@@ -1067,8 +1016,7 @@ private fun ViewerImageCanvas(
     val originalUrl = remember(mediaSource, media.mediaType) {
         mediaSource.viewerOriginalImageUrl(media.mediaType)
     }
-    val shouldRequestOriginal = originalLoadState == OriginalLoadState.Loading ||
-        originalLoadState == OriginalLoadState.Loaded
+    val shouldRequestOriginal = originalLoadState == OriginalLoadState.Loaded
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
@@ -1078,6 +1026,7 @@ private fun ViewerImageCanvas(
             context = context,
             url = previewUrl,
             accessToken = accessToken,
+            memoryCacheKey = previewUrl?.let(::sharedPreviewMemoryCacheKey),
         )
     }
     val originalRequest = remember(context, originalUrl, shouldRequestOriginal, accessToken) {
@@ -1086,6 +1035,7 @@ private fun ViewerImageCanvas(
                 context = context,
                 url = originalUrl,
                 accessToken = accessToken,
+                memoryCacheKey = originalUrl?.let(::sharedOriginalMemoryCacheKey),
             )
         } else {
             null
@@ -1108,25 +1058,11 @@ private fun ViewerImageCanvas(
         else -> ViewerImageFailureReason.NONE
     }
 
-    LaunchedEffect(media.mediaId, originalUrl, originalLoadState, originalState) {
-        if (originalLoadState != OriginalLoadState.Loading &&
-            originalLoadState != OriginalLoadState.Loaded
+    LaunchedEffect(media.mediaId, originalLoadState, originalState) {
+        if (originalLoadState == OriginalLoadState.Loaded &&
+            originalState is AsyncImagePainter.State.Error
         ) {
-            return@LaunchedEffect
-        }
-        when (originalState) {
-            is AsyncImagePainter.State.Success -> {
-                if (originalLoadState != OriginalLoadState.Loaded) {
-                    onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Loaded)
-                    FakeMediaCacheRepository.markOriginalCached(media.mediaId)
-                }
-            }
-
-            is AsyncImagePainter.State.Error -> {
-                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
-            }
-
-            else -> Unit
+            onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
         }
     }
 
@@ -1196,14 +1132,35 @@ private fun ViewerImageCanvas(
     }
 }
 
+private suspend fun loadRealViewerOriginal(
+    context: android.content.Context,
+    media: PhotoFeedItem,
+    accessToken: String?,
+): Boolean {
+    val originalUrl = media.mediaSource.viewerOriginalImageUrl(media.mediaType) ?: return false
+    val request = viewerImageRequest(
+        context = context,
+        url = originalUrl,
+        accessToken = accessToken,
+        memoryCacheKey = sharedOriginalMemoryCacheKey(originalUrl),
+    ) ?: return false
+    return context.imageLoader.execute(request) is SuccessResult
+}
+
 private fun viewerImageRequest(
     context: android.content.Context,
     url: String?,
     accessToken: String?,
+    memoryCacheKey: String? = url?.let(::sharedPreviewMemoryCacheKey),
 ): ImageRequest? {
     if (url.isNullOrBlank()) return null
     return ImageRequest.Builder(context).apply {
         data(url)
+        memoryCacheKey?.let(::memoryCacheKey)
+        diskCacheKey(sharedMediaDiskCacheKey(url))
+        networkCachePolicy(CachePolicy.ENABLED)
+        diskCachePolicy(CachePolicy.ENABLED)
+        memoryCachePolicy(CachePolicy.ENABLED)
         precision(Precision.INEXACT)
         crossfade(false)
         accessToken
@@ -1243,46 +1200,181 @@ private fun ViewerImageFallback(
 private fun ViewerVideoCanvas(
     media: PhotoFeedItem,
     playbackState: ViewerVideoPlaybackState?,
+    isCurrent: Boolean,
+    onPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val isPlaying = playbackState?.isPlaying == true
-    val progressFraction = if (playbackState == null) {
-        0f
-    } else {
-        (playbackState.progressMillis.toFloat() / media.viewerVideoDurationMillis().toFloat())
-            .coerceIn(0f, 1f)
+    val videoUrl = remember(media.mediaSource, media.mediaType) {
+        media.mediaSource.viewerVideoUrl(media.mediaType)
     }
+    val isPlaying = playbackState?.isPlaying == true
+    val isLoading = playbackState?.isLoading == true
+    val errorMessage = playbackState?.errorMessage
+    val sessionVersion = AuthSessionManager.sessionVersion
+    val accessToken = remember(sessionVersion) {
+        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+    }
+    val videoPosterState = rememberVideoPosterState(
+        url = videoUrl,
+        accessToken = accessToken,
+    ).value
+    val posterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
+    val requestHeaders = remember(videoUrl, accessToken) {
+        if (!videoUrl.isNullOrBlank() &&
+            videoUrl.startsWith("http", ignoreCase = true) &&
+            !accessToken.isNullOrBlank()
+        ) {
+            mapOf("Authorization" to "${RemoteConfig.AUTH_SCHEME} $accessToken")
+        } else {
+            emptyMap()
+        }
+    }
+    val videoViewRef = remember(media.mediaId) { mutableStateOf<VideoView?>(null) }
+    var retryVersion by remember(media.mediaId) { mutableStateOf(0) }
+    var isPrepared by remember(media.mediaId, retryVersion) { mutableStateOf(false) }
+
+    fun updatePlaybackState(transform: (ViewerVideoPlaybackState) -> ViewerVideoPlaybackState) {
+        val current = playbackState ?: ViewerVideoPlaybackState(mediaId = media.mediaId)
+        onPlaybackStateChange(
+            media.mediaId,
+            transform(current.copy(mediaId = media.mediaId)),
+        )
+    }
+
+    LaunchedEffect(media.mediaId, videoUrl) {
+        if (videoUrl.isNullOrBlank()) {
+            onPlaybackStateChange(
+                media.mediaId,
+                ViewerVideoPlaybackState(
+                    mediaId = media.mediaId,
+                    errorMessage = "视频 URL 为空",
+                ),
+            )
+        } else {
+            onPlaybackStateChange(
+                media.mediaId,
+                ViewerVideoPlaybackState(
+                    mediaId = media.mediaId,
+                    isLoading = true,
+                    durationMillis = media.viewerVideoDurationMillis(),
+                ),
+            )
+        }
+    }
+
+    DisposableEffect(media.mediaId, retryVersion) {
+        onDispose {
+            videoViewRef.value?.pause()
+            videoViewRef.value?.stopPlayback()
+            videoViewRef.value = null
+        }
+    }
+
+    DisposableEffect(isCurrent) {
+        if (!isCurrent) {
+            videoViewRef.value?.pause()
+            updatePlaybackState { it.copy(isPlaying = false) }
+        }
+        onDispose { }
+    }
+
+    LaunchedEffect(isCurrent, isPlaying, errorMessage, videoUrl, retryVersion) {
+        while (isCurrent && videoUrl != null && errorMessage == null) {
+            val videoView = videoViewRef.value
+            if (videoView != null && isPrepared) {
+                updatePlaybackState {
+                    it.copy(
+                        progressMillis = videoView.currentPosition.toLong().coerceAtLeast(0L),
+                        durationMillis = videoView.duration.toLong().takeIf { duration -> duration > 0 }
+                            ?: it.durationMillis,
+                    )
+                }
+            }
+            kotlinx.coroutines.delay(300)
+        }
+    }
+    val shouldShowPoster = videoPosterState.model != null &&
+        (!isPrepared || (playbackState?.progressMillis ?: 0L) <= 0L || errorMessage != null)
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(radius.xl))
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        ViewerNightTop.copy(alpha = 0.96f),
-                        media.palette.end.copy(alpha = 0.34f),
-                        ViewerNightBottom.copy(alpha = 0.98f),
-                    ),
-                ),
-            ),
+            .background(ViewerNightBottom),
     ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = spacing.lg, end = spacing.lg)
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(media.palette.accent.copy(alpha = 0.12f)),
-        )
+        if (!videoUrl.isNullOrBlank()) {
+            key(retryVersion) {
+                AndroidView(
+                    factory = { viewContext ->
+                        VideoView(viewContext).apply {
+                            setVideoURI(Uri.parse(videoUrl), requestHeaders)
+                            setOnPreparedListener { player ->
+                                isPrepared = true
+                                player.isLooping = false
+                                val resumePositionMillis = playbackState?.progressMillis?.toInt()?.coerceAtLeast(0) ?: 0
+                                if (resumePositionMillis > 0) {
+                                    seekTo(resumePositionMillis)
+                                }
+                                updatePlaybackState {
+                                    it.copy(
+                                        isLoading = false,
+                                        errorMessage = null,
+                                        durationMillis = duration.toLong().takeIf { value -> value > 0 }
+                                            ?: it.durationMillis,
+                                    )
+                                }
+                                if (isCurrent && playbackState?.isPlaying == true) {
+                                    start()
+                                }
+                            }
+                            setOnErrorListener { _, _, _ ->
+                                isPrepared = false
+                                updatePlaybackState {
+                                    it.copy(
+                                        isPlaying = false,
+                                        isLoading = false,
+                                        errorMessage = "视频加载失败，请重试",
+                                    )
+                                }
+                                true
+                            }
+                            setOnCompletionListener {
+                                updatePlaybackState {
+                                    it.copy(
+                                        isPlaying = false,
+                                        progressMillis = duration.toLong().takeIf { value -> value > 0 }
+                                            ?: it.progressMillis,
+                                    )
+                                }
+                            }
+                            videoViewRef.value = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    update = { videoView ->
+                        videoViewRef.value = videoView
+                        if (!isCurrent || errorMessage != null) {
+                            if (videoView.isPlaying) videoView.pause()
+                            return@AndroidView
+                        }
+                        if (isPlaying && isPrepared && !videoView.isPlaying) {
+                            videoView.start()
+                        } else if (!isPlaying && videoView.isPlaying) {
+                            videoView.pause()
+                        }
+                    },
+                )
+            }
+        }
 
-        VideoMediaMarker(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(spacing.md),
-            showLabel = true,
-        )
+        if (shouldShowPoster) {
+            Image(
+                painter = posterPainter,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+        }
 
         Surface(
             modifier = Modifier.align(Alignment.Center),
@@ -1305,7 +1397,13 @@ private fun ViewerVideoCanvas(
         }
 
         Text(
-            text = if (isPlaying) "正在播放本地视频壳子" else "视频预览占位",
+            text = when {
+                videoUrl.isNullOrBlank() -> "暂无可播放的视频地址"
+                isLoading -> "视频加载中…"
+                errorMessage != null -> errorMessage
+                isPlaying -> "正在播放视频"
+                else -> "视频已暂停"
+            },
             modifier = Modifier
                 .align(Alignment.Center)
                 .padding(top = 112.dp)
@@ -1318,17 +1416,46 @@ private fun ViewerVideoCanvas(
             color = ViewerSurface.copy(alpha = 0.84f),
         )
 
-        LinearProgressIndicator(
-            progress = { progressFraction },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(0.82f)
-                .padding(bottom = spacing.lg)
-                .height(4.dp)
-                .clip(RoundedCornerShape(radius.capsule)),
-            color = ViewerSurface.copy(alpha = 0.88f),
-            trackColor = ViewerSurface.copy(alpha = 0.16f),
-        )
+        if (videoPosterState.isLoading || isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = 174.dp)
+                    .size(24.dp),
+                color = ViewerSurface.copy(alpha = 0.88f),
+                strokeWidth = 2.dp,
+            )
+        }
+
+        if (errorMessage != null && !videoUrl.isNullOrBlank()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(top = 174.dp),
+                shape = RoundedCornerShape(radius.capsule),
+                color = Color.Black.copy(alpha = 0.32f),
+                border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
+                onClick = {
+                    retryVersion += 1
+                    isPrepared = false
+                    updatePlaybackState {
+                        it.copy(
+                            isPlaying = false,
+                            progressMillis = 0L,
+                            isLoading = true,
+                            errorMessage = null,
+                        )
+                    }
+                },
+            ) {
+                Text(
+                    text = "重试",
+                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = ViewerSurface.copy(alpha = 0.90f),
+                )
+            }
+        }
     }
 }
 
@@ -1390,7 +1517,12 @@ private fun ViewerVideoControls(
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = if (playbackState.isPlaying) "播放中" else "已暂停",
+                        text = when {
+                            playbackState.errorMessage != null -> "播放失败"
+                            playbackState.isLoading -> "加载中"
+                            playbackState.isPlaying -> "播放中"
+                            else -> "已暂停"
+                        },
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = ViewerSurface.copy(alpha = 0.92f),
                     )
@@ -1422,16 +1554,6 @@ private fun PhotoFeedItem.viewerAspectRatio(): Float {
         return widthValue.toFloat() / heightValue.toFloat()
     }
     return aspectRatio.coerceAtLeast(0.2f)
-}
-
-private fun PhotoFeedItem.isViewerLongImage(): Boolean {
-    if (mediaType == AppMediaType.VIDEO) return false
-    val widthValue = width
-    val heightValue = height
-    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
-        return heightValue.toFloat() / widthValue.toFloat() >= ViewerLongImageThreshold
-    }
-    return aspectRatio > 0f && (1f / aspectRatio) >= ViewerLongImageThreshold
 }
 
 private fun PhotoFeedItem.viewerVideoDurationMillis(): Long {

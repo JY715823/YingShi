@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
@@ -205,7 +209,7 @@ private fun RealPostDetailScreen(
             when {
                 uiState.tokenMissing -> {
                     PostDetailInfoState(
-                        title = "REAL 模式需要登录",
+                        title = "真实模式需要登录",
                         message = uiState.errorMessage
                             ?: "请先到后端联调诊断页登录，再打开这个帖子。",
                         onBack = onBack,
@@ -340,7 +344,7 @@ private fun RealPostDetailContent(
         PostDetailTopBar(
             onBack = onBack,
             onExport = {
-                Toast.makeText(context, "导出仍保留 fake 占位能力。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "导出能力暂时仍为占位。", Toast.LENGTH_SHORT).show()
             },
             onEdit = onOpenGearEdit,
         )
@@ -386,7 +390,7 @@ private fun RealPostDetailContent(
             originalLoadState = OriginalLoadState.NotLoaded,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
-                Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "帖子详情页原图加载入口暂未接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
@@ -394,7 +398,7 @@ private fun RealPostDetailContent(
             detail = detail,
             originalSummary = placeholderOriginalSummary,
             onLoadAllOriginals = {
-                Toast.makeText(context, "REAL 原图加载这轮还没接入。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "帖子详情页批量原图加载暂未接入。", Toast.LENGTH_SHORT).show()
             },
         )
 
@@ -559,7 +563,7 @@ private fun RealCommentThreadContent(
     if (state.errorMessage != null) {
         PostInlineNotice(
             text = state.errorMessage,
-            actionLabel = "Retry",
+            actionLabel = "重试",
             onAction = onRetry,
         )
     }
@@ -966,7 +970,6 @@ private fun PostMediaArea(
     pager: @Composable () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
 
     Column(
         modifier = modifier,
@@ -974,14 +977,14 @@ private fun PostMediaArea(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(radius.xl),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RectangleShape,
+            color = Color.White,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
         ) {
             Box(
                 modifier = Modifier
-                    .padding(spacing.xs)
-                    .clip(RoundedCornerShape(radius.lg)),
+                    .fillMaxWidth()
+                    .background(Color.White),
             ) {
                 pager()
             }
@@ -1003,7 +1006,7 @@ private fun PostMediaArea(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
             )
             Spacer(modifier = Modifier.weight(1f))
-            PostActionChip(text = "查看态占位", onClick = onOpenMedia)
+            PostActionChip(text = "查看媒体", onClick = onOpenMedia)
         }
     }
 }
@@ -1014,54 +1017,37 @@ private fun PostMediaCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
+    val cardAspectRatio = media.displayAspectRatio()
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
-            .aspectRatio(
-                if (media.mediaType == AppMediaType.VIDEO) {
-                    media.aspectRatio.coerceIn(1.33f, 1.78f)
-                } else {
-                    media.aspectRatio.coerceIn(0.86f, 1.18f)
-                },
-            )
-            .clip(RoundedCornerShape(radius.lg))
             .clickable(onClick = onClick)
+            .background(Color.White),
     ) {
+        val availableWidth = maxWidth
+        val availableHeight = maxHeight
+        val fittedWidth = if (availableHeight * cardAspectRatio <= availableWidth) {
+            availableHeight * cardAspectRatio
+        } else {
+            availableWidth
+        }
+        val fittedHeight = if (availableWidth / cardAspectRatio <= availableHeight) {
+            availableWidth / cardAspectRatio
+        } else {
+            availableHeight
+        }
+
         AppContentMediaThumbnail(
             mediaSource = media.mediaSource,
             mediaType = media.mediaType,
             palette = media.palette,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .width(fittedWidth)
+                .height(fittedHeight),
             contentDescription = media.id,
             showStatusBadge = true,
-        )
-
-        if (media.mediaType == AppMediaType.VIDEO) {
-            VideoMediaMarker(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(spacing.md),
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(spacing.lg)
-                .size(74.dp)
-                .clip(CircleShape)
-                .background(media.palette.accent.copy(alpha = 0.16f)),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(spacing.lg)
-                .fillMaxWidth(0.48f)
-                .height(30.dp)
-                .clip(RoundedCornerShape(radius.capsule))
-                .background(Color.White.copy(alpha = 0.13f)),
+            contentScale = ContentScale.Fit,
         )
     }
 }
@@ -1456,6 +1442,15 @@ private fun PostMetaCapsule(text: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
+    val actualWidth = width
+    val actualHeight = height
+    if (actualWidth != null && actualHeight != null && actualWidth > 0 && actualHeight > 0) {
+        return (actualWidth.toFloat() / actualHeight.toFloat()).coerceIn(0.05f, 20f)
+    }
+    return aspectRatio.coerceIn(0.05f, 20f)
 }
 
 private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewerRoute {

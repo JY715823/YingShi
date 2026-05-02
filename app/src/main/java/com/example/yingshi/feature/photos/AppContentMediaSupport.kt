@@ -84,10 +84,10 @@ internal fun resolveAppContentAspectRatio(
     mediaType: AppMediaType,
 ): Float {
     if (width != null && height != null && width > 0 && height > 0) {
-        return (width.toFloat() / height.toFloat()).coerceIn(0.56f, 1.8f)
+        return (width.toFloat() / height.toFloat()).coerceIn(0.15f, 6f)
     }
     if (aspectRatio != null && aspectRatio > 0f) {
-        return aspectRatio.coerceIn(0.56f, 1.8f)
+        return aspectRatio.coerceIn(0.15f, 6f)
     }
     return if (mediaType == AppMediaType.VIDEO) 1.33f else 1f
 }
@@ -108,6 +108,8 @@ internal fun AppContentMediaSource?.thumbnailModelUrl(
             coverUrl.takeIf { canUseAsVideoPoster(coverUrl, mimeType) },
             mediaUrl.takeIf { canUseAsVideoPoster(mediaUrl, mimeType) },
             originalUrl.takeIf { canUseAsVideoPoster(originalUrl, mimeType) },
+            videoUrl,
+            mediaUrl,
         )
     }
 }
@@ -133,6 +135,17 @@ internal fun AppContentMediaSource?.viewerOriginalImageUrl(
     )
 }
 
+internal fun AppContentMediaSource?.viewerVideoUrl(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    return firstNotBlank(
+        videoUrl,
+        mediaUrl,
+        originalUrl,
+    )
+}
+
 private fun canUseAsVideoPoster(
     url: String?,
     mimeType: String?,
@@ -142,6 +155,12 @@ private fun canUseAsVideoPoster(
     if (normalizedMimeType?.startsWith("image/") == true) return true
     return looksLikeImageUrl(url)
 }
+
+internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:$url"
+
+internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:$url"
+
+internal fun sharedMediaDiskCacheKey(url: String): String = "media:$url"
 
 private fun resolveBackendMediaUrl(rawUrl: String?): String? {
     val normalized = rawUrl?.trim().orEmpty()

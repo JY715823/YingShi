@@ -78,6 +78,9 @@ Response:
 - If the backend returns an absolute URL such as `http://host:8080/api/media/files/media_001`, Android uses it directly and does not prepend `baseUrl` again.
 - Empty or invalid thumbnail fields must be tolerated; Android will show a safe placeholder instead of crashing.
 - Video media should provide `thumbnailUrl`, `previewUrl`, or `coverUrl` whenever possible. Without a poster URL, Android now falls back to a video placeholder instead of trying to decode the video file as a normal image.
+- App-content Viewer video playback now resolves the playable source with `videoUrl -> mediaUrl -> originalUrl`.
+- Missing playable video URLs must be tolerated; Android shows a Chinese safe placeholder instead of attempting playback.
+- App-content Viewer video state such as loading, error, progress, and playing remains client-local and keyed by `mediaId`; it is not a server DTO field.
 - `postIds` only includes active posts
 - system-deleted media stays restorable through trash
 

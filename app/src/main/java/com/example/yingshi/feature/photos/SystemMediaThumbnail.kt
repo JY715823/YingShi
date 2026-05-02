@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.asImageBitmap
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -27,12 +28,18 @@ internal fun rememberSystemVideoThumbnail(
 ): Bitmap? {
     val appContext = remember(context) { context.applicationContext }
     return produceState<Bitmap?>(
-        initialValue = null,
+        initialValue = SystemMediaVideoThumbnailCache.bitmaps[uri.toString()],
         key1 = appContext,
         key2 = uri,
     ) {
+        SystemMediaVideoThumbnailCache.bitmaps[uri.toString()]?.let { cached ->
+            value = cached
+            return@produceState
+        }
         value = withContext(Dispatchers.IO) {
-            loadSystemVideoFrame(appContext, uri)
+            loadSystemVideoFrame(appContext, uri)?.also { bitmap ->
+                SystemMediaVideoThumbnailCache.bitmaps[uri.toString()] = bitmap
+            }
         }
     }.value
 }
@@ -41,6 +48,13 @@ internal fun loadSystemVideoFrame(
     context: Context,
     uri: Uri,
 ): Bitmap? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val thumbnail = runCatching {
+            context.contentResolver.loadThumbnail(uri, Size(960, 960), null)
+        }.getOrNull()
+        if (thumbnail != null) return thumbnail
+    }
+
     val retriever = MediaMetadataRetriever()
     val bitmap = runCatching {
         retriever.setDataSource(context, uri)
@@ -54,11 +68,6 @@ internal fun loadSystemVideoFrame(
     runCatching { retriever.release() }
     if (bitmap != null) return bitmap
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        return runCatching {
-            context.contentResolver.loadThumbnail(uri, Size(960, 960), null)
-        }.getOrNull()
-    }
     return null
 }
 
@@ -89,3 +98,7 @@ internal fun resolveSystemVideoDimensions(
 }
 
 internal fun Bitmap.toComposeBitmap() = asImageBitmap()
+
+private object SystemMediaVideoThumbnailCache {
+    val bitmaps = ConcurrentHashMap<String, Bitmap>()
+}

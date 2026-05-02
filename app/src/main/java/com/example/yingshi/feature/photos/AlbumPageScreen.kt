@@ -243,7 +243,7 @@ private fun RealAlbumPageScreen(
                 )
                 Text(
                     text = selectedAlbum?.subtitle
-                        ?: "REAL 模式会直接读取后端相册和相册下帖子。",
+                        ?: "真实模式会直接读取后端相册和相册下的帖子。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -277,7 +277,7 @@ private fun RealAlbumPageScreen(
 
             uiState.albums.isEmpty() -> {
                 AlbumPageNoticeCard(
-                    text = "Backend returned no albums for the current account.",
+                    text = "当前账号还没有可用相册。",
                     actionLabel = "重试",
                     onAction = viewModel::refresh,
                 )
@@ -298,7 +298,7 @@ private fun RealAlbumPageScreen(
                 when {
                     uiState.isPostsLoading -> {
                         AlbumPageLoadingCard(
-                            text = "Loading posts in this album...",
+                            text = "正在读取这个相册里的帖子…",
                         )
                     }
 
@@ -807,7 +807,7 @@ fun PostDetailPlaceholderScreen(
                         verticalArrangement = Arrangement.spacedBy(spacing.xs),
                     ) {
                         Text(
-                            text = "Stage 4.1 先打通到这里",
+                            text = "帖子详情入口已接通",
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.primary,
                         )

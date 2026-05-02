@@ -58,6 +58,7 @@ Android REAL compatibility notes for nested `media`:
 - Android uses these nested media URLs directly for post detail media cards and Gear Edit media management thumbnails
 - for video items, Android prefers `thumbnailUrl`, `previewUrl`, or `coverUrl` as the poster and does not treat `videoUrl` as a normal image URL
 - in-post Viewer uses the same app-content Viewer image rules as the photo-flow Viewer: preview first, original only after the original action, with state isolated by `mediaId`
+- in-post Viewer video now resolves the playable source with `videoUrl -> mediaUrl -> originalUrl`, and all loading, error, progress, and playing state remains isolated by `mediaId`
 
 ## Endpoints
 
