@@ -153,6 +153,12 @@ Behavior:
 Response:
 - returns one `TrashItemDto`
 
+## Stage 12.2 Refresh Notes
+- `PATCH /api/posts/{postId}` 成功后，Android 需要刷新相册页帖子卡、帖子详情、照片流入口文案，以及系统媒体“加入已有帖子”目标列表。
+- `POST /api/posts`、`POST /api/posts/{postId}/media`、`PATCH /api/posts/{postId}/media-order`、`PATCH /api/posts/{postId}/cover` 成功后，Android 需要至少刷新照片流、相册页、帖子详情媒体区、Gear Edit 媒体管理。
+- `DELETE /api/posts/{postId}` 成功后，Android 需要同时刷新相册页、照片流、回收站，以及所有仍引用该 `postId` 的详情入口。
+- `DELETE /api/posts/{postId}/media/{mediaId}` 成功后，Android 需要把同一 `mediaId` 从帖子详情、Viewer、媒体管理和照片流中移除；若该删除导致封面、顺序或帖子可见性变化，也要重拉帖子详情。
+
 ### `DELETE /api/posts/{postId}/media/{mediaId}?deleteMode=directory|system`
 
 Behavior:

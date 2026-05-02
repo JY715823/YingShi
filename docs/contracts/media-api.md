@@ -84,6 +84,11 @@ Response:
 - `postIds` only includes active posts
 - system-deleted media stays restorable through trash
 
+## Stage 12.2 Refresh Notes
+- `GET /api/media/feed` 仍然是照片流主刷新源；媒体上传、加入帖子、系统删除、回收站恢复后，Android 应重新拉取该列表或按统一 mutation event 触发刷新。
+- `DELETE /api/media/{mediaId}` 成功后，Android 不应继续在照片流、帖子详情媒体区、Viewer 或 Gear Edit 媒体管理中展示该媒体。
+- 如果媒体评论计数依赖服务端 DTO，相关页面应在媒体评论 mutation 后重新拉取受影响的 `mediaId` 所在列表或详情。
+
 ## Error Codes
 - `MEDIA_NOT_FOUND`
 - `MEDIA_ALREADY_DELETED`

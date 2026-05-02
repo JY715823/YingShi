@@ -189,6 +189,7 @@ fun SystemMediaViewerScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
     var viewerItems by remember(route) {
         mutableStateOf(route.mediaItems)
     }
@@ -293,6 +294,21 @@ fun SystemMediaViewerScreen(
     DisposableEffect(currentItem?.id) {
         zoomState.reset()
         onDispose { }
+    }
+
+    LaunchedEffect(bridgeMutationEvent.version) {
+        if (bridgeMutationEvent.version <= 0) return@LaunchedEffect
+        val nextItems = LocalSystemMediaBridgeRepository.applyOverlay(viewerItems)
+        if (nextItems == viewerItems) return@LaunchedEffect
+        val nextIndex = pagerState.currentPage.coerceAtMost((nextItems.size - 1).coerceAtLeast(0))
+        if (nextItems.isEmpty()) {
+            onBack()
+        } else {
+            viewerItems = nextItems
+            coroutineScope.launch {
+                pagerState.scrollToPage(nextIndex)
+            }
+        }
     }
 
     Box(

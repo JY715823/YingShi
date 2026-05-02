@@ -107,6 +107,20 @@ class SystemMediaViewModel(
         )
     }
 
+    fun handleBridgeMutation(
+        event: LocalSystemMediaBridgeRepository.MutationEvent,
+    ) {
+        if (event.version <= 0) return
+        when (event.kind) {
+            LocalSystemMediaBridgeRepository.MutationKind.MEDIA_STORE_CHANGED -> {
+                refresh(forceRefresh = true)
+            }
+            LocalSystemMediaBridgeRepository.MutationKind.OVERLAY_ONLY -> {
+                refreshLocalState()
+            }
+        }
+    }
+
     private fun publishState(
         rawItems: List<SystemMediaItem>,
         selectedFilter: SystemMediaFilter,

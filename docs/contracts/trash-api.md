@@ -145,6 +145,11 @@ Response:
 Response:
 - returns `List<PendingCleanupDto>`
 
+## Stage 12.2 Refresh Notes
+- `restore` 成功后，Android 需要把恢复结果同步回照片流、相册页、帖子详情入口和回收站列表。
+- `remove` 或 `undo-remove` 成功后，Android 需要刷新回收站列表本身，并同步刷新仍受该条目影响的帖子 / 媒体列表。
+- 回收站接口没有额外下发“推荐刷新哪些页面”的字段；当前约定由 Android 依据 `itemType`、`sourcePostId`、`sourceMediaId` 和 `related*Ids` 决定刷新范围。
+
 ## Error Codes
 - `TRASH_ITEM_NOT_FOUND`
 - `RESTORE_CONFLICT`

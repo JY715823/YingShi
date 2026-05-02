@@ -426,7 +426,7 @@ private fun RealMediaManagementScreen(
         factory = RealMediaManagementViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
-    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
+    val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     var modeName by rememberSaveable(route.postId) {
         mutableStateOf(MediaManagementMode.NORMAL.name)
     }
@@ -442,8 +442,10 @@ private fun RealMediaManagementScreen(
     }
     val gridState = rememberLazyGridState()
 
-    androidx.compose.runtime.LaunchedEffect(backendMutationVersion) {
-        if (backendMutationVersion > 0) {
+    androidx.compose.runtime.LaunchedEffect(backendMutationEvent.version, uiState.mediaItems) {
+        if (backendMutationEvent.version > 0 &&
+            backendMutationEvent.affectsMediaManagement(route.postId, uiState.mediaItems.map { it.id })
+        ) {
             viewModel.refresh()
         }
     }

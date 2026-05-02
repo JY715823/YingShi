@@ -114,7 +114,19 @@ class RealPhotoFeedViewModel(
                 )
             }
             if (successCount > 0) {
-                RealBackendMutationBus.notifyChanged()
+                RealBackendMutationBus.notifyChanged(
+                    RealBackendMutationEvent(
+                        scopes = setOf(
+                            RealBackendRefreshScope.PHOTO_FEED,
+                            RealBackendRefreshScope.ALBUMS,
+                            RealBackendRefreshScope.POST_DETAIL,
+                            RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                            RealBackendRefreshScope.TRASH,
+                            RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                        ),
+                        mediaIds = normalizedIds.toSet(),
+                    ),
+                )
             }
         }
     }

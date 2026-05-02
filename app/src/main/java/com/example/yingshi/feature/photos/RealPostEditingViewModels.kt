@@ -196,7 +196,18 @@ class RealGearEditViewModel(
                             statusMessage = "帖子信息已保存。",
                         )
                     }
-                    RealBackendMutationBus.notifyChanged()
+                    RealBackendMutationBus.notifyChanged(
+                        RealBackendMutationEvent(
+                            scopes = setOf(
+                                RealBackendRefreshScope.PHOTO_FEED,
+                                RealBackendRefreshScope.ALBUMS,
+                                RealBackendRefreshScope.POST_DETAIL,
+                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                                RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                            ),
+                            postIds = setOf(route.postId),
+                        ),
+                    )
                     onSuccess()
                 }
                 is ApiResult.Error -> {
@@ -236,7 +247,19 @@ class RealGearEditViewModel(
                             statusMessage = "帖子已移入回收站。",
                         )
                     }
-                    RealBackendMutationBus.notifyChanged()
+                    RealBackendMutationBus.notifyChanged(
+                        RealBackendMutationEvent(
+                            scopes = setOf(
+                                RealBackendRefreshScope.PHOTO_FEED,
+                                RealBackendRefreshScope.ALBUMS,
+                                RealBackendRefreshScope.POST_DETAIL,
+                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                                RealBackendRefreshScope.TRASH,
+                                RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                            ),
+                            postIds = setOf(route.postId),
+                        ),
+                    )
                     onSuccess()
                 }
                 is ApiResult.Error -> {
@@ -389,7 +412,20 @@ class RealMediaManagementViewModel(
                 )
             }
             if (successCount > 0) {
-                RealBackendMutationBus.notifyChanged()
+                RealBackendMutationBus.notifyChanged(
+                    RealBackendMutationEvent(
+                        scopes = setOf(
+                            RealBackendRefreshScope.PHOTO_FEED,
+                            RealBackendRefreshScope.ALBUMS,
+                            RealBackendRefreshScope.POST_DETAIL,
+                            RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                            RealBackendRefreshScope.TRASH,
+                            RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                        ),
+                        postIds = setOf(route.postId),
+                        mediaIds = normalizedIds.toSet(),
+                    ),
+                )
                 refresh()
             }
         }
@@ -423,7 +459,18 @@ class RealMediaManagementViewModel(
                             statusMessage = successMessage,
                         )
                     }
-                    RealBackendMutationBus.notifyChanged()
+                    RealBackendMutationBus.notifyChanged(
+                        RealBackendMutationEvent(
+                            scopes = setOf(
+                                RealBackendRefreshScope.PHOTO_FEED,
+                                RealBackendRefreshScope.ALBUMS,
+                                RealBackendRefreshScope.POST_DETAIL,
+                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                                RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                            ),
+                            postIds = setOf(route.postId),
+                        ),
+                    )
                     if (successRefresh) {
                         refresh()
                     }

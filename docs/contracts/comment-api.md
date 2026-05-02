@@ -102,6 +102,11 @@ Response:
 Response:
 - returns one soft-deleted `CommentDto`
 
+## Stage 12.2 Refresh Notes
+- 帖子评论新增 / 编辑 / 删除后，Android 至少要刷新当前帖子评论线程；如果页面上展示了帖子评论计数，也要同步刷新对应计数来源。
+- 媒体评论新增 / 编辑 / 删除后，Android 需要刷新当前评论线程、当前媒体气泡与评论计数，以及同一 `mediaId` 在照片流 / 帖子详情 / 媒体管理中的可见计数。
+- 评论 mutation 失败时，接口没有额外补偿字段；Android 应保留原列表并显示中文错误提示或重试入口。
+
 ## Error Codes
 - `COMMENT_NOT_FOUND`
 - `COMMENT_TARGET_NOT_FOUND`

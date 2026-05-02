@@ -161,7 +161,7 @@ private fun RealPostDetailScreen(
         factory = PostDetailRealViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
-    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
+    val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
@@ -170,6 +170,7 @@ private fun RealPostDetailScreen(
     }
 
     val detail = uiState.detail
+    val detailMediaIds = detail?.mediaItems?.map { it.id }.orEmpty()
     val selectedMedia = mediaCommentPage?.let { page ->
         detail?.mediaItems?.getOrNull(page.coerceAtLeast(0))
     }
@@ -186,8 +187,10 @@ private fun RealPostDetailScreen(
     BackHandler(enabled = inPostViewerInitialPage != null) {
         inPostViewerInitialPage = null
     }
-    LaunchedEffect(backendMutationVersion) {
-        if (backendMutationVersion > 0) {
+    LaunchedEffect(backendMutationEvent.version, detailMediaIds) {
+        if (backendMutationEvent.version > 0 &&
+            backendMutationEvent.affectsPostDetail(route.postId, detailMediaIds)
+        ) {
             viewModel.refresh()
         }
     }

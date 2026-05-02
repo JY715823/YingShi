@@ -20,12 +20,14 @@ data class SystemMediaDestinationUiState(
 @Composable
 fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState> {
     val mode = RepositoryProvider.currentMode
-    val backendMutationVersion = RealBackendMutationBus.version.collectAsState().value
+    val backendMutationEvent = RealBackendMutationBus.latestEvent.collectAsState().value
+    val localSystemMediaMutationVersion = LocalSystemMediaBridgeRepository.mutationVersion
     return produceState(
         initialValue = initialDestinationState(mode),
         mode,
         AuthSessionManager.isLoggedIn,
-        backendMutationVersion,
+        backendMutationEvent.version.takeIf { backendMutationEvent.affectsSystemMediaDestinations() } ?: 0,
+        localSystemMediaMutationVersion,
         BackendDebugConfig.sessionVersion,
     ) {
         if (mode == RepositoryMode.FAKE) {

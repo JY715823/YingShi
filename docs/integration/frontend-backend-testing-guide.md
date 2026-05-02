@@ -220,3 +220,16 @@ Repeated smoke runs change media count:
 - upload smoke adds media while the dev server stays up
 - restart the backend for a fresh H2 state
 - clean `local-storage` manually only when the backend is stopped
+
+## 9. Stage 12.2 State Consistency Checks
+
+1. In `REAL`, edit one post title in `Gear Edit`, return to the album page, and confirm the card title changes without switching mode.
+2. Open the same post detail page again and confirm title / summary / album chips are updated.
+3. From system media, add one image into an existing post and confirm photo feed, post detail media area, and `Gear Edit -> 媒体管理` all refresh to the new media set.
+4. Delete one media from `Gear Edit -> 媒体管理` and confirm the removed item disappears from photo feed, post detail, Viewer, and media management after returning.
+5. Delete one whole post and confirm album list, photo feed, and trash all reflect the change after the mutation completes.
+6. Restore one post or one media from trash and confirm the restored content reappears in the relevant list without mode leakage.
+7. Add, edit, and delete one media comment, then confirm the active comment thread, comment bubble, and visible count all refresh together.
+8. In system media, move one item to the Android system trash and confirm both the system media list and system media Viewer stop showing the deleted item.
+9. Turn `REAL` -> `FAKE` -> `REAL` and confirm previous REAL error / loading / selection state does not pollute FAKE pages, and vice versa.
+10. If any refresh request fails, confirm the page stays alive and exposes Chinese retry copy instead of crashing.

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
@@ -23,7 +24,20 @@ import java.util.Date
 import java.util.Locale
 
 object LocalSystemMediaBridgeRepository {
+    enum class MutationKind {
+        OVERLAY_ONLY,
+        MEDIA_STORE_CHANGED,
+    }
+
+    data class MutationEvent(
+        val version: Int = 0,
+        val kind: MutationKind = MutationKind.OVERLAY_ONLY,
+        val mediaIds: Set<String> = emptySet(),
+    )
+
     var mutationVersion by mutableIntStateOf(0)
+        private set
+    var latestMutationEvent by mutableStateOf(MutationEvent())
         private set
 
     private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -137,13 +151,17 @@ object LocalSystemMediaBridgeRepository {
         mediaIds: Collection<String>,
     ): Int {
         var changedCount = 0
+        val normalizedIds = mediaIds.distinct()
         mediaIds.distinct().forEach { mediaId ->
             if (hiddenMediaIds.add(mediaId)) {
                 changedCount += 1
             }
         }
         if (changedCount > 0) {
-            mutationVersion += 1
+            publishMutation(
+                kind = MutationKind.MEDIA_STORE_CHANGED,
+                mediaIds = normalizedIds,
+            )
         }
         return changedCount
     }
@@ -166,7 +184,10 @@ object LocalSystemMediaBridgeRepository {
             changed = postIds.add(postId) || changed
         }
         if (changed) {
-            mutationVersion += 1
+            publishMutation(
+                kind = MutationKind.OVERLAY_ONLY,
+                mediaIds = mediaIds.distinct(),
+            )
         }
     }
 
@@ -469,6 +490,19 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
+    private fun publishMutation(
+        kind: MutationKind,
+        mediaIds: Collection<String> = emptyList(),
+    ) {
+        val nextVersion = mutationVersion + 1
+        mutationVersion = nextVersion
+        latestMutationEvent = MutationEvent(
+            version = nextVersion,
+            kind = kind,
+            mediaIds = mediaIds.filter { it.isNotBlank() }.toSet(),
+        )
+    }
+
     private suspend fun finalizeAppendToPostReal(
         postId: String,
         sourceItems: List<SystemMediaItem>,
@@ -507,8 +541,21 @@ object LocalSystemMediaBridgeRepository {
         finalizedOperationIds += operationId
         when (val result = finalizeAction(uploadedMediaIds)) {
             is ApiResult.Success -> {
-                mutationVersion += 1
-                RealBackendMutationBus.notifyChanged()
+                publishMutation(
+                    kind = MutationKind.OVERLAY_ONLY,
+                    mediaIds = sourceItems.map { it.id },
+                )
+                RealBackendMutationBus.notifyChanged(
+                    RealBackendMutationEvent(
+                        scopes = setOf(
+                            RealBackendRefreshScope.PHOTO_FEED,
+                            RealBackendRefreshScope.ALBUMS,
+                            RealBackendRefreshScope.POST_DETAIL,
+                            RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                            RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                        ),
+                    ),
+                )
             }
             is ApiResult.Error -> {
                 finalizedOperationIds.remove(operationId)

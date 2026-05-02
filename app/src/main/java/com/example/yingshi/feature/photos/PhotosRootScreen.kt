@@ -94,8 +94,8 @@ fun PhotosRootScreen(
         mutableStateOf(false)
     }
     val coroutineScope = rememberCoroutineScope()
-    val albumSummaries = remember { FakeAlbumRepository.getAlbums() }
-    val albumPosts = remember { FakeAlbumRepository.getPosts() }
+    val albumSummaries = FakeAlbumRepository.getAlbums()
+    val albumPosts = FakeAlbumRepository.getPosts()
     val initialPage = rememberSaveable(selectedTopDestinationName) {
         PhotosTopDestination.valueOf(selectedTopDestinationName).ordinal
     }

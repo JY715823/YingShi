@@ -2228,7 +2228,19 @@ private suspend fun deleteRealViewerMedia(mediaId: String): String? {
     }
     return when (val result = RepositoryProvider.mediaRepository.systemDeleteMedia(mediaId)) {
         is ApiResult.Success -> {
-            RealBackendMutationBus.notifyChanged()
+            RealBackendMutationBus.notifyChanged(
+                RealBackendMutationEvent(
+                    scopes = setOf(
+                        RealBackendRefreshScope.PHOTO_FEED,
+                        RealBackendRefreshScope.ALBUMS,
+                        RealBackendRefreshScope.POST_DETAIL,
+                        RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                        RealBackendRefreshScope.TRASH,
+                        RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                    ),
+                    mediaIds = setOf(mediaId),
+                ),
+            )
             null
         }
         is ApiResult.Error -> result.toBackendUiMessage("删除真实媒体失败。")

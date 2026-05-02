@@ -41,15 +41,15 @@ fun RealTrashPageScreen(
         factory = RealTrashListViewModel.factory(),
     )
     val uiState by viewModel.uiState.collectAsState()
-    val backendMutationVersion by RealBackendMutationBus.version.collectAsState()
+    val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
     val spacing = YingShiThemeTokens.spacing
 
     LaunchedEffect(selectedTypeName) {
         viewModel.refresh(selectedType)
     }
-    LaunchedEffect(backendMutationVersion) {
-        if (backendMutationVersion > 0) {
+    LaunchedEffect(backendMutationEvent.version) {
+        if (backendMutationEvent.version > 0 && backendMutationEvent.affectsTrash()) {
             viewModel.refresh(selectedType)
         }
     }
@@ -275,8 +275,15 @@ fun RealTrashDetailScreen(
         factory = RealTrashDetailViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val detail = uiState.detail
     val spacing = YingShiThemeTokens.spacing
+
+    LaunchedEffect(backendMutationEvent.version) {
+        if (backendMutationEvent.version > 0 && backendMutationEvent.affectsTrash()) {
+            viewModel.refresh()
+        }
+    }
 
     Column(
         modifier = modifier

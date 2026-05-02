@@ -88,7 +88,7 @@ fun SystemMediaScreen(
         ),
     )
     val uiState by viewModel.uiState.collectAsState()
-    val mutationVersion = LocalSystemMediaBridgeRepository.mutationVersion
+    val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
     val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
@@ -215,8 +215,8 @@ fun SystemMediaScreen(
         }
     }
 
-    LaunchedEffect(mutationVersion) {
-        viewModel.refreshLocalState()
+    LaunchedEffect(bridgeMutationEvent.version) {
+        viewModel.handleBridgeMutation(bridgeMutationEvent)
     }
 
     LaunchedEffect(uiState.selectedFilter) {

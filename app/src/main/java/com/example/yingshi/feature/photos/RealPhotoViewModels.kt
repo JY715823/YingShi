@@ -387,7 +387,9 @@ class PostDetailRealViewModel(
                 it.copy(postComments = it.postComments.copy(isMutating = true, errorMessage = null))
             }
             when (val result = block()) {
-                is ApiResult.Success -> loadPostComments(successMessage)
+                is ApiResult.Success -> {
+                    loadPostComments(successMessage)
+                }
                 is ApiResult.Error -> {
                     _uiState.update {
                         it.copy(
@@ -432,7 +434,19 @@ class PostDetailRealViewModel(
                 )
             }
             when (val result = block()) {
-                is ApiResult.Success -> loadMediaComments(mediaId, successMessage)
+                is ApiResult.Success -> {
+                    RealBackendMutationBus.notifyChanged(
+                        RealBackendMutationEvent(
+                            scopes = setOf(
+                                RealBackendRefreshScope.PHOTO_FEED,
+                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                            ),
+                            postIds = setOf(route.postId),
+                            mediaIds = setOf(mediaId),
+                        ),
+                    )
+                    loadMediaComments(mediaId, successMessage)
+                }
                 is ApiResult.Error -> {
                     _uiState.update { state ->
                         state.copy(
