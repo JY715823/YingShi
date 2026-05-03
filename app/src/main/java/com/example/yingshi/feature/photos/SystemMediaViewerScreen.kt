@@ -77,14 +77,6 @@ private const val MinSystemViewerScale = 1f
 private const val MaxSystemViewerScale = 4f
 private const val SystemViewerResetScale = 1.02f
 
-private data class SystemVideoPlaybackState(
-    val isPlaying: Boolean = false,
-    val progressMillis: Long = 0L,
-    val durationMillis: Long? = null,
-    val isLoading: Boolean = false,
-    val errorMessage: String? = null,
-)
-
 private class SystemViewerZoomState {
     var scale by mutableStateOf(MinSystemViewerScale)
         private set
@@ -465,7 +457,7 @@ private fun SystemMediaViewerCanvas(
 ) {
     var containerSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
     var videoPlaybackState by remember(item.id) {
-        mutableStateOf(SystemVideoPlaybackState())
+        mutableStateOf(ViewerVideoPlaybackState())
     }
     var videoRetryVersion by remember(item.id) { mutableStateOf(0) }
     val transformModifier = if (zoomState != null) {
@@ -542,12 +534,7 @@ private fun SystemMediaViewerCanvas(
                                     videoPlaybackState.progressMillis >= durationMillis
                                 videoPlaybackState = if (videoPlaybackState.errorMessage != null) {
                                     videoRetryVersion += 1
-                                    videoPlaybackState.copy(
-                                        isPlaying = false,
-                                        progressMillis = 0L,
-                                        isLoading = true,
-                                        errorMessage = null,
-                                    )
+                                    videoPlaybackState.retryState()
                                 } else if (videoPlaybackState.isPlaying) {
                                     videoPlaybackState.copy(isPlaying = false)
                                 } else {
@@ -573,9 +560,9 @@ private fun SystemMediaViewerCanvas(
 private fun SystemMediaViewerVideoCanvas(
     item: SystemMediaItem,
     isCurrent: Boolean,
-    playbackState: SystemVideoPlaybackState,
+    playbackState: ViewerVideoPlaybackState,
     retryVersion: Int,
-    onPlaybackStateChange: (SystemVideoPlaybackState) -> Unit,
+    onPlaybackStateChange: (ViewerVideoPlaybackState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val videoViewRef = remember(item.id) { mutableStateOf<VideoView?>(null) }
@@ -583,7 +570,7 @@ private fun SystemMediaViewerVideoCanvas(
     var isPrepared by remember(item.id, retryVersion) { mutableStateOf(false) }
 
     LaunchedEffect(item.id, retryVersion) {
-        onPlaybackStateChange(SystemVideoPlaybackState(isLoading = true))
+        onPlaybackStateChange(ViewerVideoPlaybackState(isLoading = true))
     }
 
     DisposableEffect(item.id, retryVersion) {
@@ -758,7 +745,7 @@ private fun SystemMediaViewerInfoCard(
 
 @Composable
 private fun SystemMediaVideoControls(
-    playbackState: SystemVideoPlaybackState,
+    playbackState: ViewerVideoPlaybackState,
     onTogglePlayback: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -813,12 +800,7 @@ private fun SystemMediaVideoControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = when {
-                            playbackState.errorMessage != null -> "播放失败"
-                            playbackState.isLoading -> "加载中"
-                            playbackState.isPlaying -> "播放中"
-                            else -> "已暂停"
-                        },
+                        text = playbackState.controlStatusLabel(),
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White.copy(alpha = 0.90f),
                     )

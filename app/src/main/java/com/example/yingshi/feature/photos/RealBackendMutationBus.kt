@@ -73,3 +73,63 @@ object RealBackendMutationBus {
         _latestEvent.value = event.copy(version = nextVersion)
     }
 }
+
+private val RealBackendContentScopes = setOf(
+    RealBackendRefreshScope.PHOTO_FEED,
+    RealBackendRefreshScope.ALBUMS,
+    RealBackendRefreshScope.POST_DETAIL,
+    RealBackendRefreshScope.MEDIA_MANAGEMENT,
+    RealBackendRefreshScope.TRASH,
+    RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+)
+
+private val RealBackendPostScopes = setOf(
+    RealBackendRefreshScope.PHOTO_FEED,
+    RealBackendRefreshScope.ALBUMS,
+    RealBackendRefreshScope.POST_DETAIL,
+    RealBackendRefreshScope.MEDIA_MANAGEMENT,
+    RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+)
+
+private val RealBackendCommentScopes = setOf(
+    RealBackendRefreshScope.PHOTO_FEED,
+    RealBackendRefreshScope.POST_DETAIL,
+    RealBackendRefreshScope.MEDIA_MANAGEMENT,
+)
+
+internal fun notifyRealBackendContentChanged(
+    postIds: Set<String> = emptySet(),
+    mediaIds: Set<String> = emptySet(),
+) {
+    RealBackendMutationBus.notifyChanged(
+        RealBackendMutationEvent(
+            scopes = RealBackendContentScopes,
+            postIds = postIds,
+            mediaIds = mediaIds,
+        ),
+    )
+}
+
+internal fun notifyRealBackendPostChanged(
+    postIds: Set<String> = emptySet(),
+) {
+    RealBackendMutationBus.notifyChanged(
+        RealBackendMutationEvent(
+            scopes = RealBackendPostScopes,
+            postIds = postIds,
+        ),
+    )
+}
+
+internal fun notifyRealBackendCommentChanged(
+    postIds: Set<String> = emptySet(),
+    mediaIds: Set<String> = emptySet(),
+) {
+    RealBackendMutationBus.notifyChanged(
+        RealBackendMutationEvent(
+            scopes = RealBackendCommentScopes,
+            postIds = postIds,
+            mediaIds = mediaIds,
+        ),
+    )
+}

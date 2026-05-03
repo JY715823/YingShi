@@ -629,18 +629,8 @@ object LocalSystemMediaBridgeRepository {
                     kind = MutationKind.OVERLAY_ONLY,
                     mediaIds = sourceItems.map { it.id },
                 )
-                RealBackendMutationBus.notifyChanged(
-                    RealBackendMutationEvent(
-                        scopes = setOf(
-                            RealBackendRefreshScope.PHOTO_FEED,
-                            RealBackendRefreshScope.ALBUMS,
-                            RealBackendRefreshScope.POST_DETAIL,
-                            RealBackendRefreshScope.MEDIA_MANAGEMENT,
-                            RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
-                        ),
-                        postIds = result.data.affectedPostIds,
-                        mediaIds = sourceItems.map { it.id }.toSet(),
-                    ),
+                notifyRealBackendPostChanged(
+                    postIds = result.data.affectedPostIds,
                 )
                 publishOperationResult(
                     operationId = operationId,

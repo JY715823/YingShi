@@ -233,6 +233,13 @@ Repeated smoke runs change media count:
 8. In system media, move one item to the Android system trash and confirm both the system media list and system media Viewer stop showing the deleted item.
 9. Turn `REAL` -> `FAKE` -> `REAL` and confirm previous REAL error / loading / selection state does not pollute FAKE pages, and vice versa.
 10. If any refresh request fails, confirm the page stays alive and exposes Chinese retry copy instead of crashing.
+
+## 10. Stage 12.4 Cleanup Checks
+
+1. In `REAL`, confirm feed thumbnails, Viewer preview/original loading, and video poster fallback still work after the shared media helper cleanup.
+2. Switch between image and video Viewer items and confirm loading/error/progress labels still stay isolated per media item after the shared Viewer-state cleanup.
+3. Edit a post, delete media, restore from trash, and add a media comment; confirm the affected pages still refresh correctly after mutation helpers replace page-local scope construction.
+4. Reopen `照片流` and `相册` and confirm REAL empty/error/retry cards still behave normally after shared backend state-card reuse.
 ## Stage 12.3 回归重点
 
 1. 系统媒体选择多张媒体后执行“发成新帖子”，先看到“已加入上传队列”，全部上传并整理成功后：

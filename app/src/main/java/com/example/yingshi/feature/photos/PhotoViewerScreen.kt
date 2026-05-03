@@ -79,12 +79,8 @@ import androidx.core.view.WindowCompat
 import coil.imageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import coil.request.CachePolicy
-import coil.request.ImageRequest
 import coil.request.SuccessResult
-import coil.size.Precision
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -127,22 +123,6 @@ private object ViewerLayoutTuning {
 private data class ViewerCommentPanelState(
     val selectedCommentId: String? = null,
 )
-
-private data class ViewerVideoPlaybackState(
-    val mediaId: String? = null,
-    val isPlaying: Boolean = false,
-    val progressMillis: Long = 0L,
-    val durationMillis: Long? = null,
-    val isLoading: Boolean = false,
-    val errorMessage: String? = null,
-)
-
-private enum class ViewerImageFailureReason {
-    NONE,
-    MISSING_URL,
-    PREVIEW_FAILED,
-    ORIGINAL_FAILED,
-}
 
 private class ViewerZoomState {
     var scale by mutableStateOf(MinViewerScale)
@@ -1022,7 +1002,7 @@ private fun ViewerImageCanvas(
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
     val previewRequest = remember(context, previewUrl, accessToken) {
-        viewerImageRequest(
+        backendMediaImageRequest(
             context = context,
             url = previewUrl,
             accessToken = accessToken,
@@ -1031,7 +1011,7 @@ private fun ViewerImageCanvas(
     }
     val originalRequest = remember(context, originalUrl, shouldRequestOriginal, accessToken) {
         if (shouldRequestOriginal) {
-            viewerImageRequest(
+            backendMediaImageRequest(
                 context = context,
                 url = originalUrl,
                 accessToken = accessToken,
@@ -1138,7 +1118,7 @@ private suspend fun loadRealViewerOriginal(
     accessToken: String?,
 ): Boolean {
     val originalUrl = media.mediaSource.viewerOriginalImageUrl(media.mediaType) ?: return false
-    val request = viewerImageRequest(
+    val request = backendMediaImageRequest(
         context = context,
         url = originalUrl,
         accessToken = accessToken,
@@ -1147,40 +1127,13 @@ private suspend fun loadRealViewerOriginal(
     return context.imageLoader.execute(request) is SuccessResult
 }
 
-private fun viewerImageRequest(
-    context: android.content.Context,
-    url: String?,
-    accessToken: String?,
-    memoryCacheKey: String? = url?.let(::sharedPreviewMemoryCacheKey),
-): ImageRequest? {
-    if (url.isNullOrBlank()) return null
-    return ImageRequest.Builder(context).apply {
-        data(url)
-        memoryCacheKey?.let(::memoryCacheKey)
-        diskCacheKey(sharedMediaDiskCacheKey(url))
-        networkCachePolicy(CachePolicy.ENABLED)
-        diskCachePolicy(CachePolicy.ENABLED)
-        memoryCachePolicy(CachePolicy.ENABLED)
-        precision(Precision.INEXACT)
-        crossfade(false)
-        accessToken
-            ?.takeIf { url.startsWith("http", ignoreCase = true) }
-            ?.let { token -> addHeader("Authorization", "${RemoteConfig.AUTH_SCHEME} $token") }
-    }.build()
-}
-
 @Composable
 private fun ViewerImageFallback(
     reason: ViewerImageFailureReason,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val label = when (reason) {
-        ViewerImageFailureReason.MISSING_URL -> "暂无可用图片"
-        ViewerImageFailureReason.PREVIEW_FAILED -> "图片加载失败"
-        ViewerImageFailureReason.ORIGINAL_FAILED -> "原图加载失败，已保留预览"
-        ViewerImageFailureReason.NONE -> null
-    } ?: return
+    val label = reason.message.takeIf { it.isNotBlank() } ?: return
 
     Surface(
         modifier = modifier.padding(spacing.lg),
@@ -1222,14 +1175,7 @@ private fun ViewerVideoCanvas(
     ).value
     val posterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
     val requestHeaders = remember(videoUrl, accessToken) {
-        if (!videoUrl.isNullOrBlank() &&
-            videoUrl.startsWith("http", ignoreCase = true) &&
-            !accessToken.isNullOrBlank()
-        ) {
-            mapOf("Authorization" to "${RemoteConfig.AUTH_SCHEME} $accessToken")
-        } else {
-            emptyMap()
-        }
+        backendMediaRequestHeaders(videoUrl, accessToken)
     }
     val videoViewRef = remember(media.mediaId) { mutableStateOf<VideoView?>(null) }
     var retryVersion by remember(media.mediaId) { mutableStateOf(0) }
@@ -1397,13 +1343,9 @@ private fun ViewerVideoCanvas(
         }
 
         Text(
-            text = when {
-                videoUrl.isNullOrBlank() -> "暂无可播放的视频地址"
-                isLoading -> "视频加载中…"
-                errorMessage != null -> errorMessage
-                isPlaying -> "正在播放视频"
-                else -> "视频已暂停"
-            },
+            text = (playbackState ?: ViewerVideoPlaybackState()).primaryStatusLabel(
+                missingUrl = videoUrl.isNullOrBlank(),
+            ),
             modifier = Modifier
                 .align(Alignment.Center)
                 .padding(top = 112.dp)
@@ -1438,14 +1380,7 @@ private fun ViewerVideoCanvas(
                 onClick = {
                     retryVersion += 1
                     isPrepared = false
-                    updatePlaybackState {
-                        it.copy(
-                            isPlaying = false,
-                            progressMillis = 0L,
-                            isLoading = true,
-                            errorMessage = null,
-                        )
-                    }
+                    updatePlaybackState { it.retryState() }
                 },
             ) {
                 Text(
@@ -1517,12 +1452,7 @@ private fun ViewerVideoControls(
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = when {
-                            playbackState.errorMessage != null -> "播放失败"
-                            playbackState.isLoading -> "加载中"
-                            playbackState.isPlaying -> "播放中"
-                            else -> "已暂停"
-                        },
+                        text = playbackState.controlStatusLabel(),
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = ViewerSurface.copy(alpha = 0.92f),
                     )
@@ -2228,18 +2158,8 @@ private suspend fun deleteRealViewerMedia(mediaId: String): String? {
     }
     return when (val result = RepositoryProvider.mediaRepository.systemDeleteMedia(mediaId)) {
         is ApiResult.Success -> {
-            RealBackendMutationBus.notifyChanged(
-                RealBackendMutationEvent(
-                    scopes = setOf(
-                        RealBackendRefreshScope.PHOTO_FEED,
-                        RealBackendRefreshScope.ALBUMS,
-                        RealBackendRefreshScope.POST_DETAIL,
-                        RealBackendRefreshScope.MEDIA_MANAGEMENT,
-                        RealBackendRefreshScope.TRASH,
-                        RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
-                    ),
-                    mediaIds = setOf(mediaId),
-                ),
+            notifyRealBackendContentChanged(
+                mediaIds = setOf(mediaId),
             )
             null
         }

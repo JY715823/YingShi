@@ -81,6 +81,8 @@ Response:
 - App-content Viewer video playback now resolves the playable source with `videoUrl -> mediaUrl -> originalUrl`.
 - Missing playable video URLs must be tolerated; Android shows a Chinese safe placeholder instead of attempting playback.
 - App-content Viewer video state such as loading, error, progress, and playing remains client-local and keyed by `mediaId`; it is not a server DTO field.
+- Stage 12.4 Android cleanup centralizes URL normalization, preview/original request building, auth-header injection, and media-type fallback inside the shared media support layer rather than page-local helper code.
+- Stage 12.4 Viewer cleanup centralizes image failure labels and video playback labels/retry reset into shared Viewer-state helpers; these are client-side UI rules, not DTO fields.
 - `postIds` only includes active posts
 - system-deleted media stays restorable through trash
 

@@ -133,15 +133,8 @@ class RealViewerCommentViewModel(
             }
             when (val result = block()) {
                 is ApiResult.Success -> {
-                    RealBackendMutationBus.notifyChanged(
-                        RealBackendMutationEvent(
-                            scopes = setOf(
-                                RealBackendRefreshScope.PHOTO_FEED,
-                                RealBackendRefreshScope.POST_DETAIL,
-                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
-                            ),
-                            mediaIds = setOf(mediaId),
-                        ),
+                    notifyRealBackendCommentChanged(
+                        mediaIds = setOf(mediaId),
                     )
                     loadMediaComments(mediaId, successMessage)
                 }
