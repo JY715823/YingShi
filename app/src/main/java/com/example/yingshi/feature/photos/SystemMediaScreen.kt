@@ -77,6 +77,7 @@ fun SystemMediaScreen(
     onBack: () -> Unit,
     onOpenViewer: (SystemMediaViewerRoute) -> Unit,
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit,
+    onOpenCreatePost: (CreatePostRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -413,6 +414,7 @@ fun SystemMediaScreen(
                 tasks = uploadTasks,
                 onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
                 onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                onRetryTask = { LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -433,21 +435,19 @@ fun SystemMediaScreen(
             SystemMediaSelectionBar(
                 selectedCount = selectedIds.size,
                 onCreatePost = {
-                    val postCount = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
-                        context = context,
-                        mediaItems = selectedItems,
-                    )
+                    val selectedSnapshot = selectedItems
                     selectedIds = emptyList()
                     selectionMode = false
-                    Toast.makeText(
-                        context,
-                        if (postCount > 0) {
-                            "已发成新帖子，并同步刷新到照片与相册页。"
-                        } else {
-                            "当前没有可处理的媒体。"
-                        },
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    if (selectedSnapshot.isEmpty()) {
+                        Toast.makeText(context, "???????????", Toast.LENGTH_SHORT).show()
+                    } else {
+                        onOpenCreatePost(
+                            CreatePostRoute(
+                                source = "system-media-selection",
+                                initialMediaItems = selectedSnapshot,
+                            ),
+                        )
+                    }
                 },
                 onAddToPost = {
                     if (destinationUiState.errorMessage != null && posts.isEmpty()) {

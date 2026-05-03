@@ -48,6 +48,7 @@ data class CreatePostPayload(
     val displayTimeMillis: Long,
     val albumIds: List<String>,
     val initialMediaIds: List<String> = emptyList(),
+    val coverMediaId: String? = null,
 )
 
 data class UpdatePostBasicInfoPayload(

@@ -12,7 +12,9 @@ data class SystemMediaUploadTaskUiModel(
     val targetLabel: String,
     val progressPercent: Int,
     val state: UploadState,
+    val statusMessage: String? = null,
     val errorMessage: String? = null,
+    val canRetry: Boolean = false,
 ) {
     val isTerminal: Boolean
         get() = state == UploadState.SUCCESS || state == UploadState.FAILURE || state == UploadState.CANCELLED

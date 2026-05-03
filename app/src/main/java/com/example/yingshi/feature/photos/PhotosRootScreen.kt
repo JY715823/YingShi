@@ -79,6 +79,7 @@ fun PhotosRootScreen(
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
     onOpenSystemMedia: () -> Unit = { },
+    onOpenCreatePost: (CreatePostRoute) -> Unit = { },
     onOpenNotifications: () -> Unit = { },
 ) {
     val spacing = YingShiThemeTokens.spacing

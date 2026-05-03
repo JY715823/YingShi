@@ -141,7 +141,7 @@ class RealPostRepository(
                     displayTimeMillis = payload.displayTimeMillis,
                     albumIds = payload.albumIds,
                     initialMediaIds = payload.initialMediaIds,
-                    coverMediaId = null,
+                    coverMediaId = payload.coverMediaId,
                 ),
             ).data.toRemoteSummary()
         }.fold(

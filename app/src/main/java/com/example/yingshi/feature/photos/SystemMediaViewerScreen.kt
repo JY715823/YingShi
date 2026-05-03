@@ -177,6 +177,7 @@ private fun List<PointerInputChange>.systemViewerAverageDistanceTo(
 fun SystemMediaViewerScreen(
     route: SystemMediaViewerRoute,
     onBack: () -> Unit,
+    onOpenCreatePost: (CreatePostRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -365,6 +366,7 @@ fun SystemMediaViewerScreen(
                 tasks = uploadTasks,
                 onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
                 onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                onRetryTask = { LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -378,19 +380,12 @@ fun SystemMediaViewerScreen(
             onDismiss = { showMenuSheet = false },
             onCreatePost = {
                 showMenuSheet = false
-                val createdCount = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
-                    context = context,
-                    mediaItems = listOf(currentItem),
+                onOpenCreatePost(
+                    CreatePostRoute(
+                        source = "system-media-viewer",
+                        initialMediaItems = listOf(currentItem),
+                    ),
                 )
-                Toast.makeText(
-                    context,
-                    if (createdCount > 0) {
-                        "已发成新帖子，并同步刷新照片与相册页。"
-                    } else {
-                        "当前媒体无法处理。"
-                    },
-                    Toast.LENGTH_SHORT,
-                ).show()
             },
             onAddToPost = {
                 showMenuSheet = false
