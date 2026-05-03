@@ -55,7 +55,12 @@ object LocalSystemMediaBridgeRepository {
         val fileBytes: ByteArray,
         val width: Int,
         val height: Int,
-        val durationMillis: Long?,
+        val durationMillis: Long? = null,
+    )
+
+    private data class UploadedOperationMedia(
+        val orderedUploadedMediaIds: List<String>,
+        val uploadedMediaIdBySourceId: Map<String, String>,
     )
 
     private data class RealFinalizeResult(
@@ -64,6 +69,28 @@ object LocalSystemMediaBridgeRepository {
         val postRoute: PostDetailPlaceholderRoute? = null,
         val affectedPostIds: Set<String> = emptySet(),
     )
+
+    private sealed interface PendingOperationRequest {
+        val mediaItems: List<SystemMediaItem>
+        val operationType: OperationType
+        val targetLabel: String
+    }
+
+    private data class CreatePostOperationRequest(
+        val draft: CreatePostDraft,
+        override val mediaItems: List<SystemMediaItem>,
+    ) : PendingOperationRequest {
+        override val operationType: OperationType = OperationType.CREATE_POST
+        override val targetLabel: String = "发成新帖子"
+    }
+
+    private data class AddToExistingPostOperationRequest(
+        val postId: String,
+        override val mediaItems: List<SystemMediaItem>,
+    ) : PendingOperationRequest {
+        override val operationType: OperationType = OperationType.ADD_TO_EXISTING_POST
+        override val targetLabel: String = "加入已有帖子"
+    }
 
     var mutationVersion by mutableIntStateOf(0)
         private set
@@ -76,7 +103,8 @@ object LocalSystemMediaBridgeRepository {
     private val finalizedOperationIds = linkedSetOf<String>()
     private val hiddenMediaIds = linkedSetOf<String>()
     private val linkedPostIdsByMediaId = linkedMapOf<String, LinkedHashSet<String>>()
-    private val realUploadedMediaIdsByOperationId = linkedMapOf<String, LinkedHashSet<String>>()
+    private val realUploadedMediaIdsByOperationId = linkedMapOf<String, LinkedHashMap<String, String>>()
+    private val operationRequestsById = linkedMapOf<String, PendingOperationRequest>()
 
     val uploadTasks: List<SystemMediaUploadTaskUiModel>
         get() = uploadTasksState
@@ -97,8 +125,21 @@ object LocalSystemMediaBridgeRepository {
     fun createPostFromSystemMedia(
         mediaItems: List<SystemMediaItem>,
     ): AlbumPostCardUiModel? {
-        val normalizedItems = mediaItems.distinctBy { it.id }
-        val post = FakeAlbumRepository.createLocalPostFromSystemMedia(normalizedItems) ?: return null
+        return createPostFromSystemMediaDraft(
+            draft = defaultCreatePostDraft(mediaItems),
+            mediaItems = mediaItems,
+        )
+    }
+
+    fun createPostFromSystemMediaDraft(
+        draft: CreatePostDraft,
+        mediaItems: List<SystemMediaItem>,
+    ): AlbumPostCardUiModel? {
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+        val post = FakeAlbumRepository.createConfiguredLocalPostFromSystemMedia(
+            draft = draft,
+            mediaItems = normalizedItems,
+        ) ?: return null
         FakePhotoFeedRepository.importSystemMediaToFeed(
             mediaItems = normalizedItems,
             postId = post.id,
@@ -113,49 +154,30 @@ object LocalSystemMediaBridgeRepository {
     fun enqueueCreatePostUpload(
         context: Context,
         mediaItems: List<SystemMediaItem>,
+        draft: CreatePostDraft = defaultCreatePostDraft(mediaItems),
     ): Int {
-        if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            return enqueueCreatePostUploadReal(context, mediaItems)
-        }
-        val normalizedItems = mediaItems.distinctBy { it.id }
+        val normalizedItems = normalizeSystemMedia(mediaItems)
         if (normalizedItems.isEmpty()) return 0
-        val operationId = "create-post-${System.currentTimeMillis()}"
-        normalizedItems.forEach { item ->
-            enqueueUploadTask(
-                operationId = operationId,
-                mediaItem = item,
-                targetLabel = "发成新帖子",
-                onOperationSuccess = {
-                    val createdPost = createPostFromSystemMedia(normalizedItems)
-                    if (createdPost == null) {
-                        OperationResultEvent(
-                            eventId = "$operationId-failure",
-                            operationId = operationId,
-                            operationType = OperationType.CREATE_POST,
-                            succeeded = false,
-                            message = "发成新帖子失败，请稍后重试。",
-                        )
-                    } else {
-                        OperationResultEvent(
-                            eventId = "$operationId-success",
-                            operationId = operationId,
-                            operationType = OperationType.CREATE_POST,
-                            succeeded = true,
-                            message = "新帖子已生成，照片流和相册列表已刷新。",
-                            postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
-                        )
-                    }
-                },
+        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            enqueueCreatePostUploadReal(
+                context = context,
+                mediaItems = normalizedItems,
+                draft = draft,
+            )
+        } else {
+            enqueueCreatePostUploadFake(
+                mediaItems = normalizedItems,
+                draft = draft,
             )
         }
-        return normalizedItems.size
     }
 
     fun addSystemMediaToExistingPost(
         postId: String,
         mediaItems: List<SystemMediaItem>,
     ): Int {
-        val normalizedItems = mediaItems.distinctBy { it.id }
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+            .filterNot { it.linkedPostIds.contains(postId) }
         val addedCount = FakeAlbumRepository.appendSystemMediaToPost(
             postId = postId,
             mediaItems = normalizedItems,
@@ -178,34 +200,21 @@ object LocalSystemMediaBridgeRepository {
         postId: String,
         mediaItems: List<SystemMediaItem>,
     ): Int {
-        if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            return enqueueAddToExistingPostUploadReal(context, postId, mediaItems)
-        }
-        val normalizedItems = mediaItems.distinctBy { it.id }
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+            .filterNot { it.linkedPostIds.contains(postId) }
         if (normalizedItems.isEmpty()) return 0
-        val operationId = "append-post-$postId-${System.currentTimeMillis()}"
-        normalizedItems.forEach { item ->
-            enqueueUploadTask(
-                operationId = operationId,
-                mediaItem = item,
-                targetLabel = "加入已有帖子",
-                onOperationSuccess = {
-                    val addedCount = addSystemMediaToExistingPost(postId, normalizedItems)
-                    OperationResultEvent(
-                        eventId = if (addedCount > 0) "$operationId-success" else "$operationId-failure",
-                        operationId = operationId,
-                        operationType = OperationType.ADD_TO_EXISTING_POST,
-                        succeeded = addedCount > 0,
-                        message = if (addedCount > 0) {
-                            "已加入已有帖子，相关页面已刷新。"
-                        } else {
-                            "这些媒体已经在目标帖子里了。"
-                        },
-                    )
-                },
+        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            enqueueAddToExistingPostUploadReal(
+                context = context,
+                postId = postId,
+                mediaItems = normalizedItems,
+            )
+        } else {
+            enqueueAddToExistingPostUploadFake(
+                postId = postId,
+                mediaItems = normalizedItems,
             )
         }
-        return normalizedItems.size
     }
 
     fun moveToSimulatedSystemTrash(
@@ -234,22 +243,128 @@ object LocalSystemMediaBridgeRepository {
     }
 
     fun cancelUploadTask(taskId: String) {
-        val index = uploadTasksState.indexOfFirst { it.taskId == taskId }
-        if (index < 0) return
-        val current = uploadTasksState[index]
-        if (current.isTerminal) return
-        uploadTasksState[index] = current.copy(state = UploadState.CANCELLED)
+        val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
+        if (task.isTerminal) return
+        updateOperationTasks(
+            operationId = task.operationId,
+            state = UploadState.CANCELLED,
+            statusMessage = "已取消上传",
+            canRetry = true,
+        )
         uploadScope.launch {
             RepositoryProvider.uploadRepository.cancelUpload(taskId)
         }
     }
 
     fun dismissUploadTask(taskId: String) {
+        val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
         uploadTasksState.removeAll { it.taskId == taskId }
+        cleanupOperationIfIdle(task.operationId)
     }
 
     fun dismissOperationResult(eventId: String) {
         operationResultsState.removeAll { it.eventId == eventId }
+    }
+
+    fun retryUploadTask(
+        context: Context,
+        taskId: String,
+    ): Boolean {
+        val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return false
+        val request = operationRequestsById[task.operationId] ?: return false
+        clearOperationState(task.operationId, keepRequest = false)
+        return when (request) {
+            is CreatePostOperationRequest -> {
+                enqueueCreatePostUpload(
+                    context = context,
+                    mediaItems = request.mediaItems,
+                    draft = request.draft,
+                ) > 0
+            }
+            is AddToExistingPostOperationRequest -> {
+                enqueueAddToExistingPostUpload(
+                    context = context,
+                    postId = request.postId,
+                    mediaItems = request.mediaItems,
+                ) > 0
+            }
+        }
+    }
+
+    private fun enqueueCreatePostUploadFake(
+        mediaItems: List<SystemMediaItem>,
+        draft: CreatePostDraft,
+    ): Int {
+        val operationId = "create-post-${System.currentTimeMillis()}"
+        operationRequestsById[operationId] = CreatePostOperationRequest(
+            draft = draft,
+            mediaItems = mediaItems,
+        )
+        mediaItems.forEach { item ->
+            enqueueFakeUploadTask(
+                operationId = operationId,
+                mediaItem = item,
+                targetLabel = "发成新帖子",
+                onOperationSuccess = {
+                    val createdPost = createPostFromSystemMediaDraft(
+                        draft = draft,
+                        mediaItems = mediaItems,
+                    )
+                    if (createdPost == null) {
+                        OperationResultEvent(
+                            eventId = "$operationId-failure",
+                            operationId = operationId,
+                            operationType = OperationType.CREATE_POST,
+                            succeeded = false,
+                            message = "新帖子创建失败，请稍后重试。",
+                        )
+                    } else {
+                        OperationResultEvent(
+                            eventId = "$operationId-success",
+                            operationId = operationId,
+                            operationType = OperationType.CREATE_POST,
+                            succeeded = true,
+                            message = "新帖子已创建，照片流和相册列表已刷新。",
+                            postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
+                        )
+                    }
+                },
+            )
+        }
+        return mediaItems.size
+    }
+
+    private fun enqueueAddToExistingPostUploadFake(
+        postId: String,
+        mediaItems: List<SystemMediaItem>,
+    ): Int {
+        val operationId = "append-post-$postId-${System.currentTimeMillis()}"
+        operationRequestsById[operationId] = AddToExistingPostOperationRequest(
+            postId = postId,
+            mediaItems = mediaItems,
+        )
+        mediaItems.forEach { item ->
+            enqueueFakeUploadTask(
+                operationId = operationId,
+                mediaItem = item,
+                targetLabel = "加入已有帖子",
+                onOperationSuccess = {
+                    val addedCount = addSystemMediaToExistingPost(postId, mediaItems)
+                    OperationResultEvent(
+                        eventId = if (addedCount > 0) "$operationId-success" else "$operationId-failure",
+                        operationId = operationId,
+                        operationType = OperationType.ADD_TO_EXISTING_POST,
+                        succeeded = addedCount > 0,
+                        message = if (addedCount > 0) {
+                            "媒体已加入已有帖子，帖子详情和媒体管理已刷新。"
+                        } else {
+                            "这些媒体已经在目标帖子里了。"
+                        },
+                    )
+                },
+            )
+        }
+        return mediaItems.size
     }
 
     private fun linkMediaToPost(
@@ -269,7 +384,7 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
-    private fun enqueueUploadTask(
+    private fun enqueueFakeUploadTask(
         operationId: String,
         mediaItem: SystemMediaItem,
         targetLabel: String,
@@ -300,7 +415,9 @@ object LocalSystemMediaBridgeRepository {
                             targetLabel = targetLabel,
                             progressPercent = 0,
                             state = UploadState.FAILURE,
+                            statusMessage = "申请上传失败",
                             errorMessage = tokenResult.message,
+                            canRetry = true,
                         ),
                     )
                     return@launch
@@ -317,6 +434,7 @@ object LocalSystemMediaBridgeRepository {
                     targetLabel = targetLabel,
                     progressPercent = 0,
                     state = UploadState.WAITING,
+                    statusMessage = "等待上传",
                 ),
             )
 
@@ -330,6 +448,8 @@ object LocalSystemMediaBridgeRepository {
                 uploadTasksState[currentIndex] = current.copy(
                     state = UploadState.UPLOADING,
                     progressPercent = progress,
+                    statusMessage = "正在上传 $progress%",
+                    canRetry = false,
                 )
             }
 
@@ -340,47 +460,61 @@ object LocalSystemMediaBridgeRepository {
                     objectKey = "uploads/fake/${mediaItem.id}",
                 ),
             )
-            val currentIndex = uploadTasksState.indexOfFirst { it.taskId == uploadId }
-            if (currentIndex < 0) return@launch
-            val current = uploadTasksState[currentIndex]
-            uploadTasksState[currentIndex] = when (confirmResult) {
-                is ApiResult.Success -> current.copy(
-                    progressPercent = 100,
-                    state = UploadState.SUCCESS,
-                )
-                is ApiResult.Error -> current.copy(
-                    state = UploadState.FAILURE,
-                    errorMessage = confirmResult.message,
-                )
-                ApiResult.Loading -> current
+            if (uploadTasksState.firstOrNull { it.taskId == uploadId }?.state == UploadState.CANCELLED) {
+                return@launch
             }
-            finalizeOperationIfReady(operationId, onOperationSuccess)
+            when (confirmResult) {
+                is ApiResult.Success -> {
+                    updateUploadTask(
+                        taskId = uploadId,
+                        state = UploadState.SUCCESS,
+                        progressPercent = 100,
+                        statusMessage = finalizeWaitingMessage(targetLabel),
+                    )
+                    finalizeOperationIfReady(operationId, onOperationSuccess)
+                }
+                is ApiResult.Error -> {
+                    updateUploadTask(
+                        taskId = uploadId,
+                        state = UploadState.FAILURE,
+                        progressPercent = 100,
+                        statusMessage = "上传失败",
+                        errorMessage = confirmResult.message,
+                        canRetry = true,
+                    )
+                }
+                ApiResult.Loading -> Unit
+            }
         }
     }
 
     private fun enqueueCreatePostUploadReal(
         context: Context,
         mediaItems: List<SystemMediaItem>,
+        draft: CreatePostDraft,
     ): Int {
-        val normalizedItems = mediaItems.distinctBy { it.id }
-        if (normalizedItems.isEmpty()) return 0
         val operationId = "real-create-post-${System.currentTimeMillis()}"
-        normalizedItems.forEach { item ->
+        operationRequestsById[operationId] = CreatePostOperationRequest(
+            draft = draft,
+            mediaItems = mediaItems,
+        )
+        mediaItems.forEach { item ->
             enqueueRealUploadTask(
                 context = context,
                 operationId = operationId,
                 mediaItem = item,
                 targetLabel = "发成新帖子",
-                allSourceItems = normalizedItems,
-                finalizeAction = { uploadedMediaIds ->
+                sourceItems = mediaItems,
+                finalizeAction = { uploadedMedia ->
                     finalizeCreatePostReal(
-                        sourceItems = normalizedItems,
-                        uploadedMediaIds = uploadedMediaIds,
+                        draft = draft,
+                        sourceItems = mediaItems,
+                        uploadedMedia = uploadedMedia,
                     )
                 },
             )
         }
-        return normalizedItems.size
+        return mediaItems.size
     }
 
     private fun enqueueAddToExistingPostUploadReal(
@@ -388,26 +522,28 @@ object LocalSystemMediaBridgeRepository {
         postId: String,
         mediaItems: List<SystemMediaItem>,
     ): Int {
-        val normalizedItems = mediaItems.distinctBy { it.id }
-        if (normalizedItems.isEmpty()) return 0
         val operationId = "real-append-post-$postId-${System.currentTimeMillis()}"
-        normalizedItems.forEach { item ->
+        operationRequestsById[operationId] = AddToExistingPostOperationRequest(
+            postId = postId,
+            mediaItems = mediaItems,
+        )
+        mediaItems.forEach { item ->
             enqueueRealUploadTask(
                 context = context,
                 operationId = operationId,
                 mediaItem = item,
                 targetLabel = "加入已有帖子",
-                allSourceItems = normalizedItems,
-                finalizeAction = { uploadedMediaIds ->
+                sourceItems = mediaItems,
+                finalizeAction = { uploadedMedia ->
                     finalizeAppendToPostReal(
                         postId = postId,
-                        sourceItems = normalizedItems,
-                        uploadedMediaIds = uploadedMediaIds,
+                        sourceItems = mediaItems,
+                        uploadedMedia = uploadedMedia,
                     )
                 },
             )
         }
-        return normalizedItems.size
+        return mediaItems.size
     }
 
     private fun enqueueRealUploadTask(
@@ -415,8 +551,8 @@ object LocalSystemMediaBridgeRepository {
         operationId: String,
         mediaItem: SystemMediaItem,
         targetLabel: String,
-        allSourceItems: List<SystemMediaItem>,
-        finalizeAction: suspend (List<String>) -> ApiResult<RealFinalizeResult>,
+        sourceItems: List<SystemMediaItem>,
+        finalizeAction: suspend (UploadedOperationMedia) -> ApiResult<RealFinalizeResult>,
     ) {
         uploadScope.launch {
             val metadata = runCatching {
@@ -431,7 +567,9 @@ object LocalSystemMediaBridgeRepository {
                         targetLabel = targetLabel,
                         progressPercent = 0,
                         state = UploadState.FAILURE,
+                        statusMessage = "本地媒体读取失败",
                         errorMessage = throwable.message ?: "读取本地媒体失败。",
+                        canRetry = true,
                     ),
                 )
                 return@launch
@@ -461,7 +599,9 @@ object LocalSystemMediaBridgeRepository {
                             targetLabel = targetLabel,
                             progressPercent = 0,
                             state = UploadState.FAILURE,
+                            statusMessage = "申请上传失败",
                             errorMessage = tokenResult.message,
+                            canRetry = true,
                         ),
                     )
                     return@launch
@@ -478,9 +618,15 @@ object LocalSystemMediaBridgeRepository {
                     targetLabel = targetLabel,
                     progressPercent = 8,
                     state = UploadState.WAITING,
+                    statusMessage = "等待上传",
                 ),
             )
-            updateUploadTask(uploadId, UploadState.UPLOADING, 42)
+            updateUploadTask(
+                taskId = uploadId,
+                state = UploadState.UPLOADING,
+                progressPercent = 42,
+                statusMessage = "正在上传 42%",
+            )
 
             when (
                 val uploadResult = RepositoryProvider.uploadRepository.uploadLocalFile(
@@ -491,21 +637,37 @@ object LocalSystemMediaBridgeRepository {
                 )
             ) {
                 is ApiResult.Success -> {
-                    updateUploadTask(uploadId, UploadState.SUCCESS, 100)
-                    rememberUploadedMediaId(operationId, uploadResult.data.mediaId)
+                    if (uploadTasksState.firstOrNull { it.taskId == uploadId }?.state == UploadState.CANCELLED) {
+                        return@launch
+                    }
+                    updateUploadTask(
+                        taskId = uploadId,
+                        state = UploadState.SUCCESS,
+                        progressPercent = 100,
+                        statusMessage = finalizeWaitingMessage(targetLabel),
+                    )
+                    rememberUploadedMediaId(
+                        operationId = operationId,
+                        sourceMediaId = mediaItem.id,
+                        uploadedMediaId = uploadResult.data.mediaId,
+                    )
                     finalizeRealOperationIfReady(
                         operationId = operationId,
-                        sourceItems = allSourceItems,
-                        targetLabel = targetLabel,
+                        sourceItems = sourceItems,
                         finalizeAction = finalizeAction,
                     )
                 }
                 is ApiResult.Error -> {
+                    if (uploadTasksState.firstOrNull { it.taskId == uploadId }?.state == UploadState.CANCELLED) {
+                        return@launch
+                    }
                     updateUploadTask(
                         taskId = uploadId,
                         state = UploadState.FAILURE,
                         progressPercent = 42,
+                        statusMessage = "上传失败",
                         errorMessage = uploadResult.message,
+                        canRetry = true,
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -514,36 +676,44 @@ object LocalSystemMediaBridgeRepository {
     }
 
     private suspend fun finalizeCreatePostReal(
+        draft: CreatePostDraft,
         sourceItems: List<SystemMediaItem>,
-        uploadedMediaIds: List<String>,
+        uploadedMedia: UploadedOperationMedia,
     ): ApiResult<RealFinalizeResult> {
         val albums = when (val result = RepositoryProvider.albumRepository.getAlbums()) {
             is ApiResult.Success -> result.data
-            is ApiResult.Error -> return ApiResult.Error(
-                code = result.code,
-                message = result.message.ifBlank { "读取相册失败，暂时无法发成新帖子。" },
-                throwable = result.throwable,
-            )
-            ApiResult.Loading -> return ApiResult.Error(
-                code = "ALBUMS_LOADING",
-                message = "相册仍在加载，请稍后再试。",
-            )
+            is ApiResult.Error -> {
+                return ApiResult.Error(
+                    code = result.code,
+                    message = result.message.ifBlank { "读取相册失败，暂时无法创建新帖子。" },
+                    throwable = result.throwable,
+                )
+            }
+            ApiResult.Loading -> {
+                return ApiResult.Error(
+                    code = "ALBUMS_LOADING",
+                    message = "相册仍在加载中，请稍后再试。",
+                )
+            }
         }
         val defaultAlbumId = albums.firstOrNull()?.albumId
             ?: return ApiResult.Error(
                 code = "ALBUM_REQUIRED",
-                message = "后端当前没有可用相册，暂时无法发成新帖子。",
+                message = "当前没有可用相册，暂时无法创建新帖子。",
             )
+        val finalAlbumIds = draft.albumIds.ifEmpty { listOf(defaultAlbumId) }
+        val coverMediaId = draft.coverSourceMediaId
+            ?.let(uploadedMedia.uploadedMediaIdBySourceId::get)
 
         return when (
             val result = RepositoryProvider.postRepository.createPost(
                 CreatePostPayload(
-                    title = buildRealPostTitle(sourceItems),
-                    summary = buildRealPostSummary(sourceItems),
-                    displayTimeMillis = sourceItems.maxOfOrNull { it.displayTimeMillis }
-                        ?: System.currentTimeMillis(),
-                    albumIds = listOf(defaultAlbumId),
-                    initialMediaIds = uploadedMediaIds,
+                    title = draft.title.ifBlank { buildRealPostTitle(sourceItems) },
+                    summary = draft.summary.ifBlank { buildRealPostSummary(sourceItems) },
+                    displayTimeMillis = draft.displayTimeMillis,
+                    albumIds = finalAlbumIds,
+                    initialMediaIds = uploadedMedia.orderedUploadedMediaIds,
+                    coverMediaId = coverMediaId,
                 ),
             )
         ) {
@@ -555,9 +725,9 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.CREATE_POST,
-                        successMessage = "新帖子已生成，照片流和相册列表已刷新。",
+                        successMessage = "新帖子已创建，照片流和相册列表已刷新。",
                         postRoute = result.data.toPostDetailPlaceholderRoute(
-                            selectedAlbumId = result.data.albumIds.firstOrNull() ?: defaultAlbumId,
+                            selectedAlbumId = result.data.albumIds.firstOrNull() ?: finalAlbumIds.first(),
                         ),
                         affectedPostIds = setOf(result.data.postId),
                     ),
@@ -565,7 +735,7 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> ApiResult.Error(
                 code = result.code,
-                message = result.message.ifBlank { "上传已完成，但发成新帖子失败了。" },
+                message = result.message.ifBlank { "上传已完成，但创建帖子失败了。" },
                 throwable = result.throwable,
             )
             ApiResult.Loading -> ApiResult.Loading
@@ -575,12 +745,12 @@ object LocalSystemMediaBridgeRepository {
     private suspend fun finalizeAppendToPostReal(
         postId: String,
         sourceItems: List<SystemMediaItem>,
-        uploadedMediaIds: List<String>,
+        uploadedMedia: UploadedOperationMedia,
     ): ApiResult<RealFinalizeResult> {
         return when (
             val result = RepositoryProvider.postRepository.addMediaToPost(
                 postId = postId,
-                mediaIds = uploadedMediaIds,
+                mediaIds = uploadedMedia.orderedUploadedMediaIds,
             )
         ) {
             is ApiResult.Success -> {
@@ -591,7 +761,7 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.ADD_TO_EXISTING_POST,
-                        successMessage = "已加入已有帖子，帖子详情和媒体管理已刷新。",
+                        successMessage = "媒体已加入已有帖子，帖子详情和媒体管理已刷新。",
                         affectedPostIds = setOf(postId),
                     ),
                 )
@@ -608,8 +778,7 @@ object LocalSystemMediaBridgeRepository {
     private suspend fun finalizeRealOperationIfReady(
         operationId: String,
         sourceItems: List<SystemMediaItem>,
-        targetLabel: String,
-        finalizeAction: suspend (List<String>) -> ApiResult<RealFinalizeResult>,
+        finalizeAction: suspend (UploadedOperationMedia) -> ApiResult<RealFinalizeResult>,
     ) {
         if (finalizedOperationIds.contains(operationId)) return
         val operationTasks = uploadTasksState.filter { it.operationId == operationId }
@@ -617,20 +786,37 @@ object LocalSystemMediaBridgeRepository {
         if (operationTasks.any { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }) return
         if (!operationTasks.all { it.state == UploadState.SUCCESS }) return
 
-        val uploadedMediaIds = realUploadedMediaIdsByOperationId[operationId]
-            ?.filter { it.isNotBlank() }
-            .orEmpty()
-        if (uploadedMediaIds.size != operationTasks.size) return
+        val uploadedMap = realUploadedMediaIdsByOperationId[operationId].orEmpty()
+        val orderedIds = sourceItems.mapNotNull { uploadedMap[it.id] }
+        if (orderedIds.distinct().size != sourceItems.distinctBy { it.id }.size) return
 
         finalizedOperationIds += operationId
-        when (val result = finalizeAction(uploadedMediaIds)) {
+        updateOperationTasks(
+            operationId = operationId,
+            state = UploadState.UPLOADING,
+            statusMessage = "上传完成，正在整理帖子…",
+        )
+
+        when (
+            val result = finalizeAction(
+                UploadedOperationMedia(
+                    orderedUploadedMediaIds = orderedIds,
+                    uploadedMediaIdBySourceId = uploadedMap.toMap(),
+                ),
+            )
+        ) {
             is ApiResult.Success -> {
                 publishMutation(
                     kind = MutationKind.OVERLAY_ONLY,
                     mediaIds = sourceItems.map { it.id },
                 )
-                notifyRealBackendPostChanged(
+                notifyRealBackendContentChanged(
                     postIds = result.data.affectedPostIds,
+                )
+                updateOperationTasks(
+                    operationId = operationId,
+                    state = UploadState.SUCCESS,
+                    statusMessage = result.data.successMessage,
                 )
                 publishOperationResult(
                     operationId = operationId,
@@ -642,27 +828,22 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> {
                 finalizedOperationIds.remove(operationId)
+                val request = operationRequestsById[operationId]
+                updateOperationTasks(
+                    operationId = operationId,
+                    state = UploadState.FAILURE,
+                    statusMessage = when (request?.operationType) {
+                        OperationType.ADD_TO_EXISTING_POST -> "加入已有帖子失败"
+                        else -> "创建帖子失败"
+                    },
+                    errorMessage = result.message.ifBlank { "上传已完成，但后续整理帖子失败了。" },
+                    canRetry = true,
+                )
                 publishOperationResult(
                     operationId = operationId,
-                    operationType = if (operationId.contains("create-post")) {
-                        OperationType.CREATE_POST
-                    } else {
-                        OperationType.ADD_TO_EXISTING_POST
-                    },
+                    operationType = request?.operationType ?: OperationType.CREATE_POST,
                     succeeded = false,
                     message = result.message.ifBlank { "上传已完成，但后续整理帖子失败了。" },
-                )
-                uploadTasksState.add(
-                    SystemMediaUploadTaskUiModel(
-                        taskId = "finalize-$operationId",
-                        operationId = operationId,
-                        mediaId = sourceItems.firstOrNull()?.id ?: operationId,
-                        fileName = "帖子整理",
-                        targetLabel = targetLabel,
-                        progressPercent = 100,
-                        state = UploadState.FAILURE,
-                        errorMessage = result.message.ifBlank { "上传完成了，但整理帖子失败了。" },
-                    ),
                 )
             }
             ApiResult.Loading -> Unit
@@ -684,17 +865,20 @@ object LocalSystemMediaBridgeRepository {
 
     private fun rememberUploadedMediaId(
         operationId: String,
+        sourceMediaId: String,
         uploadedMediaId: String,
     ) {
-        val mediaIds = realUploadedMediaIdsByOperationId.getOrPut(operationId) { linkedSetOf() }
-        mediaIds += uploadedMediaId
+        val uploadedIds = realUploadedMediaIdsByOperationId.getOrPut(operationId) { linkedMapOf() }
+        uploadedIds[sourceMediaId] = uploadedMediaId
     }
 
     private fun updateUploadTask(
         taskId: String,
         state: UploadState,
         progressPercent: Int,
+        statusMessage: String? = null,
         errorMessage: String? = null,
+        canRetry: Boolean = false,
     ) {
         val currentIndex = uploadTasksState.indexOfFirst { it.taskId == taskId }
         if (currentIndex < 0) return
@@ -702,8 +886,35 @@ object LocalSystemMediaBridgeRepository {
         uploadTasksState[currentIndex] = current.copy(
             state = state,
             progressPercent = progressPercent,
+            statusMessage = statusMessage ?: current.statusMessage,
             errorMessage = errorMessage,
+            canRetry = canRetry,
         )
+    }
+
+    private fun updateOperationTasks(
+        operationId: String,
+        state: UploadState,
+        statusMessage: String,
+        errorMessage: String? = null,
+        canRetry: Boolean = false,
+    ) {
+        uploadTasksState.indices.forEach { index ->
+            val task = uploadTasksState[index]
+            if (task.operationId == operationId) {
+                uploadTasksState[index] = task.copy(
+                    state = state,
+                    progressPercent = if (state == UploadState.FAILURE || state == UploadState.CANCELLED) {
+                        task.progressPercent.coerceAtLeast(0)
+                    } else {
+                        task.progressPercent.coerceAtLeast(100)
+                    },
+                    statusMessage = statusMessage,
+                    errorMessage = errorMessage,
+                    canRetry = canRetry,
+                )
+            }
+        }
     }
 
     private suspend fun readRealUploadMetadata(
@@ -723,7 +934,6 @@ object LocalSystemMediaBridgeRepository {
             fileBytes = fileBytes,
             width = mediaItem.width?.coerceAtLeast(1) ?: 1,
             height = mediaItem.height?.coerceAtLeast(1) ?: 1,
-            durationMillis = null,
         )
     }
 
@@ -741,6 +951,35 @@ object LocalSystemMediaBridgeRepository {
         return "从系统媒体导入 ${items.size} 项内容。"
     }
 
+    private fun defaultCreatePostDraft(
+        mediaItems: List<SystemMediaItem>,
+    ): CreatePostDraft {
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+        val firstAlbumId = FakeAlbumRepository.getAlbums().firstOrNull()?.id
+        return CreatePostDraft(
+            title = "",
+            summary = "",
+            displayTimeMillis = normalizedItems.maxOfOrNull { it.displayTimeMillis }
+                ?: System.currentTimeMillis(),
+            albumIds = firstAlbumId?.let(::listOf).orEmpty(),
+            coverSourceMediaId = normalizedItems.firstOrNull()?.id,
+            locationLabel = null,
+        )
+    }
+
+    private fun finalizeWaitingMessage(targetLabel: String): String {
+        return when (targetLabel) {
+            "加入已有帖子" -> "上传完成，等待加入帖子"
+            else -> "上传完成，等待创建帖子"
+        }
+    }
+
+    private fun normalizeSystemMedia(
+        mediaItems: List<SystemMediaItem>,
+    ): List<SystemMediaItem> {
+        return mediaItems.distinctBy { it.id }
+    }
+
     private fun finalizeOperationIfReady(
         operationId: String,
         onOperationSuccess: () -> OperationResultEvent,
@@ -751,7 +990,15 @@ object LocalSystemMediaBridgeRepository {
         if (operationTasks.any { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }) return
         if (operationTasks.all { it.state == UploadState.SUCCESS }) {
             finalizedOperationIds += operationId
-            publishOperationResult(onOperationSuccess())
+            val result = onOperationSuccess()
+            updateOperationTasks(
+                operationId = operationId,
+                state = if (result.succeeded) UploadState.SUCCESS else UploadState.FAILURE,
+                statusMessage = result.message,
+                errorMessage = if (result.succeeded) null else result.message,
+                canRetry = !result.succeeded,
+            )
+            publishOperationResult(result)
         }
     }
 
@@ -779,6 +1026,24 @@ object LocalSystemMediaBridgeRepository {
                 postRoute = postRoute,
             ),
         )
+    }
+
+    private fun clearOperationState(
+        operationId: String,
+        keepRequest: Boolean,
+    ) {
+        uploadTasksState.removeAll { it.operationId == operationId }
+        finalizedOperationIds.remove(operationId)
+        realUploadedMediaIdsByOperationId.remove(operationId)
+        if (!keepRequest) {
+            operationRequestsById.remove(operationId)
+        }
+    }
+
+    private fun cleanupOperationIfIdle(operationId: String) {
+        if (uploadTasksState.none { it.operationId == operationId }) {
+            clearOperationState(operationId, keepRequest = false)
+        }
     }
 
     private fun fakeMimeType(type: SystemMediaType): String {

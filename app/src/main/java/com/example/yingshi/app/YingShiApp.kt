@@ -17,6 +17,8 @@ import com.example.yingshi.feature.me.MyScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.CacheManagementRoute
+import com.example.yingshi.feature.photos.CreatePostRoute
+import com.example.yingshi.feature.photos.CreatePostScreen
 import com.example.yingshi.feature.photos.CacheManagementScreen
 import com.example.yingshi.feature.photos.BackendDiagnosticsRoute
 import com.example.yingshi.feature.photos.BackendDiagnosticsScreen
@@ -70,6 +72,9 @@ fun YingShiApp() {
     var systemMediaViewerRoute by remember {
         mutableStateOf<SystemMediaViewerRoute?>(null)
     }
+    var createPostRoute by remember {
+        mutableStateOf<CreatePostRoute?>(null)
+    }
     var postDetailRoute by remember {
         mutableStateOf<PostDetailPlaceholderRoute?>(null)
     }
@@ -109,9 +114,14 @@ fun YingShiApp() {
             systemMediaViewerRoute = null
         }
     }
-    if (systemMediaRoute != null && systemMediaViewerRoute == null) {
+    if (systemMediaRoute != null && systemMediaViewerRoute == null && createPostRoute == null) {
         BackHandler {
             systemMediaRoute = null
+        }
+    }
+    if (createPostRoute != null) {
+        BackHandler {
+            createPostRoute = null
         }
     }
     if (trashDetailRoute != null) {
@@ -170,6 +180,7 @@ fun YingShiApp() {
         onDestinationSelected = { selectedDestinationName = it.name },
         showBottomBar = photoViewerRoute == null &&
             systemMediaRoute == null &&
+            createPostRoute == null &&
             trashDetailRoute == null &&
             postDetailRoute == null &&
             gearEditRoute == null &&
@@ -256,12 +267,29 @@ fun YingShiApp() {
                             systemMediaRoute = null
                             postDetailRoute = route
                         },
+                        onOpenCreatePost = { createPostRoute = it },
                     )
 
                     systemMediaViewerRoute?.let { route ->
                         SystemMediaViewerScreen(
                             route = route,
                             onBack = { systemMediaViewerRoute = null },
+                            onOpenCreatePost = { createPostRoute = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+
+                    createPostRoute?.let { route ->
+                        CreatePostScreen(
+                            route = route,
+                            onBack = { createPostRoute = null },
+                            onCreated = { createdRoute ->
+                                createPostRoute = null
+                                systemMediaViewerRoute = null
+                                systemMediaRoute = null
+                                postDetailRoute = createdRoute
+                            },
+                            onSubmittedToBackground = { createPostRoute = null },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -292,6 +320,7 @@ fun YingShiApp() {
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenTrashDetail = { trashDetailRoute = it },
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
+                        onOpenCreatePost = { createPostRoute = it },
                         onOpenNotifications = {
                             notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
                         },
@@ -302,6 +331,19 @@ fun YingShiApp() {
                         onOpenCacheManagement = {
                             cacheManagementRoute = CacheManagementRoute(source = "my-page")
                         },
+                    )
+                }
+
+                createPostRoute?.let { route ->
+                    CreatePostScreen(
+                        route = route,
+                        onBack = { createPostRoute = null },
+                        onCreated = { createdRoute ->
+                            createPostRoute = null
+                            postDetailRoute = createdRoute
+                        },
+                        onSubmittedToBackground = { createPostRoute = null },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
 

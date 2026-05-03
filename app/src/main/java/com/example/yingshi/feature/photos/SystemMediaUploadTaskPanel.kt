@@ -24,6 +24,7 @@ fun SystemMediaUploadTaskPanel(
     tasks: List<SystemMediaUploadTaskUiModel>,
     onCancelTask: (String) -> Unit,
     onDismissTask: (String) -> Unit,
+    onRetryTask: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (tasks.isEmpty()) return
@@ -40,7 +41,7 @@ fun SystemMediaUploadTaskPanel(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "上传占位任务",
+                text = "上传任务",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -65,13 +66,20 @@ fun SystemMediaUploadTaskPanel(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        if (task.isTerminal) {
-                            TextButton(onClick = { onDismissTask(task.taskId) }) {
-                                Text("关闭")
+                        Row {
+                            if (task.canRetry) {
+                                TextButton(onClick = { onRetryTask(task.taskId) }) {
+                                    Text("重试")
+                                }
                             }
-                        } else {
-                            TextButton(onClick = { onCancelTask(task.taskId) }) {
-                                Text("取消")
+                            if (task.isTerminal) {
+                                TextButton(onClick = { onDismissTask(task.taskId) }) {
+                                    Text("关闭")
+                                }
+                            } else {
+                                TextButton(onClick = { onCancelTask(task.taskId) }) {
+                                    Text("取消")
+                                }
                             }
                         }
                     }
@@ -86,10 +94,11 @@ fun SystemMediaUploadTaskPanel(
 }
 
 private fun taskStateLabel(task: SystemMediaUploadTaskUiModel): String {
+    if (!task.statusMessage.isNullOrBlank()) return task.statusMessage
     return when (task.state) {
         UploadState.WAITING -> "等待上传"
-        UploadState.UPLOADING -> "上传中 ${task.progressPercent}%"
-        UploadState.SUCCESS -> "上传成功，已进入 app 内容"
+        UploadState.UPLOADING -> "正在上传 ${task.progressPercent}%"
+        UploadState.SUCCESS -> "上传成功"
         UploadState.FAILURE -> task.errorMessage ?: "上传失败"
         UploadState.CANCELLED -> "已取消"
     }

@@ -179,3 +179,16 @@ Response:
 - `MEDIA_ALREADY_DELETED`
 - `VALIDATION_ERROR`
 - `AUTH_UNAUTHORIZED`
+
+## Stage 12.6 Add-Post Notes
+
+- Android 新增帖子表单目前直接消费 `POST /api/posts`，字段收口为：
+  - `title`
+  - `summary`
+  - `displayTimeMillis`
+  - `albumIds`
+  - `initialMediaIds`
+  - `coverMediaId`
+- 当系统媒体走 `发成新帖子` 时，客户端会先上传媒体，再调用 `POST /api/posts`；只有这一步成功后才视为最终成功。
+- 当系统媒体走 `加入已有帖子` 时，客户端会先上传媒体，再调用 `POST /api/posts/{postId}/media`；只有追加成功后才刷新主链路。
+- 如果后端创建帖子或追加媒体失败，客户端会把这次操作标记为失败并提供重试，不会把未挂帖媒体当成主照片流成功数据。

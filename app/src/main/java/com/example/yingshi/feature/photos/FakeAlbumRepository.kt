@@ -194,6 +194,50 @@ object FakeAlbumRepository {
         return appendedMedia.size
     }
 
+    fun createConfiguredLocalPostFromSystemMedia(
+        draft: CreatePostDraft,
+        mediaItems: List<SystemMediaItem>,
+    ): AlbumPostCardUiModel? {
+        val normalizedMedia = mediaItems
+            .distinctBy { it.id }
+            .sortedByDescending { it.displayTimeMillis }
+            .map { item ->
+                item.toManagedState(isCover = item.id == draft.coverSourceMediaId)
+            }
+        if (normalizedMedia.isEmpty()) return null
+
+        val coverMedia = normalizedMedia.firstOrNull { it.isCover } ?: normalizedMedia.first()
+        val finalMedia = normalizedMedia.map { it.copy(isCover = it.id == coverMedia.id) }
+        val primaryAlbumId = draft.albumIds.firstOrNull() ?: albums.first().id
+        val primaryAlbum = albums.firstOrNull { it.id == primaryAlbumId } ?: albums.first()
+        val postTime = draft.displayTimeMillis
+        val postId = "post-system-import-$postTime-${posts.size + 1}"
+        val post = AlbumPostCardUiModel(
+            id = postId,
+            albumId = primaryAlbum.id,
+            albumIds = draft.albumIds.ifEmpty { listOf(primaryAlbum.id) },
+            title = draft.title.ifBlank {
+                buildSystemImportTitle(
+                    mediaCount = finalMedia.size,
+                    displayTimeMillis = postTime,
+                )
+            },
+            summary = draft.summary.ifBlank { "从系统媒体工具区加入的本地帖子" },
+            postDisplayTimeMillis = postTime,
+            mediaCount = finalMedia.size,
+            coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
+            addAll(finalMedia)
+        }
+        posts.add(post)
+        posts.sortByDescending { it.postDisplayTimeMillis }
+        FakePhotoFeedRepository.unhidePostsLocally(listOf(postId))
+        return post
+    }
+
     fun getEditablePostDraft(postId: String): EditablePostDraft? {
         val post = getPost(postId) ?: return null
         return EditablePostDraft(
