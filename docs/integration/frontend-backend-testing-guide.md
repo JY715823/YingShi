@@ -233,3 +233,13 @@ Repeated smoke runs change media count:
 8. In system media, move one item to the Android system trash and confirm both the system media list and system media Viewer stop showing the deleted item.
 9. Turn `REAL` -> `FAKE` -> `REAL` and confirm previous REAL error / loading / selection state does not pollute FAKE pages, and vice versa.
 10. If any refresh request fails, confirm the page stays alive and exposes Chinese retry copy instead of crashing.
+## Stage 12.3 回归重点
+
+1. 系统媒体选择多张媒体后执行“发成新帖子”，先看到“已加入上传队列”，全部上传并整理成功后：
+   - 照片流刷新
+   - 相册 / 帖子列表刷新
+   - 自动进入新帖子详情
+2. 系统媒体执行“加入已有帖子”，成功后帖子详情媒体区和 Gear Edit 媒体管理同步刷新。
+3. 故意制造上传后整理帖子失败时，主照片流不能出现未挂帖媒体。
+4. 在 REAL 模式删除帖子最后一张媒体时，应返回中文冲突提示，不允许留下空帖。
+5. 系统删后媒体应从照片流、帖子详情、Viewer、媒体管理中消失，并进入 app 回收站；恢复后重新出现。

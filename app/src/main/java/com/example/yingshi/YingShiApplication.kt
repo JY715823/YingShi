@@ -14,13 +14,13 @@ class YingShiApplication : Application(), ImageLoaderFactory {
             .respectCacheHeaders(false)
             .memoryCache {
                 MemoryCache.Builder(this@YingShiApplication)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(0.30)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("coil-media-cache"))
-                    .maxSizePercent(0.08)
+                    .maxSizePercent(0.12)
                     .build()
             }
             .build()

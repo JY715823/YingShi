@@ -431,6 +431,58 @@ class RealMediaManagementViewModel(
         }
     }
 
+    fun deleteCurrentPost(onSuccess: () -> Unit) {
+        if (!AuthSessionManager.isLoggedIn) {
+            _uiState.update {
+                it.copy(errorMessage = "登录状态已失效，请先重新登录。")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMutating = true,
+                    errorMessage = null,
+                    statusMessage = null,
+                )
+            }
+            when (val result = postRepository.deletePost(route.postId)) {
+                is ApiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            statusMessage = "帖子已移入回收站。",
+                        )
+                    }
+                    RealBackendMutationBus.notifyChanged(
+                        RealBackendMutationEvent(
+                            scopes = setOf(
+                                RealBackendRefreshScope.PHOTO_FEED,
+                                RealBackendRefreshScope.ALBUMS,
+                                RealBackendRefreshScope.POST_DETAIL,
+                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
+                                RealBackendRefreshScope.TRASH,
+                                RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+                            ),
+                            postIds = setOf(route.postId),
+                        ),
+                    )
+                    onSuccess()
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            errorMessage = result.toBackendUiMessage("删除帖子失败。"),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
     private fun mutate(
         successMessage: String,
         successRefresh: Boolean,

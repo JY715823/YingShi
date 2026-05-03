@@ -156,3 +156,8 @@ Response:
 - `REMOVE_FROM_TRASH_CONFLICT`
 - `UNDO_REMOVE_EXPIRED`
 - `AUTH_UNAUTHORIZED`
+## Stage 12.3 约定补充
+
+- 系统删进入 `MEDIA_SYSTEM_DELETED`，目录删进入 `MEDIA_REMOVED`。
+- 恢复后相关照片流、帖子详情、Gear Edit、系统媒体目标列表都要重新出现。
+- 24h 撤销入口继续以回收站待清理区为准，不要求长期占据底部提示位。

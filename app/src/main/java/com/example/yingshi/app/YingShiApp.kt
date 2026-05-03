@@ -247,6 +247,11 @@ fun YingShiApp() {
                             systemMediaRoute = null
                         },
                         onOpenViewer = { systemMediaViewerRoute = it },
+                        onOpenPostDetail = { route ->
+                            systemMediaViewerRoute = null
+                            systemMediaRoute = null
+                            postDetailRoute = route
+                        },
                     )
 
                     systemMediaViewerRoute?.let { route ->

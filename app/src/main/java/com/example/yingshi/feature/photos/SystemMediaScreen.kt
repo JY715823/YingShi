@@ -1,4 +1,4 @@
-package com.example.yingshi.feature.photos
+﻿package com.example.yingshi.feature.photos
 
 import android.app.Activity
 import android.app.Application
@@ -76,6 +76,7 @@ import kotlinx.coroutines.flow.collectLatest
 fun SystemMediaScreen(
     onBack: () -> Unit,
     onOpenViewer: (SystemMediaViewerRoute) -> Unit,
+    onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -89,6 +90,7 @@ fun SystemMediaScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
+    val operationResults = LocalSystemMediaBridgeRepository.operationResults
     val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
@@ -217,6 +219,23 @@ fun SystemMediaScreen(
 
     LaunchedEffect(bridgeMutationEvent.version) {
         viewModel.handleBridgeMutation(bridgeMutationEvent)
+    }
+
+    LaunchedEffect(operationResults.size) {
+        if (operationResults.isEmpty()) return@LaunchedEffect
+        val pendingEvents = operationResults.toList()
+        var postRouteToOpen: PostDetailPlaceholderRoute? = null
+        pendingEvents.forEach { event ->
+            Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+            if (event.succeeded &&
+                event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
+                postRouteToOpen == null
+            ) {
+                postRouteToOpen = event.postRoute
+            }
+            LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
+        }
+        postRouteToOpen?.let(onOpenPostDetail)
     }
 
     LaunchedEffect(uiState.selectedFilter) {

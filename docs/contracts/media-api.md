@@ -94,3 +94,8 @@ Response:
 - `MEDIA_ALREADY_DELETED`
 - `TRASH_ITEM_NOT_FOUND`
 - `AUTH_UNAUTHORIZED`
+## Stage 12.3 约定补充
+
+- REAL `/api/media/feed` 只返回已经关联到至少一个有效帖子的媒体。
+- 目录删只移除当前帖子和媒体的关系；系统删移除全局关系并进入 app 回收站。
+- 删除会导致帖子变成空帖时，服务端返回冲突，客户端应展示中文空帖保护提示。

@@ -7,10 +7,11 @@ import retrofit2.HttpException
 import java.io.IOException
 
 internal fun ApiResult.Error.toBackendUiMessage(fallback: String): String {
+    val backendMessage = message.orReadableBackendMessage("")
     val detail = throwable.toBackendNetworkDetail()
     return when {
+        backendMessage.isNotBlank() -> backendMessage
         !detail.isNullOrBlank() -> detail
-        message.isNotBlank() -> message
         else -> fallback
     }
 }
@@ -22,6 +23,7 @@ internal fun Throwable?.toBackendNetworkDetail(): String? {
             401 -> "登录状态已失效，请先到联调诊断页重新登录。"
             403 -> "当前账号没有权限执行这个操作。"
             404 -> "后端资源不存在，可能已经被删除或恢复。"
+            409 -> null
             else -> "后端请求失败，HTTP ${code()}。"
         }
         is IOException -> message ?: "网络请求失败，请检查 baseUrl、同一 Wi-Fi 和服务端状态。"
@@ -48,15 +50,15 @@ internal fun String?.orReadableBackendMessage(fallback: String): String {
     val value = this?.trim().orEmpty()
     if (value.isBlank()) return fallback
     val mojibakeMarkers = listOf(
-        "銆?",
-        "妯″紡",
-        "璇诲彇",
-        "鐧诲綍",
-        "鍚庣",
-        "鍥炴敹",
-        "鍒犻櫎",
-        "鍙栨秷",
-        "闇€瑕?",
+        "閵?",
+        "濡€崇础",
+        "鐠囪褰",
+        "閻ц缍",
+        "閸氬海顏",
+        "閸ョ偞鏁",
+        "閸掔娀娅",
+        "閸欐牗绉",
+        "闂団偓鐟",
     )
     return if (mojibakeMarkers.any(value::contains)) fallback else value
 }

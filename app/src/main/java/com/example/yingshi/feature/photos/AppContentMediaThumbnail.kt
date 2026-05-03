@@ -38,6 +38,7 @@ internal fun AppContentMediaThumbnail(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     contentScale: ContentScale = ContentScale.Crop,
+    showLoadingIndicator: Boolean = true,
     showStatusBadge: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -120,7 +121,7 @@ internal fun AppContentMediaThumbnail(
             )
         }
 
-        if (videoPosterState.isLoading || painterState is AsyncImagePainter.State.Loading) {
+        if (showLoadingIndicator && (videoPosterState.isLoading || painterState is AsyncImagePainter.State.Loading)) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)
