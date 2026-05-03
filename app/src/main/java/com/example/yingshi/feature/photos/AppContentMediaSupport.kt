@@ -134,10 +134,17 @@ internal fun AppContentMediaSource?.viewerOriginalImageUrl(
     mediaType: AppMediaType,
 ): String? {
     if (mediaType != AppMediaType.IMAGE || this == null) return null
-    return firstNotBlank(
-        originalUrl,
-        mediaUrl,
-    )
+    val previewUrl = viewerPreviewImageUrl(mediaType)
+    val originalCandidate = originalUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return originalCandidate.takeUnless { candidate ->
+        !previewUrl.isNullOrBlank() && candidate.equals(previewUrl, ignoreCase = true)
+    }
+}
+
+internal fun AppContentMediaSource?.hasMeaningfulViewerOriginal(
+    mediaType: AppMediaType,
+): Boolean {
+    return viewerOriginalImageUrl(mediaType) != null
 }
 
 internal fun AppContentMediaSource?.viewerVideoUrl(

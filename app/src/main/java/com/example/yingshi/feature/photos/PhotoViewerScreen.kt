@@ -275,6 +275,7 @@ private tailrec fun android.content.Context.findActivity(): Activity? {
 fun PhotoViewerScreen(
     route: PhotoViewerRoute,
     onBack: () -> Unit,
+    onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = {},
     onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -347,12 +348,24 @@ fun PhotoViewerScreen(
     } else {
         1f
     }
-    val relatedPosts = remember(currentItem.postIds) {
-        fakeViewerRelatedPosts(currentItem)
+    val canOpenOriginal = remember(currentItem, route) {
+        when (RepositoryProvider.currentMode) {
+            RepositoryMode.FAKE -> currentItem.mediaType == AppMediaType.IMAGE
+            RepositoryMode.REAL -> currentItem.mediaType == AppMediaType.IMAGE &&
+                currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType)
+        }
+    }
+    val relatedPosts = remember(currentItem, route.sourcePostRoute) {
+        buildViewerRelatedPosts(
+            media = currentItem,
+            sourcePostRoute = route.sourcePostRoute,
+        )
     }
     val overlayUiModel = remember(
         currentItem,
         currentOriginalState,
+        mediaComments.size,
+        canOpenOriginal,
         previewComments,
         relatedPosts,
     ) {
@@ -360,6 +373,7 @@ fun PhotoViewerScreen(
             commentCountLabel = mediaComments.size.toString(),
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
             originalLoadState = currentOriginalState,
+            showOriginalAction = canOpenOriginal,
             relatedPostsLabel = if (currentItem.postIds.isNotEmpty()) {
                 if (currentItem.postIds.size > 1) {
                     "所属帖子 ${currentItem.postIds.size}"
@@ -589,8 +603,7 @@ fun PhotoViewerScreen(
                             }
 
                             originalUrl == null -> {
-                                realOriginalStates[currentItem.mediaId] = OriginalLoadState.Failed
-                                Toast.makeText(context, "暂无可用原图地址", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "当前媒体没有可切换的独立原图", Toast.LENGTH_SHORT).show()
                             }
 
                             currentOriginalState == OriginalLoadState.Loading -> {
@@ -648,11 +661,11 @@ fun PhotoViewerScreen(
                         showRelatedPostsSheet = true
                     } else {
                         val post = overlayUiModel.relatedPosts.firstOrNull()
-                        Toast.makeText(
-                            context,
-                            post?.let { "将进入「${it.title}」（占位）" } ?: "当前媒体暂无所属帖子",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        if (post == null) {
+                            Toast.makeText(context, "当前媒体暂无所属帖子", Toast.LENGTH_SHORT).show()
+                        } else {
+                            onOpenPostDetail(post.route)
+                        }
                     }
                 },
             )
@@ -702,7 +715,7 @@ fun PhotoViewerScreen(
                 posts = overlayUiModel.relatedPosts,
                 onSelectPost = { post ->
                     showRelatedPostsSheet = false
-                    Toast.makeText(context, "将进入「${post.title}」（占位）", Toast.LENGTH_SHORT).show()
+                    onOpenPostDetail(post.route)
                 },
                 onDismiss = { showRelatedPostsSheet = false },
             )
@@ -1150,6 +1163,54 @@ private fun ViewerImageFallback(
 }
 
 @Composable
+private fun ViewerVideoPosterFallback(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+
+    Box(
+        modifier = modifier.background(Color(0xFF11151B)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            color = Color.Black.copy(alpha = 0.26f),
+            border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = ViewerSurface.copy(alpha = 0.10f),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VideoGlyph(
+                            state = VideoGlyphState.PLAY,
+                            tint = ViewerSurface.copy(alpha = 0.88f),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ViewerSurface.copy(alpha = 0.82f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ViewerVideoCanvas(
     media: PhotoFeedItem,
     playbackState: ViewerVideoPlaybackState?,
@@ -1241,7 +1302,9 @@ private fun ViewerVideoCanvas(
             kotlinx.coroutines.delay(300)
         }
     }
-    val shouldShowPoster = videoPosterState.model != null &&
+    val hasPosterImage = videoPosterState.model != null &&
+        posterPainter.state !is AsyncImagePainter.State.Error
+    val shouldShowPoster = hasPosterImage &&
         (!isPrepared || (playbackState?.progressMillis ?: 0L) <= 0L || errorMessage != null)
 
     Box(
@@ -1319,6 +1382,16 @@ private fun ViewerVideoCanvas(
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
+            )
+        } else if (!isPrepared) {
+            ViewerVideoPosterFallback(
+                message = when {
+                    videoUrl.isNullOrBlank() -> "暂无视频地址"
+                    errorMessage != null -> "视频加载失败"
+                    videoPosterState.isLoading || isLoading -> "视频准备中"
+                    else -> "暂无视频封面"
+                },
+                modifier = Modifier.fillMaxSize(),
             )
         }
 
@@ -1523,12 +1596,14 @@ private fun PhotoViewerEdgeActions(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            ViewerCapsule(
-                text = overlayUiModel.originalLoadState.label,
-                emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
-                enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
-                onClick = onOpenOriginal,
-            )
+            if (overlayUiModel.showOriginalAction) {
+                ViewerCapsule(
+                    text = overlayUiModel.originalLoadState.actionLabel(),
+                    emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
+                    enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
+                    onClick = onOpenOriginal,
+                )
+            }
             overlayUiModel.relatedPostsLabel?.let { relatedPostsLabel ->
                 ViewerCapsule(
                     text = relatedPostsLabel,
@@ -2035,7 +2110,7 @@ private fun ViewerRelatedPostsSheet(
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
             Text(
-                text = "当前为占位入口，正式跳转将在帖子详情阶段接入。",
+                text = "当前媒体可能同时出现在多个帖子里，选择后会直接进入对应帖子。",
                 style = MaterialTheme.typography.labelMedium,
                 color = ViewerSurface.copy(alpha = 0.58f),
             )
@@ -2086,18 +2161,62 @@ private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<CommentUiModel
     }
 }
 
-private fun fakeViewerRelatedPosts(media: PhotoFeedItem): List<ViewerRelatedPostUiModel> {
-    return media.postIds.mapIndexed { index, postId ->
+private fun buildViewerRelatedPosts(
+    media: PhotoFeedItem,
+    sourcePostRoute: PostDetailPlaceholderRoute?,
+): List<ViewerRelatedPostUiModel> {
+    return media.postIds.distinct().mapIndexed { index, postId ->
+        val route = buildViewerRelatedPostRoute(
+            media = media,
+            postId = postId,
+            sourcePostRoute = sourcePostRoute,
+        )
         ViewerRelatedPostUiModel(
             id = postId,
-            title = placeholderPostTitle(postId),
+            title = route.title,
             subtitle = if (media.postIds.size == 1) {
-                "单个所属帖子 · 占位跳转"
+                "点击进入所属帖子"
             } else {
-                "可选所属帖子 ${index + 1} / ${media.postIds.size}"
+                "所属帖子 ${index + 1} / ${media.postIds.size}"
             },
+            route = route,
         )
     }
+}
+
+private fun buildViewerRelatedPostRoute(
+    media: PhotoFeedItem,
+    postId: String,
+    sourcePostRoute: PostDetailPlaceholderRoute?,
+): PostDetailPlaceholderRoute {
+    if (sourcePostRoute?.postId == postId) {
+        return sourcePostRoute
+    }
+    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
+        FakeAlbumRepository.getPost(postId)?.let { post ->
+            return FakeAlbumRepository.toPostDetailRoute(post)
+        }
+    }
+    val fallbackTitle = sourcePostRoute
+        ?.takeIf { it.postId == postId }
+        ?.title
+        ?: placeholderPostTitle(postId)
+    val fallbackSummary = sourcePostRoute
+        ?.takeIf { it.postId == postId }
+        ?.summary
+        ?: "从媒体查看态进入的所属帖子"
+    return PostDetailPlaceholderRoute(
+        postId = postId,
+        albumId = sourcePostRoute?.albumId ?: "viewer-related",
+        albumIds = sourcePostRoute?.albumIds ?: listOf("viewer-related"),
+        title = fallbackTitle,
+        summary = fallbackSummary,
+        postDisplayTimeMillis = media.mediaDisplayTimeMillis,
+        mediaCount = 0,
+        coverPalette = media.palette,
+        coverMediaType = media.mediaType,
+        coverAspectRatio = media.aspectRatio,
+    )
 }
 
 private fun placeholderPostTitle(postId: String): String {

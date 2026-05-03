@@ -9,6 +9,11 @@
 This document defines the first client-side API boundary for future backend integration.
 The goal is to keep UI models separate from transport models while preserving the current fake-first app flow.
 
+## Stage 12.5 Viewer Notes
+- Viewer 原图入口由客户端根据 `thumbnailUrl / mediaUrl / originalUrl` 优先级和差异性决定，不等于“只要 DTO 带了 `originalUrl` 字段就一定显示按钮”。
+- `postIds` 继续是 Viewer “所属帖子”跳转的最小契约；即使没有帖子标题，客户端也会用 `postId` 构造稳定跳转 route。
+- 系统媒体 Viewer 不消费帖子专属字段；评论、所属帖子、原图按钮只属于 app 内容 Viewer。
+
 ## Base URL
 - placeholder only: `https://api-placeholder.yingshi.local/`
 - must be configurable

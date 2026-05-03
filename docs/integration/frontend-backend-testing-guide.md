@@ -3,6 +3,18 @@
 ## Scope
 - Android repo: `YingShi`
 - paired backend repo: `yingshi-server`
+
+## Stage 12.5 Viewer Checks
+
+1. 在 `REAL` 图片 Viewer 中确认预览图优先级为 `thumbnailUrl -> mediaUrl -> originalUrl`。
+2. 当 `originalUrl` 缺失，或与当前预览图地址相同时，确认“加载原图”按钮不出现。
+3. 当 `originalUrl` 有意义时，确认“加载原图”会经历 `loading -> success / failure`，失败后仍保留预览图。
+4. 左右切换图片 / 视频时，确认前一张媒体的原图状态、视频 loading、error、playing 不串到下一张。
+5. 在照片流 Viewer 中点击“所属帖子”，确认单帖子直接进入帖子详情，多帖子可从 sheet 中选择。
+6. 从帖子详情进入 Viewer，再点击“所属帖子”，确认仍能稳定回到对应帖子，不会停留在占位提示。
+7. 系统媒体 Viewer 中确认没有评论、加载原图、所属帖子等帖子专属入口。
+8. 首次打开视频时，确认有稳定封面或统一视频占位，不直接黑屏；失败时有中文状态和重试入口。
+9. 帖子详情媒体区确认仍为矩形画布，图片按比例居中最大化，长图不会被错误裁剪。
 - Android diagnostics page: `Photos -> Notifications -> Settings -> Backend integration diagnostics`
 - backend smoke script: `../yingshi-server/scripts/integration-smoke.ps1`
 
