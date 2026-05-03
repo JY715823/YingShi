@@ -83,6 +83,9 @@ Response:
 - App-content Viewer video state such as loading, error, progress, and playing remains client-local and keyed by `mediaId`; it is not a server DTO field.
 - Stage 12.4 Android cleanup centralizes URL normalization, preview/original request building, auth-header injection, and media-type fallback inside the shared media support layer rather than page-local helper code.
 - Stage 12.4 Viewer cleanup centralizes image failure labels and video playback labels/retry reset into shared Viewer-state helpers; these are client-side UI rules, not DTO fields.
+- Stage 12.5 Viewer original-image rule: Android treats `originalUrl` as a meaningful “load original” target only when it is non-empty and different from the current preview candidate. If `thumbnailUrl -> mediaUrl -> originalUrl` all collapse to the same URL, the Viewer hides the original-image action.
+- Stage 12.5 related-post rule: Android may open post detail from `postIds` alone, so `postIds` must stay stable for active relationships even when the feed DTO does not embed post titles.
+- Stage 12.5 video-first-open rule: if no poster field is available, Android shows a unified video placeholder instead of assuming the video file can act as a normal image thumbnail.
 - `postIds` only includes active posts
 - system-deleted media stays restorable through trash
 

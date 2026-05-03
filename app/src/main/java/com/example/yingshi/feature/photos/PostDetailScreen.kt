@@ -67,6 +67,7 @@ fun PostDetailScreen(
     route: PostDetailPlaceholderRoute,
     onBack: () -> Unit,
     onOpenGearEdit: (GearEditRoute) -> Unit,
+    onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = {},
     onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -75,6 +76,7 @@ fun PostDetailScreen(
             route = route,
             onBack = onBack,
             onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
+            onOpenPostDetail = onOpenPostDetail,
             onOpenCacheManagement = onOpenCacheManagement,
             modifier = modifier,
         )
@@ -113,6 +115,10 @@ fun PostDetailScreen(
             PhotoViewerScreen(
                 route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
                 onBack = { inPostViewerInitialPage = null },
+                onOpenPostDetail = {
+                    inPostViewerInitialPage = null
+                    onOpenPostDetail(it)
+                },
                 onOpenCacheManagement = onOpenCacheManagement,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -151,6 +157,7 @@ private fun RealPostDetailScreen(
     route: PostDetailPlaceholderRoute,
     onBack: () -> Unit,
     onOpenGearEdit: () -> Unit,
+    onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit,
     onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -205,6 +212,10 @@ private fun RealPostDetailScreen(
             PhotoViewerScreen(
                 route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
                 onBack = { inPostViewerInitialPage = null },
+                onOpenPostDetail = {
+                    inPostViewerInitialPage = null
+                    onOpenPostDetail(it)
+                },
                 onOpenCacheManagement = onOpenCacheManagement,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -1075,7 +1086,7 @@ private fun PostMediaInfoRow(
         PostActionChip(text = "评", onClick = onCommentClick)
         PostMetaCapsule(text = commentCount.toString())
         PostActionChip(
-            text = originalLoadState.label,
+            text = originalLoadState.actionLabel(),
             onClick = onOriginalClick,
         )
     }
@@ -1478,8 +1489,20 @@ private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewe
             )
         },
         initialIndex = initialIndex,
-        sourceLabel = "帖子内媒体",
+        sourceLabel = title,
         showPostSegments = true,
+        sourcePostRoute = PostDetailPlaceholderRoute(
+            postId = postId,
+            albumId = albumIds.firstOrNull() ?: "viewer-post",
+            albumIds = albumIds.ifEmpty { listOf("viewer-post") },
+            title = title,
+            summary = summary,
+            postDisplayTimeMillis = postDisplayTimeMillis,
+            mediaCount = mediaItems.size,
+            coverPalette = mediaItems.firstOrNull()?.palette ?: realPaletteFor(postId),
+            coverMediaType = mediaItems.firstOrNull()?.mediaType ?: AppMediaType.IMAGE,
+            coverAspectRatio = mediaItems.firstOrNull()?.displayAspectRatio() ?: 1f,
+        ),
     )
 }
 

@@ -233,6 +233,10 @@ fun YingShiApp() {
                     PhotoViewerScreen(
                         route = route,
                         onBack = { photoViewerRoute = null },
+                        onOpenPostDetail = {
+                            photoViewerRoute = null
+                            postDetailRoute = it
+                        },
                         onOpenCacheManagement = { cacheManagementRoute = it },
                     )
                 }
@@ -306,6 +310,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { postDetailRoute = null },
                         onOpenGearEdit = { gearEditRoute = it },
+                        onOpenPostDetail = { postDetailRoute = it },
                         onOpenCacheManagement = { cacheManagementRoute = it },
                         modifier = Modifier.fillMaxSize(),
                     )

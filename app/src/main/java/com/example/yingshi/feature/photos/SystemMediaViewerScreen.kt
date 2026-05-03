@@ -609,16 +609,17 @@ private fun SystemMediaViewerVideoCanvas(
         modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
+        SystemMediaVideoPlaceholder(
+            message = when {
+                playbackState.errorMessage != null -> "视频加载失败"
+                playbackState.isLoading -> "视频准备中"
+                else -> "正在显示视频封面"
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
         if (videoThumbnail != null) {
             Image(
                 bitmap = videoThumbnail.toComposeBitmap(),
-                contentDescription = item.displayName,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        } else {
-            AsyncImage(
-                model = item.uri,
                 contentDescription = item.displayName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
@@ -706,6 +707,50 @@ private fun SystemMediaViewerVideoCanvas(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = Color.White,
             )
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaVideoPlaceholder(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color(0xFF12161D),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Surface(
+                    modifier = Modifier.size(52.dp),
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.10f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                ) {
+                    Box(
+                        modifier = Modifier.padding(16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VideoGlyph(
+                            state = VideoGlyphState.PLAY,
+                            tint = Color.White.copy(alpha = 0.88f),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White.copy(alpha = 0.74f),
+                )
+            }
         }
     }
 }
