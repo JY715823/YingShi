@@ -106,7 +106,7 @@ class AlbumPageRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = AlbumPageRealUiState(
                         isLoading = false,
-                        errorMessage = result.toUiMessage("读取后端相册失败。"),
+                        errorMessage = result.toBackendUiMessage("读取后端相册失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -171,7 +171,7 @@ class AlbumPageRealViewModel(
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,
-                            postsErrorMessage = result.toUiMessage("读取相册下帖子失败。"),
+                            postsErrorMessage = result.toBackendUiMessage("读取相册下帖子失败。"),
                         )
                     }
                 }
@@ -247,7 +247,7 @@ class PostDetailRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = PostDetailRealUiState(
                         isLoading = false,
-                        errorMessage = result.toUiMessage("读取后端帖子详情失败。"),
+                        errorMessage = result.toBackendUiMessage("读取后端帖子详情失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -395,7 +395,7 @@ class PostDetailRealViewModel(
                         it.copy(
                             postComments = it.postComments.copy(
                                 isMutating = false,
-                                errorMessage = result.toUiMessage("评论操作失败。"),
+                                errorMessage = result.toBackendUiMessage("评论操作失败。"),
                             ),
                         )
                     }
@@ -435,15 +435,9 @@ class PostDetailRealViewModel(
             }
             when (val result = block()) {
                 is ApiResult.Success -> {
-                    RealBackendMutationBus.notifyChanged(
-                        RealBackendMutationEvent(
-                            scopes = setOf(
-                                RealBackendRefreshScope.PHOTO_FEED,
-                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
-                            ),
-                            postIds = setOf(route.postId),
-                            mediaIds = setOf(mediaId),
-                        ),
+                    notifyRealBackendCommentChanged(
+                        postIds = setOf(route.postId),
+                        mediaIds = setOf(mediaId),
                     )
                     loadMediaComments(mediaId, successMessage)
                 }
@@ -453,7 +447,7 @@ class PostDetailRealViewModel(
                             mediaComments = state.mediaComments + (
                                 mediaId to state.mediaComments[mediaId].orEmpty().copy(
                                     isMutating = false,
-                                    errorMessage = result.toUiMessage("评论操作失败。"),
+                                    errorMessage = result.toBackendUiMessage("评论操作失败。"),
                                 )
                             ),
                         )

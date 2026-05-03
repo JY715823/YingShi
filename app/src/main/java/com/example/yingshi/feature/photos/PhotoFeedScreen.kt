@@ -59,11 +59,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.imageLoader
-import coil.request.CachePolicy
-import coil.request.ImageRequest
-import coil.size.Precision
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -316,7 +312,7 @@ private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
         val imageLoader = context.imageLoader
         prefetchTargets.forEach { target ->
             if (target.mediaType == AppMediaType.VIDEO &&
-                (target.mimeType?.startsWith("video/", ignoreCase = true) == true || target.url.isLikelyVideoUrl())
+                looksLikeVideoSource(target.url, target.mimeType)
             ) {
                 prefetchVideoPoster(
                     context = context,
@@ -325,22 +321,13 @@ private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
                 )
                 return@forEach
             }
-            imageLoader.enqueue(
-                ImageRequest.Builder(context).apply {
-                    data(target.url)
-                    size(512)
-                    precision(Precision.INEXACT)
-                    crossfade(false)
-                    memoryCacheKey(sharedPreviewMemoryCacheKey(target.url))
-                    diskCacheKey("media:${target.url}")
-                    networkCachePolicy(CachePolicy.ENABLED)
-                    diskCachePolicy(CachePolicy.ENABLED)
-                    memoryCachePolicy(CachePolicy.ENABLED)
-                    accessToken
-                        ?.takeIf { target.url.startsWith("http", ignoreCase = true) }
-                        ?.let { token -> addHeader("Authorization", "${RemoteConfig.AUTH_SCHEME} $token") }
-                }.build(),
-            )
+            backendMediaImageRequest(
+                context = context,
+                url = target.url,
+                accessToken = accessToken,
+                memoryCacheKey = sharedPreviewMemoryCacheKey(target.url),
+                size = 512,
+            )?.let(imageLoader::enqueue)
         }
     }
 }
@@ -355,17 +342,6 @@ private data class PhotoFeedScrollAnchor(
     val itemIndex: Int,
     val label: String,
 )
-
-private fun String.isLikelyVideoUrl(): Boolean {
-    val normalized = substringBefore('?').substringBefore('#').lowercase()
-    return normalized.endsWith(".mp4") ||
-        normalized.endsWith(".mov") ||
-        normalized.endsWith(".m4v") ||
-        normalized.endsWith(".webm") ||
-        normalized.endsWith(".3gp") ||
-        normalized.endsWith(".mkv") ||
-        normalized.endsWith(".avi")
-}
 
 @Composable
 private fun PhotoFeedToolbar(

@@ -23,11 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import coil.request.CachePolicy
-import coil.request.ImageRequest
-import coil.size.Precision
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
@@ -67,26 +63,16 @@ internal fun AppContentMediaThumbnail(
         VideoPosterState()
     }
     val imageRequest = remember(context, mediaSource, mediaType, thumbnailUrl, accessToken) {
-        thumbnailUrl
-            ?.takeUnless {
-                mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
-            }
-            ?.let { modelUrl ->
-            ImageRequest.Builder(context).apply {
-                data(modelUrl)
-                size(512)
-                precision(Precision.INEXACT)
-                crossfade(false)
-                memoryCacheKey(sharedPreviewMemoryCacheKey(modelUrl))
-                diskCacheKey(sharedMediaDiskCacheKey(modelUrl))
-                networkCachePolicy(CachePolicy.ENABLED)
-                diskCachePolicy(CachePolicy.ENABLED)
-                memoryCachePolicy(CachePolicy.ENABLED)
-                accessToken
-                    ?.takeIf { modelUrl.startsWith("http", ignoreCase = true) }
-                    ?.let { token -> addHeader("Authorization", "${RemoteConfig.AUTH_SCHEME} $token") }
-            }.build()
+        val modelUrl = thumbnailUrl?.takeUnless {
+            mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
         }
+        backendMediaImageRequest(
+            context = context,
+            url = modelUrl,
+            accessToken = accessToken,
+            memoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
+            size = 512,
+        )
     }
     val painter = rememberAsyncImagePainter(
         model = videoPosterState.model ?: imageRequest,
@@ -187,19 +173,4 @@ private fun VideoThumbnailPlayOverlay(
             )
         }
     }
-}
-
-private fun looksLikeVideoSource(url: String, mimeType: String?): Boolean {
-    return mimeType?.startsWith("video/", ignoreCase = true) == true || localLooksLikeVideoUrl(url)
-}
-
-private fun localLooksLikeVideoUrl(url: String): Boolean {
-    val normalized = url.substringBefore('?').substringBefore('#').lowercase()
-    return normalized.endsWith(".mp4") ||
-        normalized.endsWith(".mov") ||
-        normalized.endsWith(".m4v") ||
-        normalized.endsWith(".webm") ||
-        normalized.endsWith(".3gp") ||
-        normalized.endsWith(".mkv") ||
-        normalized.endsWith(".avi")
 }

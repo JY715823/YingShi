@@ -79,3 +79,6 @@ Error response draft:
 - delete / restore mutations
 - comment create / update / delete
 - notification APIs are not part of this contract pass yet
+
+## Stage 12.4 Client Cleanup Note
+- Android Stage 12.4 does not change the server API shape, but it assumes transport DTOs continue to be mapped into client UI models through dedicated mappers and shared media helper entrypoints instead of being used directly in Compose UI.

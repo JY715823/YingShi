@@ -87,18 +87,7 @@ class RealTrashListViewModel(
         viewModelScope.launch {
             when (val result = trashRepository.undoMoveTrashItemOut(trashItemId)) {
                 is ApiResult.Success -> {
-                    RealBackendMutationBus.notifyChanged(
-                        RealBackendMutationEvent(
-                            scopes = setOf(
-                                RealBackendRefreshScope.PHOTO_FEED,
-                                RealBackendRefreshScope.ALBUMS,
-                                RealBackendRefreshScope.POST_DETAIL,
-                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
-                                RealBackendRefreshScope.TRASH,
-                                RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
-                            ),
-                        ),
-                    )
+                    notifyRealBackendContentChanged()
                     refresh(selectedType)
                     _uiState.update { it.copy(statusMessage = "已撤销移出回收站。") }
                 }
@@ -202,18 +191,7 @@ class RealTrashDetailViewModel(
             }
             when (val result = block()) {
                 is ApiResult.Success -> {
-                    RealBackendMutationBus.notifyChanged(
-                        RealBackendMutationEvent(
-                            scopes = setOf(
-                                RealBackendRefreshScope.PHOTO_FEED,
-                                RealBackendRefreshScope.ALBUMS,
-                                RealBackendRefreshScope.POST_DETAIL,
-                                RealBackendRefreshScope.MEDIA_MANAGEMENT,
-                                RealBackendRefreshScope.TRASH,
-                                RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
-                            ),
-                        ),
-                    )
+                    notifyRealBackendContentChanged()
                     _uiState.update {
                         it.copy(
                             isMutating = false,

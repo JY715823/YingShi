@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
-import com.example.yingshi.data.remote.config.RemoteConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -99,9 +98,8 @@ private fun extractVideoPosterBitmap(
 ): Bitmap? {
     val retriever = MediaMetadataRetriever()
     return try {
-        val headers = linkedMapOf<String, String>()
-        if (!accessToken.isNullOrBlank() && url.startsWith("http", ignoreCase = true)) {
-            headers["Authorization"] = "${RemoteConfig.AUTH_SCHEME} $accessToken"
+        val headers = linkedMapOf<String, String>().apply {
+            putAll(backendMediaRequestHeaders(url, accessToken))
         }
         retriever.setDataSource(url, headers)
         retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)

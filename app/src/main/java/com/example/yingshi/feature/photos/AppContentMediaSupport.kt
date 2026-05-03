@@ -1,10 +1,15 @@
 package com.example.yingshi.feature.photos
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.remote.config.BackendDebugConfig
+import com.example.yingshi.data.remote.config.RemoteConfig
+import coil.request.CachePolicy
+import coil.request.ImageRequest
+import coil.size.Precision
 import java.util.Locale
 
 @Immutable
@@ -156,6 +161,48 @@ private fun canUseAsVideoPoster(
     return looksLikeImageUrl(url)
 }
 
+internal fun looksLikeVideoSource(
+    url: String?,
+    mimeType: String?,
+): Boolean {
+    if (mimeType?.startsWith("video/", ignoreCase = true) == true) return true
+    return looksLikeVideoUrl(url)
+}
+
+internal fun backendMediaRequestHeaders(
+    url: String?,
+    accessToken: String?,
+): Map<String, String> {
+    if (url.isNullOrBlank() || accessToken.isNullOrBlank()) return emptyMap()
+    return if (url.startsWith("http", ignoreCase = true)) {
+        mapOf("Authorization" to "${RemoteConfig.AUTH_SCHEME} $accessToken")
+    } else {
+        emptyMap()
+    }
+}
+
+internal fun backendMediaImageRequest(
+    context: Context,
+    url: String?,
+    accessToken: String?,
+    memoryCacheKey: String? = url?.let(::sharedPreviewMemoryCacheKey),
+    size: Int? = null,
+): ImageRequest? {
+    if (url.isNullOrBlank()) return null
+    return ImageRequest.Builder(context).apply {
+        data(url)
+        memoryCacheKey?.let(::memoryCacheKey)
+        diskCacheKey(sharedMediaDiskCacheKey(url))
+        networkCachePolicy(CachePolicy.ENABLED)
+        diskCachePolicy(CachePolicy.ENABLED)
+        memoryCachePolicy(CachePolicy.ENABLED)
+        precision(Precision.INEXACT)
+        crossfade(false)
+        size?.let(::size)
+        backendMediaRequestHeaders(url, accessToken).forEach(::addHeader)
+    }.build()
+}
+
 internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:$url"
 
 internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:$url"
@@ -181,7 +228,7 @@ private fun firstNotBlank(vararg values: String?): String? {
     return values.firstOrNull { !it.isNullOrBlank() }?.trim()
 }
 
-private fun looksLikeImageUrl(url: String?): Boolean {
+internal fun looksLikeImageUrl(url: String?): Boolean {
     return url.hasFileExtension(
         "jpg",
         "jpeg",
@@ -195,7 +242,7 @@ private fun looksLikeImageUrl(url: String?): Boolean {
     )
 }
 
-private fun looksLikeVideoUrl(url: String?): Boolean {
+internal fun looksLikeVideoUrl(url: String?): Boolean {
     return url.hasFileExtension(
         "mp4",
         "mov",
