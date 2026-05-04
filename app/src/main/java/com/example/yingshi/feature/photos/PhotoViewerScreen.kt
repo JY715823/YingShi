@@ -316,8 +316,15 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = viewerItems[currentIndex]
+    val currentOriginalTarget = remember(currentItem) {
+        currentItem.toRealOriginalMediaTarget()
+    }
     val currentOriginalState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        RealOriginalLoadRepository.getState(currentItem.mediaId)
+        if (currentItem.mediaType == AppMediaType.IMAGE) {
+            RealOriginalLoadRepository.getState(currentOriginalTarget)
+        } else {
+            OriginalLoadState.NotLoaded
+        }
     } else {
         FakeOriginalLoadRepository.getState(currentItem.mediaId)
     }
@@ -340,7 +347,29 @@ fun PhotoViewerScreen(
     } else {
         1f
     }
-    val canOpenOriginal = true
+    val canOpenOriginal = remember(currentItem) {
+        when (RepositoryProvider.currentMode) {
+            RepositoryMode.REAL -> currentItem.mediaType == AppMediaType.IMAGE &&
+                currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType)
+            RepositoryMode.FAKE -> currentItem.mediaType == AppMediaType.IMAGE
+        }
+    }
+    var lastNotifiedOriginalState by remember(currentItem.mediaId) {
+        mutableStateOf<OriginalLoadState?>(null)
+    }
+    LaunchedEffect(currentItem.mediaId, currentOriginalState) {
+        if (RepositoryProvider.currentMode != RepositoryMode.REAL || currentItem.mediaType != AppMediaType.IMAGE) {
+            lastNotifiedOriginalState = currentOriginalState
+            return@LaunchedEffect
+        }
+        val previousState = lastNotifiedOriginalState
+        if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Loaded) {
+            Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+        } else if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Failed) {
+            Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+        }
+        lastNotifiedOriginalState = currentOriginalState
+    }
     val relatedPosts = remember(currentItem, route.sourcePostRoute) {
         buildViewerRelatedPosts(
             media = currentItem,
@@ -475,7 +504,11 @@ fun PhotoViewerScreen(
                 zoomState = if (page == currentIndex) zoomState else null,
                 videoPlaybackState = if (page == currentIndex) videoPlaybackState else null,
                 originalLoadState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                    RealOriginalLoadRepository.getState(viewerItems[page].mediaId)
+                    if (viewerItems[page].mediaType == AppMediaType.IMAGE) {
+                        RealOriginalLoadRepository.getState(viewerItems[page].toRealOriginalMediaTarget())
+                    } else {
+                        OriginalLoadState.NotLoaded
+                    }
                 } else {
                     FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
                 },
@@ -502,7 +535,25 @@ fun PhotoViewerScreen(
                 },
                 onOriginalLoadStateChange = { mediaId, state ->
                     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                        RealOriginalLoadRepository.setState(mediaId, state)
+                        val changedItem = viewerItems.firstOrNull { it.mediaId == mediaId }
+                        if (changedItem != null) {
+                            val changedTarget = changedItem.toRealOriginalMediaTarget()
+                            val previousState = RealOriginalLoadRepository.getState(changedTarget)
+                            if (previousState != state) {
+                                RealOriginalLoadRepository.setState(changedTarget, state)
+                                if (mediaId == currentItem.mediaId) {
+                                    when (state) {
+                                        OriginalLoadState.Loaded -> {
+                                            Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+                                        }
+                                        OriginalLoadState.Failed -> {
+                                            Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+                                        }
+                                        else -> Unit
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -588,11 +639,8 @@ fun PhotoViewerScreen(
                 onOpenOriginal = {
                     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
                         when {
-                            currentItem.mediaSource.viewerOriginalMediaUrl(currentItem.mediaType) == null -> {
-                                RealOriginalLoadRepository.setState(
-                                    currentItem.mediaId,
-                                    OriginalLoadState.Failed,
-                                )
+                            currentItem.mediaType != AppMediaType.IMAGE ||
+                                !currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType) -> {
                                 Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
                             }
 
@@ -605,18 +653,10 @@ fun PhotoViewerScreen(
                             }
 
                             else -> {
-                                Toast.makeText(context, "开始加载原件", Toast.LENGTH_SHORT).show()
-                                coroutineScope.launch {
-                                    val result = RealOriginalLoadRepository.loadOriginal(
-                                        context = context,
-                                        target = currentItem.toRealOriginalMediaTarget(),
-                                        accessToken = viewerAccessToken,
-                                    )
-                                    if (result == OriginalLoadState.Loaded) {
-                                        Toast.makeText(context, "原件加载完成", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "原件加载失败，已保留预览", Toast.LENGTH_SHORT).show()
-                                    }
+                                if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, viewerAccessToken)) {
+                                    Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -1084,11 +1124,16 @@ private fun ViewerImageCanvas(
         else -> ViewerImageFailureReason.NONE
     }
 
-    LaunchedEffect(media.mediaId, originalLoadState, originalState) {
-        if (originalLoadState == OriginalLoadState.Loaded &&
-            originalState is AsyncImagePainter.State.Error
-        ) {
-            onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
+    LaunchedEffect(media.mediaId, originalUrl, originalLoadState, originalState) {
+        if (RepositoryProvider.currentMode != RepositoryMode.FAKE) return@LaunchedEffect
+        when {
+            originalLoadState == OriginalLoadState.Loading &&
+                originalState is AsyncImagePainter.State.Success -> {
+                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Loaded)
+            }
+            shouldRequestOriginal && originalState is AsyncImagePainter.State.Error -> {
+                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
+            }
         }
     }
 
@@ -1239,13 +1284,8 @@ private fun ViewerVideoCanvas(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val videoUrl = remember(media.mediaSource, media.mediaType, originalLoadState) {
-        if (originalLoadState == OriginalLoadState.Loaded) {
-            media.mediaSource.viewerOriginalMediaUrl(media.mediaType)
-                ?: media.mediaSource.viewerVideoUrl(media.mediaType)
-        } else {
-            media.mediaSource.viewerVideoUrl(media.mediaType)
-        }
+    val videoUrl = remember(media.mediaSource, media.mediaType) {
+        media.mediaSource.viewerVideoUrl(media.mediaType)
     }
     val isPlaying = playbackState?.isPlaying == true
     val isLoading = playbackState?.isLoading == true

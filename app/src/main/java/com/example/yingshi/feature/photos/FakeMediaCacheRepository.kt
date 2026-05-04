@@ -104,6 +104,7 @@ object FakeMediaCacheRepository {
     fun clearOriginalCache(mediaId: String) {
         updateFlags(mediaId) { it.copy(originalCached = false) }
         FakeOriginalLoadRepository.clearOriginal(mediaId)
+        RealOriginalLoadRepository.clearOriginal(mediaId)
     }
 
     fun clearVideoCache(mediaId: String) {
@@ -130,6 +131,7 @@ object FakeMediaCacheRepository {
 
     fun clearAllOriginalCaches() {
         flagsByMediaId.keys.toList().forEach(::clearOriginalCache)
+        RealOriginalLoadRepository.clearAllOriginals()
     }
 
     fun clearAllVideoCaches() {
