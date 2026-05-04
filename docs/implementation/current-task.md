@@ -176,5 +176,14 @@ cd D:\Projects\Yingshi\yingshi-android
 - App photo-feed multi-select now uses one bottom `操作` entry that opens a bottom sheet; system media keeps four actions in two rows. Selection badges use a clearer white-circle / blue-check style.
 - REAL trash folds `24h 可撤销` into the trash category row. Trash detail renders original media previews from `sourceMediaId` / `relatedMediaIds` instead of only showing metadata fields.
 - Notification taps avoid opening fake post ids in REAL mode. Known REAL notifications route to stable top-level destinations until backend notification target ids are formalized.
-- Viewer original loading now treats `mediaUrl` / `videoUrl` as valid original resources when there is no separate cloud original. Failure keeps the preview visible and does not falsely report success.
+- Viewer original loading now treats only image `originalUrl -> mediaUrl` as original candidates. Video media uses normal playback source fallback and does not show `加载原图`.
 - Video poster state has a small in-memory bitmap cache on top of the disk poster cache to reduce thumbnail flashing after returning from Viewer.
+
+## Stage 12.7-Hotfix Original Loading
+
+- App-content original loading is image-only in this hotfix. Video media no longer shows the `加载原图` action and never enters the image original state machine.
+- Image preview display uses preview-sized sources first: `thumbnailUrl -> mediaUrl`. `originalUrl` is not used as the normal Viewer preview fallback unless a later contract explicitly permits it.
+- The original action is shown only when `originalUrl -> mediaUrl` yields a non-empty image URL distinct from the current preview URL. Missing, identical, or unusable original candidates hide the action instead of showing a fake retry path.
+- REAL single-image original loading is render-driven: tapping the action only moves that `mediaId` to `Loading`; the Viewer canvas or post-detail media card must successfully render the original `ImageRequest` before the state changes to `Loaded` and before the success toast is shown.
+- Original image requests use dedicated original memory/disk cache keys and `Size.ORIGINAL`, so preview cache entries cannot satisfy an original render.
+- Post detail `加载全帖原图` only processes loadable images, skips videos and images without meaningful originals, and reports exact loaded / skipped / failed counts.

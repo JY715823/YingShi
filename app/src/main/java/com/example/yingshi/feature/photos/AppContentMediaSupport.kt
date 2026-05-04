@@ -127,7 +127,6 @@ internal fun AppContentMediaSource?.viewerPreviewImageUrl(
     return firstNotBlank(
         thumbnailUrl,
         mediaUrl,
-        originalUrl,
     )
 }
 
@@ -143,24 +142,10 @@ internal fun AppContentMediaSource?.viewerOriginalImageUrl(
     )
 }
 
-internal fun AppContentMediaSource?.viewerOriginalMediaUrl(
-    mediaType: AppMediaType,
-): String? {
-    if (this == null) return null
-    return when (mediaType) {
-        AppMediaType.IMAGE -> viewerOriginalImageUrl(mediaType)
-        AppMediaType.VIDEO -> firstNotBlank(
-            originalUrl,
-            videoUrl,
-            mediaUrl,
-        )
-    }
-}
-
 internal fun AppContentMediaSource?.hasMeaningfulViewerOriginal(
     mediaType: AppMediaType,
 ): Boolean {
-    return viewerOriginalMediaUrl(mediaType) != null
+    return mediaType == AppMediaType.IMAGE && viewerOriginalImageUrl(mediaType) != null
 }
 
 internal fun AppContentMediaSource?.viewerVideoUrl(
@@ -298,9 +283,19 @@ private fun firstDistinctNotBlank(
     disallow: Set<String>,
     vararg values: String?,
 ): String? {
+    val normalizedDisallow = disallow.map(::normalizeComparableMediaUrl).toSet()
     return values.asSequence()
         .mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }
-        .firstOrNull { it !in disallow }
+        .firstOrNull { normalizeComparableMediaUrl(it) !in normalizedDisallow }
+}
+
+private fun normalizeComparableMediaUrl(value: String): String {
+    return runCatching {
+        val parsed = Uri.parse(value.trim())
+        parsed.buildUpon().fragment(null).build().toString()
+    }.getOrElse {
+        value.trim().substringBefore('#')
+    }
 }
 
 internal fun looksLikeImageUrl(url: String?): Boolean {

@@ -67,7 +67,7 @@ internal fun OriginalLoadState.actionLabel(): String {
     return when (this) {
         OriginalLoadState.NotLoaded -> "加载原图"
         OriginalLoadState.Loading -> "原图加载中"
-        OriginalLoadState.Loaded -> "已切到原图"
+        OriginalLoadState.Loaded -> "已加载原图"
         OriginalLoadState.Failed -> "重试原图"
     }
 }

@@ -180,14 +180,16 @@ Use this exact checklist:
 27. Open one post detail page and confirm the media area shows real thumbnails, while missing URLs and failed image requests stay on a safe placeholder.
 28. Open `Gear Edit -> 媒体管理` and confirm the grid shows the same real thumbnails or safe placeholders without crashing.
 29. Open one image from the photo feed Viewer and confirm it first shows the preview image on a dark immersive background.
-30. Tap the original action and confirm the Viewer shows an original-loading state, then either the original image or a safe retry/failure state while keeping the preview available when possible.
-31. Swipe between several Viewer media items and confirm original loading / failed / loaded states do not leak between different `mediaId` values.
-32. Open an in-post Viewer from a post detail media item and repeat the preview, original-load, and dark-background checks.
-33. Open one REAL video from the photo-flow Viewer and confirm it can load, play, pause, and stop when you swipe away to another media item.
-34. Open one REAL video from an in-post Viewer and confirm play / pause works there too, without carrying the previous media item's loading, error, or progress state.
-35. Open one system-media video Viewer and confirm the video itself can zoom or pan while the playback control bar stays fixed near the lower-left area inside the media canvas.
-36. In any video Viewer, verify that missing URLs or failed playback show Chinese fallback copy and do not crash the page; use the retry entry if the request can be retried.
-37. Switch mode back to `FAKE` when finished.
+30. Tap the original action and confirm the Viewer shows an original-loading state, then switches to the original image only after the original request succeeds.
+31. Force an original request failure if possible and confirm the preview remains visible, the action becomes retry, and no success toast appears.
+32. Swipe between several Viewer media items and confirm original loading / failed / loaded states do not leak between different `mediaId` values.
+33. Open an in-post Viewer from a post detail media item and repeat the preview, original-load, and dark-background checks.
+34. In post detail, test single-image original loading and `加载全帖原图`; confirm the batch toast reports loaded / no-original skipped / failed counts accurately.
+35. Open one REAL video from the photo-flow Viewer and confirm it can load, play, pause, and stop when you swipe away to another media item, and confirm it does not show `加载原图`.
+36. Open one REAL video from an in-post Viewer and confirm play / pause works there too, without carrying the previous media item's loading, error, or progress state.
+37. Open one system-media video Viewer and confirm the video itself can zoom or pan while the playback control bar stays fixed near the lower-left area inside the media canvas.
+38. In any video Viewer, verify that missing URLs or failed playback show Chinese fallback copy and do not crash the page; use the retry entry if the request can be retried.
+39. Switch mode back to `FAKE` when finished.
 
 ## 8. Common Problems
 

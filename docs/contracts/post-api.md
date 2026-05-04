@@ -59,6 +59,7 @@ Android REAL compatibility notes for nested `media`:
 - for video items, Android prefers `thumbnailUrl`, `previewUrl`, or `coverUrl` as the poster and does not treat `videoUrl` as a normal image URL
 - in-post Viewer uses the same app-content Viewer image rules as the photo-flow Viewer: preview first, original only after the original action, with state isolated by `mediaId`
 - in-post Viewer video now resolves the playable source with `videoUrl -> mediaUrl -> originalUrl`, and all loading, error, progress, and playing state remains isolated by `mediaId`
+- Stage 12.7-Hotfix: post detail single-original and `加载全帖原图` actions only process image media with a meaningful original candidate. Videos are skipped by the original-image action and keep using normal video playback source resolution.
 
 ## Endpoints
 

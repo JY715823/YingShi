@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
@@ -40,6 +43,7 @@ internal fun AppContentMediaThumbnail(
     showLoadingIndicator: Boolean = true,
     showStatusBadge: Boolean = false,
     originalLoadState: OriginalLoadState = OriginalLoadState.NotLoaded,
+    onOriginalLoadStateChange: (OriginalLoadState) -> Unit = {},
 ) {
     val context = LocalContext.current
     val thumbnailUrl = remember(mediaSource, mediaType) {
@@ -48,7 +52,7 @@ internal fun AppContentMediaThumbnail(
     val originalImageUrl = remember(mediaSource, mediaType) {
         mediaSource.viewerOriginalImageUrl(mediaType)
     }
-    val shouldShowOriginalImage = mediaType == AppMediaType.IMAGE &&
+    val shouldRequestOriginalImage = mediaType == AppMediaType.IMAGE &&
         originalLoadState == OriginalLoadState.Loaded &&
         !originalImageUrl.isNullOrBlank()
     val sessionVersion = AuthSessionManager.sessionVersion
@@ -72,19 +76,30 @@ internal fun AppContentMediaThumbnail(
     } else {
         VideoPosterState()
     }
-    val imageRequest = remember(
+    val modelUrl = thumbnailUrl?.takeUnless {
+        mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
+    }
+    val previewRequest = remember(
         context,
-        mediaSource,
         mediaType,
-        thumbnailUrl,
-        originalImageUrl,
-        shouldShowOriginalImage,
+        modelUrl,
         accessToken,
     ) {
-        val modelUrl = thumbnailUrl?.takeUnless {
-            mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
-        }
-        if (shouldShowOriginalImage) {
+        backendMediaImageRequest(
+            context = context,
+            url = modelUrl,
+            accessToken = accessToken,
+            memoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
+            size = requestSize,
+        )
+    }
+    val originalRequest = remember(
+        context,
+        originalImageUrl,
+        shouldRequestOriginalImage,
+        accessToken,
+    ) {
+        if (shouldRequestOriginalImage) {
             backendMediaOriginalImageRequest(
                 context = context,
                 url = originalImageUrl,
@@ -92,27 +107,43 @@ internal fun AppContentMediaThumbnail(
                 memoryCacheKey = originalImageUrl?.let(::sharedOriginalMemoryCacheKey),
             )
         } else {
-            backendMediaImageRequest(
-                context = context,
-                url = modelUrl,
-                accessToken = accessToken,
-                memoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
-                size = requestSize,
-            )
+            null
         }
     }
     val directPosterBitmap = videoPosterState.model as? Bitmap
-    val painter = rememberAsyncImagePainter(
+    val previewPainter = rememberAsyncImagePainter(
         model = if (directPosterBitmap == null) {
-            videoPosterState.model ?: imageRequest
+            videoPosterState.model ?: previewRequest
         } else {
-            imageRequest
+            previewRequest
         },
     )
-    val painterState = painter.state
+    val originalPainter = rememberAsyncImagePainter(model = originalRequest)
+    val previewState = previewPainter.state
+    val originalState = originalPainter.state
+    val showOriginalImage = mediaType == AppMediaType.IMAGE &&
+        originalLoadState == OriginalLoadState.Loaded &&
+        originalState is AsyncImagePainter.State.Success
+    val activePainter = if (showOriginalImage) originalPainter else previewPainter
+    val activeState = if (showOriginalImage) originalState else previewState
+    LaunchedEffect(mediaType, originalImageUrl, originalLoadState, originalState) {
+        if (RepositoryProvider.currentMode != RepositoryMode.FAKE) return@LaunchedEffect
+        if (mediaType != AppMediaType.IMAGE || originalImageUrl.isNullOrBlank()) return@LaunchedEffect
+        when {
+            originalLoadState == OriginalLoadState.Loading &&
+                originalState is AsyncImagePainter.State.Success -> {
+                onOriginalLoadStateChange(OriginalLoadState.Loaded)
+            }
+            (originalLoadState == OriginalLoadState.Loading ||
+                originalLoadState == OriginalLoadState.Loaded) &&
+                originalState is AsyncImagePainter.State.Error -> {
+                onOriginalLoadStateChange(OriginalLoadState.Failed)
+            }
+        }
+    }
     val showImage = directPosterBitmap != null ||
-        (videoPosterState.model != null || imageRequest != null) &&
-        painterState !is AsyncImagePainter.State.Error
+        (videoPosterState.model != null || previewRequest != null || showOriginalImage) &&
+        activeState !is AsyncImagePainter.State.Error
 
     Box(
         modifier = modifier.background(
@@ -140,7 +171,7 @@ internal fun AppContentMediaThumbnail(
             )
         } else if (showImage) {
             Image(
-                painter = painter,
+                painter = activePainter,
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
@@ -149,7 +180,9 @@ internal fun AppContentMediaThumbnail(
 
         if (showLoadingIndicator &&
             directPosterBitmap == null &&
-            (videoPosterState.isLoading || painterState is AsyncImagePainter.State.Loading)
+            (videoPosterState.isLoading ||
+                previewState is AsyncImagePainter.State.Loading ||
+                originalLoadState == OriginalLoadState.Loading)
         ) {
             CircularProgressIndicator(
                 modifier = Modifier
@@ -171,7 +204,7 @@ internal fun AppContentMediaThumbnail(
                 mediaType == AppMediaType.VIDEO && videoPosterState.hasError -> "视频封面缺失"
                 thumbnailUrl.isNullOrBlank() && mediaType == AppMediaType.VIDEO -> "视频封面缺失"
                 thumbnailUrl.isNullOrBlank() -> "暂无缩略图"
-                painterState is AsyncImagePainter.State.Error -> "加载失败"
+                previewState is AsyncImagePainter.State.Error -> "加载失败"
                 else -> null
             }
             if (statusLabel != null) {
