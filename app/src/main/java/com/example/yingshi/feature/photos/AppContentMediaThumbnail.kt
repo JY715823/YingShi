@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.photos
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,13 +36,21 @@ internal fun AppContentMediaThumbnail(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     contentScale: ContentScale = ContentScale.Crop,
+    requestSize: Int = 512,
     showLoadingIndicator: Boolean = true,
     showStatusBadge: Boolean = false,
+    originalLoadState: OriginalLoadState = OriginalLoadState.NotLoaded,
 ) {
     val context = LocalContext.current
     val thumbnailUrl = remember(mediaSource, mediaType) {
         mediaSource.thumbnailModelUrl(mediaType)
     }
+    val originalImageUrl = remember(mediaSource, mediaType) {
+        mediaSource.viewerOriginalImageUrl(mediaType)
+    }
+    val shouldShowOriginalImage = mediaType == AppMediaType.IMAGE &&
+        originalLoadState == OriginalLoadState.Loaded &&
+        !originalImageUrl.isNullOrBlank()
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
@@ -62,23 +72,46 @@ internal fun AppContentMediaThumbnail(
     } else {
         VideoPosterState()
     }
-    val imageRequest = remember(context, mediaSource, mediaType, thumbnailUrl, accessToken) {
+    val imageRequest = remember(
+        context,
+        mediaSource,
+        mediaType,
+        thumbnailUrl,
+        originalImageUrl,
+        shouldShowOriginalImage,
+        accessToken,
+    ) {
         val modelUrl = thumbnailUrl?.takeUnless {
             mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
         }
-        backendMediaImageRequest(
-            context = context,
-            url = modelUrl,
-            accessToken = accessToken,
-            memoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
-            size = 512,
-        )
+        if (shouldShowOriginalImage) {
+            backendMediaOriginalImageRequest(
+                context = context,
+                url = originalImageUrl,
+                accessToken = accessToken,
+                memoryCacheKey = originalImageUrl?.let(::sharedOriginalMemoryCacheKey),
+            )
+        } else {
+            backendMediaImageRequest(
+                context = context,
+                url = modelUrl,
+                accessToken = accessToken,
+                memoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
+                size = requestSize,
+            )
+        }
     }
+    val directPosterBitmap = videoPosterState.model as? Bitmap
     val painter = rememberAsyncImagePainter(
-        model = videoPosterState.model ?: imageRequest,
+        model = if (directPosterBitmap == null) {
+            videoPosterState.model ?: imageRequest
+        } else {
+            imageRequest
+        },
     )
     val painterState = painter.state
-    val showImage = (videoPosterState.model != null || imageRequest != null) &&
+    val showImage = directPosterBitmap != null ||
+        (videoPosterState.model != null || imageRequest != null) &&
         painterState !is AsyncImagePainter.State.Error
 
     Box(
@@ -98,7 +131,14 @@ internal fun AppContentMediaThumbnail(
             )
         }
 
-        if (showImage) {
+        if (directPosterBitmap != null) {
+            Image(
+                bitmap = directPosterBitmap.asImageBitmap(),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+            )
+        } else if (showImage) {
             Image(
                 painter = painter,
                 contentDescription = contentDescription,
@@ -107,7 +147,10 @@ internal fun AppContentMediaThumbnail(
             )
         }
 
-        if (showLoadingIndicator && (videoPosterState.isLoading || painterState is AsyncImagePainter.State.Loading)) {
+        if (showLoadingIndicator &&
+            directPosterBitmap == null &&
+            (videoPosterState.isLoading || painterState is AsyncImagePainter.State.Loading)
+        ) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)

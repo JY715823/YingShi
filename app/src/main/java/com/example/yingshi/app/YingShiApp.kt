@@ -1,8 +1,15 @@
 package com.example.yingshi.app
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,7 +17,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.me.MyScreen
@@ -37,6 +47,7 @@ import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
 import com.example.yingshi.feature.photos.SettingsRoute
 import com.example.yingshi.feature.photos.SettingsScreen
+import com.example.yingshi.feature.photos.TrashPendingCleanupRoute
 import com.example.yingshi.feature.photos.SystemMediaRoute
 import com.example.yingshi.feature.photos.SystemMediaScreen
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
@@ -44,11 +55,18 @@ import com.example.yingshi.feature.photos.SystemMediaViewerScreen
 import com.example.yingshi.feature.photos.TrashDetailRoute
 import com.example.yingshi.feature.photos.TrashDetailScreen
 import com.example.yingshi.feature.photos.TrashEntryType
+import com.example.yingshi.feature.photos.TrashPageScreen
+import com.example.yingshi.ui.theme.YingShiThemeTokens
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
 import com.example.yingshi.ui.theme.YingShiTheme
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YingShiApp() {
     var selectedDestinationName by rememberSaveable {
@@ -62,6 +80,12 @@ fun YingShiApp() {
     }
     var trashShowPendingCleanup by rememberSaveable {
         mutableStateOf(false)
+    }
+    var showQuickAddSheet by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var trashPendingCleanupRoute by remember {
+        mutableStateOf<TrashPendingCleanupRoute?>(null)
     }
     var photoViewerRoute by remember {
         mutableStateOf<PhotoViewerRoute?>(null)
@@ -103,6 +127,31 @@ fun YingShiApp() {
         mutableStateOf<TrashDetailRoute?>(null)
     }
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
+    val context = LocalContext.current
+    val quickAddPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        showQuickAddSheet = false
+        val importedCount = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
+            .enqueueImportPickedMediaToAppUpload(
+                context = context,
+                mediaUris = uris,
+            )
+        if (importedCount > 0) {
+            android.widget.Toast.makeText(
+                context,
+                "已加入导入 app 队列，完成后会出现在照片流。",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                "未选到可导入的媒体。",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
 
     if (photoViewerRoute != null) {
         BackHandler {
@@ -127,6 +176,11 @@ fun YingShiApp() {
     if (trashDetailRoute != null) {
         BackHandler {
             trashDetailRoute = null
+        }
+    }
+    if (trashPendingCleanupRoute != null) {
+        BackHandler {
+            trashPendingCleanupRoute = null
         }
     }
     if (postDetailRoute != null) {
@@ -178,10 +232,14 @@ fun YingShiApp() {
     AppShellScaffold(
         selectedDestination = selectedDestination,
         onDestinationSelected = { selectedDestinationName = it.name },
+        onCenterAction = {
+            showQuickAddSheet = true
+        },
         showBottomBar = photoViewerRoute == null &&
             systemMediaRoute == null &&
             createPostRoute == null &&
             trashDetailRoute == null &&
+            trashPendingCleanupRoute == null &&
             postDetailRoute == null &&
             gearEditRoute == null &&
             mediaManagementRoute == null &&
@@ -235,6 +293,57 @@ fun YingShiApp() {
                         route = route,
                         onBack = { notificationCenterRoute = null },
                         onOpenNotificationDetail = { notificationDetailRoute = it },
+                        onOpenNotificationTarget = { item ->
+                            when (item.id) {
+                                "notice-comment-1",
+                                "notice-comment-2",
+                                "notice-post-update-1" -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                                        selectedDestinationName = RootDestination.PHOTOS.name
+                                        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                                    } else {
+                                        FakeAlbumRepository.getPosts().firstOrNull()?.let { post ->
+                                            postDetailRoute = FakeAlbumRepository.toPostDetailRoute(post)
+                                        }
+                                    }
+                                }
+                                "notice-album-update-1" -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                                }
+                                "notice-trash-1" -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
+                                    trashPendingCleanupRoute = null
+                                }
+                                "notice-restore-1" -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
+                                    trashPendingCleanupRoute = TrashPendingCleanupRoute(
+                                        source = "notification-center",
+                                    )
+                                }
+                                "notice-cache-1" -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    cacheManagementRoute = CacheManagementRoute(source = "notification-center")
+                                }
+                                else -> {
+                                    notificationDetailRoute = NotificationDetailRoute(
+                                        notificationId = item.id,
+                                        source = "notification-center",
+                                    )
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -251,6 +360,21 @@ fun YingShiApp() {
                         onOpenCacheManagement = { cacheManagementRoute = it },
                     )
                 }
+            }
+
+            trashPendingCleanupRoute != null -> {
+                TrashPageScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    selectedTypeName = trashSelectedTypeName,
+                    onSelectedTypeNameChange = { trashSelectedTypeName = it },
+                    showPendingCleanup = true,
+                    onShowPendingCleanupChange = {
+                        if (!it) {
+                            trashPendingCleanupRoute = null
+                        }
+                    },
+                    onOpenTrashDetail = { trashDetailRoute = it },
+                )
             }
 
             systemMediaRoute != null -> {
@@ -315,7 +439,14 @@ fun YingShiApp() {
                         trashSelectedTypeName = trashSelectedTypeName,
                         onTrashSelectedTypeNameChange = { trashSelectedTypeName = it },
                         trashShowPendingCleanup = trashShowPendingCleanup,
-                        onTrashShowPendingCleanupChange = { trashShowPendingCleanup = it },
+                        onTrashShowPendingCleanupChange = {
+                            trashShowPendingCleanup = it
+                            trashPendingCleanupRoute = if (it) {
+                                TrashPendingCleanupRoute(source = "trash-page")
+                            } else {
+                                null
+                            }
+                        },
                         onOpenViewer = { photoViewerRoute = it },
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenTrashDetail = { trashDetailRoute = it },
@@ -411,6 +542,47 @@ fun YingShiApp() {
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
+                }
+            }
+        }
+    }
+
+    if (showQuickAddSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showQuickAddSheet = false },
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(
+                skipPartiallyExpanded = true,
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            ) {
+                Text(
+                    text = "新增",
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                )
+                TextButton(
+                    onClick = {
+                        showQuickAddSheet = false
+                        createPostRoute = CreatePostRoute(source = "bottom-plus")
+                    },
+                ) {
+                    Text(text = "新建帖子")
+                }
+                TextButton(
+                    onClick = {
+                        showQuickAddSheet = false
+                        quickAddPickerLauncher.launch(
+                            PickVisualMediaRequest(
+                                mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
+                            ),
+                        )
+                    },
+                ) {
+                    Text(text = "上传媒体")
                 }
             }
         }

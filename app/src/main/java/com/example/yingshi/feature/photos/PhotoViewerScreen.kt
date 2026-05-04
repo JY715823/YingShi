@@ -49,7 +49,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -79,7 +78,6 @@ import androidx.core.view.WindowCompat
 import coil.imageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import coil.request.SuccessResult
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
@@ -308,9 +306,6 @@ fun PhotoViewerScreen(
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
-    val realOriginalStates = remember(route) {
-        mutableStateMapOf<String, OriginalLoadState>()
-    }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { viewerItems.size },
@@ -321,11 +316,8 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = viewerItems[currentIndex]
-    val currentOriginalState = if (
-        RepositoryProvider.currentMode == RepositoryMode.REAL &&
-        currentItem.mediaType == AppMediaType.IMAGE
-    ) {
-        realOriginalStates[currentItem.mediaId] ?: OriginalLoadState.NotLoaded
+    val currentOriginalState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        RealOriginalLoadRepository.getState(currentItem.mediaId)
     } else {
         FakeOriginalLoadRepository.getState(currentItem.mediaId)
     }
@@ -348,13 +340,7 @@ fun PhotoViewerScreen(
     } else {
         1f
     }
-    val canOpenOriginal = remember(currentItem, route) {
-        when (RepositoryProvider.currentMode) {
-            RepositoryMode.FAKE -> currentItem.mediaType == AppMediaType.IMAGE
-            RepositoryMode.REAL -> currentItem.mediaType == AppMediaType.IMAGE &&
-                currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType)
-        }
-    }
+    val canOpenOriginal = true
     val relatedPosts = remember(currentItem, route.sourcePostRoute) {
         buildViewerRelatedPosts(
             media = currentItem,
@@ -387,6 +373,11 @@ fun PhotoViewerScreen(
             previewComments = previewComments,
         )
     }
+    PrefetchViewerMediaAssets(
+        items = viewerItems,
+        currentIndex = currentIndex,
+        accessToken = viewerAccessToken,
+    )
 
     LaunchedEffect(currentIndex) {
         zoomState.reset()
@@ -484,7 +475,7 @@ fun PhotoViewerScreen(
                 zoomState = if (page == currentIndex) zoomState else null,
                 videoPlaybackState = if (page == currentIndex) videoPlaybackState else null,
                 originalLoadState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                    realOriginalStates[viewerItems[page].mediaId] ?: OriginalLoadState.NotLoaded
+                    RealOriginalLoadRepository.getState(viewerItems[page].mediaId)
                 } else {
                     FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
                 },
@@ -511,7 +502,7 @@ fun PhotoViewerScreen(
                 },
                 onOriginalLoadStateChange = { mediaId, state ->
                     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                        realOriginalStates[mediaId] = state
+                        RealOriginalLoadRepository.setState(mediaId, state)
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -596,14 +587,13 @@ fun PhotoViewerScreen(
                 },
                 onOpenOriginal = {
                     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                        val originalUrl = currentItem.mediaSource.viewerOriginalImageUrl(currentItem.mediaType)
                         when {
-                            currentItem.mediaType == AppMediaType.VIDEO -> {
-                                Toast.makeText(context, "视频本轮暂不支持原图加载", Toast.LENGTH_SHORT).show()
-                            }
-
-                            originalUrl == null -> {
-                                Toast.makeText(context, "当前媒体没有可切换的独立原图", Toast.LENGTH_SHORT).show()
+                            currentItem.mediaSource.viewerOriginalMediaUrl(currentItem.mediaType) == null -> {
+                                RealOriginalLoadRepository.setState(
+                                    currentItem.mediaId,
+                                    OriginalLoadState.Failed,
+                                )
+                                Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
                             }
 
                             currentOriginalState == OriginalLoadState.Loading -> {
@@ -615,21 +605,17 @@ fun PhotoViewerScreen(
                             }
 
                             else -> {
-                                realOriginalStates[currentItem.mediaId] = OriginalLoadState.Loading
-                                Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "开始加载原件", Toast.LENGTH_SHORT).show()
                                 coroutineScope.launch {
-                                    val loadSucceeded = loadRealViewerOriginal(
+                                    val result = RealOriginalLoadRepository.loadOriginal(
                                         context = context,
-                                        media = currentItem,
+                                        target = currentItem.toRealOriginalMediaTarget(),
                                         accessToken = viewerAccessToken,
                                     )
-                                    realOriginalStates[currentItem.mediaId] = if (loadSucceeded) {
-                                        FakeMediaCacheRepository.markOriginalCached(currentItem.mediaId)
-                                        Toast.makeText(context, "原图加载完成", Toast.LENGTH_SHORT).show()
-                                        OriginalLoadState.Loaded
+                                    if (result == OriginalLoadState.Loaded) {
+                                        Toast.makeText(context, "原件加载完成", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        Toast.makeText(context, "原图加载失败，已保留预览图", Toast.LENGTH_SHORT).show()
-                                        OriginalLoadState.Failed
+                                        Toast.makeText(context, "原件加载失败，已保留预览", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -721,6 +707,52 @@ fun PhotoViewerScreen(
             )
         }
 
+    }
+}
+
+@Composable
+private fun PrefetchViewerMediaAssets(
+    items: List<PhotoFeedItem>,
+    currentIndex: Int,
+    accessToken: String?,
+) {
+    if (RepositoryProvider.currentMode != RepositoryMode.REAL || items.isEmpty()) return
+
+    val context = LocalContext.current
+    val targets = remember(items, currentIndex) {
+        buildList {
+            listOf(currentIndex - 1, currentIndex, currentIndex + 1)
+                .distinct()
+                .forEach { index ->
+                    val item = items.getOrNull(index) ?: return@forEach
+                    add(item)
+                }
+        }
+    }
+
+    LaunchedEffect(context, targets, accessToken) {
+        val imageLoader = context.imageLoader
+        targets.forEach { item ->
+            if (item.mediaType == AppMediaType.VIDEO) {
+                item.mediaSource?.viewerVideoUrl(item.mediaType)?.let { videoUrl ->
+                    prefetchVideoPoster(
+                        context = context,
+                        url = videoUrl,
+                        accessToken = accessToken,
+                    )
+                }
+            } else {
+                item.mediaSource?.viewerPreviewImageUrl(item.mediaType)?.let { previewUrl ->
+                    backendMediaImageRequest(
+                        context = context,
+                        url = previewUrl,
+                        accessToken = accessToken,
+                        memoryCacheKey = sharedPreviewMemoryCacheKey(previewUrl),
+                        size = 1280,
+                    )?.let(imageLoader::enqueue)
+                }
+            }
+        }
     }
 }
 
@@ -939,6 +971,7 @@ private fun PhotoViewerCanvas(
                         media = media,
                         playbackState = videoPlaybackState,
                         isCurrent = zoomState != null,
+                        originalLoadState = originalLoadState,
                         onPlaybackStateChange = onVideoPlaybackStateChange,
                         modifier = Modifier
                             .fillMaxSize()
@@ -1024,7 +1057,7 @@ private fun ViewerImageCanvas(
     }
     val originalRequest = remember(context, originalUrl, shouldRequestOriginal, accessToken) {
         if (shouldRequestOriginal) {
-            backendMediaImageRequest(
+            backendMediaOriginalImageRequest(
                 context = context,
                 url = originalUrl,
                 accessToken = accessToken,
@@ -1125,21 +1158,6 @@ private fun ViewerImageCanvas(
     }
 }
 
-private suspend fun loadRealViewerOriginal(
-    context: android.content.Context,
-    media: PhotoFeedItem,
-    accessToken: String?,
-): Boolean {
-    val originalUrl = media.mediaSource.viewerOriginalImageUrl(media.mediaType) ?: return false
-    val request = backendMediaImageRequest(
-        context = context,
-        url = originalUrl,
-        accessToken = accessToken,
-        memoryCacheKey = sharedOriginalMemoryCacheKey(originalUrl),
-    ) ?: return false
-    return context.imageLoader.execute(request) is SuccessResult
-}
-
 @Composable
 private fun ViewerImageFallback(
     reason: ViewerImageFailureReason,
@@ -1215,13 +1233,19 @@ private fun ViewerVideoCanvas(
     media: PhotoFeedItem,
     playbackState: ViewerVideoPlaybackState?,
     isCurrent: Boolean,
+    originalLoadState: OriginalLoadState,
     onPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val videoUrl = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.viewerVideoUrl(media.mediaType)
+    val videoUrl = remember(media.mediaSource, media.mediaType, originalLoadState) {
+        if (originalLoadState == OriginalLoadState.Loaded) {
+            media.mediaSource.viewerOriginalMediaUrl(media.mediaType)
+                ?: media.mediaSource.viewerVideoUrl(media.mediaType)
+        } else {
+            media.mediaSource.viewerVideoUrl(media.mediaType)
+        }
     }
     val isPlaying = playbackState?.isPlaying == true
     val isLoading = playbackState?.isLoading == true

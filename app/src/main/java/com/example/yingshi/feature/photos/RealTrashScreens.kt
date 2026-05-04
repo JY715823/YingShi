@@ -3,8 +3,10 @@ package com.example.yingshi.feature.photos
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.model.RemoteTrashDetail
+import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
@@ -59,40 +62,13 @@ fun RealTrashPageScreen(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         item {
-            RealTrashSectionCard(
-                title = "后端回收站",
-                body = "REAL 模式直接读取后端回收站，可恢复、移出和撤销。",
+            RealTrashTypeRow(
+                selectedType = selectedType,
+                pendingCount = uiState.pendingEntries.size,
+                showPendingCleanup = showPendingCleanup,
+                onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                onPendingClick = { onShowPendingCleanupChange(!showPendingCleanup) },
             )
-        }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                TrashEntryType.entries.forEach { type ->
-                    Surface(
-                        modifier = Modifier.clickable { onSelectedTypeNameChange(type.name) },
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                        color = if (type == selectedType) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-                        },
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-                    ) {
-                        Text(
-                            text = type.label,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (type == selectedType) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                }
-            }
         }
 
         if (uiState.statusMessage != null) {
@@ -114,44 +90,29 @@ fun RealTrashPageScreen(
             }
         }
 
-        item {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onShowPendingCleanupChange(!showPendingCleanup) },
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        if (showPendingCleanup) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "24 小时可撤销",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        text = "24h可撤销",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onBackground,
                     )
-                    Text(
-                        text = "待清理 ${uiState.pendingEntries.size} 项",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = if (showPendingCleanup) "点击收起" else "点击展开",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    TextButton(onClick = { onShowPendingCleanupChange(false) }) {
+                        Text("返回")
+                    }
                 }
             }
-        }
-
-        if (showPendingCleanup) {
             if (uiState.pendingEntries.isEmpty()) {
                 item {
                     RealTrashSectionCard(
-                        title = "待清理为空",
-                        body = "当前没有处于 24 小时撤销窗口的项目。",
+                        title = "暂无可撤销条目",
+                        body = "",
                     )
                 }
             } else {
@@ -193,72 +154,144 @@ fun RealTrashPageScreen(
             }
         }
 
-        item {
-            Text(
-                text = selectedType.label,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
-            )
-        }
+        if (!showPendingCleanup) {
+            item {
+                Text(
+                    text = selectedType.label,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
 
-        when {
-            uiState.isLoading && uiState.entries.isEmpty() -> {
-                item {
-                    RealTrashSectionCard(
-                        title = "读取中",
-                        body = "正在从后端读取回收站列表…",
-                    )
+            when {
+                uiState.isLoading && uiState.entries.isEmpty() -> {
+                    item {
+                        RealTrashSectionCard(
+                            title = "读取中",
+                            body = "正在从后端读取回收站列表…",
+                        )
+                    }
                 }
-            }
-            uiState.entries.isEmpty() -> {
-                item {
-                    RealTrashSectionCard(
-                        title = "当前分类为空",
-                        body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
-                    )
+                uiState.entries.isEmpty() -> {
+                    item {
+                        RealTrashSectionCard(
+                            title = "当前分类为空",
+                            body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
+                        )
+                    }
                 }
-            }
-            else -> {
-                items(
-                    items = uiState.entries,
-                    key = { it.id },
-                ) { entry ->
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onOpenTrashDetail(
-                                    TrashDetailRoute(entryId = entry.id),
-                                )
-                            },
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(spacing.md),
-                            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                else -> {
+                    items(
+                        items = uiState.entries,
+                        key = { it.id },
+                    ) { entry ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onOpenTrashDetail(
+                                        TrashDetailRoute(entryId = entry.id),
+                                    )
+                                },
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
                         ) {
-                            Text(
-                                text = entry.title,
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            Text(
-                                text = entry.previewInfo,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = entry.type.label,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                            Column(
+                                modifier = Modifier.padding(spacing.md),
+                                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                            ) {
+                                Text(
+                                    text = entry.title,
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = entry.previewInfo,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = entry.type.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Text(
+                                    text = "查看",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RealTrashTypeRow(
+    selectedType: TrashEntryType,
+    pendingCount: Int,
+    showPendingCleanup: Boolean,
+    onTypeSelected: (TrashEntryType) -> Unit,
+    onPendingClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            TrashEntryType.entries.forEach { type ->
+                RealTrashSegmentChip(
+                    text = type.label,
+                    selected = type == selectedType,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onTypeSelected(type) },
+                )
+            }
+        }
+        RealTrashSegmentChip(
+            text = "24h 可撤销 $pendingCount",
+            selected = showPendingCleanup,
+            onClick = onPendingClick,
+        )
+    }
+}
+
+@Composable
+private fun RealTrashSegmentChip(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+        },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
     }
 }
 
@@ -378,6 +411,8 @@ private fun RealTrashDetailContent(
         body = item.previewInfo.ifBlank { "后端没有返回额外说明。" },
     )
 
+    RealTrashDeletedPreview(item = item)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
@@ -457,6 +492,112 @@ private fun RealTrashDetailContent(
             }
         }
     }
+}
+
+@Composable
+private fun RealTrashDeletedPreview(
+    item: com.example.yingshi.data.model.RemoteTrashItem,
+) {
+    val mediaIds = buildList {
+        item.sourceMediaId?.takeIf { it.isNotBlank() }?.let(::add)
+        addAll(item.relatedMediaIds.filter { it.isNotBlank() })
+    }.distinct()
+    val type = item.toTrashEntryUiModel().type
+
+    when {
+        mediaIds.isNotEmpty() -> {
+            RealTrashMediaStrip(
+                title = when (type) {
+                    TrashEntryType.POST_DELETED -> "原帖子媒体"
+                    TrashEntryType.MEDIA_REMOVED -> "被移除的媒体"
+                    TrashEntryType.MEDIA_SYSTEM_DELETED -> "被系统删除的媒体"
+                },
+                mediaIds = mediaIds,
+            )
+        }
+
+        type == TrashEntryType.POST_DELETED -> {
+            RealTrashSectionCard(
+                title = "原帖子内容",
+                body = "当前后端删除项没有返回媒体快照，只能展示帖子标题和说明；后续可扩展更完整的帖子快照契约。",
+            )
+        }
+
+        else -> {
+            RealTrashSectionCard(
+                title = "原媒体预览不可用",
+                body = "当前删除项没有返回 sourceMediaId 或 relatedMediaIds，无法定位原媒体文件。",
+            )
+        }
+    }
+}
+
+@Composable
+private fun RealTrashMediaStrip(
+    title: String,
+    mediaIds: List<String>,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            mediaIds.chunked(3).forEach { rowIds ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    rowIds.forEach { mediaId ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f),
+                        ) {
+                            AppContentMediaThumbnail(
+                                mediaSource = realTrashMediaSource(mediaId),
+                                mediaType = AppMediaType.IMAGE,
+                                palette = realPaletteFor(mediaId),
+                                modifier = Modifier.fillMaxSize(),
+                                contentDescription = mediaId,
+                                requestSize = 384,
+                                showLoadingIndicator = true,
+                                showStatusBadge = true,
+                            )
+                        }
+                    }
+                    repeat(3 - rowIds.size) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun realTrashMediaSource(mediaId: String): AppContentMediaSource {
+    val baseUrl = BackendDebugConfig.currentBaseUrl().trimEnd('/')
+    val previewUrl = "$baseUrl/api/media/files/$mediaId?variant=preview"
+    val originalUrl = "$baseUrl/api/media/files/$mediaId"
+    return AppContentMediaSource(
+        thumbnailUrl = previewUrl,
+        mediaUrl = originalUrl,
+        originalUrl = originalUrl,
+    )
 }
 
 @Composable

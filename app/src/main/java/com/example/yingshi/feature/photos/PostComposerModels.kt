@@ -6,6 +6,7 @@ import androidx.compose.runtime.Immutable
 data class CreatePostRoute(
     val source: String,
     val initialMediaItems: List<SystemMediaItem> = emptyList(),
+    val initialAppMediaIds: List<String> = emptyList(),
 )
 
 @Immutable

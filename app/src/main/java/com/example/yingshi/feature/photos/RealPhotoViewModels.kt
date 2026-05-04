@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.CommentListState
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.toCommentListState
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
@@ -64,6 +65,7 @@ class AlbumPageRealViewModel(
     val uiState: StateFlow<AlbumPageRealUiState> = _uiState.asStateFlow()
 
     private var loadPostsJob: Job? = null
+    private var loadCoverJob: Job? = null
 
     init {
         refresh()
@@ -131,6 +133,7 @@ class AlbumPageRealViewModel(
 
     private fun loadAlbumPosts(albumId: String) {
         loadPostsJob?.cancel()
+        loadCoverJob?.cancel()
         loadPostsJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -140,25 +143,8 @@ class AlbumPageRealViewModel(
             }
             when (val result = albumRepository.getAlbumPosts(albumId)) {
                 is ApiResult.Success -> {
-                    val posts = supervisorScope {
-                        val coverRequests = result.data.associate { summary ->
-                            summary.postId to async {
-                                when (val detailResult = postRepository.getPostDetail(summary.postId)) {
-                                    is ApiResult.Success -> {
-                                        val detail = detailResult.data
-                                        detail.mediaItems.firstOrNull { it.mediaId == detail.coverMediaId }
-                                            ?: detail.mediaItems.firstOrNull()
-                                    }
-                                    else -> null
-                                }
-                            }
-                        }
-                        result.data.map { post ->
-                            post.toAlbumPostCardUiModel(
-                                selectedAlbumId = albumId,
-                                coverMedia = coverRequests[post.postId]?.await(),
-                            )
-                        }
+                    val posts = result.data.map { post ->
+                        post.toAlbumPostCardUiModel(selectedAlbumId = albumId)
                     }
                     _uiState.update {
                         it.copy(
@@ -166,6 +152,10 @@ class AlbumPageRealViewModel(
                             posts = posts,
                         )
                     }
+                    prefetchAlbumPostCovers(
+                        albumId = albumId,
+                        summaries = result.data,
+                    )
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
@@ -176,6 +166,51 @@ class AlbumPageRealViewModel(
                     }
                 }
                 ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    private fun prefetchAlbumPostCovers(
+        albumId: String,
+        summaries: List<RemotePostSummary>,
+    ) {
+        val targetSummaries = summaries
+            .asSequence()
+            .filter { it.coverMediaId != null }
+            .take(6)
+            .toList()
+        if (targetSummaries.isEmpty()) return
+
+        loadCoverJob?.cancel()
+        loadCoverJob = viewModelScope.launch {
+            val coverMediaByPostId = supervisorScope {
+                targetSummaries.associate { summary ->
+                    summary.postId to async {
+                        when (val detailResult = postRepository.getPostDetail(summary.postId)) {
+                            is ApiResult.Success -> {
+                                val detail = detailResult.data
+                                detail.mediaItems.firstOrNull { it.mediaId == detail.coverMediaId }
+                                    ?: detail.mediaItems.firstOrNull()
+                            }
+                            else -> null
+                        }
+                    }
+                }.mapValues { (_, deferred) -> deferred.await() }
+            }
+
+            if (_uiState.value.selectedAlbumId != albumId) return@launch
+
+            _uiState.update { state ->
+                state.copy(
+                    posts = state.posts.map { post ->
+                        val coverMedia = coverMediaByPostId[post.id] ?: return@map post
+                        val sourcePost = targetSummaries.firstOrNull { it.postId == post.id } ?: return@map post
+                        sourcePost.toAlbumPostCardUiModel(
+                            selectedAlbumId = albumId,
+                            coverMedia = coverMedia,
+                        )
+                    },
+                )
             }
         }
     }
@@ -267,6 +302,27 @@ class PostDetailRealViewModel(
 
     fun retryMediaComments(mediaId: String) {
         loadMediaComments(mediaId)
+    }
+
+    fun handleExternalCommentMutation(event: RealBackendMutationEvent) {
+        if (!_uiState.value.detailMediaIds().let { mediaIds ->
+                event.isCommentMutationForPostDetail(route.postId, mediaIds)
+            }
+        ) {
+            return
+        }
+
+        if (event.postIds.contains(route.postId) && _uiState.value.postComments.comments.isNotEmpty()) {
+            loadPostComments()
+        }
+
+        val loadedMediaIds = _uiState.value.mediaComments.keys
+        val targetMediaIds = if (event.mediaIds.isEmpty()) {
+            loadedMediaIds
+        } else {
+            loadedMediaIds.intersect(event.mediaIds)
+        }
+        targetMediaIds.forEach(::loadMediaComments)
     }
 
     fun createPostComment(content: String) {
@@ -482,6 +538,10 @@ class PostDetailRealViewModel(
             }
         }
     }
+}
+
+private fun PostDetailRealUiState.detailMediaIds(): List<String> {
+    return detail?.mediaItems?.map { it.id }.orEmpty()
 }
 
 private fun CommentListState.toThreadUiState(

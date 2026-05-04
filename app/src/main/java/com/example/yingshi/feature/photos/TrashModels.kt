@@ -90,3 +90,8 @@ data class TrashDetailRoute(
     val sourcePostId: String? = null,
     val sourceMediaId: String? = null,
 )
+
+@Immutable
+data class TrashPendingCleanupRoute(
+    val source: String = "trash-page",
+)

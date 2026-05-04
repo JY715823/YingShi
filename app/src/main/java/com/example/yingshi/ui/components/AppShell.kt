@@ -44,6 +44,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 fun AppShellScaffold(
     selectedDestination: RootDestination,
     onDestinationSelected: (RootDestination) -> Unit,
+    onCenterAction: () -> Unit = { },
     showBottomBar: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
@@ -57,6 +58,7 @@ fun AppShellScaffold(
                 FloatingBottomBar(
                     selectedDestination = selectedDestination,
                     onDestinationSelected = onDestinationSelected,
+                    onCenterAction = onCenterAction,
                 )
             }
         },
@@ -167,6 +169,7 @@ fun TitleTabs(
 private fun FloatingBottomBar(
     selectedDestination: RootDestination,
     onDestinationSelected: (RootDestination) -> Unit,
+    onCenterAction: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -182,7 +185,57 @@ private fun FloatingBottomBar(
             containerColor = Color.Transparent,
             tonalElevation = 0.dp,
         ) {
-            RootDestination.entries.forEach { destination ->
+            RootDestination.entries.take(2).forEach { destination ->
+                NavigationBarItem(
+                    selected = destination == selectedDestination,
+                    onClick = { onDestinationSelected(destination) },
+                    icon = {
+                        Text(
+                            text = destination.glyph,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = destination.label,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                )
+            }
+
+            NavigationBarItem(
+                selected = false,
+                onClick = onCenterAction,
+                icon = {
+                    Text(
+                        text = "+",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                },
+                label = {
+                    Text(
+                        text = "添加",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    unselectedIconColor = MaterialTheme.colorScheme.primary,
+                    unselectedTextColor = MaterialTheme.colorScheme.primary,
+                ),
+            )
+
+            RootDestination.entries.drop(2).forEach { destination ->
                 NavigationBarItem(
                     selected = destination == selectedDestination,
                     onClick = { onDestinationSelected(destination) },

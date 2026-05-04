@@ -86,12 +86,12 @@ class RealPhotoFeedViewModel(
                     statusMessage = null,
                 )
             }
-            var successCount = 0
+            val deletedIds = linkedSetOf<String>()
             var firstFailure: String? = null
 
             normalizedIds.forEach { mediaId ->
                 when (val result = mediaRepository.systemDeleteMedia(mediaId)) {
-                    is ApiResult.Success -> successCount += 1
+                    is ApiResult.Success -> deletedIds += mediaId
                     is ApiResult.Error -> {
                         if (firstFailure == null) {
                             firstFailure = result.toBackendUiMessage("删除媒体失败。")
@@ -101,22 +101,26 @@ class RealPhotoFeedViewModel(
                 }
             }
 
-            refresh()
             _uiState.update {
                 it.copy(
                     isDeleting = false,
                     errorMessage = firstFailure,
+                    feedItems = if (deletedIds.isEmpty()) {
+                        it.feedItems
+                    } else {
+                        it.feedItems.filterNot { item -> deletedIds.contains(item.mediaId) }
+                    },
                     statusMessage = when {
-                        successCount > 0 && firstFailure == null -> "已删除 $successCount 项媒体，并写入后端回收站。"
-                        successCount > 0 -> "已删除 $successCount 项媒体，但仍有部分失败。"
+                        deletedIds.isNotEmpty() && firstFailure == null ->
+                            "已删除 ${deletedIds.size} 项媒体，并写入后端回收站。"
+                        deletedIds.isNotEmpty() ->
+                            "已删除 ${deletedIds.size} 项媒体，但仍有部分失败。"
                         else -> null
                     },
                 )
             }
-            if (successCount > 0) {
-                notifyRealBackendContentChanged(
-                    mediaIds = normalizedIds.toSet(),
-                )
+            if (deletedIds.isNotEmpty()) {
+                notifyRealBackendContentChanged(mediaIds = deletedIds)
             }
         }
     }

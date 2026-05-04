@@ -1,115 +1,118 @@
-# Current Task: Stage 12.6 - 新增媒体 / 新增帖子完整闭环
+# Current Task: Stage 12.7 - 全局流畅度专项
 
 ## 背景
 
-Stage 12.1-12.5 已完成 REAL 媒体接入、Viewer 产品化、状态一致性、媒体管理和架构整理。当前新增媒体和新增帖子仍是部分完成状态：系统媒体发成新帖子、加入已有帖子已有基础链路，但还不是完整产品能力。
+Stage 12.1-12.6 已完成 REAL 媒体主链路、Viewer 产品化、状态一致性、媒体管理、新增媒体和新增帖子闭环。现在进入 Stage 12.7，目标不是新增功能，而是提升全局使用流畅度。
 
-本阶段目标是把“选择媒体 / 上传媒体 / 创建帖子 / 加入帖子 / 成功落地 / 失败回滚 / 刷新联动”补成稳定闭环。
+当前重点是减少列表滚动卡顿、缩略图闪烁、Viewer 打开慢、系统媒体页加载慢、帖子详情首屏慢、重复请求和不必要的全量刷新。
 
 ## 目标
 
-1. 新增帖子入口和表单清晰。
-2. 系统媒体发成新帖子稳定。
-3. 系统媒体加入已有帖子稳定。
-4. 新增媒体 / 上传任务状态清晰。
-5. 上传或创建失败不产生脏数据。
-6. 孤立媒体清理策略明确。
-7. 新增成功后相册、帖子详情、照片流、Gear Edit 联动刷新。
-8. FAKE / REAL 新增链路隔离。
+1. 照片流滚动更稳定。
+2. 帖子详情首屏更快。
+3. Viewer 打开、切换、返回更顺。
+4. 系统媒体页缩略图和分页更稳。
+5. 相册 / 帖子列表滚动更稳。
+6. Gear Edit 媒体管理操作后不明显卡顿。
+7. mutation 后尽量局部刷新。
+8. 减少重复请求和重复 recomposition。
+9. FAKE / REAL 模式都保持稳定。
 
 ## 范围
 
-### 1. 新增帖子入口 / 表单
+### 1. 照片流
 
-需要检查：
+检查：
 
-- 新增帖子入口是否清晰
-- 标题 / 描述 / 相册归属 / 时间 / 地点等字段是否合理
-- 初始媒体是否能正确带入
-- 封面是否可按现有能力设置或默认选取
-- 表单取消时不产生半成品帖子
-- 创建失败时不污染相册列表
+- LazyGrid key 是否稳定
+- 缩略图是否使用合理尺寸
+- 是否误用原图加载缩略图
+- 滚动中是否频繁重组
+- 切换列数 / 密度是否状态稳定
+- 删除 / 恢复后是否局部更新
 
-### 2. 系统媒体发成新帖子
+### 2. 帖子详情和媒体区
 
-需要保证：
+检查：
 
-- 选择系统媒体后可创建新帖子
-- 成功后相册 / 帖子列表刷新
-- 新帖子详情可打开
-- 必要时直接进入新帖子落地页
-- 创建失败时不产生半成品 UI
-- 上传成功但创建失败时有明确处理策略
+- 首屏是否不必要等待全部媒体加载
+- 媒体区是否使用缩略图
+- 长图 / 视频封面是否稳定
+- 评论刷新是否不导致整个详情重刷
+- 删除 / 添加媒体后是否只刷新必要区域
 
-### 3. 系统媒体加入已有帖子
+### 3. Viewer
 
-需要保证：
+检查：
 
-- 二级选择器稳定
-- 先选相册，再选帖子
-- 加入成功后帖子详情刷新
-- Gear Edit 媒体管理刷新
-- 照片流相关入口刷新
-- 重复加入有提示或安全处理
-- 加入失败不污染帖子媒体列表
+- 打开时是否复用列表已有预览图
+- 原图是否按需加载
+- 视频是否避免首开黑屏
+- 左右切换是否避免重复请求
+- 返回列表是否不触发无意义全量刷新
+- overlay / 控制条是否造成明显重组
 
-### 4. 新增媒体 / 上传任务状态
+### 4. 系统媒体页
 
-需要保证：
+检查：
 
-- 上传中有状态
-- 上传成功有反馈
-- 上传失败有中文提示
-- 支持重试或重新选择
-- 取消时状态清理
-- 多个媒体连续上传不串状态
-- 上传失败不插入假媒体
-- REAL 接口失败不污染 FAKE 数据
+- 是否分页或分批加载
+- 是否有加载中 / 空态 / 权限失败
+- 缩略图加载是否稳定
+- 移到系统回收站取消时不触发多余刷新
+- 导入到帖子后状态刷新是否局部化
 
-### 5. 孤立媒体清理策略
+### 5. 相册 / 帖子卡片列表
 
-需要明确：
+检查：
 
-- 上传成功但创建帖子失败怎么办
-- 上传成功但加入帖子失败怎么办
-- 创建帖子成功但媒体关联失败怎么办
-- 用户取消流程后是否保留上传媒体
-- UI 是否需要提示用户
-- 当前阶段如果不做自动清理，必须在文档中写清楚策略和风险
+- key 是否稳定
+- 卡片封面是否使用缩略图
+- 编辑标题 / 封面后是否只更新对应 item
+- 删除 / 恢复后列表状态是否稳定
 
-### 6. 新增后联动刷新
+### 6. mutation 后局部刷新
 
-新增成功后需要刷新：
+重点优化：
 
-- 相册列表
-- 帖子详情
-- 照片流
-- Gear Edit 媒体管理
-- Viewer 可打开媒体列表
-- 系统媒体工具区状态
+- 上传成功
+- 上传失败
+- 删除媒体
+- 删除帖子
+- 恢复媒体
+- 恢复帖子
+- 评论新增 / 编辑 / 删除
+- 加入已有帖子
+- 发成新帖子
 
-### 7. FAKE / REAL 隔离
+要求：
 
-需要保证：
+- 能局部更新就不要全量刷新
+- 必须全量刷新时避免重复触发
+- 失败时不产生脏状态
 
-- FAKE 新增走本地模拟
-- REAL 新增走真实接口
-- 两者缓存和 mutation 状态不互相污染
-- DTO 不直接进入 Compose UI
-- mapper / repository 边界清楚
+### 7. 重复请求 / recomposition
+
+检查：
+
+- 进入页面是否重复请求同一接口
+- LaunchedEffect key 是否过宽
+- collectAsState 是否导致大范围重组
+- 列表 item 是否缺少 stable key
+- UI state 是否过大导致局部变化触发整页重组
+- 视频控制条进度更新是否导致整个 Viewer 重组
 
 ## 不做内容
 
+- 不新增大功能
 - 不做 OSS
 - 不做正式云端存储
-- 不做复杂离线任务队列
-- 不做 WebSocket / 推送
+- 不做复杂离线缓存
 - 不重构 fake/real 总架构
 - 不删除 FAKE repository
 - 不强制默认 REAL
 - 不做 UI 大精修
-- 不改回收站业务规则
-- 不做完整权限体系重构
+- 不改业务规则
 
 ## 文档要求
 
@@ -121,20 +124,20 @@ Stage 12.1-12.5 已完成 REAL 媒体接入、Viewer 产品化、状态一致性
 
 ## 验收
 
-1. 新增帖子入口可用。
-2. 表单取消不产生半成品帖子。
-3. 创建失败不污染相册列表。
-4. 系统媒体发成新帖子成功后相册列表刷新。
-5. 新帖子详情可打开。
-6. 系统媒体加入已有帖子成功后帖子详情刷新。
-7. Gear Edit 媒体管理刷新。
-8. 上传中 / 成功 / 失败状态清晰。
-9. 上传失败不插入假媒体。
-10. 重复加入有提示或安全处理。
-11. 孤立媒体策略有代码兜底或文档说明。
-12. 新增后照片流刷新。
-13. Viewer 入口使用最新媒体列表。
-14. FAKE / REAL 新增链路不互相污染。
+1. 照片流滚动无明显缩略图错位或频繁闪烁。
+2. 照片流不使用原图作为列表缩略图。
+3. 帖子详情首屏不被全部媒体阻塞。
+4. 帖子详情媒体区缩略图稳定。
+5. Viewer 打开时优先显示已有预览。
+6. Viewer 切换图片 / 视频不明显卡顿。
+7. Viewer 返回列表不触发不必要全量刷新。
+8. 系统媒体页加载中、空态、权限失败兜底稳定。
+9. 系统媒体缩略图滚动稳定。
+10. 相册 / 帖子卡片列表 key 稳定。
+11. 上传 / 删除 / 恢复 / 评论后尽量局部刷新。
+12. 没有明显重复请求同一接口。
+13. 视频控制条进度更新不导致整页明显卡顿。
+14. FAKE / REAL 主流程都正常。
 15. assembleDebug 通过。
 
 ## 构建命令
@@ -142,13 +145,36 @@ Stage 12.1-12.5 已完成 REAL 媒体接入、Viewer 产品化、状态一致性
 ```powershell
 cd D:\Projects\Yingshi\yingshi-android
 .\gradlew.bat --no-daemon assembleDebug
+```
 
-## Stage 12.6 Progress Update
+## Stage 12.7 Progress Update
 
-- Quick Add 的 `新增媒体` 现在直接进入系统媒体工具区，`新增帖子` 进入统一的创建帖子表单。
-- 新帖子表单当前收口字段：标题、描述、相册归属、时间只读展示、地点占位说明、初始媒体列表、封面选择。
-- 系统媒体 `发成新帖子` 不再直接假装成功；REAL 模式会先入上传任务，再在全部上传成功后创建帖子。
-- 系统媒体 `加入已有帖子` 继续走二级选择器，但现在会过滤当前已知的重复媒体，并把成功 / 失败状态写入统一任务面板。
-- 上传任务面板新增 `statusMessage / canRetry`，区分等待上传、上传中、上传完成待发帖、发帖失败、取消、重试。
-- REAL 模式下如果上传成功但创建 / 加入帖子失败，当前策略是不污染主照片流和帖子 UI；服务端孤立媒体暂不自动清理，保留重试入口并在文档中明确说明。
-- 新增或追加成功后，继续通过 `RealBackendMutationBus` 刷新相册页、帖子详情、照片流、Gear Edit 和系统媒体目标列表。
+- System media first-screen load was reduced to a single effective boot path. Duplicate `ensureLoaded()` triggers on enter/resume are now guarded in the ViewModel.
+- System media grid now renders in batches on the UI side instead of composing the full filtered list at once; manual refresh and MediaStore-change refresh remain supported.
+- Feed / album / media-management thumbnails now request smaller preview sizes for list cards so list scrolling no longer competes with full-size image decode work.
+- Album page no longer blocks post-list first paint on one `getPostDetail()` call per post. It renders summary cards first and only backfills a small number of cover previews in the background.
+- Comment mutation refresh was narrowed: comment changes no longer force photo-feed refresh, and post detail now handles comment-only mutation separately from full post-detail reload.
+- Viewer now prefetches the current item plus adjacent items so open / swipe / return paths reuse preview cache more often.
+
+## Post-12.7 Product Flow Adjustment
+
+- Bottom navigation now reserves the center slot for `添加`; the old always-visible photo-page `+` row is removed.
+- Photo feed no longer shows the permanent count / column switcher row. Density stays gesture-driven for now, and row / column spacing are aligned to the same thin gap.
+- Photo feed time scrubber is right-edge aligned, proportional to current list progress, and only shows the date label while the scrubber itself is being dragged.
+- Album page removes the extra album title / intro / manage header above chips so the chips and post grid become the first meaningful content.
+- Trash `24h可撤销` moved into the trash type row as an entry button; normal trash rows still open deleted-state detail.
+- Notification center removes the explanatory summary card; tapping known local notifications now routes to post detail, album, trash, pending cleanup, or cache management instead of only opening a placeholder detail page.
+- System media grid is visually closer to the app photo feed: fixed square cells, thin equal gaps, and import actions aligned with app media semantics.
+- System media now has `导入app`, separate from `发成新帖子` and `加入已有帖子`; post creation / add-to-post still imports the media into app content as part of the same flow.
+- Viewer original action is exposed for image and video media when a usable original / media / video URL exists. Images still request the original image; videos probe the original media URL and keep the viewer stable on failure.
+- Video poster state now checks the disk poster cache before entering loading state, reducing the flash after returning from Viewer.
+
+## Post-12.7 Targeted Fix Follow-up
+
+- App photo feed and system media both use a right-edge white proportional time scrubber. The scrubber has no vertical rail, shows the date only during direct scrub interaction, and maps top / bottom to the current list's start / end.
+- System media now shares the app photo-feed density levels `2 / 3 / 4 / 8 / 16` through the same pinch-zoom gesture, while keeping square cells and thin equal gaps.
+- App photo-feed multi-select now uses one bottom `操作` entry that opens a bottom sheet; system media keeps four actions in two rows. Selection badges use a clearer white-circle / blue-check style.
+- REAL trash folds `24h 可撤销` into the trash category row. Trash detail renders original media previews from `sourceMediaId` / `relatedMediaIds` instead of only showing metadata fields.
+- Notification taps avoid opening fake post ids in REAL mode. Known REAL notifications route to stable top-level destinations until backend notification target ids are formalized.
+- Viewer original loading now treats `mediaUrl` / `videoUrl` as valid original resources when there is no separate cloud original. Failure keeps the preview visible and does not falsely report success.
+- Video poster state has a small in-memory bitmap cache on top of the disk poster cache to reduce thumbnail flashing after returning from Viewer.

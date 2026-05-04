@@ -42,6 +42,15 @@ data class RealBackendMutationEvent(
         return affects(RealBackendRefreshScope.MEDIA_MANAGEMENT) && matches(postId, managedMediaIds)
     }
 
+    fun isCommentOnly(): Boolean = scopes == RealBackendCommentScopes
+
+    fun isCommentMutationForPostDetail(
+        postId: String,
+        mediaIdsInPost: Collection<String> = emptyList(),
+    ): Boolean {
+        return isCommentOnly() && affectsPostDetail(postId, mediaIdsInPost)
+    }
+
     private fun affects(scope: RealBackendRefreshScope): Boolean {
         return scopes.isEmpty() || scopes.contains(scope)
     }
@@ -92,9 +101,7 @@ private val RealBackendPostScopes = setOf(
 )
 
 private val RealBackendCommentScopes = setOf(
-    RealBackendRefreshScope.PHOTO_FEED,
     RealBackendRefreshScope.POST_DETAIL,
-    RealBackendRefreshScope.MEDIA_MANAGEMENT,
 )
 
 internal fun notifyRealBackendContentChanged(

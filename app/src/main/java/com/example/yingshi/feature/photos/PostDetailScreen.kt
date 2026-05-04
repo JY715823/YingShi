@@ -35,8 +35,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -61,6 +64,7 @@ import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun PostDetailScreen(
@@ -195,10 +199,14 @@ private fun RealPostDetailScreen(
         inPostViewerInitialPage = null
     }
     LaunchedEffect(backendMutationEvent.version, detailMediaIds) {
-        if (backendMutationEvent.version > 0 &&
-            backendMutationEvent.affectsPostDetail(route.postId, detailMediaIds)
-        ) {
-            viewModel.refresh()
+        if (backendMutationEvent.version <= 0) return@LaunchedEffect
+        when {
+            backendMutationEvent.isCommentMutationForPostDetail(route.postId, detailMediaIds) -> {
+                viewModel.handleExternalCommentMutation(backendMutationEvent)
+            }
+            backendMutationEvent.affectsPostDetail(route.postId, detailMediaIds) -> {
+                viewModel.refresh()
+            }
         }
     }
 
@@ -320,6 +328,11 @@ private fun RealPostDetailContent(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val sessionVersion = AuthSessionManager.sessionVersion
+    val accessToken = remember(sessionVersion) {
+        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+    }
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
@@ -328,14 +341,8 @@ private fun RealPostDetailContent(
     val currentMediaCommentState = uiState.mediaComments[currentMedia.id]
     val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia.commentCount
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
-    val placeholderOriginalSummary = remember(postMediaIds) {
-        PostOriginalLoadSummary(
-            totalCount = postMediaIds.size,
-            loadedCount = 0,
-            loadingCount = 0,
-            failedCount = 0,
-        )
-    }
+    val currentOriginalState = RealOriginalLoadRepository.getState(currentMedia.id)
+    val postOriginalSummary = RealOriginalLoadRepository.getPostSummary(postMediaIds)
     val placeholderCacheSummary = remember(postMediaIds) {
         AppMediaCacheSummary(
             mediaCount = postMediaIds.size,
@@ -391,6 +398,7 @@ private fun RealPostDetailContent(
                 ) {
                     PostMediaCard(
                         media = detail.mediaItems[page],
+                        originalLoadState = RealOriginalLoadRepository.getState(detail.mediaItems[page].id),
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { onOpenMediaViewer(page) },
                     )
@@ -401,18 +409,60 @@ private fun RealPostDetailContent(
         PostMediaInfoRow(
             media = currentMedia,
             commentCount = currentMediaCommentCount,
-            originalLoadState = OriginalLoadState.NotLoaded,
+            originalLoadState = currentOriginalState,
             onCommentClick = { onOpenMediaComments(currentPage) },
             onOriginalClick = {
-                Toast.makeText(context, "帖子详情页原图加载入口暂未接入。", Toast.LENGTH_SHORT).show()
+                when {
+                    currentMedia.mediaSource.viewerOriginalMediaUrl(currentMedia.mediaType) == null -> {
+                        RealOriginalLoadRepository.setState(currentMedia.id, OriginalLoadState.Failed)
+                        Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
+                    }
+
+                    currentOriginalState == OriginalLoadState.Loading -> {
+                        Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
+                    }
+
+                    currentOriginalState == OriginalLoadState.Loaded -> {
+                        Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
+                    }
+
+                    else -> {
+                        Toast.makeText(context, "开始加载原件", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            val result = RealOriginalLoadRepository.loadOriginal(
+                                context = context,
+                                target = currentMedia.toRealOriginalMediaTarget(),
+                                accessToken = accessToken,
+                            )
+                            if (result == OriginalLoadState.Loaded) {
+                                Toast.makeText(context, "原件加载完成", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "原件加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
             },
         )
 
         PostInfoSection(
             detail = detail,
-            originalSummary = placeholderOriginalSummary,
+            originalSummary = postOriginalSummary,
             onLoadAllOriginals = {
-                Toast.makeText(context, "帖子详情页批量原图加载暂未接入。", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "开始加载全帖原图", Toast.LENGTH_SHORT).show()
+                coroutineScope.launch {
+                    val summary = RealOriginalLoadRepository.loadAllOriginals(
+                        context = context,
+                        targets = detail.mediaItems.map { it.toRealOriginalMediaTarget() },
+                        accessToken = accessToken,
+                    )
+                    val message = if (summary.failedCount > 0) {
+                        "全帖原图加载完成，${summary.failedCount} 个失败可重试"
+                    } else {
+                        "全帖原图加载完成"
+                    }
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
             },
         )
 
@@ -901,6 +951,7 @@ private fun PostDetailContent(
                 ) {
                     PostMediaCard(
                         media = detail.mediaItems[page],
+                        originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { onOpenMediaViewer(page) },
                     )
@@ -1028,6 +1079,7 @@ private fun PostMediaArea(
 @Composable
 private fun PostMediaCard(
     media: PostDetailMediaUiModel,
+    originalLoadState: OriginalLoadState = OriginalLoadState.NotLoaded,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -1060,8 +1112,10 @@ private fun PostMediaCard(
                 .width(fittedWidth)
                 .height(fittedHeight),
             contentDescription = media.id,
+            requestSize = 720,
             showStatusBadge = true,
             contentScale = ContentScale.Fit,
+            originalLoadState = originalLoadState,
         )
     }
 }

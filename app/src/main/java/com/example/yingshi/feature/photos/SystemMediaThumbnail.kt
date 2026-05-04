@@ -20,6 +20,7 @@ private val SystemMediaPreviewFrameTimesUs = listOf(
     2_000_000L,
     5_000_000L,
 )
+private val SystemMediaThumbnailSize = Size(640, 640)
 
 @Composable
 internal fun rememberSystemVideoThumbnail(
@@ -50,7 +51,7 @@ internal fun loadSystemVideoFrame(
 ): Bitmap? {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val thumbnail = runCatching {
-            context.contentResolver.loadThumbnail(uri, Size(960, 960), null)
+            context.contentResolver.loadThumbnail(uri, SystemMediaThumbnailSize, null)
         }.getOrNull()
         if (thumbnail != null) return thumbnail
     }

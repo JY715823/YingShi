@@ -91,12 +91,16 @@ fun PhotosRootScreen(
     var showDeleteConfirm by rememberSaveable {
         mutableStateOf(false)
     }
+    var showAddToPostDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
     var showQuickAddSheet by rememberSaveable {
         mutableStateOf(false)
     }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = FakeAlbumRepository.getAlbums()
     val albumPosts = FakeAlbumRepository.getPosts()
+    val feedItems = FakePhotoFeedRepository.getPhotoFeed()
     val initialPage = rememberSaveable(selectedTopDestinationName) {
         PhotosTopDestination.valueOf(selectedTopDestinationName).ordinal
     }
@@ -133,7 +137,6 @@ fun PhotosRootScreen(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(horizontal = spacing.lg)
             .padding(top = 0.dp, bottom = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
@@ -208,30 +211,56 @@ fun PhotosRootScreen(
             )
         }
 
-        PhotoTopBar(
-            selectedSection = selectedSection,
-            notificationUnreadCount = notificationUnreadCount,
-            selectionState = if (selectedSection == PhotosTopDestination.PHOTOS) {
-                photoSelectionState
-            } else {
-                PhotoFeedSelectionState()
-            },
-            onCancelSelection = { photoSelectionState = photoSelectionState.clear() },
-            onSelected = { index ->
-                if (pagerState.currentPage == index) return@PhotoTopBar
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(index)
-                }
-            },
-            onOpenSystemMedia = onOpenSystemMedia,
-            onOpenNotifications = {
-                PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
-            },
-        )
+        if (showAddToPostDialog) {
+            val selectedItems = feedItems.filter { item ->
+                photoSelectionState.selectedMediaIds.contains(item.mediaId)
+            }
+            SystemMediaPostDestinationDialog(
+                albums = albumSummaries,
+                posts = albumPosts,
+                onDismiss = { showAddToPostDialog = false },
+                onPostSelected = { postId ->
+                    val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
+                        postId = postId,
+                        mediaItems = selectedItems,
+                    )
+                    showAddToPostDialog = false
+                    photoSelectionState = photoSelectionState.clear()
+                    Toast.makeText(
+                        context,
+                        if (addedCount > 0) {
+                            "已加入已有帖子，并同步刷新到照片与相册页。"
+                        } else {
+                            "这些媒体已经在目标帖子里了。"
+                        },
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                },
+            )
+        }
 
-        PhotoQuickAddEntry(
-            onClick = { showQuickAddSheet = true },
-        )
+        Box(modifier = Modifier.padding(horizontal = spacing.lg)) {
+            PhotoTopBar(
+                selectedSection = selectedSection,
+                notificationUnreadCount = notificationUnreadCount,
+                selectionState = if (selectedSection == PhotosTopDestination.PHOTOS) {
+                    photoSelectionState
+                } else {
+                    PhotoFeedSelectionState()
+                },
+                onCancelSelection = { photoSelectionState = photoSelectionState.clear() },
+                onSelected = { index ->
+                    if (pagerState.currentPage == index) return@PhotoTopBar
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(index)
+                    }
+                },
+                onOpenSystemMedia = onOpenSystemMedia,
+                onOpenNotifications = {
+                    PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
+                },
+            )
+        }
 
         Box(modifier = Modifier.weight(1f)) {
             HorizontalPager(
@@ -249,6 +278,7 @@ fun PhotosRootScreen(
                                     selectionState = photoSelectionState,
                                     onSelectionStateChange = { photoSelectionState = it },
                                     onOpenViewer = onOpenViewer,
+                                    onOpenCreatePost = onOpenCreatePost,
                                 )
                             } else {
                                 val feedItems = FakePhotoFeedRepository.getPhotoFeed()
@@ -274,8 +304,21 @@ fun PhotosRootScreen(
                                             .align(Alignment.BottomCenter)
                                             .padding(bottom = spacing.sm),
                                     ) {
-                                        PhotoSelectionActionBar(
+                                        PhotoSelectionActionBarV2(
                                             selectedCount = photoSelectionState.selectedCount,
+                                            onCreatePost = {
+                                                val selectedIds = photoSelectionState.selectedMediaIds.toList()
+                                                photoSelectionState = photoSelectionState.clear()
+                                                onOpenCreatePost(
+                                                    CreatePostRoute(
+                                                        source = "photo-feed-selection",
+                                                        initialAppMediaIds = selectedIds,
+                                                    ),
+                                                )
+                                            },
+                                            onAddToPost = {
+                                                showAddToPostDialog = true
+                                            },
                                             onDelete = {
                                                 if (photoSelectionState.selectedMediaIds.isEmpty()) {
                                                     photoSelectionState = photoSelectionState.clear()
@@ -527,33 +570,44 @@ private fun PhotoBellButton(
             .clip(CircleShape)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = Color.Transparent,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
         ),
     ) {
-        Box {
-            Canvas(modifier = Modifier.padding(8.dp)) {
-                val stroke = Stroke(width = 2.2f, cap = StrokeCap.Round)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(8.dp),
+            ) {
+                val stroke = Stroke(width = 2.6f, cap = StrokeCap.Round)
                 drawArc(
                     color = iconColor,
-                    startAngle = 202f,
-                    sweepAngle = 136f,
+                    startAngle = 200f,
+                    sweepAngle = 140f,
                     useCenter = false,
                     style = stroke,
                 )
                 drawLine(
                     color = iconColor,
-                    start = center.copy(x = size.width * 0.22f, y = size.height * 0.62f),
-                    end = center.copy(x = size.width * 0.78f, y = size.height * 0.62f),
-                    strokeWidth = 2.2f,
+                    start = center.copy(x = size.width * 0.22f, y = size.height * 0.66f),
+                    end = center.copy(x = size.width * 0.78f, y = size.height * 0.66f),
+                    strokeWidth = 2.6f,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = iconColor,
+                    start = center.copy(x = size.width * 0.50f, y = size.height * 0.10f),
+                    end = center.copy(x = size.width * 0.50f, y = size.height * 0.20f),
+                    strokeWidth = 2.6f,
                     cap = StrokeCap.Round,
                 )
                 drawCircle(
                     color = iconColor,
-                    radius = 1.8f,
-                    center = center.copy(y = size.height * 0.78f),
+                    radius = 2.2f,
+                    center = center.copy(y = size.height * 0.82f),
                 )
             }
 
@@ -577,13 +631,17 @@ private fun PhotoBellButton(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhotoSelectionActionBar(
+private fun PhotoSelectionActionBarV2(
     selectedCount: Int,
+    onCreatePost: () -> Unit,
+    onAddToPost: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    var showActions by rememberSaveable { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -608,9 +666,130 @@ private fun PhotoSelectionActionBar(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            SelectionActionChip(text = "整理", onClick = {})
-            SelectionActionChip(text = "导出", onClick = {})
-            SelectionActionChip(text = "删除", onClick = onDelete)
+            SelectionActionChip(text = "操作", onClick = { showActions = true })
+        }
+    }
+
+    if (showActions) {
+        ModalBottomSheet(
+            onDismissRequest = { showActions = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Text(
+                    text = "已选 $selectedCount 项",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                SelectionActionRow(
+                    text = "新建帖子",
+                    onClick = {
+                        showActions = false
+                        onCreatePost()
+                    },
+                )
+                SelectionActionRow(
+                    text = "加入已有帖子",
+                    onClick = {
+                        showActions = false
+                        onAddToPost()
+                    },
+                )
+                SelectionActionRow(
+                    text = "移入回收站",
+                    destructive = true,
+                    onClick = {
+                        showActions = false
+                        onDelete()
+                    },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PhotoSelectionActionBar(
+    selectedCount: Int,
+    onDelete: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val context = LocalContext.current
+    var showActions by rememberSaveable { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.md),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.20f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.sm, vertical = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "已选 $selectedCount 项",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            SelectionActionChip(text = "操作", onClick = { showActions = true })
+        }
+    }
+
+    if (showActions) {
+        ModalBottomSheet(
+            onDismissRequest = { showActions = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Text(
+                    text = "已选 $selectedCount 项",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                SelectionActionRow(
+                    text = "发成新帖子",
+                    onClick = {
+                        showActions = false
+                        Toast.makeText(context, "app 照片流发成新帖子链路下一轮接入。", Toast.LENGTH_SHORT).show()
+                    },
+                )
+                SelectionActionRow(
+                    text = "加入已有帖子",
+                    onClick = {
+                        showActions = false
+                        Toast.makeText(context, "app 照片流加入帖子链路下一轮接入。", Toast.LENGTH_SHORT).show()
+                    },
+                )
+                SelectionActionRow(
+                    text = "移入回收站",
+                    destructive = true,
+                    onClick = {
+                        showActions = false
+                        onDelete()
+                    },
+                )
+            }
         }
     }
 }
@@ -633,6 +812,34 @@ private fun SelectionActionChip(
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@Composable
+private fun SelectionActionRow(
+    text: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = if (destructive) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
         )
     }
 }

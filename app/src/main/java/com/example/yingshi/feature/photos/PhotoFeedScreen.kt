@@ -54,6 +54,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -71,6 +72,7 @@ import kotlin.math.roundToInt
 
 private const val PhotoFeedLeadingItemCount = 0
 private const val PhotoFeedPrefetchCount = 36
+private const val PhotoFeedThumbnailRequestSize = 320
 
 @Composable
 fun PhotoFeedScreen(
@@ -90,6 +92,9 @@ fun PhotoFeedScreen(
     var densityName by rememberSaveable { mutableStateOf<String?>(null) }
     var scrubberVisible by remember { mutableStateOf(false) }
     var scrubberInteracting by remember { mutableStateOf(false) }
+    var scrubberDragProgress by remember { mutableStateOf<Float?>(null) }
+    var scrubberDragLabel by remember { mutableStateOf("") }
+    var scrubberLabelWidthPx by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         if (densityName == null) {
@@ -133,6 +138,16 @@ fun PhotoFeedScreen(
             )
         }
     }
+    val displayedScrubberProgress = if (scrubberInteracting) {
+        scrubberDragProgress ?: currentScrollProgress
+    } else {
+        currentScrollProgress
+    }
+    val displayedScrubberLabel = if (scrubberInteracting) {
+        scrubberDragLabel.ifBlank { currentVisibleDateLabel }
+    } else {
+        currentVisibleDateLabel
+    }
     val updateDensity = remember(density) {
         { nextDensity: PhotoFeedDensity ->
             if (nextDensity != density) {
@@ -141,43 +156,24 @@ fun PhotoFeedScreen(
         }
     }
 
-    LaunchedEffect(listState.isScrollInProgress, scrubberInteracting, scrollAnchors.size) {
+    LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size) {
         if (scrollAnchors.size <= 1) {
             scrubberVisible = false
             return@LaunchedEffect
         }
-
-        if (listState.isScrollInProgress || scrubberInteracting) {
-            scrubberVisible = true
-        } else {
-            delay(700)
-            if (!listState.isScrollInProgress && !scrubberInteracting) {
+        scrubberVisible = true
+        if (!scrubberInteracting) {
+            lastRequestedAnchorIndex = (currentScrollProgress * scrollAnchors.lastIndex)
+                .roundToInt()
+                .coerceIn(0, scrollAnchors.lastIndex)
+            delay(900)
+            if (!scrubberInteracting) {
                 scrubberVisible = false
             }
         }
     }
 
-    LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size) {
-        if (!scrubberInteracting) {
-            lastRequestedAnchorIndex = if (scrollAnchors.isEmpty()) {
-                -1
-            } else {
-                (currentScrollProgress * scrollAnchors.lastIndex)
-                    .roundToInt()
-                    .coerceIn(0, scrollAnchors.lastIndex)
-            }
-        }
-    }
-
     Column(modifier = modifier.fillMaxSize()) {
-        PhotoFeedToolbar(
-            mediaCount = feedItems.size,
-            selectedCount = selectionState.selectedCount,
-            selectedDensity = density,
-            enabled = !selectionState.isInSelectionMode,
-            onDensitySelected = updateDensity,
-        )
-
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -253,14 +249,13 @@ fun PhotoFeedScreen(
                 exit = fadeOut(),
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .padding(vertical = spacing.xs),
+                    .fillMaxHeight(),
             ) {
                 PhotoFeedTimeScrubber(
                     modifier = Modifier.fillMaxHeight(),
-                    progress = currentScrollProgress,
-                    label = currentVisibleDateLabel,
-                    showLabel = scrubberInteracting || listState.isScrollInProgress,
+                    progress = displayedScrubberProgress,
+                    label = displayedScrubberLabel,
+                    showLabel = scrubberInteracting,
                     onSeekToProgress = { progress ->
                         if (scrollAnchors.isEmpty()) {
                             return@PhotoFeedTimeScrubber
@@ -268,6 +263,8 @@ fun PhotoFeedScreen(
                         val anchorIndex = (progress * scrollAnchors.lastIndex)
                             .roundToInt()
                             .coerceIn(0, scrollAnchors.lastIndex)
+                        scrubberDragProgress = progress.coerceIn(0f, 1f)
+                        scrubberDragLabel = scrollAnchors.getOrNull(anchorIndex)?.label.orEmpty()
                         if (anchorIndex == lastRequestedAnchorIndex) {
                             return@PhotoFeedTimeScrubber
                         }
@@ -278,7 +275,16 @@ fun PhotoFeedScreen(
                             }
                         }
                     },
-                    onInteractingChanged = { scrubberInteracting = it },
+                    onInteractingChanged = { interacting ->
+                        scrubberInteracting = interacting
+                        if (interacting) {
+                            scrubberDragProgress = currentScrollProgress
+                            scrubberDragLabel = currentVisibleDateLabel
+                        } else {
+                            scrubberDragProgress = null
+                            scrubberDragLabel = ""
+                        }
+                    },
                 )
             }
         }
@@ -326,7 +332,7 @@ private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
                 url = target.url,
                 accessToken = accessToken,
                 memoryCacheKey = sharedPreviewMemoryCacheKey(target.url),
-                size = 512,
+                size = PhotoFeedThumbnailRequestSize,
             )?.let(imageLoader::enqueue)
         }
     }
@@ -443,15 +449,18 @@ private fun PhotoFeedTimeScrubber(
 ) {
     val density = LocalDensity.current
     val spacing = YingShiThemeTokens.spacing
-    val thumbWidth = 6.dp
-    val thumbHeight = 34.dp
-    val verticalPadding = 18.dp
-    val touchWidth = 22.dp
+    val thumbWidth = 14.dp
+    val thumbHeight = 72.dp
+    val verticalPadding = 0.dp
+    val touchWidth = 48.dp
     var scrubberHeightPx by remember { mutableIntStateOf(0) }
     var labelHeightPx by remember { mutableIntStateOf(0) }
+    var scrubberLabelWidthPx by remember { mutableIntStateOf(0) }
     var lastDispatchedProgress by remember { mutableStateOf(Float.NaN) }
     val verticalPaddingPx = with(density) { verticalPadding.roundToPx() }
     val thumbHeightPx = with(density) { thumbHeight.roundToPx() }
+    val thumbWidthPx = with(density) { thumbWidth.roundToPx() }
+    val labelGapPx = with(density) { 12.dp.roundToPx() }
     val travelHeightPx = (scrubberHeightPx - (verticalPaddingPx * 2) - thumbHeightPx).coerceAtLeast(1)
     val normalizedProgress = progress.coerceIn(0f, 1f)
     val thumbTopPx = verticalPaddingPx + (travelHeightPx * normalizedProgress).roundToInt()
@@ -469,45 +478,14 @@ private fun PhotoFeedTimeScrubber(
         onSeekToProgress(nextProgress)
     }
 
-    Box(
-        modifier = modifier
-            .width(touchWidth)
-            .onSizeChanged { scrubberHeightPx = it.height }
-            .pointerInput(Unit) {
-                detectTapGestures { offset: Offset ->
-                    onInteractingChanged(true)
-                    dispatchProgress(offset.y)
-                    lastDispatchedProgress = Float.NaN
-                    onInteractingChanged(false)
-                }
-            }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragStart = { offset ->
-                        onInteractingChanged(true)
-                        dispatchProgress(offset.y)
-                    },
-                    onVerticalDrag = { change, _ ->
-                        dispatchProgress(change.position.y)
-                    },
-                    onDragEnd = {
-                        lastDispatchedProgress = Float.NaN
-                        onInteractingChanged(false)
-                    },
-                    onDragCancel = {
-                        lastDispatchedProgress = Float.NaN
-                        onInteractingChanged(false)
-                    },
-                )
-            },
-    ) {
+    Box(modifier = modifier.fillMaxWidth()) {
         androidx.compose.animation.AnimatedVisibility(
             visible = showLabel && label.isNotBlank(),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .offset { IntOffset(x = -72, y = labelTopPx) },
+                .offset { IntOffset(x = -(scrubberLabelWidthPx + thumbWidthPx + labelGapPx), y = labelTopPx) },
         ) {
             Surface(
                 shape = RoundedCornerShape(999.dp),
@@ -516,9 +494,15 @@ private fun PhotoFeedTimeScrubber(
                 Text(
                     text = label,
                     modifier = Modifier
-                        .padding(horizontal = spacing.sm, vertical = 6.dp)
-                        .onSizeChanged { labelHeightPx = it.height },
+                        .padding(horizontal = spacing.md, vertical = 8.dp)
+                        .onSizeChanged {
+                            scrubberLabelWidthPx = it.width
+                            labelHeightPx = it.height
+                        },
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.Center,
                     color = Color.Black,
                 )
             }
@@ -527,12 +511,47 @@ private fun PhotoFeedTimeScrubber(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = verticalPadding)
-                .offset { IntOffset(x = 0, y = thumbTopPx - verticalPaddingPx) }
-                .size(width = thumbWidth, height = thumbHeight)
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color.White.copy(alpha = 0.96f)),
-        )
+                .fillMaxHeight()
+                .width(touchWidth)
+                .onSizeChanged { scrubberHeightPx = it.height }
+                .pointerInput(Unit) {
+                    detectTapGestures { offset: Offset ->
+                        onInteractingChanged(true)
+                        dispatchProgress(offset.y)
+                        lastDispatchedProgress = Float.NaN
+                        onInteractingChanged(false)
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            onInteractingChanged(true)
+                            dispatchProgress(offset.y)
+                        },
+                        onVerticalDrag = { change, _ ->
+                            dispatchProgress(change.position.y)
+                        },
+                        onDragEnd = {
+                            lastDispatchedProgress = Float.NaN
+                            onInteractingChanged(false)
+                        },
+                        onDragCancel = {
+                            lastDispatchedProgress = Float.NaN
+                            onInteractingChanged(false)
+                        },
+                    )
+                },
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = verticalPadding)
+                    .offset { IntOffset(x = 0, y = thumbTopPx - verticalPaddingPx) }
+                    .size(width = thumbWidth, height = thumbHeight)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.White.copy(alpha = 0.96f)),
+            )
+        }
     }
 }
 
@@ -612,6 +631,7 @@ private fun PhotoFeedCard(
             palette = item.palette,
             modifier = Modifier.matchParentSize(),
             contentDescription = item.mediaId,
+            requestSize = PhotoFeedThumbnailRequestSize,
             showLoadingIndicator = false,
         )
 
@@ -621,9 +641,9 @@ private fun PhotoFeedCard(
                     .matchParentSize()
                     .background(
                         if (isSelected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                         } else {
-                            Color.Black.copy(alpha = 0.12f)
+                            Color.Black.copy(alpha = 0.04f)
                         },
                     ),
             )
@@ -633,8 +653,8 @@ private fun PhotoFeedCard(
             SelectionBadge(
                 selected = isSelected,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp),
             )
         }
     }
@@ -651,17 +671,17 @@ private fun SelectionBadge(
             .clip(CircleShape)
             .background(
                 if (selected) {
-                    MaterialTheme.colorScheme.primary
+                    Color.White.copy(alpha = 0.98f)
                 } else {
-                    Color.White.copy(alpha = 0.10f)
+                    Color.Black.copy(alpha = 0.10f)
                 },
             )
             .border(
-                width = 1.dp,
+                width = 1.5.dp,
                 color = if (selected) {
-                    MaterialTheme.colorScheme.primary
+                    Color.White.copy(alpha = 0.98f)
                 } else {
-                    Color.White.copy(alpha = 0.55f)
+                    Color.White.copy(alpha = 0.88f)
                 },
                 shape = CircleShape,
             ),
@@ -669,9 +689,9 @@ private fun SelectionBadge(
     ) {
         if (selected) {
             Text(
-                text = "v",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White,
+                text = "✓",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }
@@ -735,10 +755,12 @@ private fun calculatePhotoFeedScrollProgress(
 
     val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull() ?: return 0f
     val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).coerceAtLeast(1)
+    val visibleItemCount = layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
+    val scrollableStart = (totalItems - visibleItemCount).coerceAtLeast(1)
     val offsetFraction = ((-firstVisible.offset).toFloat() / maxOf(firstVisible.size, viewportHeight).toFloat())
         .coerceIn(0f, 1f)
 
-    return ((listState.firstVisibleItemIndex + offsetFraction) / (totalItems - 1).toFloat())
+    return ((listState.firstVisibleItemIndex + offsetFraction) / scrollableStart.toFloat())
         .coerceIn(0f, 1f)
 }
 
@@ -747,11 +769,7 @@ private fun PhotoFeedItem.toScrubberLabel(): String {
 }
 
 private fun sectionSpacing(density: PhotoFeedDensity): Dp {
-    return when {
-        density.columns <= 4 -> 10.dp
-        density.columns == 8 -> 8.dp
-        else -> 6.dp
-    }
+    return rowSpacing(density)
 }
 
 private fun rowSpacing(density: PhotoFeedDensity): Dp {

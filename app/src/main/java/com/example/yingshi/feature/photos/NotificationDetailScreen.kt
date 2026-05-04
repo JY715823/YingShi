@@ -47,17 +47,13 @@ fun NotificationDetailScreen(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        NotificationDetailTopBar(
-            onBack = onBack,
-            source = route.source,
-        )
+        NotificationDetailTopBar(onBack = onBack)
 
         if (item == null) {
             NotificationDetailEmptyState()
         } else {
             NotificationDetailPrimaryCard(item = item)
             NotificationDetailTargetCard(item = item)
-            NotificationDetailNoteCard()
         }
     }
 }
@@ -65,7 +61,6 @@ fun NotificationDetailScreen(
 @Composable
 private fun NotificationDetailTopBar(
     onBack: () -> Unit,
-    source: String,
 ) {
     val spacing = YingShiThemeTokens.spacing
 
@@ -80,11 +75,6 @@ private fun NotificationDetailTopBar(
                 text = "通知详情",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "来源：${source.toNotificationDetailSourceLabel()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -167,11 +157,6 @@ private fun NotificationDetailTargetCard(
                 text = item.targetSummary,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = notificationPlaceholderDescription(item.type),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

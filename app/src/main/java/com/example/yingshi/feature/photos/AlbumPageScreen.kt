@@ -102,30 +102,6 @@ fun AlbumPageScreen(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Text(
-                    text = "相册目录",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Text(
-                    text = selectedAlbum?.subtitle ?: "按相册整理帖子记录，入口更柔和，也更像纪念册目录。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            AlbumManageButton(onClick = onManageAlbums)
-        }
-
         AlbumSwitchSection(
             rows = chipRows,
             selectedAlbumId = selectedAlbumId,
@@ -173,7 +149,11 @@ fun AlbumPageScreen(
                     verticalArrangement = Arrangement.spacedBy(cardSpacing(gridDensity)),
                     contentPadding = PaddingValues(bottom = spacing.lg),
                 ) {
-                    items(filteredPosts, key = { it.id }) { post ->
+                    items(
+                        items = filteredPosts,
+                        key = { it.id },
+                        contentType = { "album-post-${gridDensity.columns}" },
+                    ) { post ->
                         AlbumPostCard(
                             post = post,
                             density = gridDensity,
@@ -219,39 +199,10 @@ private fun RealAlbumPageScreen(
     )
     val gridState = rememberLazyGridState()
     val chipRows = remember(uiState.albums) { buildAlbumChipRows(uiState.albums) }
-    val selectedAlbum = remember(uiState.albums, uiState.selectedAlbumId) {
-        uiState.albums.firstOrNull { it.id == uiState.selectedAlbumId } ?: uiState.albums.firstOrNull()
-    }
-
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Text(
-                    text = "相册",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Text(
-                    text = selectedAlbum?.subtitle
-                        ?: "真实模式会直接读取后端相册和相册下的帖子。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            AlbumManageButton(onClick = onManageAlbums)
-        }
-
         when {
             uiState.tokenMissing -> {
                 AlbumPageNoticeCard(
@@ -339,7 +290,11 @@ private fun RealAlbumPageScreen(
                                 verticalArrangement = Arrangement.spacedBy(cardSpacing(gridDensity)),
                                 contentPadding = PaddingValues(bottom = spacing.lg),
                             ) {
-                                items(uiState.posts, key = { it.id }) { post ->
+                                items(
+                                    items = uiState.posts,
+                                    key = { it.id },
+                                    contentType = { "album-post-${gridDensity.columns}" },
+                                ) { post ->
                                     AlbumPostCard(
                                         post = post,
                                         density = gridDensity,
@@ -625,6 +580,7 @@ private fun AlbumPostCard(
                     palette = post.coverPalette,
                     modifier = Modifier.fillMaxSize(),
                     contentDescription = post.title,
+                    requestSize = 384,
                 )
 
                 if (post.coverMediaType == AppMediaType.VIDEO) {
