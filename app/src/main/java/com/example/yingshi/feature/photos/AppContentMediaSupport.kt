@@ -10,6 +10,7 @@ import com.example.yingshi.data.remote.config.RemoteConfig
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Precision
+import coil.size.Size
 import java.util.Locale
 
 @Immutable
@@ -135,16 +136,31 @@ internal fun AppContentMediaSource?.viewerOriginalImageUrl(
 ): String? {
     if (mediaType != AppMediaType.IMAGE || this == null) return null
     val previewUrl = viewerPreviewImageUrl(mediaType)
-    val originalCandidate = originalUrl?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    return originalCandidate.takeUnless { candidate ->
-        !previewUrl.isNullOrBlank() && candidate.equals(previewUrl, ignoreCase = true)
+    return firstDistinctNotBlank(
+        disallow = setOfNotNull(previewUrl),
+        originalUrl,
+        mediaUrl,
+    )
+}
+
+internal fun AppContentMediaSource?.viewerOriginalMediaUrl(
+    mediaType: AppMediaType,
+): String? {
+    if (this == null) return null
+    return when (mediaType) {
+        AppMediaType.IMAGE -> viewerOriginalImageUrl(mediaType)
+        AppMediaType.VIDEO -> firstNotBlank(
+            originalUrl,
+            videoUrl,
+            mediaUrl,
+        )
     }
 }
 
 internal fun AppContentMediaSource?.hasMeaningfulViewerOriginal(
     mediaType: AppMediaType,
 ): Boolean {
-    return viewerOriginalImageUrl(mediaType) != null
+    return viewerOriginalMediaUrl(mediaType) != null
 }
 
 internal fun AppContentMediaSource?.viewerVideoUrl(
@@ -155,6 +171,26 @@ internal fun AppContentMediaSource?.viewerVideoUrl(
         videoUrl,
         mediaUrl,
         originalUrl,
+    )
+}
+
+internal fun SystemMediaItem.toAppContentMediaSource(): AppContentMediaSource {
+    val uriString = uri.toString()
+    return AppContentMediaSource(
+        thumbnailUrl = uriString,
+        originalUrl = uriString,
+        mediaUrl = uriString,
+        videoUrl = if (type == SystemMediaType.VIDEO) uriString else null,
+        coverUrl = uriString,
+        mimeType = mimeType,
+        width = width,
+        height = height,
+        durationMillis = if (type == SystemMediaType.VIDEO) {
+            null
+        } else {
+            null
+        },
+        createdAtMillis = displayTimeMillis,
     )
 }
 
@@ -210,11 +246,34 @@ internal fun backendMediaImageRequest(
     }.build()
 }
 
+internal fun backendMediaOriginalImageRequest(
+    context: Context,
+    url: String?,
+    accessToken: String?,
+    memoryCacheKey: String? = url?.let(::sharedOriginalMemoryCacheKey),
+): ImageRequest? {
+    if (url.isNullOrBlank()) return null
+    return ImageRequest.Builder(context).apply {
+        data(url)
+        memoryCacheKey?.let(::memoryCacheKey)
+        diskCacheKey(sharedOriginalDiskCacheKey(url))
+        networkCachePolicy(CachePolicy.ENABLED)
+        diskCachePolicy(CachePolicy.ENABLED)
+        memoryCachePolicy(CachePolicy.ENABLED)
+        precision(Precision.EXACT)
+        size(Size.ORIGINAL)
+        crossfade(false)
+        backendMediaRequestHeaders(url, accessToken).forEach(::addHeader)
+    }.build()
+}
+
 internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:$url"
 
 internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:$url"
 
 internal fun sharedMediaDiskCacheKey(url: String): String = "media:$url"
+
+internal fun sharedOriginalDiskCacheKey(url: String): String = "original:$url"
 
 private fun resolveBackendMediaUrl(rawUrl: String?): String? {
     val normalized = rawUrl?.trim().orEmpty()
@@ -233,6 +292,15 @@ private fun resolveBackendMediaUrl(rawUrl: String?): String? {
 
 private fun firstNotBlank(vararg values: String?): String? {
     return values.firstOrNull { !it.isNullOrBlank() }?.trim()
+}
+
+private fun firstDistinctNotBlank(
+    disallow: Set<String>,
+    vararg values: String?,
+): String? {
+    return values.asSequence()
+        .mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }
+        .firstOrNull { it !in disallow }
 }
 
 internal fun looksLikeImageUrl(url: String?): Boolean {

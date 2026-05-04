@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -82,15 +83,9 @@ fun TrashPageScreen(
             TrashOverviewCard(
                 selectedType = selectedType,
                 pendingCount = pendingEntries.size,
+                showPendingCleanup = showPendingCleanup,
                 onTypeSelected = { onSelectedTypeNameChange(it.name) },
-            )
-        }
-
-        item {
-            TrashPendingCleanupCard(
-                pendingCount = pendingEntries.size,
-                expanded = showPendingCleanup,
-                onToggle = { onShowPendingCleanupChange(!showPendingCleanup) },
+                onPendingCleanupClick = { onShowPendingCleanupChange(!showPendingCleanup) },
             )
         }
 
@@ -101,10 +96,27 @@ fun TrashPageScreen(
         }
 
         if (showPendingCleanup) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "24h可撤销",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    TextButton(onClick = { onShowPendingCleanupChange(false) }) {
+                        Text("返回")
+                    }
+                }
+            }
             if (pendingEntries.isEmpty()) {
                 item {
                     TrashEmptyCard(
-                        text = "当前没有待清理条目。移出回收站后的内容会先进入这里，并保留本地 24h 可撤销占位。",
+                        text = "暂无可撤销条目",
                     )
                 }
             } else {
@@ -120,48 +132,52 @@ fun TrashPageScreen(
             }
         }
 
-        item {
-            Text(
-                text = selectedType.label,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+        if (!showPendingCleanup) {
+            item {
+                Text(
+                    text = selectedType.label,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+
+            if (entries.isEmpty()) {
+                item {
+                    TrashEmptyCard(
+                        text = "暂无删除条目",
+                    )
+                }
+            } else {
+                items(
+                    items = entries,
+                    key = { it.id },
+                ) { entry ->
+                    TrashEntryRow(
+                        entry = entry,
+                        onClick = {
+                            onOpenTrashDetail(
+                                TrashDetailRoute(
+                                    entryId = entry.id,
+                                    entryType = entry.type,
+                                    sourcePostId = entry.sourcePostId,
+                                    sourceMediaId = entry.sourceMediaId,
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
         }
 
-        if (entries.isEmpty()) {
-            item {
-                TrashEmptyCard(
-                    text = "当前分段还没有删除条目。后续新的本地删除会先写入这里，再进入对应删除态详情。",
-                )
-            }
-        } else {
-            items(
-                items = entries,
-                key = { it.id },
-            ) { entry ->
-                TrashEntryRow(
-                    entry = entry,
-                    onClick = {
-                        onOpenTrashDetail(
-                            TrashDetailRoute(
-                                entryId = entry.id,
-                                entryType = entry.type,
-                                sourcePostId = entry.sourcePostId,
-                                sourceMediaId = entry.sourceMediaId,
-                            ),
-                        )
-                    },
-                )
-            }
-        }
     }
 }
-
 @Composable
 private fun TrashOverviewCard(
     selectedType: TrashEntryType,
     pendingCount: Int,
+    showPendingCleanup: Boolean,
     onTypeSelected: (TrashEntryType) -> Unit,
+    onPendingCleanupClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
 
@@ -175,32 +191,27 @@ private fun TrashOverviewCard(
             modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            Text(
-                text = "本地回收站",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = selectedType.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "待清理 $pendingCount 项",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
-                TrashEntryType.entries.forEach { type ->
-                    TrashSegmentChip(
-                        text = type.label,
-                        selected = type == selectedType,
-                        onClick = { onTypeSelected(type) },
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    TrashEntryType.entries.forEach { type ->
+                        TrashSegmentChip(
+                            text = type.label,
+                            selected = type == selectedType,
+                            onClick = { onTypeSelected(type) },
+                        )
+                    }
                 }
+                TrashSegmentChip(
+                    text = "24h可撤销 $pendingCount",
+                    selected = showPendingCleanup,
+                    onClick = onPendingCleanupClick,
+                )
             }
         }
     }
@@ -396,6 +407,7 @@ private fun TrashEntryRow(
         Row(
             modifier = Modifier.padding(spacing.md),
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
@@ -433,6 +445,11 @@ private fun TrashEntryRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
                 )
             }
+            Text(
+                text = "查看",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }

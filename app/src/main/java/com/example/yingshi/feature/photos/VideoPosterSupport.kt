@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -26,9 +27,11 @@ internal fun rememberVideoPosterState(
     accessToken: String?,
 ): State<VideoPosterState> {
     val context = LocalContext.current
+    val cachedPoster = rememberCachedVideoPosterModel(context, url)
     return produceState(
         initialValue = VideoPosterState(
-            isLoading = !url.isNullOrBlank(),
+            model = cachedPoster,
+            isLoading = !url.isNullOrBlank() && cachedPoster == null,
         ),
         key1 = context,
         key2 = url,
@@ -39,17 +42,37 @@ internal fun rememberVideoPosterState(
             return@produceState
         }
 
+        rememberCachedVideoPosterModel(context, url)?.let { cachedPosterModel ->
+            value = VideoPosterState(model = cachedPosterModel)
+            return@produceState
+        }
+
         val posterFile = ensureVideoPosterFile(
             context = context,
             url = url,
             accessToken = accessToken,
         )
         value = if (posterFile != null) {
-            VideoPosterState(model = posterFile)
+            VideoPosterState(model = rememberCachedVideoPosterModel(context, url) ?: posterFile)
         } else {
             VideoPosterState(hasError = true)
         }
     }
+}
+
+private fun rememberCachedVideoPosterModel(
+    context: Context,
+    url: String?,
+): Any? {
+    if (url.isNullOrBlank()) return null
+    videoPosterMemoryCache[url]?.let { return it }
+    val file = videoPosterFile(context, url).takeIf { it.exists() && it.length() > 0L } ?: return null
+    val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+    if (bitmap != null) {
+        videoPosterMemoryCache[url] = bitmap
+        return bitmap
+    }
+    return file
 }
 
 internal suspend fun prefetchVideoPoster(
@@ -129,3 +152,4 @@ private fun sha256(value: String): String {
 }
 
 private val videoPosterLocks = ConcurrentHashMap<String, Any>()
+private val videoPosterMemoryCache = ConcurrentHashMap<String, Bitmap>()

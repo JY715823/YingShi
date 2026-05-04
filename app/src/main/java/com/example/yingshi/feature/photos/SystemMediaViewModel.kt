@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,10 @@ class SystemMediaViewModel(
         ),
     )
     val uiState: StateFlow<SystemMediaUiState> = _uiState.asStateFlow()
+
     private var queriedItems: List<SystemMediaItem> = emptyList()
+    private var refreshJob: Job? = null
+    private var hasLoadedOnce = false
 
     init {
         val cachedItems = repository.peekCachedMedia()
@@ -33,6 +37,7 @@ class SystemMediaViewModel(
             refresh()
         } else {
             queriedItems = cachedItems
+            hasLoadedOnce = true
             publishState(
                 rawItems = cachedItems,
                 selectedFilter = initialFilter,
@@ -43,13 +48,16 @@ class SystemMediaViewModel(
     }
 
     fun ensureLoaded() {
-        if (queriedItems.isEmpty() && !_uiState.value.isLoading) {
-            refresh()
+        if ((queriedItems.isNotEmpty() || hasLoadedOnce) && !_uiState.value.hasError) {
+            return
         }
+        refresh()
     }
 
     fun refresh(forceRefresh: Boolean = false) {
-        viewModelScope.launch {
+        if (refreshJob?.isActive == true) return
+
+        refreshJob = viewModelScope.launch {
             val showLoading = _uiState.value.allItems.isEmpty()
             if (showLoading) {
                 _uiState.value = _uiState.value.copy(
@@ -64,6 +72,7 @@ class SystemMediaViewModel(
                 }
             }.onSuccess { items ->
                 queriedItems = items
+                hasLoadedOnce = true
                 publishState(
                     rawItems = queriedItems,
                     selectedFilter = _uiState.value.selectedFilter,

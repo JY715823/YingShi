@@ -378,6 +378,22 @@ fun SystemMediaViewerScreen(
     if (showMenuSheet && currentItem != null) {
         SystemMediaViewerMenuSheet(
             onDismiss = { showMenuSheet = false },
+            onImportToApp = {
+                showMenuSheet = false
+                val queuedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
+                    context = context,
+                    mediaItems = listOf(currentItem),
+                )
+                Toast.makeText(
+                    context,
+                    if (queuedCount > 0) {
+                        "已加入导入 app 队列。"
+                    } else {
+                        "当前媒体无法导入 app。"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
             onCreatePost = {
                 showMenuSheet = false
                 onOpenCreatePost(
@@ -868,6 +884,7 @@ private fun SystemMediaVideoControls(
 @Composable
 private fun SystemMediaViewerMenuSheet(
     onDismiss: () -> Unit,
+    onImportToApp: () -> Unit,
     onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
     onMoveToTrash: () -> Unit,
@@ -891,6 +908,11 @@ private fun SystemMediaViewerMenuSheet(
                 text = "媒体操作",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
+            )
+            SystemMediaViewerMenuAction(
+                title = "导入app",
+                subtitle = "只导入到 app 照片流，不要求归属到帖子。",
+                onClick = onImportToApp,
             )
             SystemMediaViewerMenuAction(
                 title = "发成新帖子",

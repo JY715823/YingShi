@@ -1,6 +1,10 @@
 package com.example.yingshi.feature.photos
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -30,6 +34,7 @@ object LocalSystemMediaBridgeRepository {
     }
 
     enum class OperationType {
+        IMPORT_TO_APP,
         CREATE_POST,
         ADD_TO_EXISTING_POST,
     }
@@ -82,6 +87,13 @@ object LocalSystemMediaBridgeRepository {
     ) : PendingOperationRequest {
         override val operationType: OperationType = OperationType.CREATE_POST
         override val targetLabel: String = "发成新帖子"
+    }
+
+    private data class ImportToAppOperationRequest(
+        override val mediaItems: List<SystemMediaItem>,
+    ) : PendingOperationRequest {
+        override val operationType: OperationType = OperationType.IMPORT_TO_APP
+        override val targetLabel: String = "导入app"
     }
 
     private data class AddToExistingPostOperationRequest(
@@ -170,6 +182,59 @@ object LocalSystemMediaBridgeRepository {
                 draft = draft,
             )
         }
+    }
+
+    fun importSystemMediaToApp(
+        mediaItems: List<SystemMediaItem>,
+    ): Int {
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+        if (normalizedItems.isEmpty()) return 0
+        FakePhotoFeedRepository.importSystemMediaToFeed(
+            mediaItems = normalizedItems,
+            postId = null,
+        )
+        publishMutation(
+            kind = MutationKind.OVERLAY_ONLY,
+            mediaIds = normalizedItems.map { it.id },
+        )
+        return normalizedItems.size
+    }
+
+    fun enqueueImportToAppUpload(
+        context: Context,
+        mediaItems: List<SystemMediaItem>,
+    ): Int {
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+        if (normalizedItems.isEmpty()) return 0
+        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            enqueueImportToAppUploadReal(
+                context = context,
+                mediaItems = normalizedItems,
+            )
+        } else {
+            enqueueImportToAppUploadFake(
+                mediaItems = normalizedItems,
+            )
+        }
+    }
+
+    fun enqueueImportPickedMediaToAppUpload(
+        context: Context,
+        mediaUris: List<Uri>,
+    ): Int {
+        val items = mediaUris
+            .distinct()
+            .mapIndexedNotNull { index, uri ->
+                uri.toPickedSystemMediaItem(
+                    context = context,
+                    index = index,
+                )
+            }
+        if (items.isEmpty()) return 0
+        return enqueueImportToAppUpload(
+            context = context,
+            mediaItems = items,
+        )
     }
 
     fun addSystemMediaToExistingPost(
@@ -274,6 +339,12 @@ object LocalSystemMediaBridgeRepository {
         val request = operationRequestsById[task.operationId] ?: return false
         clearOperationState(task.operationId, keepRequest = false)
         return when (request) {
+            is ImportToAppOperationRequest -> {
+                enqueueImportToAppUpload(
+                    context = context,
+                    mediaItems = request.mediaItems,
+                ) > 0
+            }
             is CreatePostOperationRequest -> {
                 enqueueCreatePostUpload(
                     context = context,
@@ -289,6 +360,35 @@ object LocalSystemMediaBridgeRepository {
                 ) > 0
             }
         }
+    }
+
+    private fun enqueueImportToAppUploadFake(
+        mediaItems: List<SystemMediaItem>,
+    ): Int {
+        val operationId = "import-app-${System.currentTimeMillis()}"
+        operationRequestsById[operationId] = ImportToAppOperationRequest(mediaItems = mediaItems)
+        mediaItems.forEach { item ->
+            enqueueFakeUploadTask(
+                operationId = operationId,
+                mediaItem = item,
+                targetLabel = "导入app",
+                onOperationSuccess = {
+                    val importedCount = importSystemMediaToApp(mediaItems)
+                    OperationResultEvent(
+                        eventId = if (importedCount > 0) "$operationId-success" else "$operationId-failure",
+                        operationId = operationId,
+                        operationType = OperationType.IMPORT_TO_APP,
+                        succeeded = importedCount > 0,
+                        message = if (importedCount > 0) {
+                            "媒体已导入 app 照片流。"
+                        } else {
+                            "当前没有可导入的媒体。"
+                        },
+                    )
+                },
+            )
+        }
+        return mediaItems.size
     }
 
     private fun enqueueCreatePostUploadFake(
@@ -488,6 +588,27 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
+    private fun enqueueImportToAppUploadReal(
+        context: Context,
+        mediaItems: List<SystemMediaItem>,
+    ): Int {
+        val operationId = "real-import-app-${System.currentTimeMillis()}"
+        operationRequestsById[operationId] = ImportToAppOperationRequest(mediaItems = mediaItems)
+        mediaItems.forEach { item ->
+            enqueueRealUploadTask(
+                context = context,
+                operationId = operationId,
+                mediaItem = item,
+                targetLabel = "导入app",
+                sourceItems = mediaItems,
+                finalizeAction = { uploadedMedia ->
+                    finalizeImportToAppReal(uploadedMedia)
+                },
+            )
+        }
+        return mediaItems.size
+    }
+
     private fun enqueueCreatePostUploadReal(
         context: Context,
         mediaItems: List<SystemMediaItem>,
@@ -673,6 +794,24 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Loading -> Unit
             }
         }
+    }
+
+    private suspend fun finalizeImportToAppReal(
+        uploadedMedia: UploadedOperationMedia,
+    ): ApiResult<RealFinalizeResult> {
+        if (uploadedMedia.orderedUploadedMediaIds.isEmpty()) {
+            return ApiResult.Error(
+                code = "IMPORT_EMPTY",
+                message = "上传已完成，但没有拿到可导入的媒体 ID。",
+            )
+        }
+        return ApiResult.Success(
+            RealFinalizeResult(
+                operationType = OperationType.IMPORT_TO_APP,
+                successMessage = "媒体已导入 app 照片流。",
+                affectedPostIds = emptySet(),
+            ),
+        )
     }
 
     private suspend fun finalizeCreatePostReal(
@@ -978,6 +1117,145 @@ object LocalSystemMediaBridgeRepository {
         mediaItems: List<SystemMediaItem>,
     ): List<SystemMediaItem> {
         return mediaItems.distinctBy { it.id }
+    }
+
+    private fun Uri.toPickedSystemMediaItem(
+        context: Context,
+        index: Int,
+    ): SystemMediaItem? {
+        val contentResolver = context.contentResolver
+        val mimeType = contentResolver.getType(this).orEmpty()
+        val type = if (mimeType.startsWith("video/", ignoreCase = true)) {
+            SystemMediaType.VIDEO
+        } else {
+            SystemMediaType.IMAGE
+        }
+        val displayName = contentResolver.query(
+            this,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val columnIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (columnIndex >= 0) cursor.getString(columnIndex) else null
+            } else {
+                null
+            }
+        }.orEmpty().ifBlank { "picked-${index + 1}" }
+        val (width, height, _) = resolvePickedMediaMetadata(context, this, type)
+        val aspectRatio = resolvePickedMediaAspectRatio(width, height, type)
+        val now = System.currentTimeMillis() - (index * 1_000L)
+        val calendar = java.util.Calendar.getInstance(java.util.Locale.CHINA).apply {
+            timeInMillis = now
+        }
+
+        return SystemMediaItem(
+            id = "picked-${now}-${index + 1}-${displayName.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) }}",
+            mediaStoreId = displayName.hashCode().toLong().and(Long.MAX_VALUE),
+            uri = this,
+            type = type,
+            mimeType = mimeType.ifBlank { if (type == SystemMediaType.VIDEO) "video/mp4" else "image/jpeg" },
+            displayName = displayName,
+            bucketName = "系统相册",
+            displayTimeMillis = now,
+            displayYear = calendar.get(java.util.Calendar.YEAR),
+            displayMonth = calendar.get(java.util.Calendar.MONTH) + 1,
+            displayDay = calendar.get(java.util.Calendar.DAY_OF_MONTH),
+            width = width,
+            height = height,
+            aspectRatio = aspectRatio,
+            palette = pickedPaletteFor(index, type),
+            linkedPostIds = emptyList(),
+        )
+    }
+
+    private fun resolvePickedMediaMetadata(
+        context: Context,
+        uri: Uri,
+        type: SystemMediaType,
+    ): Triple<Int?, Int?, Long?> {
+        return when (type) {
+            SystemMediaType.IMAGE -> {
+                val bounds = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        BitmapFactory.decodeStream(inputStream, null, bounds)
+                    }
+                }
+                Triple(
+                    bounds.outWidth.takeIf { it > 0 },
+                    bounds.outHeight.takeIf { it > 0 },
+                    null,
+                )
+            }
+            SystemMediaType.VIDEO -> {
+                val retriever = MediaMetadataRetriever()
+                runCatching {
+                    retriever.setDataSource(context, uri)
+                    val rawWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                        ?.toIntOrNull()
+                    val rawHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                        ?.toIntOrNull()
+                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                        ?.toIntOrNull()
+                        ?: 0
+                    val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        ?.toLongOrNull()
+                    val (resolvedWidth, resolvedHeight) = if (rotation == 90 || rotation == 270) {
+                        rawHeight to rawWidth
+                    } else {
+                        rawWidth to rawHeight
+                    }
+                    Triple(resolvedWidth, resolvedHeight, duration)
+                }.getOrElse {
+                    Triple(null, null, null)
+                }.also {
+                    runCatching { retriever.release() }
+                }
+            }
+        }
+    }
+
+    private fun resolvePickedMediaAspectRatio(
+        width: Int?,
+        height: Int?,
+        type: SystemMediaType,
+    ): Float {
+        if (width != null && height != null && width > 0 && height > 0) {
+            return (width.toFloat() / height.toFloat()).coerceIn(0.56f, 1.8f)
+        }
+        return if (type == SystemMediaType.VIDEO) 1.33f else 1f
+    }
+
+    private fun pickedPaletteFor(index: Int, type: SystemMediaType): PhotoThumbnailPalette {
+        val palettes = listOf(
+            PhotoThumbnailPalette(
+                start = androidx.compose.ui.graphics.Color(0xFFB8D8F8),
+                end = androidx.compose.ui.graphics.Color(0xFF7EA6DF),
+                accent = androidx.compose.ui.graphics.Color(0xFFE8F2FF),
+            ),
+            PhotoThumbnailPalette(
+                start = androidx.compose.ui.graphics.Color(0xFFF5D2C3),
+                end = androidx.compose.ui.graphics.Color(0xFFE7A08D),
+                accent = androidx.compose.ui.graphics.Color(0xFFFFF0E8),
+            ),
+            PhotoThumbnailPalette(
+                start = androidx.compose.ui.graphics.Color(0xFFCFE5B9),
+                end = androidx.compose.ui.graphics.Color(0xFF84B38A),
+                accent = androidx.compose.ui.graphics.Color(0xFFEFF8E1),
+            ),
+            PhotoThumbnailPalette(
+                start = androidx.compose.ui.graphics.Color(0xFFD8D0F2),
+                end = androidx.compose.ui.graphics.Color(0xFF8FA0D8),
+                accent = androidx.compose.ui.graphics.Color(0xFFF0EDFF),
+            ),
+        )
+        val offset = if (type == SystemMediaType.VIDEO) 1 else 0
+        return palettes[(index + offset) % palettes.size]
     }
 
     private fun finalizeOperationIfReady(

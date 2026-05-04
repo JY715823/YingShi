@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.photos
 
+import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.graphics.Color
@@ -236,6 +237,88 @@ object FakeAlbumRepository {
         posts.sortByDescending { it.postDisplayTimeMillis }
         FakePhotoFeedRepository.unhidePostsLocally(listOf(postId))
         return post
+    }
+
+    fun createConfiguredLocalPostFromPhotoFeedItems(
+        draft: CreatePostDraft,
+        mediaItems: List<PhotoFeedItem>,
+    ): AlbumPostCardUiModel? {
+        val normalizedMedia = mediaItems
+            .distinctBy { it.mediaId }
+            .sortedByDescending { it.mediaDisplayTimeMillis }
+            .map { item ->
+                item.toSyntheticSystemMediaItem()
+                    .toManagedState(isCover = item.mediaId == draft.coverSourceMediaId)
+            }
+        if (normalizedMedia.isEmpty()) return null
+
+        val coverMedia = normalizedMedia.firstOrNull { it.isCover } ?: normalizedMedia.first()
+        val finalMedia = normalizedMedia.map { it.copy(isCover = it.id == coverMedia.id) }
+        val primaryAlbumId = draft.albumIds.firstOrNull() ?: albums.first().id
+        val primaryAlbum = albums.firstOrNull { it.id == primaryAlbumId } ?: albums.first()
+        val postTime = draft.displayTimeMillis
+        val postId = "post-feed-selection-$postTime-${posts.size + 1}"
+        val post = AlbumPostCardUiModel(
+            id = postId,
+            albumId = primaryAlbum.id,
+            albumIds = draft.albumIds.ifEmpty { listOf(primaryAlbum.id) },
+            title = draft.title.ifBlank {
+                buildSystemImportTitle(
+                    mediaCount = finalMedia.size,
+                    displayTimeMillis = postTime,
+                )
+            },
+            summary = draft.summary.ifBlank { "从照片流选择媒体创建的本地帖子" },
+            postDisplayTimeMillis = postTime,
+            mediaCount = finalMedia.size,
+            coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
+            addAll(finalMedia)
+        }
+        posts.add(post)
+        posts.sortByDescending { it.postDisplayTimeMillis }
+        FakePhotoFeedRepository.importSystemMediaToFeed(
+            mediaItems = mediaItems.map { it.toSyntheticSystemMediaItem() },
+            postId = postId,
+        )
+        FakePhotoFeedRepository.unhidePostsLocally(listOf(postId))
+        return post
+    }
+
+    fun appendPhotoFeedItemsToPost(
+        postId: String,
+        mediaItems: List<PhotoFeedItem>,
+    ): Int {
+        val post = getPost(postId) ?: return 0
+        val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
+        val existingMediaIds = mediaState.mapTo(mutableSetOf()) { it.id }
+        val appendedMedia = mediaItems
+            .distinctBy { it.mediaId }
+            .filterNot { existingMediaIds.contains(it.mediaId) }
+            .sortedByDescending { it.mediaDisplayTimeMillis }
+            .map { item ->
+                item.toSyntheticSystemMediaItem().toManagedState(isCover = false)
+            }
+        if (appendedMedia.isEmpty()) return 0
+
+        val nextItems = normalizeCover(mediaState.toList() + appendedMedia)
+        replacePostMedia(postId = postId, newItems = nextItems)
+        val coverMedia = nextItems.firstOrNull { it.isCover } ?: nextItems.first()
+        syncPostAfterMediaMutation(
+            postId = postId,
+            mediaCount = nextItems.size,
+            coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        FakePhotoFeedRepository.importSystemMediaToFeed(
+            mediaItems = mediaItems.map { it.toSyntheticSystemMediaItem() },
+            postId = postId,
+        )
+        return appendedMedia.size
     }
 
     fun getEditablePostDraft(postId: String): EditablePostDraft? {
@@ -795,6 +878,51 @@ object FakeAlbumRepository {
             isCover = isCover,
             sourcePostId = sourcePostId,
             sourcePostTitle = sourcePostTitle.ifBlank { "当前帖子" },
+        )
+    }
+
+    private fun PhotoFeedItem.toSyntheticSystemMediaItem(): SystemMediaItem {
+        val uriString = mediaSource?.originalUrl
+            ?: mediaSource?.mediaUrl
+            ?: mediaSource?.thumbnailUrl
+            ?: "content://app-feed/$mediaId"
+        val parsedUri = runCatching { Uri.parse(uriString) }.getOrNull()
+            ?: Uri.parse("content://app-feed/$mediaId")
+        val dateParts = dateParts(mediaDisplayTimeMillis)
+        return SystemMediaItem(
+            id = mediaId,
+            mediaStoreId = mediaId.hashCode().toLong().and(Long.MAX_VALUE),
+            uri = parsedUri,
+            type = when (mediaType) {
+                AppMediaType.IMAGE -> SystemMediaType.IMAGE
+                AppMediaType.VIDEO -> SystemMediaType.VIDEO
+            },
+            mimeType = mediaSource?.mimeType ?: when (mediaType) {
+                AppMediaType.IMAGE -> "image/jpeg"
+                AppMediaType.VIDEO -> "video/mp4"
+            },
+            displayName = mediaId,
+            bucketName = "照片流",
+            displayTimeMillis = mediaDisplayTimeMillis,
+            displayYear = dateParts.first,
+            displayMonth = dateParts.second,
+            displayDay = dateParts.third,
+            width = width,
+            height = height,
+            aspectRatio = aspectRatio,
+            palette = palette,
+            linkedPostIds = postIds,
+        )
+    }
+
+    private fun dateParts(timeMillis: Long): Triple<Int, Int, Int> {
+        val calendar = java.util.Calendar.getInstance(java.util.Locale.CHINA).apply {
+            timeInMillis = timeMillis
+        }
+        return Triple(
+            calendar.get(java.util.Calendar.YEAR),
+            calendar.get(java.util.Calendar.MONTH) + 1,
+            calendar.get(java.util.Calendar.DAY_OF_MONTH),
         )
     }
 

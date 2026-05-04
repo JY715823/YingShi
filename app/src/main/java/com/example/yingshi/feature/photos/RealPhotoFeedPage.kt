@@ -20,20 +20,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.launch
 
 @Composable
 fun RealPhotoFeedPage(
     selectionState: PhotoFeedSelectionState,
     onSelectionStateChange: (PhotoFeedSelectionState) -> Unit,
     onOpenViewer: (PhotoViewerRoute) -> Unit,
+    onOpenCreatePost: (CreatePostRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sessionKey = realBackendSessionKey("real-photo-feed")
     val viewModel: RealPhotoFeedViewModel = viewModel(
         key = sessionKey,
@@ -42,6 +48,10 @@ fun RealPhotoFeedPage(
     val uiState by viewModel.uiState.collectAsState()
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
+    val destinationUiState by rememberSystemMediaDestinationUiState()
+    val albums = destinationUiState.albums
+    val posts = destinationUiState.posts
     val spacing = YingShiThemeTokens.spacing
 
     androidx.compose.runtime.LaunchedEffect(backendMutationEvent.version) {
@@ -69,6 +79,41 @@ fun RealPhotoFeedPage(
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
                     Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showAddToPostDialog) {
+        val selectedItems = uiState.feedItems.filter { item ->
+            selectionState.selectedMediaIds.contains(item.mediaId)
+        }
+        SystemMediaPostDestinationDialog(
+            albums = albums,
+            posts = posts,
+            onDismiss = { showAddToPostDialog = false },
+            onPostSelected = { postId ->
+                showAddToPostDialog = false
+                scope.launch {
+                    when (
+                        val result = com.example.yingshi.data.repository.RepositoryProvider.postRepository.addMediaToPost(
+                            postId = postId,
+                            mediaIds = selectedItems.map { it.mediaId },
+                        )
+                    ) {
+                        is com.example.yingshi.data.remote.result.ApiResult.Success -> {
+                            notifyRealBackendContentChanged(postIds = setOf(postId))
+                            onSelectionStateChange(selectionState.clear())
+                        }
+                        is com.example.yingshi.data.remote.result.ApiResult.Error -> {
+                            android.widget.Toast.makeText(
+                                context,
+                                result.toBackendUiMessage("加入已有帖子失败。"),
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        com.example.yingshi.data.remote.result.ApiResult.Loading -> Unit
+                    }
                 }
             },
         )
@@ -149,9 +194,21 @@ fun RealPhotoFeedPage(
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = spacing.sm),
                         ) {
-                            RealFeedSelectionBar(
+                            RealFeedSelectionBarV2(
                                 selectedCount = selectionState.selectedCount,
                                 isDeleting = uiState.isDeleting,
+                                onCreatePost = {
+                                    onOpenCreatePost(
+                                        CreatePostRoute(
+                                            source = "real-photo-feed-selection",
+                                            initialAppMediaIds = selectionState.selectedMediaIds.toList(),
+                                        ),
+                                    )
+                                    onSelectionStateChange(selectionState.clear())
+                                },
+                                onAddToPost = {
+                                    showAddToPostDialog = true
+                                },
                                 onDelete = {
                                     if (selectionState.selectedMediaIds.isEmpty()) {
                                         onSelectionStateChange(selectionState.clear())
@@ -163,6 +220,53 @@ fun RealPhotoFeedPage(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RealFeedSelectionBarV2(
+    selectedCount: Int,
+    isDeleting: Boolean,
+    onCreatePost: () -> Unit,
+    onAddToPost: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.md),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "已选中 $selectedCount 项",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(
+                enabled = !isDeleting,
+                onClick = onCreatePost,
+            ) {
+                Text("新建帖子")
+            }
+            TextButton(
+                enabled = !isDeleting,
+                onClick = onAddToPost,
+            ) {
+                Text("加入已有帖子")
+            }
+            TextButton(
+                enabled = !isDeleting,
+                onClick = onDelete,
+            ) {
+                Text(if (isDeleting) "删除中…" else "删除到回收站")
             }
         }
     }

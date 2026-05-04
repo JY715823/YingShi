@@ -79,7 +79,11 @@ fun CreatePostScreen(
     ) {
         value = loadCreatePostUiState(route)
     }
-    val mediaKey = route.initialMediaItems.joinToString(separator = "|") { it.id }
+    val mediaKey = buildString {
+        append(route.initialMediaItems.joinToString(separator = "|") { it.id })
+        append("::")
+        append(route.initialAppMediaIds.joinToString(separator = "|"))
+    }
     var initialized by rememberSaveable(route.source, mediaKey) { mutableStateOf(false) }
     var isSubmitting by rememberSaveable(route.source, mediaKey) { mutableStateOf(false) }
     var title by rememberSaveable(route.source, mediaKey) { mutableStateOf("") }
@@ -139,6 +143,52 @@ fun CreatePostScreen(
                 val createdPost = LocalSystemMediaBridgeRepository.createPostFromSystemMediaDraft(
                     draft = draft,
                     mediaItems = route.initialMediaItems,
+                )
+                if (createdPost == null) {
+                    localMessage = "本地新帖子创建失败，请稍后重试。"
+                } else {
+                    onCreated(FakeAlbumRepository.toPostDetailRoute(createdPost))
+                }
+            }
+            return
+        }
+
+        if (route.initialAppMediaIds.isNotEmpty()) {
+            if (mode == RepositoryMode.REAL) {
+                scope.launch {
+                    isSubmitting = true
+                    val result = RepositoryProvider.postRepository.createPost(
+                        CreatePostPayload(
+                            title = draft.title.ifBlank { "新帖子" },
+                            summary = draft.summary,
+                            displayTimeMillis = draft.displayTimeMillis,
+                            albumIds = draft.albumIds,
+                            initialMediaIds = route.initialAppMediaIds,
+                            coverMediaId = route.initialAppMediaIds.firstOrNull(),
+                        ),
+                    )
+                    isSubmitting = false
+                    when (result) {
+                        is ApiResult.Success -> {
+                            notifyRealBackendPostChanged(postIds = setOf(result.data.postId))
+                            onCreated(
+                                result.data.toPostDetailPlaceholderRoute(
+                                    selectedAlbumId = selectedAlbumIds.first(),
+                                ),
+                            )
+                        }
+                        is ApiResult.Error -> {
+                            localMessage = result.toBackendUiMessage("创建帖子失败，请稍后重试。")
+                        }
+                        ApiResult.Loading -> Unit
+                    }
+                }
+            } else {
+                val selectedItems = route.initialAppMediaIds
+                    .mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem)
+                val createdPost = FakeAlbumRepository.createConfiguredLocalPostFromPhotoFeedItems(
+                    draft = draft,
+                    mediaItems = selectedItems,
                 )
                 if (createdPost == null) {
                     localMessage = "本地新帖子创建失败，请稍后重试。"

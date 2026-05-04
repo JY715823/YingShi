@@ -314,7 +314,11 @@ fun MediaManagementScreen(
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            items(mediaItems, key = { it.id }) { media ->
+            items(
+                items = mediaItems,
+                key = { it.id },
+                contentType = { "managed-media" },
+            ) { media ->
                 MediaManagementCard(
                     media = media,
                     mode = mode,
@@ -603,7 +607,11 @@ private fun RealMediaManagementScreen(
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                     verticalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
-                    items(mediaItems, key = { it.id }) { media ->
+                    items(
+                        items = mediaItems,
+                        key = { it.id },
+                        contentType = { "managed-media" },
+                    ) { media ->
                         MediaManagementCard(
                             media = media,
                             mode = mode,
@@ -804,6 +812,7 @@ private fun MediaManagementCard(
                 palette = media.palette,
                 modifier = Modifier.fillMaxSize(),
                 contentDescription = media.id,
+                requestSize = 448,
             )
 
             if (media.isCover) {

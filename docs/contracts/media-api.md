@@ -99,6 +99,21 @@ Response:
 - `MEDIA_ALREADY_DELETED`
 - `TRASH_ITEM_NOT_FOUND`
 - `AUTH_UNAUTHORIZED`
+
+## Stage 12.7 Performance Notes
+
+- Feed, album cards, and media-management grids are expected to use preview-sized media only; they must not depend on original-size assets for first paint.
+- Android now reuses the same preview URL cache path across feed, post cards, post detail, and Viewer whenever possible. Stable preview URLs materially reduce open / back / reopen latency.
+- Comment-only mutations no longer imply a required full media-feed refresh contract. Backends should keep comment operations lightweight and let clients refresh only the affected comment surfaces.
+
+## Post-12.7 Import / Original Notes
+
+- App media can exist without a post relationship. Import-only media should appear in the app photo feed with an empty `postIds` / relationship set.
+- System media actions now have three app-content outcomes: `导入app` creates app media only, `发成新帖子` creates app media plus a new post relationship, and `加入已有帖子` creates app media plus an existing post relationship.
+- Viewer original actions are media-level, not post-level. Images use `originalUrl` when it is distinct and usable; videos may use `originalUrl`, `videoUrl`, or `mediaUrl` as the original media resource and must fail safely without closing Viewer.
+- Post-12.7 targeted fix: Android now treats `mediaUrl` as a usable image original fallback when a separate `originalUrl` is missing or equivalent, and treats `videoUrl -> mediaUrl -> originalUrl` as valid video original/probe candidates.
+- Trash detail may request `/api/media/files/{mediaId}` for deleted current-space media ids referenced by trash `sourceMediaId` / `relatedMediaIds`; this is read-only preview behavior and does not mean deleted media returns to active feed.
+
 ## Stage 12.3 约定补充
 
 - REAL `/api/media/feed` 只返回已经关联到至少一个有效帖子的媒体。

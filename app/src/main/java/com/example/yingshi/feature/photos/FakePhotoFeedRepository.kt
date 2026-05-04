@@ -45,6 +45,7 @@ object FakePhotoFeedRepository {
                     width = latestEntry.width,
                     height = latestEntry.height,
                     videoDurationMillis = latestEntry.videoDurationMillis,
+                    mediaSource = latestEntry.mediaSource,
                 )
             }
             .toList()
@@ -53,7 +54,7 @@ object FakePhotoFeedRepository {
 
     fun importSystemMediaToFeed(
         mediaItems: List<SystemMediaItem>,
-        postId: String,
+        postId: String?,
     ) {
         mediaItems
             .distinctBy { it.id }
@@ -72,10 +73,16 @@ object FakePhotoFeedRepository {
                             aspectRatio = item.aspectRatio,
                             width = item.width,
                             height = item.height,
+                            videoDurationMillis = null,
+                            mediaSource = item.toAppContentMediaSource(),
                         ),
                     )
                 }
             }
+    }
+
+    fun findPhotoFeedItem(mediaId: String): PhotoFeedItem? {
+        return getPhotoFeed().firstOrNull { it.mediaId == mediaId }
     }
 
     fun hideMediaGlobally(mediaIds: Collection<String>) {

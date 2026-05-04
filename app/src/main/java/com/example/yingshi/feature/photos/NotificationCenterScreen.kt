@@ -47,6 +47,14 @@ fun NotificationCenterScreen(
     route: NotificationCenterRoute,
     onBack: () -> Unit,
     onOpenNotificationDetail: (NotificationDetailRoute) -> Unit,
+    onOpenNotificationTarget: (NotificationCenterItemUiModel) -> Unit = { item ->
+        onOpenNotificationDetail(
+            NotificationDetailRoute(
+                notificationId = item.id,
+                source = "notification-center",
+            ),
+        )
+    },
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -74,12 +82,6 @@ fun NotificationCenterScreen(
             },
         )
 
-        NotificationCenterSummary(
-            source = route.source,
-            unreadCount = unreadCount,
-            totalCount = notifications.size,
-        )
-
         NotificationFilterRow(
             selectedFilter = selectedFilter,
             onFilterSelected = { selectedFilterName = it.name },
@@ -103,12 +105,7 @@ fun NotificationCenterScreen(
                         item = item,
                         onClick = {
                             FakeNotificationRepository.markRead(item.id)
-                            onOpenNotificationDetail(
-                                NotificationDetailRoute(
-                                    notificationId = item.id,
-                                    source = "notification-center",
-                                ),
-                            )
+                            onOpenNotificationTarget(item)
                         },
                     )
                 }
@@ -136,15 +133,6 @@ private fun NotificationCenterTopBar(
                 text = "通知",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = if (unreadCount > 0) {
-                    "还有 $unreadCount 条未读通知"
-                } else {
-                    "当前通知都已读"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         TextButton(onClick = onMarkAllRead) {
@@ -450,15 +438,6 @@ private fun NotificationCenterEmptyState(
                 },
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = if (filter == NotificationCenterFilter.ALL) {
-                    "后续真实评论、内容更新、删除恢复和系统提醒会从这里汇总。"
-                } else {
-                    "切换其他分类可以继续查看当前会话里的 fake 通知。"
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
