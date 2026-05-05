@@ -119,8 +119,6 @@ fun SystemMediaScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
-    val operationResults = LocalSystemMediaBridgeRepository.operationResults
-    val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
@@ -322,23 +320,6 @@ fun SystemMediaScreen(
 
     LaunchedEffect(bridgeMutationEvent.version) {
         viewModel.handleBridgeMutation(bridgeMutationEvent)
-    }
-
-    LaunchedEffect(operationResults.size) {
-        if (operationResults.isEmpty()) return@LaunchedEffect
-        val pendingEvents = operationResults.toList()
-        var postRouteToOpen: PostDetailPlaceholderRoute? = null
-        pendingEvents.forEach { event ->
-            Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
-            if (event.succeeded &&
-                event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
-                postRouteToOpen == null
-            ) {
-                postRouteToOpen = event.postRoute
-            }
-            LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
-        }
-        postRouteToOpen?.let(onOpenPostDetail)
     }
 
     LaunchedEffect(uiState.selectedFilter) {
@@ -579,20 +560,6 @@ fun SystemMediaScreen(
                     }
                 }
             }
-        }
-
-        if (uploadTasks.isNotEmpty()) {
-            SystemMediaUploadTaskPanel(
-                tasks = uploadTasks,
-                onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
-                onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
-                onRetryTask = { LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = spacing.lg, vertical = spacing.md)
-                    .padding(bottom = if (selectionMode) 96.dp else 0.dp),
-            )
         }
 
         AnimatedVisibility(

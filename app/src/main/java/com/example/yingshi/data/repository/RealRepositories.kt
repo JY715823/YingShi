@@ -45,6 +45,7 @@ import com.example.yingshi.data.remote.result.ApiResult
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.HttpException
 
 class RealMediaRepository(
     private val mediaApi: MediaApi,
@@ -549,7 +550,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_TOKEN_REQUEST_FAILED",
-                    message = "Stage 11.5 real upload-token request failed before backend is ready",
+                    message = uploadRequestErrorMessage(it, "申请上传凭证失败，请检查服务器。"),
                     throwable = it,
                 )
             },
@@ -577,7 +578,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_FILE_REQUEST_FAILED",
-                    message = "REAL local file upload failed",
+                    message = uploadRequestErrorMessage(it, "上传文件失败，请检查网络和服务器。"),
                     throwable = it,
                 )
             },
@@ -607,6 +608,24 @@ class RealUploadRepository(
             message = "Current backend has no upload status endpoint",
         )
     }
+}
+
+private fun uploadRequestErrorMessage(
+    throwable: Throwable,
+    fallback: String,
+): String {
+    val httpException = throwable as? HttpException
+    if (httpException != null) {
+        val errorBody = runCatching {
+            httpException.response()?.errorBody()?.string()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        return if (errorBody == null) {
+            "上传接口返回 ${httpException.code()}，请检查服务器日志。"
+        } else {
+            "上传接口返回 ${httpException.code()}：${errorBody.take(240)}"
+        }
+    }
+    return throwable.message?.takeIf { it.isNotBlank() } ?: fallback
 }
 
 class RealAuthRepository(
