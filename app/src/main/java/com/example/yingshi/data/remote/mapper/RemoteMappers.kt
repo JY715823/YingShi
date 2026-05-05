@@ -47,6 +47,9 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         mimeType = mimeType,
         durationMillis = durationMillis ?: duration,
         createdAtMillis = createdAtMillis,
+        capturedAtMillis = capturedAtMillis,
+        importedAtMillis = importedAtMillis,
+        displayTimeSource = displayTimeSource,
     )
 }
 
@@ -67,6 +70,9 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
         summary = summary,
         contributorLabel = contributorLabel,
         displayTimeMillis = displayTimeMillis,
+        eventStartedAtMillis = eventStartedAtMillis,
+        eventEndedAtMillis = eventEndedAtMillis,
+        displayTimeSource = displayTimeSource,
         albumIds = albumIds,
         coverMediaId = coverMediaId,
         mediaCount = mediaCount,
@@ -93,6 +99,9 @@ fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
         coverUrl = media.coverUrl,
         mimeType = media.mimeType,
         createdAtMillis = media.createdAtMillis,
+        capturedAtMillis = media.capturedAtMillis,
+        importedAtMillis = media.importedAtMillis,
+        displayTimeSource = media.displayTimeSource,
     )
 }
 
@@ -103,6 +112,9 @@ fun PostDetailDto.toRemoteDetail(): RemotePostDetail {
         summary = summary,
         contributorLabel = contributorLabel,
         displayTimeMillis = displayTimeMillis,
+        eventStartedAtMillis = eventStartedAtMillis,
+        eventEndedAtMillis = eventEndedAtMillis,
+        displayTimeSource = displayTimeSource,
         albumIds = albumIds,
         coverMediaId = coverMediaId,
         mediaItems = mediaItems.map(PostMediaDto::toRemotePostMedia),
@@ -116,6 +128,9 @@ fun PostDetailDto.toRemoteSummary(): RemotePostSummary {
         summary = summary,
         contributorLabel = contributorLabel,
         displayTimeMillis = displayTimeMillis,
+        eventStartedAtMillis = eventStartedAtMillis,
+        eventEndedAtMillis = eventEndedAtMillis,
+        displayTimeSource = displayTimeSource,
         albumIds = albumIds,
         coverMediaId = coverMediaId,
         mediaCount = mediaCount,

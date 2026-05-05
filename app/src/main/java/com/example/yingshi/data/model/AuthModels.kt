@@ -11,13 +11,13 @@ data class RemoteCurrentUser(
     val userId: String,
     val displayName: String,
     val avatarUrl: String?,
-    val spaceId: String,
-    val spaceDisplayName: String?,
+    val libraryId: String,
+    val libraryDisplayName: String?,
 )
 
 data class RemoteLoginSession(
     val userId: String,
     val displayName: String,
-    val spaceId: String,
+    val libraryId: String,
     val tokens: AuthTokens,
 )

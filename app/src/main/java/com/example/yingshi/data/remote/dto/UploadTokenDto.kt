@@ -17,6 +17,9 @@ data class CreateUploadTokenRequestDto(
     val height: Int,
     val durationMillis: Long? = null,
     val displayTimeMillis: Long,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
 )
 
 data class UploadCompleteResponseDto(

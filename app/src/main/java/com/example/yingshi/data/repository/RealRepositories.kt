@@ -140,6 +140,9 @@ class RealPostRepository(
                     summary = payload.summary,
                     contributorLabel = null,
                     displayTimeMillis = payload.displayTimeMillis,
+                    eventStartedAtMillis = payload.eventStartedAtMillis,
+                    eventEndedAtMillis = payload.eventEndedAtMillis,
+                    displayTimeSource = payload.displayTimeSource,
                     albumIds = payload.albumIds,
                     initialMediaIds = payload.initialMediaIds,
                     coverMediaId = payload.coverMediaId,
@@ -194,6 +197,9 @@ class RealPostRepository(
                     summary = payload.summary,
                     contributorLabel = null,
                     displayTimeMillis = payload.displayTimeMillis,
+                    eventStartedAtMillis = payload.eventStartedAtMillis,
+                    eventEndedAtMillis = payload.eventEndedAtMillis,
+                    displayTimeSource = payload.displayTimeSource,
                     albumIds = payload.albumIds,
                 ),
             ).data.toRemoteSummary()
@@ -543,6 +549,9 @@ class RealUploadRepository(
                     height = payload.height,
                     durationMillis = payload.durationMillis,
                     displayTimeMillis = payload.displayTimeMillis,
+                    capturedAtMillis = payload.capturedAtMillis,
+                    importedAtMillis = payload.importedAtMillis,
+                    displayTimeSource = payload.displayTimeSource,
                 ),
             ).data.toRemoteModel()
         }.fold(
@@ -550,7 +559,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_TOKEN_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "申请上传凭证失败，请检查服务器。"),
+                    message = uploadRequestErrorMessage(it, "Create upload token failed. Please retry."),
                     throwable = it,
                 )
             },
@@ -578,7 +587,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_FILE_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "上传文件失败，请检查网络和服务器。"),
+                    message = uploadRequestErrorMessage(it, "Upload file failed. Please retry."),
                     throwable = it,
                 )
             },
@@ -620,9 +629,9 @@ private fun uploadRequestErrorMessage(
             httpException.response()?.errorBody()?.string()
         }.getOrNull()?.takeIf { it.isNotBlank() }
         return if (errorBody == null) {
-            "上传接口返回 ${httpException.code()}，请检查服务器日志。"
+            "Upload request failed ${httpException.code()}. Please retry."
         } else {
-            "上传接口返回 ${httpException.code()}：${errorBody.take(240)}"
+            "Upload request failed ${httpException.code()}: ${errorBody.take(240)}"
         }
     }
     return throwable.message?.takeIf { it.isNotBlank() } ?: fallback
@@ -646,7 +655,7 @@ class RealAuthRepository(
             RemoteLoginSession(
                 userId = response.userId,
                 displayName = response.displayName,
-                spaceId = response.spaceId,
+                libraryId = response.libraryId,
                 tokens = tokens,
             )
         }.fold(
@@ -698,8 +707,8 @@ class RealAuthRepository(
                 userId = response.userId,
                 displayName = response.displayName,
                 avatarUrl = response.avatarUrl,
-                spaceId = response.spaceId,
-                spaceDisplayName = response.spaceDisplayName,
+                libraryId = response.libraryId,
+                libraryDisplayName = response.libraryDisplayName,
             )
         }.fold(
             onSuccess = { ApiResult.Success(it) },

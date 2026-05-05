@@ -47,6 +47,11 @@ data class SystemMediaRoute(
 )
 
 @Immutable
+data class TransferCenterRoute(
+    val source: String = "photos-top-bar",
+)
+
+@Immutable
 data class SystemMediaViewerRoute(
     val mediaItems: List<SystemMediaItem>,
     val initialIndex: Int,

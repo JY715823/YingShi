@@ -189,7 +189,7 @@ fun BackendDiagnosticsScreen(
                         val result = runDiagnosticCheck("login") {
                             val loginResponse = loginWithCredentials(accountInput, passwordInput)
                             val currentUser = RemoteServiceFactory.authApi.getCurrentUser().data
-                            "displayName=${loginResponse.displayName}, spaceId=${currentUser.spaceId}"
+                            "displayName=${loginResponse.displayName}, libraryId=${currentUser.libraryId}"
                         }
                         stepResults = listOf(result)
                         lastResult = formatDiagnosticResults(stepResults)
