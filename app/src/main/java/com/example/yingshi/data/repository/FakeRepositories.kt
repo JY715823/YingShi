@@ -483,7 +483,7 @@ class FakeAuthRepositoryShell : AuthRepository {
         val session = RemoteLoginSession(
             userId = "fake-user-001",
             displayName = "本地占位账号",
-            spaceId = "fake-space-001",
+            libraryId = "fake-library-001",
             tokens = AuthTokens(
                 accessToken = "fake-access-token",
                 refreshToken = "fake-refresh-token",
@@ -523,8 +523,8 @@ class FakeAuthRepositoryShell : AuthRepository {
                     "未接真实账号"
                 },
                 avatarUrl = null,
-                spaceId = "fake-space-001",
-                spaceDisplayName = "映世本地占位空间",
+                libraryId = "fake-library-001",
+                libraryDisplayName = "映世本地占位空间",
             ),
         )
     }

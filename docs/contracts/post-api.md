@@ -181,6 +181,17 @@ Response:
 - `VALIDATION_ERROR`
 - `AUTH_UNAUTHORIZED`
 
+## Shared Library / Post Time Update
+
+- Posts belong to the private shared library (`libraryId`); there is no public `spaceId` field.
+- Post DTOs and create/update requests may include:
+  - `eventStartedAtMillis`: the post or memory's own start time.
+  - `eventEndedAtMillis`: optional end time for trips, dates, or multi-day events.
+  - `displayTimeMillis`: the timeline position shown in the app.
+  - `displayTimeSource`: `ORIGINAL`, `IMPORTED`, or `MANUAL`.
+- For ordinary posts, `eventStartedAtMillis` usually equals `displayTimeMillis`.
+- Keeping event time and display time separate lets the app preserve the real memory time while still allowing manual timeline curation.
+
 ## Stage 12.6 Add-Post Notes
 
 - Android 新增帖子表单目前直接消费 `POST /api/posts`，字段收口为：

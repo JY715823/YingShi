@@ -18,6 +18,9 @@ data class RemoteMedia(
     val mimeType: String? = null,
     val durationMillis: Long? = null,
     val createdAtMillis: Long? = null,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
 )
 
 data class RemoteAlbum(

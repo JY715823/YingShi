@@ -6,6 +6,9 @@ data class RemotePostSummary(
     val summary: String,
     val contributorLabel: String?,
     val displayTimeMillis: Long,
+    val eventStartedAtMillis: Long? = null,
+    val eventEndedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
     val albumIds: List<String>,
     val coverMediaId: String?,
     val mediaCount: Int,
@@ -29,6 +32,9 @@ data class RemotePostMedia(
     val coverUrl: String? = null,
     val mimeType: String? = null,
     val createdAtMillis: Long? = null,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
 )
 
 data class RemotePostDetail(
@@ -37,6 +43,9 @@ data class RemotePostDetail(
     val summary: String,
     val contributorLabel: String?,
     val displayTimeMillis: Long,
+    val eventStartedAtMillis: Long? = null,
+    val eventEndedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
     val albumIds: List<String>,
     val coverMediaId: String?,
     val mediaItems: List<RemotePostMedia>,
@@ -46,6 +55,9 @@ data class CreatePostPayload(
     val title: String,
     val summary: String,
     val displayTimeMillis: Long,
+    val eventStartedAtMillis: Long? = displayTimeMillis,
+    val eventEndedAtMillis: Long? = null,
+    val displayTimeSource: String? = "MANUAL",
     val albumIds: List<String>,
     val initialMediaIds: List<String> = emptyList(),
     val coverMediaId: String? = null,
@@ -55,6 +67,9 @@ data class UpdatePostBasicInfoPayload(
     val title: String,
     val summary: String,
     val displayTimeMillis: Long,
+    val eventStartedAtMillis: Long? = displayTimeMillis,
+    val eventEndedAtMillis: Long? = null,
+    val displayTimeSource: String? = "MANUAL",
     val albumIds: List<String>,
 )
 

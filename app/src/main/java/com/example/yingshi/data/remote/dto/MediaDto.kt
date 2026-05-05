@@ -19,6 +19,9 @@ data class MediaDto(
     val durationMillis: Long? = null,
     val duration: Long? = null,
     val displayTimeMillis: Long = 0L,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
     val createdAtMillis: Long? = null,
     val postIds: List<String> = emptyList(),
 )

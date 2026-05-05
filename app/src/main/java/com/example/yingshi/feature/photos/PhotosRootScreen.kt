@@ -48,6 +48,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -79,6 +81,7 @@ fun PhotosRootScreen(
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
     onOpenSystemMedia: () -> Unit = { },
+    onOpenTransferCenter: () -> Unit = { },
     onOpenCreatePost: (CreatePostRoute) -> Unit = { },
     onOpenNotifications: () -> Unit = { },
 ) {
@@ -256,6 +259,7 @@ fun PhotosRootScreen(
                     }
                 },
                 onOpenSystemMedia = onOpenSystemMedia,
+                onOpenTransferCenter = onOpenTransferCenter,
                 onOpenNotifications = {
                     PhotosRootEntryCallbacks.onOpenNotifications?.invoke() ?: onOpenNotifications()
                 },
@@ -391,6 +395,7 @@ private fun PhotoTopBar(
     onCancelSelection: () -> Unit,
     onSelected: (Int) -> Unit,
     onOpenSystemMedia: () -> Unit,
+    onOpenTransferCenter: () -> Unit,
     onOpenNotifications: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -436,13 +441,19 @@ private fun PhotoTopBar(
             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PhotoTopToolButton(
-                text = "系统",
+            PhotoIconToolButton(
+                symbol = "\u2699",
+                contentDescription = "系统媒体",
                 onClick = onOpenSystemMedia,
             )
             PhotoBellButton(
                 unreadCount = notificationUnreadCount,
                 onClick = onOpenNotifications,
+            )
+            PhotoIconToolButton(
+                symbol = "\u21C5",
+                contentDescription = "传输中心",
+                onClick = onOpenTransferCenter,
             )
         }
     }
@@ -554,6 +565,39 @@ private fun PhotoTopToolButton(
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun PhotoIconToolButton(
+    symbol: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(radius.capsule))
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(radius.capsule),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
+        ),
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = symbol,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

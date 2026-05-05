@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -452,7 +450,6 @@ private fun PhotoFeedTimeScrubber(
     val thumbWidth = 14.dp
     val thumbHeight = 72.dp
     val verticalPadding = 0.dp
-    val touchWidth = 48.dp
     var scrubberHeightPx by remember { mutableIntStateOf(0) }
     var labelHeightPx by remember { mutableIntStateOf(0) }
     var scrubberLabelWidthPx by remember { mutableIntStateOf(0) }
@@ -511,25 +508,22 @@ private fun PhotoFeedTimeScrubber(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .fillMaxHeight()
-                .width(touchWidth)
                 .onSizeChanged { scrubberHeightPx = it.height }
-                .pointerInput(Unit) {
-                    detectTapGestures { offset: Offset ->
-                        onInteractingChanged(true)
-                        dispatchProgress(offset.y)
-                        lastDispatchedProgress = Float.NaN
-                        onInteractingChanged(false)
-                    }
-                }
-                .pointerInput(Unit) {
+                .offset { IntOffset(x = 0, y = thumbTopPx - verticalPaddingPx) }
+                .size(width = thumbWidth, height = thumbHeight)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.96f))
+                .pointerInput(scrubberHeightPx) {
+                    var dragOffsetY = 0f
                     detectVerticalDragGestures(
                         onDragStart = { offset ->
                             onInteractingChanged(true)
-                            dispatchProgress(offset.y)
+                            dragOffsetY = thumbTopPx.toFloat() + offset.y
+                            dispatchProgress(dragOffsetY)
                         },
-                        onVerticalDrag = { change, _ ->
-                            dispatchProgress(change.position.y)
+                        onVerticalDrag = { _, dragAmount ->
+                            dragOffsetY += dragAmount
+                            dispatchProgress(dragOffsetY)
                         },
                         onDragEnd = {
                             lastDispatchedProgress = Float.NaN
@@ -541,17 +535,8 @@ private fun PhotoFeedTimeScrubber(
                         },
                     )
                 },
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = verticalPadding)
-                    .offset { IntOffset(x = 0, y = thumbTopPx - verticalPaddingPx) }
-                    .size(width = thumbWidth, height = thumbHeight)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color.White.copy(alpha = 0.96f)),
-            )
-        }
+        )
+
     }
 }
 

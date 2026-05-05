@@ -87,3 +87,8 @@ Error response draft:
 
 ## Stage 12.4 Client Cleanup Note
 - Android Stage 12.4 does not change the server API shape, but it assumes transport DTOs continue to be mapped into client UI models through dedicated mappers and shared media helper entrypoints instead of being used directly in Compose UI.
+
+## Stage 12.7 Client Note
+- No new server endpoint is required for the Transfer Center or scrubber changes.
+- Upload/import task history is a client-side presentation of existing upload state.
+- The server contract remains unchanged for this hotfix.

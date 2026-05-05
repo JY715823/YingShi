@@ -53,7 +53,8 @@ import com.example.yingshi.feature.photos.SettingsScreen
 import com.example.yingshi.feature.photos.TrashPendingCleanupRoute
 import com.example.yingshi.feature.photos.SystemMediaRoute
 import com.example.yingshi.feature.photos.SystemMediaScreen
-import com.example.yingshi.feature.photos.SystemMediaUploadTaskPanel
+import com.example.yingshi.feature.photos.TransferCenterRoute
+import com.example.yingshi.feature.photos.TransferCenterScreen
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
 import com.example.yingshi.feature.photos.SystemMediaViewerScreen
 import com.example.yingshi.feature.photos.TrashDetailRoute
@@ -115,6 +116,9 @@ fun YingShiApp() {
     var notificationCenterRoute by remember {
         mutableStateOf<NotificationCenterRoute?>(null)
     }
+    var transferCenterRoute by remember {
+        mutableStateOf<TransferCenterRoute?>(null)
+    }
     var settingsRoute by remember {
         mutableStateOf<SettingsRoute?>(null)
     }
@@ -130,7 +134,6 @@ fun YingShiApp() {
     var trashDetailRoute by remember {
         mutableStateOf<TrashDetailRoute?>(null)
     }
-    val uploadTasks = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.uploadTasks
     val operationResults = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
@@ -231,6 +234,11 @@ fun YingShiApp() {
             notificationDetailRoute = null
         }
     }
+    if (transferCenterRoute != null) {
+        BackHandler {
+            transferCenterRoute = null
+        }
+    }
     if (
         notificationCenterRoute != null &&
         notificationDetailRoute == null &&
@@ -273,6 +281,7 @@ fun YingShiApp() {
                 gearEditRoute == null &&
                 mediaManagementRoute == null &&
                 notificationCenterRoute == null &&
+                transferCenterRoute == null &&
                 notificationDetailRoute == null &&
                 settingsRoute == null &&
                 backendDiagnosticsRoute == null &&
@@ -377,8 +386,43 @@ fun YingShiApp() {
                 }
             }
 
+            transferCenterRoute != null -> {
+                transferCenterRoute?.let { route ->
+                    TransferCenterScreen(
+                        route = route,
+                        onBack = { transferCenterRoute = null },
+                        onOpenTaskMedia = { task ->
+                            transferCenterRoute = null
+                            val opened = task.resultMediaId?.let { mediaId ->
+                                com.example.yingshi.feature.photos.FakePhotoFeedRepository.findPhotoFeedItem(mediaId)
+                            }
+                            if (opened != null) {
+                                val feedItems = com.example.yingshi.feature.photos.FakePhotoFeedRepository.getPhotoFeed()
+                                val initialIndex = feedItems.indexOfFirst { it.mediaId == opened.mediaId }
+                                if (initialIndex >= 0) {
+                                    photoViewerRoute = PhotoViewerRoute(
+                                        mediaItems = feedItems,
+                                        initialIndex = initialIndex,
+                                        sourceLabel = "传输中心",
+                                        showPostSegments = false,
+                                    )
+                                }
+                            } else {
+                                selectedDestinationName = RootDestination.PHOTOS.name
+                                photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+                                Toast.makeText(
+                                    context,
+                                    "已切回照片页，请在最新媒体中查看。",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        },
+                    )
+                }
+            }
+
             photoViewerRoute != null -> {
-                photoViewerRoute?.let { route ->
+                photoViewerRoute?.let { route -> 
                     PhotoViewerScreen(
                         route = route,
                         onBack = { photoViewerRoute = null },
@@ -480,6 +524,7 @@ fun YingShiApp() {
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenTrashDetail = { trashDetailRoute = it },
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
+                        onOpenTransferCenter = { transferCenterRoute = TransferCenterRoute(source = "photos-top-bar") },
                         onOpenCreatePost = { createPostRoute = it },
                         onOpenNotifications = {
                             notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
@@ -574,19 +619,6 @@ fun YingShiApp() {
                 }
             }
         }
-        }
-        if (uploadTasks.isNotEmpty()) {
-            SystemMediaUploadTaskPanel(
-                tasks = uploadTasks,
-                onCancelTask = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository::cancelUploadTask,
-                onDismissTask = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository::dismissUploadTask,
-                onRetryTask = { com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
-                modifier = Modifier
-                    .align(androidx.compose.ui.Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
-            )
-        }
     }
 
     if (showQuickAddSheet) {
@@ -629,6 +661,8 @@ fun YingShiApp() {
             }
         }
     }
+}
+
 }
 
 @Preview(showBackground = true)
