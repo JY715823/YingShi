@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import android.widget.Toast
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.home.HomeScreen
@@ -50,6 +53,7 @@ import com.example.yingshi.feature.photos.SettingsScreen
 import com.example.yingshi.feature.photos.TrashPendingCleanupRoute
 import com.example.yingshi.feature.photos.SystemMediaRoute
 import com.example.yingshi.feature.photos.SystemMediaScreen
+import com.example.yingshi.feature.photos.SystemMediaUploadTaskPanel
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
 import com.example.yingshi.feature.photos.SystemMediaViewerScreen
 import com.example.yingshi.feature.photos.TrashDetailRoute
@@ -126,6 +130,8 @@ fun YingShiApp() {
     var trashDetailRoute by remember {
         mutableStateOf<TrashDetailRoute?>(null)
     }
+    val uploadTasks = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.uploadTasks
+    val operationResults = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
     val quickAddPickerLauncher = rememberLauncherForActivityResult(
@@ -141,7 +147,7 @@ fun YingShiApp() {
         if (importedCount > 0) {
             android.widget.Toast.makeText(
                 context,
-                "已加入导入 app 队列，完成后会出现在照片流。",
+                "已开始上传，完成后会出现在照片流。",
                 android.widget.Toast.LENGTH_SHORT,
             ).show()
         } else {
@@ -150,6 +156,28 @@ fun YingShiApp() {
                 "未选到可导入的媒体。",
                 android.widget.Toast.LENGTH_SHORT,
             ).show()
+        }
+    }
+
+    LaunchedEffect(operationResults.size) {
+        if (operationResults.isEmpty()) return@LaunchedEffect
+        val pendingEvents = operationResults.toList()
+        var postRouteToOpen: PostDetailPlaceholderRoute? = null
+        pendingEvents.forEach { event ->
+            Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+            if (event.succeeded &&
+                event.operationType == com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
+                postRouteToOpen == null
+            ) {
+                postRouteToOpen = event.postRoute
+            }
+            com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
+        }
+        postRouteToOpen?.let {
+            createPostRoute = null
+            systemMediaViewerRoute = null
+            systemMediaRoute = null
+            postDetailRoute = it
         }
     }
 
@@ -229,27 +257,28 @@ fun YingShiApp() {
         }
     }
 
-    AppShellScaffold(
-        selectedDestination = selectedDestination,
-        onDestinationSelected = { selectedDestinationName = it.name },
-        onCenterAction = {
-            showQuickAddSheet = true
-        },
-        showBottomBar = photoViewerRoute == null &&
-            systemMediaRoute == null &&
-            createPostRoute == null &&
-            trashDetailRoute == null &&
-            trashPendingCleanupRoute == null &&
-            postDetailRoute == null &&
-            gearEditRoute == null &&
-            mediaManagementRoute == null &&
-            notificationCenterRoute == null &&
-            notificationDetailRoute == null &&
-            settingsRoute == null &&
-            backendDiagnosticsRoute == null &&
-            cacheManagementRoute == null,
-    ) {
-        when {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AppShellScaffold(
+            selectedDestination = selectedDestination,
+            onDestinationSelected = { selectedDestinationName = it.name },
+            onCenterAction = {
+                showQuickAddSheet = true
+            },
+            showBottomBar = photoViewerRoute == null &&
+                systemMediaRoute == null &&
+                createPostRoute == null &&
+                trashDetailRoute == null &&
+                trashPendingCleanupRoute == null &&
+                postDetailRoute == null &&
+                gearEditRoute == null &&
+                mediaManagementRoute == null &&
+                notificationCenterRoute == null &&
+                notificationDetailRoute == null &&
+                settingsRoute == null &&
+                backendDiagnosticsRoute == null &&
+                cacheManagementRoute == null,
+        ) {
+            when {
             backendDiagnosticsRoute != null -> {
                 backendDiagnosticsRoute?.let { route ->
                     BackendDiagnosticsScreen(
@@ -544,6 +573,19 @@ fun YingShiApp() {
                     )
                 }
             }
+        }
+        }
+        if (uploadTasks.isNotEmpty()) {
+            SystemMediaUploadTaskPanel(
+                tasks = uploadTasks,
+                onCancelTask = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository::cancelUploadTask,
+                onDismissTask = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository::dismissUploadTask,
+                onRetryTask = { com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+            )
         }
     }
 
