@@ -4,4 +4,6 @@ object LocalSystemMediaPageStateStore {
     var selectedFilter: SystemMediaFilter = SystemMediaFilter.ALL
     var firstVisibleItemIndex: Int = 0
     var firstVisibleItemScrollOffset: Int = 0
+    var pendingScrollTargetMediaId: String? = null
+    var pendingScrollAnchorOriginalIndex: Int = -1
 }

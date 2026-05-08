@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,7 +51,6 @@ import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
 import com.example.yingshi.feature.photos.SettingsRoute
 import com.example.yingshi.feature.photos.SettingsScreen
-import com.example.yingshi.feature.photos.TrashPendingCleanupRoute
 import com.example.yingshi.feature.photos.SystemMediaRoute
 import com.example.yingshi.feature.photos.SystemMediaScreen
 import com.example.yingshi.feature.photos.TransferCenterRoute
@@ -89,12 +89,11 @@ fun YingShiApp() {
     var showQuickAddSheet by rememberSaveable {
         mutableStateOf(false)
     }
-    var trashPendingCleanupRoute by remember {
-        mutableStateOf<TrashPendingCleanupRoute?>(null)
-    }
     var photoViewerRoute by remember {
         mutableStateOf<PhotoViewerRoute?>(null)
     }
+    var photoFeedScrollTrigger by remember { mutableIntStateOf(0) }
+    var systemMediaScrollTrigger by remember { mutableIntStateOf(0) }
     var systemMediaRoute by remember {
         mutableStateOf<SystemMediaRoute?>(null)
     }
@@ -209,11 +208,6 @@ fun YingShiApp() {
             trashDetailRoute = null
         }
     }
-    if (trashPendingCleanupRoute != null) {
-        BackHandler {
-            trashPendingCleanupRoute = null
-        }
-    }
     if (postDetailRoute != null) {
         BackHandler(enabled = trashDetailRoute == null && gearEditRoute == null && mediaManagementRoute == null) {
             postDetailRoute = null
@@ -276,7 +270,6 @@ fun YingShiApp() {
                 systemMediaRoute == null &&
                 createPostRoute == null &&
                 trashDetailRoute == null &&
-                trashPendingCleanupRoute == null &&
                 postDetailRoute == null &&
                 gearEditRoute == null &&
                 mediaManagementRoute == null &&
@@ -358,16 +351,13 @@ fun YingShiApp() {
                                     notificationDetailRoute = null
                                     selectedDestinationName = RootDestination.PHOTOS.name
                                     photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                    trashPendingCleanupRoute = null
                                 }
                                 "notice-restore-1" -> {
                                     notificationCenterRoute = null
                                     notificationDetailRoute = null
                                     selectedDestinationName = RootDestination.PHOTOS.name
                                     photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                    trashPendingCleanupRoute = TrashPendingCleanupRoute(
-                                        source = "notification-center",
-                                    )
+                                    trashShowPendingCleanup = true
                                 }
                                 "notice-cache-1" -> {
                                     notificationCenterRoute = null
@@ -421,35 +411,6 @@ fun YingShiApp() {
                 }
             }
 
-            photoViewerRoute != null -> {
-                photoViewerRoute?.let { route -> 
-                    PhotoViewerScreen(
-                        route = route,
-                        onBack = { photoViewerRoute = null },
-                        onOpenPostDetail = {
-                            photoViewerRoute = null
-                            postDetailRoute = it
-                        },
-                        onOpenCacheManagement = { cacheManagementRoute = it },
-                    )
-                }
-            }
-
-            trashPendingCleanupRoute != null -> {
-                TrashPageScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    selectedTypeName = trashSelectedTypeName,
-                    onSelectedTypeNameChange = { trashSelectedTypeName = it },
-                    showPendingCleanup = true,
-                    onShowPendingCleanupChange = {
-                        if (!it) {
-                            trashPendingCleanupRoute = null
-                        }
-                    },
-                    onOpenTrashDetail = { trashDetailRoute = it },
-                )
-            }
-
             systemMediaRoute != null -> {
                 Box(modifier = Modifier.fillMaxSize()) {
                     SystemMediaScreen(
@@ -465,12 +426,16 @@ fun YingShiApp() {
                             postDetailRoute = route
                         },
                         onOpenCreatePost = { createPostRoute = it },
+                        scrollTrigger = systemMediaScrollTrigger,
                     )
 
                     systemMediaViewerRoute?.let { route ->
                         SystemMediaViewerScreen(
                             route = route,
-                            onBack = { systemMediaViewerRoute = null },
+                            onBack = {
+                                systemMediaViewerRoute = null
+                                systemMediaScrollTrigger++
+                            },
                             onOpenCreatePost = { createPostRoute = it },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -504,6 +469,7 @@ fun YingShiApp() {
             }
 
             else -> {
+                Box(modifier = Modifier.fillMaxSize()) {
                 when (selectedDestination) {
                     RootDestination.HOME -> HomeScreen()
                     RootDestination.PHOTOS -> PhotosRootScreen(
@@ -514,11 +480,6 @@ fun YingShiApp() {
                         trashShowPendingCleanup = trashShowPendingCleanup,
                         onTrashShowPendingCleanupChange = {
                             trashShowPendingCleanup = it
-                            trashPendingCleanupRoute = if (it) {
-                                TrashPendingCleanupRoute(source = "trash-page")
-                            } else {
-                                null
-                            }
                         },
                         onOpenViewer = { photoViewerRoute = it },
                         onOpenPostDetail = { postDetailRoute = it },
@@ -529,6 +490,7 @@ fun YingShiApp() {
                         onOpenNotifications = {
                             notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
                         },
+                        photoFeedScrollTrigger = photoFeedScrollTrigger,
                     )
                     RootDestination.LIFE -> LifeScreen()
                     RootDestination.ME -> MyScreen(
@@ -617,6 +579,26 @@ fun YingShiApp() {
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+
+                photoViewerRoute?.let { route ->
+                    PhotoViewerScreen(
+                        route = route,
+                        onBack = {
+                            photoViewerRoute = null
+                            photoFeedScrollTrigger++
+                        },
+                        onOpenPostDetail = {
+                            photoViewerRoute = null
+                            postDetailRoute = it
+                        },
+                        onOpenCreatePost = { route ->
+                            photoViewerRoute = null
+                            createPostRoute = route
+                        },
+                        onOpenCacheManagement = { cacheManagementRoute = it },
+                    )
+                }
+            } // closes Box
             }
         }
     }

@@ -108,11 +108,6 @@ fun AlbumPageScreen(
             onSelectAlbum = { selectedAlbumId = it },
         )
 
-        AlbumGridDensitySwitcher(
-            selectedDensity = gridDensity,
-            onDensitySelected = { densityName = it.name },
-        )
-
         if (filteredPosts.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -239,11 +234,6 @@ private fun RealAlbumPageScreen(
                     rows = chipRows,
                     selectedAlbumId = uiState.selectedAlbumId.orEmpty(),
                     onSelectAlbum = viewModel::selectAlbum,
-                )
-
-                AlbumGridDensitySwitcher(
-                    selectedDensity = gridDensity,
-                    onDensitySelected = { densityName = it.name },
                 )
 
                 when {

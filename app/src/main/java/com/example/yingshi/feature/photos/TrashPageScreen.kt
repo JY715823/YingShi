@@ -1,4 +1,4 @@
-package com.example.yingshi.feature.photos
+﻿package com.example.yingshi.feature.photos
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -96,23 +96,6 @@ fun TrashPageScreen(
         }
 
         if (showPendingCleanup) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "24h可撤销",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    TextButton(onClick = { onShowPendingCleanupChange(false) }) {
-                        Text("返回")
-                    }
-                }
-            }
             if (pendingEntries.isEmpty()) {
                 item {
                     TrashEmptyCard(
@@ -133,14 +116,6 @@ fun TrashPageScreen(
         }
 
         if (!showPendingCleanup) {
-            item {
-                Text(
-                    text = selectedType.label,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-
             if (entries.isEmpty()) {
                 item {
                     TrashEmptyCard(

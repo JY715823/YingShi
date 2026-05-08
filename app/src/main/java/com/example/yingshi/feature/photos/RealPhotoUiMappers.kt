@@ -103,13 +103,14 @@ fun RemotePostDetail.toManagedPostMediaUiModels(): List<ManagedPostMediaUiModel>
 }
 
 fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
+    val effectiveTime = MediaTimeOverrides.get(mediaId) ?: displayTimeMillis
     val calendar = Calendar.getInstance().apply {
-        timeInMillis = displayTimeMillis
+        timeInMillis = effectiveTime
     }
     val mediaKind = toResolvedAppMediaType()
     return PhotoFeedItem(
         mediaId = mediaId,
-        mediaDisplayTimeMillis = displayTimeMillis,
+        mediaDisplayTimeMillis = effectiveTime,
         displayYear = calendar.get(Calendar.YEAR),
         displayMonth = calendar.get(Calendar.MONTH) + 1,
         displayDay = calendar.get(Calendar.DAY_OF_MONTH),

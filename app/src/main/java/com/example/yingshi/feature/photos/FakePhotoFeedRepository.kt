@@ -9,6 +9,7 @@ object FakePhotoFeedRepository {
     private val hiddenMediaIds = mutableStateListOf<String>()
     private val hiddenPostIds = mutableStateListOf<String>()
     private val importedEntries = mutableStateListOf<PhotoFeedSourceEntry>()
+    private val displayTimeOverridesByMediaId = linkedMapOf<String, Long>()
     private val baseSourceEntriesByMediaId: Map<String, List<PhotoFeedSourceEntry>> by lazy {
         fakeSourceEntries().groupBy { it.mediaId }
     }
@@ -22,7 +23,9 @@ object FakePhotoFeedRepository {
                 if (hiddenMediaIds.contains(latestEntry.mediaId)) {
                     return@mapNotNull null
                 }
-                val parts = dateParts(latestEntry.mediaDisplayTimeMillis)
+                val displayTimeMillis = displayTimeOverridesByMediaId[latestEntry.mediaId]
+                    ?: latestEntry.mediaDisplayTimeMillis
+                val parts = dateParts(displayTimeMillis)
                 FakeMediaCacheRepository.registerMedia(
                     mediaId = latestEntry.mediaId,
                     mediaType = latestEntry.mediaType,
@@ -30,7 +33,7 @@ object FakePhotoFeedRepository {
 
                 PhotoFeedItem(
                     mediaId = latestEntry.mediaId,
-                    mediaDisplayTimeMillis = latestEntry.mediaDisplayTimeMillis,
+                    mediaDisplayTimeMillis = displayTimeMillis,
                     displayYear = parts.year,
                     displayMonth = parts.month,
                     displayDay = parts.day,
@@ -83,6 +86,12 @@ object FakePhotoFeedRepository {
 
     fun findPhotoFeedItem(mediaId: String): PhotoFeedItem? {
         return getPhotoFeed().firstOrNull { it.mediaId == mediaId }
+    }
+
+    fun updateMediaDisplayTime(mediaId: String, displayTimeMillis: Long): Boolean {
+        if (!sourceEntriesByMediaId().containsKey(mediaId)) return false
+        displayTimeOverridesByMediaId[mediaId] = displayTimeMillis
+        return true
     }
 
     fun hideMediaGlobally(mediaIds: Collection<String>) {

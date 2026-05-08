@@ -1,40 +1,157 @@
-# Current Task: Stage 12.8 - Shared Library, Time Fields, Local Storage Layout
+# Current Task: Stage 12.7-Hotfix - 传输中心、时间滑条、系统媒体分区、帖子中文化、回收站入口修正
 
-## Background
+## 背景
 
-YingShi is now treated as a private two-person shared app, not a multi-space product. The old public-facing `spaceId` concept is removed from the contract and replaced by `libraryId`, which represents the one shared library used by both seed users.
+上传媒体、系统媒体导入、传输中心和时间滑条已经做过一轮，但当前仍有几个体验和交互问题需要继续修正：
 
-Media and posts also need two separate time ideas:
+1. 传输中心入口缺少剩余任务数量。
+2. 批量上传完成后缺少准确汇总提示。
+3. 传输中心入口和通知中心入口位置需要互换。
+4. App 照片页和系统媒体页时间滑条拖动异常，一拖就到底。
+5. 系统媒体页需要像 App 照片流一样按时间分区。
+6. 帖子相关 UI 被改成英文，需要恢复中文。
+7. 帖子区域又出现多余列数选择行，需要去掉。
+8. 回收站 24h 可撤销入口不应进入全屏，应和其他删除分类一样在 chips 下展示。
+9. chips 下方不应重复显示标题。
 
-- intrinsic time: when the media was captured, or when the post/memory happened
-- display time: where the item appears in the app timeline
+## 目标
 
-## Android Scope
+1. 传输中心入口显示剩余任务 badge。
+2. 批量任务完成后显示一次汇总提示。
+3. 传输中心入口和通知中心入口互换位置。
+4. App 照片页时间滑条拖动正常。
+5. 系统媒体页时间滑条拖动正常。
+6. 系统媒体按时间分区展示。
+7. 帖子相关文案恢复中文。
+8. 移除帖子区域多余列数选择行。
+9. 回收站 24h 可撤销入口改为普通分类展示。
+10. 去掉 chips 内容区重复标题。
 
-1. Consume auth `libraryId` / `libraryDisplayName`.
-2. Send upload time metadata from system-media imports when available.
-3. Receive media time metadata: `capturedAtMillis`, `importedAtMillis`, `displayTimeSource`.
-4. Receive and forward post event time metadata: `eventStartedAtMillis`, `eventEndedAtMillis`, `displayTimeSource`.
-5. Keep upload/import, transfer center, original loading, comments, posts, trash, FAKE, and REAL behavior intact.
+## 范围
 
-## Local Storage Contract
+### 1. 传输中心 badge
 
-Server-managed files now use:
+要求：
 
-```text
-local-storage/
-  originals/yyyy/MM/{mediaId}.{ext}
-  previews/yyyy/MM/{mediaId}-720.jpg
-  test/photos|long|videos/...
-  tmp/uploads/...
-  videos/posters/...
-```
+- pending / uploading / retryable failed 等未完成或待处理任务计入 badge。
+- 成功完成一个任务后数量减少。
+- 用户清理失败任务后数量减少。
+- 数量为 0 时不显示 badge。
+- badge 不遮挡图标主体。
+- FAKE / REAL 任务状态不互相污染。
 
-Android never assumes this path directly; it uses returned URLs from the server.
+### 2. 批量完成提示
 
-## Acceptance
+要求：
 
-1. Upload/import sends stable media time metadata.
-2. App DTOs tolerate and preserve new media/post time fields.
-3. Import-only media with empty `postIds` remains valid in photo feed and Viewer.
-4. `assembleDebug` passes.
+- 一批任务全部完成后，弹一次汇总提示。
+- 文案类似：上传完成：成功 x 个，失败 y 个。
+- 不要每完成一个都弹提示。
+- 统计必须基于真实任务状态。
+- 有失败时用户可进入传输中心查看和重试。
+
+### 3. 入口顺序
+
+最终顺序：
+
+1. 系统媒体齿轮入口
+2. 传输中心入口
+3. 通知中心入口
+
+要求：
+
+- 点击行为不写反。
+- contentDescription 正确。
+- 图标视觉不混淆。
+
+### 4. 时间滑条
+
+App 照片页和系统媒体页都要满足：
+
+- 点击轨道空白区域不跳转。
+- 多选时点击最右侧选择圆圈不误触。
+- 只有拖动滑块时才控制列表。
+- 拖动时不直接跳到底。
+- 拖动位置按手指在轨道内比例计算。
+- 比例 clamp 到 0..1。
+- 正确处理顶部 / 底部 padding 和 inset。
+- 自然滚动列表时时间滑条跟随。
+- 拖动和自然滚动状态不互相抢。
+
+### 5. 系统媒体按时间分区
+
+要求：
+
+- 系统媒体按日期 / 月份分区。
+- 分区风格尽量和 App 照片流一致。
+- 中文标题。
+- 时间滑条基于分区数据正常定位。
+- 多选、导入到 App、发成新帖子、加入已有帖子、移到系统回收站不被破坏。
+- key 稳定，缩略图不明显错位。
+
+### 6. 帖子 UI 中文化
+
+要求：
+
+- 帖子相关 UI 文案恢复中文。
+- 检查相册页、帖子列表、帖子详情、Gear Edit、新建帖子、加入已有帖子、所属帖子入口等。
+- 不应出现明显英文 UI 文案。
+- 保留必要品牌词或技术词。
+
+### 7. 去掉帖子多余列数选择行
+
+要求：
+
+- 移除帖子区域多余列数选择。
+- 不要误删照片流真正需要的列数 / 密度控制。
+- 不要影响帖子卡片布局。
+
+### 8. 回收站 24h 可撤销
+
+要求：
+
+- 24h 可撤销作为回收站 chips 分类展示。
+- 点击后在同一内容区切换，不进入全屏。
+- 和其他三个删除分类展示方式一致。
+- 每个 chip 下方不再重复显示标题。
+- 删除、恢复、永久删除、空态、加载中、错误态不回退。
+
+## 不做内容
+
+- 不重做上传核心链路
+- 不做 OSS
+- 不做云端存储
+- 不重构 fake/real 总架构
+- 不删除 FAKE
+- 不强制默认 REAL
+- 不做 UI 大精修
+- 不改回收站业务规则
+
+## 验收
+
+1. 传输中心入口显示剩余任务数量。
+2. 上传完成一个，badge 数量减少。
+3. 所有任务完成后，弹出一次“成功 x 个，失败 y 个”汇总提示。
+4. 传输中心入口在通知中心入口左边。
+5. 通知中心入口仍可正常打开。
+6. App 照片页拖动时间滑条不会直接到底。
+7. App 照片页点击轨道空白区域不跳转。
+8. App 照片页自然滚动时时间滑条跟随。
+9. 系统媒体页拖动时间滑条不会直接到底。
+10. 系统媒体页点击轨道空白区域不跳转。
+11. 系统媒体页自然滚动时时间滑条跟随。
+12. 系统媒体页按时间分区展示。
+13. 系统媒体多选 / 导入 / 发帖 / 加入帖子不被破坏。
+14. 帖子相关 UI 恢复中文。
+15. 帖子区域多余列数选择行被移除。
+16. 回收站 24h 可撤销不再进入全屏。
+17. 回收站 24h 可撤销和其他分类一样在 chips 下展示。
+18. chips 下方没有重复标题。
+19. 上传、原图加载、Viewer 主链路不回退。
+20. assembleDebug 通过。
+
+## 构建命令
+
+```powershell
+cd D:\Projects\Yingshi\yingshi-android
+.\gradlew.bat --no-daemon assembleDebug

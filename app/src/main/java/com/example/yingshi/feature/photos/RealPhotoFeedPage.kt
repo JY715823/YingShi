@@ -37,6 +37,7 @@ fun RealPhotoFeedPage(
     onOpenViewer: (PhotoViewerRoute) -> Unit,
     onOpenCreatePost: (CreatePostRoute) -> Unit,
     modifier: Modifier = Modifier,
+    scrollTrigger: Int = 0,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -184,6 +185,7 @@ fun RealPhotoFeedPage(
                             bottomOverlayPadding = if (selectionState.isInSelectionMode) 88.dp else 0.dp,
                             onSelectionStateChange = onSelectionStateChange,
                             onOpenViewer = onOpenViewer,
+                            scrollTrigger = scrollTrigger,
                         )
 
                         androidx.compose.animation.AnimatedVisibility(

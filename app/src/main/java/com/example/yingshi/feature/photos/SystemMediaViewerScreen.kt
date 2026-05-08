@@ -3,6 +3,7 @@
 import android.app.Activity
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -289,6 +290,14 @@ fun SystemMediaViewerScreen(
         onDispose { }
     }
 
+    BackHandler {
+        viewerItems.getOrNull(currentIndex)?.let { item ->
+            LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = item.id
+        }
+        LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
+        onBack()
+    }
+
     LaunchedEffect(bridgeMutationEvent.version) {
         if (bridgeMutationEvent.version <= 0) return@LaunchedEffect
         val nextItems = LocalSystemMediaBridgeRepository.applyOverlay(viewerItems)
@@ -321,7 +330,13 @@ fun SystemMediaViewerScreen(
                 totalCount = viewerItems.size,
                 showMenu = currentItem != null,
                 overlaysVisible = !zoomState.isZoomed,
-                onBack = onBack,
+                onBack = {
+                    viewerItems.getOrNull(currentIndex)?.let { item ->
+                        LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = item.id
+                    }
+                    LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
+                    onBack()
+                },
                 onOpenMenu = { showMenuSheet = true },
             )
 

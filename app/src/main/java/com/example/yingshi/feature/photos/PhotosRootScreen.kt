@@ -1,4 +1,4 @@
-package com.example.yingshi.feature.photos
+﻿package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -84,10 +84,12 @@ fun PhotosRootScreen(
     onOpenTransferCenter: () -> Unit = { },
     onOpenCreatePost: (CreatePostRoute) -> Unit = { },
     onOpenNotifications: () -> Unit = { },
+    photoFeedScrollTrigger: Int = 0,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val notificationUnreadCount = FakeNotificationRepository.unreadCount()
+    val transferAttentionCount = LocalSystemMediaBridgeRepository.remainingUploadTaskCount()
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
     }
@@ -246,6 +248,7 @@ fun PhotosRootScreen(
             PhotoTopBar(
                 selectedSection = selectedSection,
                 notificationUnreadCount = notificationUnreadCount,
+                transferAttentionCount = transferAttentionCount,
                 selectionState = if (selectedSection == PhotosTopDestination.PHOTOS) {
                     photoSelectionState
                 } else {
@@ -271,6 +274,7 @@ fun PhotosRootScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 beyondViewportPageCount = 1,
+                userScrollEnabled = !isPhotoSelectionMode,
                 key = { page -> PhotosTopDestination.entries[page].name },
             ) { page ->
                 key(backendSessionKey, PhotosTopDestination.entries[page].name) {
@@ -283,6 +287,7 @@ fun PhotosRootScreen(
                                     onSelectionStateChange = { photoSelectionState = it },
                                     onOpenViewer = onOpenViewer,
                                     onOpenCreatePost = onOpenCreatePost,
+                                    scrollTrigger = photoFeedScrollTrigger,
                                 )
                             } else {
                                 val feedItems = FakePhotoFeedRepository.getPhotoFeed()
@@ -298,6 +303,7 @@ fun PhotosRootScreen(
                                         },
                                         onSelectionStateChange = { photoSelectionState = it },
                                         onOpenViewer = onOpenViewer,
+                                        scrollTrigger = photoFeedScrollTrigger,
                                     )
 
                                     androidx.compose.animation.AnimatedVisibility(
@@ -391,6 +397,7 @@ fun PhotosRootScreen(
 private fun PhotoTopBar(
     selectedSection: PhotosTopDestination,
     notificationUnreadCount: Int,
+    transferAttentionCount: Int,
     selectionState: PhotoFeedSelectionState,
     onCancelSelection: () -> Unit,
     onSelected: (Int) -> Unit,
@@ -446,14 +453,15 @@ private fun PhotoTopBar(
                 contentDescription = "系统媒体",
                 onClick = onOpenSystemMedia,
             )
-            PhotoBellButton(
-                unreadCount = notificationUnreadCount,
-                onClick = onOpenNotifications,
-            )
             PhotoIconToolButton(
                 symbol = "\u21C5",
                 contentDescription = "传输中心",
+                badgeCount = transferAttentionCount,
                 onClick = onOpenTransferCenter,
+            )
+            PhotoBellButton(
+                unreadCount = notificationUnreadCount,
+                onClick = onOpenNotifications,
             )
         }
     }
@@ -572,6 +580,7 @@ private fun PhotoTopToolButton(
 private fun PhotoIconToolButton(
     symbol: String,
     contentDescription: String,
+    badgeCount: Int = 0,
     onClick: () -> Unit,
 ) {
     val radius = YingShiThemeTokens.radius
@@ -597,6 +606,22 @@ private fun PhotoIconToolButton(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (badgeCount > 0) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 0.dp, end = 0.dp),
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text(
+                        text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
         }
     }
 }

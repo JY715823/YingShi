@@ -223,3 +223,12 @@ private data class YearGroup(
     val year: Int,
     val items: List<PhotoFeedItem>,
 )
+
+internal fun findBlockIndexForMedia(
+    blocks: List<PhotoFeedBlock>,
+    mediaId: String,
+): Int {
+    return blocks.indexOfFirst { block ->
+        block is PhotoFeedGridRow && block.items.any { it.mediaId == mediaId }
+    }
+}

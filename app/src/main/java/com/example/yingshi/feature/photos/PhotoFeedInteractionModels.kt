@@ -26,6 +26,18 @@ data class PhotoFeedSelectionState(
         }
     }
 
+    fun selectMultiple(ids: Set<String>): PhotoFeedSelectionState {
+        return copy(selectedMediaIds = selectedMediaIds + ids)
+    }
+
+    fun deselectMultiple(ids: Set<String>): PhotoFeedSelectionState {
+        return copy(selectedMediaIds = selectedMediaIds - ids)
+    }
+
+    fun selectAll(ids: Set<String>): PhotoFeedSelectionState {
+        return copy(selectedMediaIds = ids)
+    }
+
     fun clear(): PhotoFeedSelectionState = PhotoFeedSelectionState()
 }
 

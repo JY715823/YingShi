@@ -4,6 +4,17 @@
 - Android repo: `YingShi`
 - paired backend repo: `yingshi-server`
 
+## Stage 12.7 Hotfix
+
+Current verification focus:
+
+1. Transfer center badge reflects pending / uploading / retryable tasks.
+2. Batch upload finishes with one summary toast only.
+3. Transfer center stays before notification center in the top-right action order.
+4. App photo feed and system media time scrubbers only drag from the thumb, not the track.
+5. System media is grouped by time and still supports multi-select, import, create post, and add-to-post flows.
+6. Trash `24h可撤销` stays in the same chip row and no longer opens a full-screen page.
+
 ## Stage 12.5 Viewer Checks
 
 1. 在 `REAL` 图片 Viewer 中确认预览图优先级为 `thumbnailUrl -> mediaUrl -> originalUrl`。

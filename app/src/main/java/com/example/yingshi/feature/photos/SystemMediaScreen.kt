@@ -15,10 +15,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -61,11 +63,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -85,11 +90,13 @@ import coil.request.ImageRequest
 import coil.size.Precision
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -105,6 +112,7 @@ fun SystemMediaScreen(
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit,
     onOpenCreatePost: (CreatePostRoute) -> Unit,
     modifier: Modifier = Modifier,
+    scrollTrigger: Int = 0,
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext as Application
@@ -183,21 +191,69 @@ fun SystemMediaScreen(
             uiState.filteredItems.take(renderedCount.coerceAtMost(uiState.filteredItems.size))
         }
     }
-    val currentScrollProgress by remember(gridState, uiState.filteredItems.size) {
+    val gridBlocks = remember(visibleItems) {
+        buildSystemMediaGridBlocks(visibleItems)
+    }
+    val systemRowMapping = remember(gridBlocks, density.columns) {
+        val mediaToRow = mutableMapOf<String, String>()
+        val rowToMedia = mutableMapOf<String, MutableList<String>>()
+        var mediaInRow = 0
+        var rowIndex = 0
+        gridBlocks.forEach { block ->
+            if (block is SystemMediaGridBlock.Media) {
+                val rowKey = "sys-row-$rowIndex"
+                mediaToRow[block.item.id] = rowKey
+                rowToMedia.getOrPut(rowKey) { mutableListOf() }.add(block.item.id)
+                mediaInRow++
+                if (mediaInRow >= density.columns) {
+                    mediaInRow = 0
+                    rowIndex++
+                }
+            }
+        }
+        Pair(mediaToRow, rowToMedia.mapValues { it.value.toList() })
+    }
+    val hitTestAdapter = remember(gridState, gridBlocks, systemRowMapping) {
+        val (mediaToRow, rowToMedia) = systemRowMapping
+        MultiSelectHitTestAdapter(
+            hitTest = { touchPos ->
+                val layout = gridState.layoutInfo
+                for (vi in layout.visibleItemsInfo) {
+                    if (touchPos.x.toInt() in vi.offset.x until (vi.offset.x + vi.size.width) &&
+                        touchPos.y.toInt() in vi.offset.y until (vi.offset.y + vi.size.height)
+                    ) {
+                        val block = gridBlocks.getOrNull(vi.index) as? SystemMediaGridBlock.Media
+                            ?: return@MultiSelectHitTestAdapter null
+                        MultiSelectHitResult(
+                            mediaId = block.item.id,
+                            rowKey = mediaToRow[block.item.id],
+                            isSelectable = true,
+                        )
+                    }
+                }
+                null
+            },
+            mediaIdsInRow = { rowKey -> rowToMedia[rowKey].orEmpty() },
+        )
+    }
+    var trailPosition by remember { mutableStateOf<Offset?>(null) }
+    var isGestureActive by remember { mutableStateOf(false) }
+    val currentScrollProgress by remember(gridState, gridBlocks, uiState.filteredItems.size) {
         derivedStateOf {
             calculateSystemMediaScrollProgress(
                 gridState = gridState,
+                blocks = gridBlocks,
                 itemCount = uiState.filteredItems.size,
             )
         }
     }
-    val currentScrubberLabel by remember(gridState, uiState.filteredItems) {
+    val currentScrubberLabel by remember(gridState, gridBlocks, uiState.filteredItems) {
         derivedStateOf {
-            uiState.filteredItems
-                .getOrNull(gridState.firstVisibleItemIndex.coerceAtLeast(0))
-                ?.toSystemMediaScrubberLabel()
-                ?: uiState.filteredItems.firstOrNull()?.toSystemMediaScrubberLabel()
-                ?: ""
+            resolveCurrentSystemMediaVisibleLabel(
+                itemIndex = gridState.firstVisibleItemIndex,
+                blocks = gridBlocks,
+                fallbackItems = uiState.filteredItems,
+            )
         }
     }
     val displayedScrubberProgress = if (scrubberInteracting) {
@@ -223,6 +279,22 @@ fun SystemMediaScreen(
             }
         }
     }
+    LaunchedEffect(
+        scrollTrigger,
+        uiState.filteredItems,
+        density.columns,
+    ) {
+        val mediaId = LocalSystemMediaPageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
+        val targetIndex = uiState.filteredItems.indexOfFirst { it.id == mediaId }
+        LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
+        LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
+        if (targetIndex < 0) return@LaunchedEffect
+        if (targetIndex in gridState.layoutInfo.visibleItemsInfo.map { it.index }) return@LaunchedEffect
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() }
+            .first { it }
+        gridState.scrollToItem(targetIndex)
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -333,10 +405,10 @@ fun SystemMediaScreen(
         }
     }
 
-    LaunchedEffect(gridState, visibleItems.size, uiState.filteredItems.size) {
+    LaunchedEffect(gridState, gridBlocks.size, uiState.filteredItems.size) {
         snapshotFlow {
             val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            lastVisibleIndex >= (visibleItems.lastIndex - 18).coerceAtLeast(0)
+            lastVisibleIndex >= (gridBlocks.lastIndex - 24).coerceAtLeast(0)
         }.collectLatest { shouldLoadMore ->
             if (shouldLoadMore && renderedCount < uiState.filteredItems.size) {
                 renderedCount = (renderedCount + SystemMediaRenderPageSize)
@@ -466,46 +538,91 @@ fun SystemMediaScreen(
                                 levels = PhotoFeedDensity.entries.toList(),
                                 currentLevel = density,
                                 onLevelChange = updateDensity,
+                            )
+                            .multiSelectSwipeGesture(
+                                enabled = selectionMode,
+                                hitTestAdapter = hitTestAdapter,
+                                selectedIds = selectedIdSet,
+                                onSelectionChange = { newIds ->
+                                    selectedIds = newIds.toList()
+                                },
+                                onGestureActiveChanged = { isGestureActive = it },
+                                onTouchPositionChanged = { trailPosition = it },
                             ),
                     ) {
+                        if (isGestureActive && trailPosition != null) {
+                            Canvas(modifier = Modifier.matchParentSize()) {
+                                drawCircle(
+                                    color = Color(0xFF3B82F6).copy(alpha = 0.15f),
+                                    radius = 28.dp.toPx(),
+                                    center = trailPosition!!,
+                                )
+                            }
+                        }
+
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(density.columns),
                             state = gridState,
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(1.dp),
-                            horizontalArrangement = Arrangement.spacedBy(1.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                             contentPadding = PaddingValues(bottom = 112.dp),
                         ) {
                             items(
-                                items = visibleItems,
-                                key = { it.id },
-                                contentType = { "${it.type}-${density.columns}" },
-                            ) { item ->
-                                SystemMediaCard(
-                                    item = item,
-                                    selectionMode = selectionMode,
-                                    selected = selectedIdSet.contains(item.id),
-                                    onClick = {
-                                        if (selectionMode) {
-                                            selectedIds = selectedIds.toggleSystemMediaId(item.id)
-                                            if (selectedIds.isEmpty()) {
-                                                selectionMode = false
-                                            }
-                                        } else {
-                                            onOpenViewer(
-                                                SystemMediaViewerRoute(
-                                                    mediaItems = uiState.filteredItems,
-                                                    initialIndex = uiState.filteredItems.indexOfFirst { it.id == item.id }
-                                                        .coerceAtLeast(0),
-                                                ),
-                                            )
-                                        }
-                                    },
-                                    onLongPress = {
-                                        selectionMode = true
-                                        selectedIds = selectedIds.toggleSystemMediaId(item.id)
-                                    },
-                                )
+                                items = gridBlocks,
+                                key = { it.key },
+                                span = { block ->
+                                    when (block) {
+                                        is SystemMediaGridBlock.Media -> GridItemSpan(1)
+                                        is SystemMediaGridBlock.MonthHeader,
+                                        is SystemMediaGridBlock.DayHeader,
+                                        -> GridItemSpan(maxLineSpan)
+                                    }
+                                },
+                                contentType = { block ->
+                                    when (block) {
+                                        is SystemMediaGridBlock.MonthHeader -> "system-month"
+                                        is SystemMediaGridBlock.DayHeader -> "system-day"
+                                        is SystemMediaGridBlock.Media -> "${block.item.type}-${density.columns}"
+                                    }
+                                },
+                            ) { block ->
+                                when (block) {
+                                    is SystemMediaGridBlock.MonthHeader -> {
+                                        SystemMediaMonthHeaderRow(title = block.title)
+                                    }
+                                    is SystemMediaGridBlock.DayHeader -> {
+                                        SystemMediaDayHeaderRow(title = block.title)
+                                    }
+                                    is SystemMediaGridBlock.Media -> {
+                                        val item = block.item
+                                        SystemMediaCard(
+                                            item = item,
+                                            selectionMode = selectionMode,
+                                            selected = selectedIdSet.contains(item.id),
+                                            onClick = {
+                                                if (selectionMode) {
+                                                    selectedIds = selectedIds.toggleSystemMediaId(item.id)
+                                                    if (selectedIds.isEmpty()) {
+                                                        selectionMode = false
+                                                    }
+                                                } else {
+                                                    onOpenViewer(
+                                                        SystemMediaViewerRoute(
+                                                            mediaItems = uiState.filteredItems,
+                                                            initialIndex = uiState.filteredItems.indexOfFirst { it.id == item.id }
+                                                                .coerceAtLeast(0),
+                                                        ),
+                                                    )
+                                                }
+                                            },
+                                            onLongPress = {
+                                                selectionMode = true
+                                                selectedIds = selectedIds.toggleSystemMediaId(item.id)
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -527,20 +644,35 @@ fun SystemMediaScreen(
                                         .roundToInt()
                                         .coerceIn(0, (uiState.filteredItems.size - 1).coerceAtLeast(0))
                                     scrubberDragProgress = progress.coerceIn(0f, 1f)
-                                    scrubberDragLabel = uiState.filteredItems
-                                        .getOrNull(targetIndex)
-                                        ?.toSystemMediaScrubberLabel()
-                                        .orEmpty()
+                                    val targetItem = uiState.filteredItems.getOrNull(targetIndex)
+                                    scrubberDragLabel = targetItem?.toSystemMediaScrubberLabel().orEmpty()
                                     if (targetIndex == lastRequestedScrubberIndex) {
                                         return@SystemMediaTimeScrubber
                                     }
                                     lastRequestedScrubberIndex = targetIndex
-                                    if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
-                                        renderedCount = (targetIndex + SystemMediaRenderPageSize)
+                                    val nextRenderedCount = if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
+                                        (targetIndex + SystemMediaRenderPageSize)
                                             .coerceAtMost(uiState.filteredItems.size)
+                                    } else {
+                                        renderedCount
                                     }
+                                    if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
+                                        renderedCount = nextRenderedCount
+                                    }
+                                    val targetBlocks = if (nextRenderedCount != visibleItems.size) {
+                                        buildSystemMediaGridBlocks(uiState.filteredItems.take(nextRenderedCount))
+                                    } else {
+                                        gridBlocks
+                                    }
+                                    val targetBlockIndex = targetItem
+                                        ?.let { item -> targetBlocks.indexOfFirst { block -> block is SystemMediaGridBlock.Media && block.item.id == item.id } }
+                                        ?.takeIf { it >= 0 }
+                                        ?: 0
                                     coroutineScope.launch {
-                                        gridState.scrollToItem(targetIndex)
+                                        if (nextRenderedCount != visibleItems.size) {
+                                            delay(16)
+                                        }
+                                        gridState.scrollToItem(targetBlockIndex)
                                     }
                                 },
                                 onInteractingChanged = { interacting ->
@@ -788,7 +920,7 @@ private fun SystemMediaCard(
                     .fillMaxSize()
                     .background(
                         if (selected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                            Color(0xFF3B82F6).copy(alpha = 0.12f)
                         } else {
                             Color.Black.copy(alpha = 0.04f)
                         },
@@ -827,8 +959,8 @@ private fun SystemMediaCard(
             SystemMediaSelectionBadge(
                 selected = selected,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(7.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp),
             )
         }
     }
@@ -1014,20 +1146,17 @@ private fun SystemMediaSelectionBadge(
     selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val blueColor = Color(0xFF3B82F6)
     Box(
         modifier = modifier
             .size(24.dp)
             .clip(CircleShape)
             .background(
-                if (selected) {
-                    Color.White.copy(alpha = 0.98f)
-                } else {
-                    Color.Black.copy(alpha = 0.10f)
-                },
+                if (selected) blueColor else Color.Black.copy(alpha = 0.10f),
             )
             .border(
                 width = 1.5.dp,
-                color = Color.White.copy(alpha = if (selected) 0.98f else 0.88f),
+                color = if (selected) blueColor else Color.White.copy(alpha = 0.88f),
                 shape = CircleShape,
             ),
         contentAlignment = Alignment.Center,
@@ -1036,10 +1165,53 @@ private fun SystemMediaSelectionBadge(
             Text(
                 text = "✓",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                color = MaterialTheme.colorScheme.primary,
+                color = Color.White,
             )
         }
     }
+}
+
+private sealed interface SystemMediaGridBlock {
+    val key: String
+
+    data class MonthHeader(
+        override val key: String,
+        val title: String,
+    ) : SystemMediaGridBlock
+
+    data class DayHeader(
+        override val key: String,
+        val title: String,
+    ) : SystemMediaGridBlock
+
+    data class Media(
+        override val key: String,
+        val item: SystemMediaItem,
+    ) : SystemMediaGridBlock
+}
+
+@Composable
+private fun SystemMediaMonthHeaderRow(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 28.dp, bottom = 10.dp),
+        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.onBackground,
+    )
+}
+
+@Composable
+private fun SystemMediaDayHeaderRow(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp, bottom = 8.dp),
+        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -1053,39 +1225,41 @@ private fun SystemMediaTimeScrubber(
 ) {
     val density = LocalDensity.current
     val spacing = YingShiThemeTokens.spacing
-    val thumbWidth = 14.dp
-    val thumbHeight = 72.dp
+    val thumbWidth = 22.dp
+    val thumbHeight = 76.dp
+    val endMargin = 8.dp
+
     var scrubberHeightPx by remember { mutableIntStateOf(0) }
     var labelHeightPx by remember { mutableIntStateOf(0) }
     var scrubberLabelWidthPx by remember { mutableIntStateOf(0) }
     var lastDispatchedProgress by remember { mutableStateOf(Float.NaN) }
-    val thumbHeightPx = with(density) { thumbHeight.roundToPx() }
+    var dragStartProgress by remember { mutableStateOf(0f) }
+    var dragAccumulatedPx by remember { mutableStateOf(0f) }
+    val latestProgress by rememberUpdatedState(progress.coerceIn(0f, 1f))
+    val latestOnSeekToProgress by rememberUpdatedState(onSeekToProgress)
+    val latestOnInteractingChanged by rememberUpdatedState(onInteractingChanged)
     val thumbWidthPx = with(density) { thumbWidth.roundToPx() }
+    val thumbHeightPx = with(density) { thumbHeight.roundToPx() }
+    val endMarginPx = with(density) { endMargin.roundToPx() }
     val labelGapPx = with(density) { 12.dp.roundToPx() }
     val travelHeightPx = (scrubberHeightPx - thumbHeightPx).coerceAtLeast(1)
-    val thumbTopPx = (travelHeightPx * progress.coerceIn(0f, 1f)).roundToInt()
+    val normalizedProgress = progress.coerceIn(0f, 1f)
+    val thumbTopPx = (travelHeightPx * normalizedProgress).roundToInt()
     val labelTopPx = (thumbTopPx + (thumbHeightPx / 2) - (labelHeightPx / 2))
         .coerceIn(0, (scrubberHeightPx - labelHeightPx).coerceAtLeast(0))
 
-    fun dispatchProgress(offsetY: Float) {
-        if (scrubberHeightPx <= 0) return
-        val nextProgress = ((offsetY - (thumbHeightPx / 2f)) / travelHeightPx.toFloat())
-            .coerceIn(0f, 1f)
-        if (!lastDispatchedProgress.isNaN() && abs(lastDispatchedProgress - nextProgress) < 0.01f) {
-            return
-        }
-        lastDispatchedProgress = nextProgress
-        onSeekToProgress(nextProgress)
-    }
-
-    Box(modifier = modifier.fillMaxWidth()) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { scrubberHeightPx = it.height },
+    ) {
         androidx.compose.animation.AnimatedVisibility(
             visible = showLabel && label.isNotBlank(),
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .offset { IntOffset(x = -(scrubberLabelWidthPx + thumbWidthPx + labelGapPx), y = labelTopPx) },
+                .offset { IntOffset(x = -(scrubberLabelWidthPx + thumbWidthPx + endMarginPx + labelGapPx), y = labelTopPx) },
         ) {
             Surface(
                 shape = RoundedCornerShape(999.dp),
@@ -1111,35 +1285,82 @@ private fun SystemMediaTimeScrubber(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .onSizeChanged { scrubberHeightPx = it.height }
-                .offset { IntOffset(x = 0, y = thumbTopPx) }
+                .offset { IntOffset(x = -endMarginPx, y = thumbTopPx) }
                 .size(width = thumbWidth, height = thumbHeight)
                 .clip(RoundedCornerShape(999.dp))
                 .background(Color.White.copy(alpha = 0.96f))
                 .pointerInput(scrubberHeightPx) {
-                    var dragOffsetY = 0f
-                    detectVerticalDragGestures(
-                        onDragStart = { offset ->
-                            onInteractingChanged(true)
-                            dragOffsetY = thumbTopPx.toFloat() + offset.y
-                            dispatchProgress(dragOffsetY)
+                    detectDragGestures(
+                        onDragStart = {
+                            latestOnInteractingChanged(true)
+                            dragStartProgress = latestProgress
+                            dragAccumulatedPx = 0f
+                            lastDispatchedProgress = Float.NaN
                         },
-                        onVerticalDrag = { _, dragAmount ->
-                            dragOffsetY += dragAmount
-                            dispatchProgress(dragOffsetY)
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            dragAccumulatedPx += dragAmount.y
+                            val nextProgress = (dragStartProgress + (dragAccumulatedPx / travelHeightPx.toFloat()))
+                                .coerceIn(0f, 1f)
+                            if (!lastDispatchedProgress.isNaN() && abs(lastDispatchedProgress - nextProgress) < 0.005f) {
+                                return@detectDragGestures
+                            }
+                            lastDispatchedProgress = nextProgress
+                            latestOnSeekToProgress(nextProgress)
                         },
                         onDragEnd = {
                             lastDispatchedProgress = Float.NaN
-                            onInteractingChanged(false)
+                            latestOnInteractingChanged(false)
                         },
                         onDragCancel = {
                             lastDispatchedProgress = Float.NaN
-                            onInteractingChanged(false)
+                            latestOnInteractingChanged(false)
                         },
                     )
                 },
-        )
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 10.dp)
+                    .size(8.dp),
+            ) {
+                val w = size.width
+                val h = size.height
+                val path = Path().apply {
+                    moveTo(w / 2f, 0f)
+                    lineTo(0f, h)
+                    lineTo(w, h)
+                    close()
+                }
+                drawPath(path, color = Color.Black.copy(alpha = 0.7f))
+            }
 
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(width = 14.dp, height = 6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.Gray.copy(alpha = 0.55f)),
+            )
+
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .size(8.dp),
+            ) {
+                val w = size.width
+                val h = size.height
+                val path = Path().apply {
+                    moveTo(0f, 0f)
+                    lineTo(w, 0f)
+                    lineTo(w / 2f, h)
+                    close()
+                }
+                drawPath(path, color = Color.Black.copy(alpha = 0.7f))
+            }
+        }
     }
 }
 
@@ -1231,22 +1452,109 @@ private fun List<String>.toggleSystemMediaId(id: String): List<String> {
 
 private fun calculateSystemMediaScrollProgress(
     gridState: LazyGridState,
+    blocks: List<SystemMediaGridBlock>,
     itemCount: Int,
 ): Float {
     if (itemCount <= 1) return 0f
     val layoutInfo = gridState.layoutInfo
     val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull() ?: return 0f
     val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).coerceAtLeast(1)
-    val visibleItemCount = layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
-    val scrollableStart = (itemCount - visibleItemCount).coerceAtLeast(1)
+    val visibleMediaCount = layoutInfo.visibleItemsInfo
+        .count { visible -> blocks.getOrNull(visible.index) is SystemMediaGridBlock.Media }
+        .coerceAtLeast(1)
+    val scrollableStart = (itemCount - visibleMediaCount).coerceAtLeast(1)
+    val firstMediaOrdinal = blocks
+        .take((firstVisible.index + 1).coerceAtMost(blocks.size))
+        .count { it is SystemMediaGridBlock.Media }
+        .coerceAtLeast(1) - 1
     val offsetFraction = ((-firstVisible.offset.y).toFloat() / maxOf(firstVisible.size.height, viewportHeight).toFloat())
         .coerceIn(0f, 1f)
-    return ((gridState.firstVisibleItemIndex + offsetFraction) / scrollableStart.toFloat())
+    return ((firstMediaOrdinal + offsetFraction) / scrollableStart.toFloat())
         .coerceIn(0f, 1f)
 }
 
 private fun SystemMediaItem.toSystemMediaScrubberLabel(): String {
     return SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(Date(displayTimeMillis))
+}
+
+private fun buildSystemMediaGridBlocks(items: List<SystemMediaItem>): List<SystemMediaGridBlock> {
+    if (items.isEmpty()) return emptyList()
+    val monthFormat = SimpleDateFormat("yyyy年M月", Locale.CHINA)
+    val monthKeyFormat = SimpleDateFormat("yyyy-MM", Locale.CHINA)
+    val dayKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+    val blocks = mutableListOf<SystemMediaGridBlock>()
+    var lastMonthKey: String? = null
+    var lastDayKey: String? = null
+
+    items.forEach { item ->
+        val date = Date(item.displayTimeMillis)
+        val monthKey = monthKeyFormat.format(date)
+        if (monthKey != lastMonthKey) {
+            blocks += SystemMediaGridBlock.MonthHeader(
+                key = "system-month-$monthKey",
+                title = monthFormat.format(date),
+            )
+            lastMonthKey = monthKey
+            lastDayKey = null
+        }
+        val dayKey = dayKeyFormat.format(date)
+        if (dayKey != lastDayKey) {
+            blocks += SystemMediaGridBlock.DayHeader(
+                key = "system-day-$dayKey",
+                title = formatSystemMediaDayHeader(item.displayTimeMillis),
+            )
+            lastDayKey = dayKey
+        }
+        blocks += SystemMediaGridBlock.Media(
+            key = "system-media-${item.id}",
+            item = item,
+        )
+    }
+    return blocks
+}
+
+private fun resolveCurrentSystemMediaVisibleLabel(
+    itemIndex: Int,
+    blocks: List<SystemMediaGridBlock>,
+    fallbackItems: List<SystemMediaItem>,
+): String {
+    if (blocks.isEmpty()) {
+        return fallbackItems.firstOrNull()?.toSystemMediaScrubberLabel().orEmpty()
+    }
+    val safeIndex = itemIndex.coerceIn(0, blocks.lastIndex)
+    val nextMedia = blocks
+        .drop(safeIndex)
+        .firstOrNull { it is SystemMediaGridBlock.Media } as? SystemMediaGridBlock.Media
+    val previousMedia = blocks
+        .take(safeIndex + 1)
+        .lastOrNull { it is SystemMediaGridBlock.Media } as? SystemMediaGridBlock.Media
+    return nextMedia?.item?.toSystemMediaScrubberLabel()
+        ?: previousMedia?.item?.toSystemMediaScrubberLabel()
+        ?: fallbackItems.firstOrNull()?.toSystemMediaScrubberLabel()
+        ?: ""
+}
+
+private fun formatSystemMediaDayHeader(timeMillis: Long): String {
+    val target = Calendar.getInstance(Locale.CHINA).apply {
+        timeInMillis = timeMillis
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val today = Calendar.getInstance(Locale.CHINA).apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val yesterday = today.clone() as Calendar
+    yesterday.add(Calendar.DAY_OF_YEAR, -1)
+    return when (target.timeInMillis) {
+        today.timeInMillis -> "今天"
+        yesterday.timeInMillis -> "昨天"
+        else -> SimpleDateFormat("M月d日", Locale.CHINA).format(Date(timeMillis))
+    }
 }
 
 @Preview(showBackground = true)

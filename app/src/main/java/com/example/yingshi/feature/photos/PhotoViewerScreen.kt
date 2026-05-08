@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,18 +31,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -49,10 +57,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -85,6 +95,7 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -274,6 +285,7 @@ fun PhotoViewerScreen(
     route: PhotoViewerRoute,
     onBack: () -> Unit,
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = {},
+    onOpenCreatePost: (CreatePostRoute) -> Unit = {},
     onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -301,8 +313,10 @@ fun PhotoViewerScreen(
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
+    var showAddToExistingPostPicker by remember { mutableStateOf(false) }
     var openCommentComposerOnSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showTimeEditorSheet by remember { mutableStateOf(false) }
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
@@ -413,6 +427,7 @@ fun PhotoViewerScreen(
         showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
+        showTimeEditorSheet = false
         openCommentComposerOnSheet = false
         videoPlaybackState = ViewerVideoPlaybackState(
             mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
@@ -429,6 +444,15 @@ fun PhotoViewerScreen(
     }
     BackHandler(enabled = showRelatedPostsSheet) {
         showRelatedPostsSheet = false
+    }
+    BackHandler(enabled = showTimeEditorSheet) {
+        showTimeEditorSheet = false
+    }
+    BackHandler(enabled = !zoomState.isZoomed && !showCommentPreview && commentPanelState == null && !showRelatedPostsSheet && !showTimeEditorSheet) {
+        PhotoFeedPageStateStore.pendingScrollTargetMediaId =
+            viewerItems.getOrNull(currentIndex)?.mediaId
+        PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
+        onBack()
     }
     ViewerStatusBarEffect()
 
@@ -577,10 +601,27 @@ fun PhotoViewerScreen(
         }
 
         PhotoViewerTopBar(
-            onBack = onBack,
+            onBack = {
+                PhotoFeedPageStateStore.pendingScrollTargetMediaId =
+                    viewerItems.getOrNull(currentIndex)?.mediaId
+                PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
+                onBack()
+            },
             timeLabel = overlayUiModel.timeLabel,
-            showDeleteAction = !route.showPostSegments,
+            onShare = {
+                Toast.makeText(context, "分享功能先保留占位。", Toast.LENGTH_SHORT).show()
+            },
+            onEditTime = { showTimeEditorSheet = true },
             onDelete = { showDeleteConfirm = true },
+            onOpenRelatedPosts = { showRelatedPostsSheet = true },
+            onCreatePost = {
+                onOpenCreatePost(
+                    CreatePostRoute(
+                        source = "photo-viewer-menu",
+                        initialAppMediaIds = listOf(currentItem.mediaId),
+                    ),
+                )
+            },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -682,18 +723,6 @@ fun PhotoViewerScreen(
                         }
                     }
                 },
-                onOpenRelatedPosts = {
-                    if (overlayUiModel.relatedPosts.size > 1) {
-                        showRelatedPostsSheet = true
-                    } else {
-                        val post = overlayUiModel.relatedPosts.firstOrNull()
-                        if (post == null) {
-                            Toast.makeText(context, "当前媒体暂无所属帖子", Toast.LENGTH_SHORT).show()
-                        } else {
-                            onOpenPostDetail(post.route)
-                        }
-                    }
-                },
             )
         }
 
@@ -743,7 +772,135 @@ fun PhotoViewerScreen(
                     showRelatedPostsSheet = false
                     onOpenPostDetail(post.route)
                 },
+                onAddToExistingPost = {
+                    showRelatedPostsSheet = false
+                    showAddToExistingPostPicker = true
+                },
                 onDismiss = { showRelatedPostsSheet = false },
+            )
+        }
+
+        if (showAddToExistingPostPicker) {
+            val mode = RepositoryProvider.currentMode
+            var pickerAlbums by remember { mutableStateOf<List<AlbumSummaryUiModel>>(emptyList()) }
+            var pickerPosts by remember { mutableStateOf<List<AlbumPostCardUiModel>>(emptyList()) }
+            var pickerLoading by remember { mutableStateOf(true) }
+
+            LaunchedEffect(mode) {
+                pickerLoading = true
+                if (mode == RepositoryMode.FAKE) {
+                    pickerAlbums = FakeAlbumRepository.getAlbums()
+                    pickerPosts = FakeAlbumRepository.getPosts()
+                } else {
+                    when (val albumResult = RepositoryProvider.albumRepository.getAlbums()) {
+                        is ApiResult.Success -> {
+                            pickerAlbums = albumResult.data.map { it.toAlbumSummaryUiModel() }
+                            val loadedPosts = mutableListOf<AlbumPostCardUiModel>()
+                            for (album in albumResult.data) {
+                                when (val postResult = RepositoryProvider.albumRepository.getAlbumPosts(album.albumId)) {
+                                    is ApiResult.Success -> {
+                                        postResult.data.forEach { post ->
+                                            loadedPosts.add(
+                                                post.toAlbumPostCardUiModel(
+                                                    selectedAlbumId = album.albumId,
+                                                ),
+                                            )
+                                        }
+                                    }
+                                    else -> { /* skip albums whose posts fail to load */ }
+                                }
+                            }
+                            pickerPosts = loadedPosts
+                        }
+                        else -> {
+                            pickerAlbums = emptyList()
+                            pickerPosts = emptyList()
+                        }
+                    }
+                }
+                pickerLoading = false
+            }
+
+            if (pickerLoading) {
+                BackendLoadingCard(
+                    text = "正在加载相册与帖子…",
+                    fillWidth = true,
+                )
+            } else {
+                SystemMediaPostDestinationDialog(
+                    albums = pickerAlbums,
+                    posts = pickerPosts,
+                    onDismiss = { showAddToExistingPostPicker = false },
+                    onPostSelected = { postId ->
+                        showAddToExistingPostPicker = false
+                        if (mode == RepositoryMode.FAKE) {
+                            val mediaItem = currentItem
+                            val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
+                                postId = postId,
+                                mediaItems = listOf(mediaItem),
+                            )
+                            Toast.makeText(
+                                context,
+                                if (addedCount > 0) "已加入已有帖子。" else "该媒体已在目标帖子中。",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            coroutineScope.launch {
+                                when (val result = RepositoryProvider.postRepository.addMediaToPost(
+                                    postId = postId,
+                                    mediaIds = listOf(currentItem.mediaId),
+                                )) {
+                                    is ApiResult.Success -> {
+                                        Toast.makeText(context, "已加入已有帖子。", Toast.LENGTH_SHORT).show()
+                                    }
+                                    is ApiResult.Error -> {
+                                        Toast.makeText(
+                                            context,
+                                            result.toBackendUiMessage("加入失败，请稍后重试。"),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                    ApiResult.Loading -> Unit
+                                }
+                            }
+                        }
+                    },
+                )
+            }
+        }
+
+        if (showTimeEditorSheet) {
+            ViewerTimeEditorSheet(
+                initialTimeMillis = currentItem.mediaDisplayTimeMillis,
+                onDismiss = { showTimeEditorSheet = false },
+                onConfirm = { nextTimeMillis ->
+                    showTimeEditorSheet = false
+                    FakePhotoFeedRepository.updateMediaDisplayTime(
+                        mediaId = currentItem.mediaId,
+                        displayTimeMillis = nextTimeMillis,
+                    )
+                    MediaTimeOverrides.put(currentItem.mediaId, nextTimeMillis)
+                    // Trigger a real-backend refresh so the photo-feed re-maps with the new time
+                    notifyRealBackendContentChanged(mediaIds = setOf(currentItem.mediaId))
+                    val currentMediaId = currentItem.mediaId
+                    val nextItems = viewerItems
+                        .map { item ->
+                            if (item.mediaId == currentMediaId) {
+                                item.withViewerDisplayTime(nextTimeMillis)
+                            } else {
+                                item
+                            }
+                        }
+                        .sortedByDescending { it.mediaDisplayTimeMillis }
+                    viewerItems = nextItems
+                    coroutineScope.launch {
+                        val nextIndex = nextItems.indexOfFirst { it.mediaId == currentMediaId }
+                            .takeIf { it >= 0 }
+                            ?: currentIndex.coerceIn(0, nextItems.lastIndex)
+                        pagerState.scrollToPage(nextIndex)
+                    }
+                    Toast.makeText(context, "时间已修改", Toast.LENGTH_SHORT).show()
+                },
             )
         }
 
@@ -892,11 +1049,16 @@ private fun EmptyPhotoViewerScreen(
 private fun PhotoViewerTopBar(
     onBack: () -> Unit,
     timeLabel: String,
-    showDeleteAction: Boolean,
+    onShare: () -> Unit,
+    onEditTime: () -> Unit,
     onDelete: () -> Unit,
+    onOpenRelatedPosts: () -> Unit,
+    onCreatePost: () -> Unit,
     modifier: Modifier = Modifier,
     overlayAlpha: Float = 1f,
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier.alpha(overlayAlpha),
     ) {
@@ -921,17 +1083,59 @@ private fun PhotoViewerTopBar(
             modifier = Modifier.align(Alignment.TopCenter),
             surfaceAlpha = 0.06f,
             contentAlpha = 0.78f,
+            onClick = {},
         )
 
-        if (showDeleteAction) {
+        Box(
+            modifier = Modifier.align(Alignment.TopEnd),
+        ) {
             ViewerCapsule(
-                text = "🗑",
+                text = "≡",
                 emphasized = false,
-                modifier = Modifier.align(Alignment.TopEnd),
                 surfaceAlpha = 0.08f,
                 contentAlpha = 0.80f,
-                onClick = onDelete,
+                onClick = { menuExpanded = true },
             )
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(text = "分享") },
+                    onClick = {
+                        menuExpanded = false
+                        onShare()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "修改时间") },
+                    onClick = {
+                        menuExpanded = false
+                        onEditTime()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "删除媒体") },
+                    onClick = {
+                        menuExpanded = false
+                        onDelete()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "所属帖子") },
+                    onClick = {
+                        menuExpanded = false
+                        onOpenRelatedPosts()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = "新建帖子") },
+                    onClick = {
+                        menuExpanded = false
+                        onCreatePost()
+                    },
+                )
+            }
         }
     }
 }
@@ -1640,7 +1844,6 @@ private fun PhotoViewerEdgeActions(
     showCommentPreview: Boolean,
     onOpenComments: () -> Unit,
     onOpenOriginal: () -> Unit,
-    onOpenRelatedPosts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -1666,13 +1869,6 @@ private fun PhotoViewerEdgeActions(
                     emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
                     enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
                     onClick = onOpenOriginal,
-                )
-            }
-            overlayUiModel.relatedPostsLabel?.let { relatedPostsLabel ->
-                ViewerCapsule(
-                    text = relatedPostsLabel,
-                    emphasized = false,
-                    onClick = onOpenRelatedPosts,
                 )
             }
         }
@@ -2149,6 +2345,7 @@ private fun PhotoViewerCommentSheet(
 private fun ViewerRelatedPostsSheet(
     posts: List<ViewerRelatedPostUiModel>,
     onSelectPost: (ViewerRelatedPostUiModel) -> Unit,
+    onAddToExistingPost: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -2169,36 +2366,51 @@ private fun ViewerRelatedPostsSheet(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "选择所属帖子",
+                text = "所属帖子",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
             Text(
-                text = "当前媒体可能同时出现在多个帖子里，选择后会直接进入对应帖子。",
+                text = "查看当前媒体所属的帖子，或将其加入已有帖子。",
                 style = MaterialTheme.typography.labelMedium,
                 color = ViewerSurface.copy(alpha = 0.58f),
             )
-            posts.forEach { post ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(radius.lg))
-                        .background(ViewerSurface.copy(alpha = 0.08f))
-                        .clickable { onSelectPost(post) }
-                        .padding(horizontal = spacing.md, vertical = spacing.sm),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    Text(
-                        text = post.title,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = ViewerSurface.copy(alpha = 0.88f),
-                    )
-                    Text(
-                        text = post.subtitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ViewerSurface.copy(alpha = 0.58f),
-                    )
+            if (posts.isEmpty()) {
+                Text(
+                    text = "当前媒体还没有所属帖子。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ViewerSurface.copy(alpha = 0.66f),
+                )
+            } else {
+                posts.forEach { post ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(radius.lg))
+                            .background(ViewerSurface.copy(alpha = 0.08f))
+                            .clickable { onSelectPost(post) }
+                            .padding(horizontal = spacing.md, vertical = spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                    ) {
+                        Text(
+                            text = post.title,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = ViewerSurface.copy(alpha = 0.88f),
+                        )
+                        Text(
+                            text = post.subtitle,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = ViewerSurface.copy(alpha = 0.58f),
+                        )
+                    }
                 }
+            }
+            TextButton(onClick = onAddToExistingPost) {
+                Text(
+                    text = "加入已有帖子",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = ViewerSurface.copy(alpha = 0.92f),
+                )
             }
         }
     }
@@ -2349,6 +2561,33 @@ private suspend fun deleteRealViewerMedia(mediaId: String): String? {
         is ApiResult.Error -> result.toBackendUiMessage("删除真实媒体失败。")
         ApiResult.Loading -> null
     }
+}
+
+private fun buildViewerTimeMillis(
+    selectedDateMillis: Long,
+    hour: Int,
+    minute: Int,
+): Long {
+    return Calendar.getInstance(Locale.CHINA).run {
+        timeInMillis = selectedDateMillis
+        set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
+        set(Calendar.MINUTE, minute.coerceIn(0, 59))
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        timeInMillis
+    }
+}
+
+private fun PhotoFeedItem.withViewerDisplayTime(timeMillis: Long): PhotoFeedItem {
+    val calendar = Calendar.getInstance(Locale.CHINA).apply {
+        timeInMillis = timeMillis
+    }
+    return copy(
+        mediaDisplayTimeMillis = timeMillis,
+        displayYear = calendar.get(Calendar.YEAR),
+        displayMonth = calendar.get(Calendar.MONTH) + 1,
+        displayDay = calendar.get(Calendar.DAY_OF_MONTH),
+    )
 }
 
 private fun formatViewerTime(timeMillis: Long): String {
