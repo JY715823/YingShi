@@ -1383,7 +1383,7 @@ object LocalSystemMediaBridgeRepository {
             SystemMediaType.IMAGE
         }
         val displayName = resolvePickedDisplayName(context, index)
-        val (width, height, _) = resolvePickedMediaMetadata(context, this, type)
+        val (width, height, durationMillis) = resolvePickedMediaMetadata(context, this, type)
         val aspectRatio = resolvePickedMediaAspectRatio(width, height, type)
         val displayTimeMillis = resolvePickedMediaDisplayTimeMillis(context, index)
         val calendar = java.util.Calendar.getInstance(java.util.Locale.CHINA).apply {
@@ -1407,6 +1407,7 @@ object LocalSystemMediaBridgeRepository {
             aspectRatio = aspectRatio,
             palette = pickedPaletteFor(index, type),
             linkedPostIds = emptyList(),
+            videoDurationMillis = durationMillis,
         )
     }
 

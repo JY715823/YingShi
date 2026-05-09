@@ -7,6 +7,10 @@ internal data class ViewerVideoPlaybackState(
     val durationMillis: Long? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val isCompleted: Boolean = false,
+    val seekRequestMillis: Long? = null,
+    val seekRequestNonce: Int = 0,
+    val retryRequestNonce: Int = 0,
 )
 
 internal enum class ViewerImageFailureReason(
@@ -24,7 +28,8 @@ internal fun ViewerVideoPlaybackState.primaryStatusLabel(
     return when {
         missingUrl -> "暂无可播放的视频地址"
         errorMessage != null -> errorMessage
-        isLoading -> "视频加载中…"
+        isLoading -> "视频加载中"
+        isCompleted -> "视频播放结束"
         isPlaying -> "正在播放视频"
         else -> "视频已暂停"
     }
@@ -34,6 +39,7 @@ internal fun ViewerVideoPlaybackState.controlStatusLabel(): String {
     return when {
         errorMessage != null -> "播放失败"
         isLoading -> "加载中"
+        isCompleted -> "播放结束"
         isPlaying -> "播放中"
         else -> "已暂停"
     }
@@ -41,9 +47,13 @@ internal fun ViewerVideoPlaybackState.controlStatusLabel(): String {
 
 internal fun ViewerVideoPlaybackState.retryState(): ViewerVideoPlaybackState {
     return copy(
-        isPlaying = false,
+        isPlaying = true,
         progressMillis = 0L,
         isLoading = true,
         errorMessage = null,
+        isCompleted = false,
+        seekRequestMillis = 0L,
+        seekRequestNonce = seekRequestNonce + 1,
+        retryRequestNonce = retryRequestNonce + 1,
     )
 }

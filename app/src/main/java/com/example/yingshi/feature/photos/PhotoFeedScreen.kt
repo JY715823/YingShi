@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -90,6 +91,7 @@ fun PhotoFeedScreen(
     onSelectionStateChange: (PhotoFeedSelectionState) -> Unit = { },
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     scrollTrigger: Int = 0,
+    inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
@@ -120,6 +122,9 @@ fun PhotoFeedScreen(
     val density = PhotoFeedDensity.valueOf(
         densityName ?: settingsState.defaultPhotoFeedDensity.name,
     )
+    val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
+        !selectionState.isInSelectionMode &&
+        density.columns <= 4
     val blocks = remember(feedItems, density) {
         buildPhotoFeedBlocks(
             items = feedItems,
@@ -148,6 +153,61 @@ fun PhotoFeedScreen(
     }
     val listState = rememberLazyListState()
     val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
+    var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
+    var pausedInlineVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var inlineVideoProgressById by remember { mutableStateOf<Map<String, InlineVideoPlaybackProgress>>(emptyMap()) }
+    val visibleInlineVideoIds by remember(listState, blocks) {
+        derivedStateOf {
+            visiblePhotoFeedVideoIds(
+                listState = listState,
+                blocks = blocks,
+            )
+        }
+    }
+    val centeredInlineVideoId by remember(listState, blocks, density, spacingPx) {
+        derivedStateOf {
+            centeredPhotoFeedVideoId(
+                listState = listState,
+                blocks = blocks,
+                density = density,
+                colSpacingPx = spacingPx,
+            )
+        }
+    }
+    LaunchedEffect(inlineVideoAutoPlayAllowed) {
+        if (!inlineVideoAutoPlayAllowed) {
+            manualInlineVideoId = null
+        }
+    }
+    LaunchedEffect(visibleInlineVideoIds) {
+        val manualId = manualInlineVideoId
+        if (manualId != null && manualId !in visibleInlineVideoIds) {
+            manualInlineVideoId = null
+        }
+    }
+    val activeInlineVideoId = if (inlineVideoAutoPlayAllowed) {
+        manualInlineVideoId?.takeIf { it in visibleInlineVideoIds } ?: centeredInlineVideoId
+    } else {
+        null
+    }
+    val playingInlineVideoId = activeInlineVideoId?.takeUnless { it in pausedInlineVideoIds }
+    val onToggleInlineVideo = remember(inlineVideoAutoPlayAllowed, activeInlineVideoId, pausedInlineVideoIds) {
+        toggle@{ item: PhotoFeedItem ->
+            if (!inlineVideoAutoPlayAllowed || item.mediaType != AppMediaType.VIDEO) {
+                return@toggle
+            }
+            if (activeInlineVideoId == item.mediaId) {
+                pausedInlineVideoIds = if (item.mediaId in pausedInlineVideoIds) {
+                    pausedInlineVideoIds - item.mediaId
+                } else {
+                    pausedInlineVideoIds + item.mediaId
+                }
+            } else {
+                manualInlineVideoId = item.mediaId
+                pausedInlineVideoIds = pausedInlineVideoIds - item.mediaId
+            }
+        }
+    }
     val hitTestAdapter = remember(listState, blocks, density, rowKeyToMediaIds, rowKeys, rowKeyToIndex, spacingPx) {
         val colSpacingPx = spacingPx
         MultiSelectHitTestAdapter(
@@ -309,6 +369,15 @@ fun PhotoFeedScreen(
                             density = density,
                             selectionState = selectionState,
                             selectionFlash = selectionFlashByMediaId,
+                            inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
+                            playingInlineVideoId = playingInlineVideoId,
+                            activeInlineVideoId = activeInlineVideoId,
+                            pausedInlineVideoIds = pausedInlineVideoIds,
+                            inlineVideoProgressById = inlineVideoProgressById,
+                            onToggleInlineVideo = onToggleInlineVideo,
+                            onInlineVideoProgressChange = { item, progress ->
+                                inlineVideoProgressById = inlineVideoProgressById + (item.mediaId to progress)
+                            },
                             onMediaClick = { item ->
                                 onSelectionStateChange(
                                     if (selectionState.isInSelectionMode) {
@@ -733,6 +802,13 @@ private fun PhotoFeedGridRowContent(
     density: PhotoFeedDensity,
     selectionState: PhotoFeedSelectionState,
     selectionFlash: Map<String, SelectionNumberFlash>,
+    inlineVideoAutoPlayEnabled: Boolean,
+    playingInlineVideoId: String?,
+    activeInlineVideoId: String?,
+    pausedInlineVideoIds: Set<String>,
+    inlineVideoProgressById: Map<String, InlineVideoPlaybackProgress>,
+    onToggleInlineVideo: (PhotoFeedItem) -> Unit,
+    onInlineVideoProgressChange: (PhotoFeedItem, InlineVideoPlaybackProgress) -> Unit,
     onMediaClick: (PhotoFeedItem) -> Unit,
     onOpenMedia: (PhotoFeedItem) -> Unit,
     onMediaLongPress: (PhotoFeedItem) -> Unit,
@@ -750,10 +826,17 @@ private fun PhotoFeedGridRowContent(
                 isInSelectionMode = selectionState.isInSelectionMode,
                 isSelected = selectionState.contains(item.mediaId),
                 selectionFlash = selectionFlash[item.mediaId],
+                inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
+                isInlineVideoActive = activeInlineVideoId == item.mediaId,
+                isInlineVideoPaused = item.mediaId in pausedInlineVideoIds,
+                inlineVideoProgress = inlineVideoProgressById[item.mediaId],
                 modifier = Modifier.weight(1f),
                 onClick = { onMediaClick(item) },
                 onOpenMedia = { onOpenMedia(item) },
                 onLongPress = { onMediaLongPress(item) },
+                onToggleInlineVideo = { onToggleInlineVideo(item) },
+                onInlineVideoProgressChange = { progress -> onInlineVideoProgressChange(item, progress) },
             )
         }
 
@@ -771,15 +854,30 @@ private fun PhotoFeedCard(
     isInSelectionMode: Boolean,
     isSelected: Boolean,
     selectionFlash: SelectionNumberFlash?,
+    inlineVideoAutoPlayEnabled: Boolean,
+    isInlineVideoPlaying: Boolean,
+    isInlineVideoActive: Boolean,
+    isInlineVideoPaused: Boolean,
+    inlineVideoProgress: InlineVideoPlaybackProgress?,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onOpenMedia: () -> Unit,
     onLongPress: () -> Unit,
+    onToggleInlineVideo: () -> Unit,
+    onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
 ) {
     val selectionHotspotOnly = isInSelectionMode && density.columns in 2..4
+    val supportsInlineVideo = inlineVideoAutoPlayEnabled &&
+        !isInSelectionMode &&
+        item.mediaType == AppMediaType.VIDEO &&
+        density.columns <= 4
+    val showSelectionVideoMarker = isInSelectionMode &&
+        item.mediaType == AppMediaType.VIDEO &&
+        density.columns <= 4
     Box(
         modifier = modifier
             .aspectRatio(1f)
+            .clipToBounds()
             .background(Color.Transparent)
             .combinedClickable(
                 onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
@@ -794,7 +892,48 @@ private fun PhotoFeedCard(
             contentDescription = item.mediaId,
             requestSize = PhotoFeedThumbnailRequestSize,
             showLoadingIndicator = false,
+            showVideoPlayOverlay = !(supportsInlineVideo || showSelectionVideoMarker),
         )
+
+        if (supportsInlineVideo && isInlineVideoPlaying) {
+            AppContentInlineVideoPlayer(
+                mediaSource = item.mediaSource,
+                mediaType = item.mediaType,
+                playWhenReady = true,
+                modifier = Modifier.matchParentSize(),
+                onPlaybackProgressChange = onInlineVideoProgressChange,
+            )
+        }
+
+        if (supportsInlineVideo) {
+            InlineVideoPlaybackButton(
+                isPlaying = isInlineVideoActive && !isInlineVideoPaused,
+                onClick = onToggleInlineVideo,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+
+        if (showSelectionVideoMarker) {
+            InlineVideoPlaybackButton(
+                isPlaying = false,
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+
+        if (item.mediaType == AppMediaType.VIDEO) {
+            VideoDurationBadge(
+                durationMillis = item.gridVideoBadgeDurationMillis(inlineVideoProgress),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 6.dp),
+            )
+        }
 
         if (isInSelectionMode) {
             if (selectionHotspotOnly) {
@@ -824,6 +963,17 @@ private fun PhotoFeedCard(
             modifier = Modifier.align(Alignment.Center),
         )
     }
+}
+
+private fun PhotoFeedItem.gridVideoBadgeDurationMillis(
+    progress: InlineVideoPlaybackProgress?,
+): Long? {
+    val totalMillis = progress?.durationMillis
+        ?: videoDurationMillis
+        ?: mediaSource?.durationMillis
+    if (totalMillis == null || totalMillis <= 0L) return null
+    val positionMillis = progress?.positionMillis ?: 0L
+    return (totalMillis - positionMillis).coerceIn(0L, totalMillis)
 }
 
 @Composable
@@ -956,6 +1106,54 @@ private fun calculatePhotoFeedScrollProgress(
 
     return ((listState.firstVisibleItemIndex + offsetFraction) / scrollableStart.toFloat())
         .coerceIn(0f, 1f)
+}
+
+private fun visiblePhotoFeedVideoIds(
+    listState: LazyListState,
+    blocks: List<PhotoFeedBlock>,
+): Set<String> {
+    return listState.layoutInfo.visibleItemsInfo
+        .mapNotNull { visibleItem ->
+            blocks.getOrNull(visibleItem.index) as? PhotoFeedGridRow
+        }
+        .flatMap { row -> row.items }
+        .filter { item -> item.mediaType == AppMediaType.VIDEO }
+        .map { item -> item.mediaId }
+        .toSet()
+}
+
+private fun centeredPhotoFeedVideoId(
+    listState: LazyListState,
+    blocks: List<PhotoFeedBlock>,
+    density: PhotoFeedDensity,
+    colSpacingPx: Float,
+): String? {
+    val layoutInfo = listState.layoutInfo
+    if (layoutInfo.visibleItemsInfo.isEmpty()) return null
+    val viewportWidth = layoutInfo.viewportSize.width.coerceAtLeast(1)
+    val viewportCenterX = viewportWidth / 2f
+    val viewportCenterY = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+    val totalSpacing = (density.columns - 1) * colSpacingPx
+    val cellWidth = ((viewportWidth - totalSpacing).toFloat() / density.columns).coerceAtLeast(1f)
+    val segmentWidth = cellWidth + colSpacingPx
+
+    return layoutInfo.visibleItemsInfo
+        .flatMap { visibleItem ->
+            val row = blocks.getOrNull(visibleItem.index) as? PhotoFeedGridRow
+            if (row == null) {
+                emptyList()
+            } else {
+                row.items.mapIndexedNotNull { colIndex, item ->
+                    if (item.mediaType != AppMediaType.VIDEO) return@mapIndexedNotNull null
+                    val centerX = colIndex * segmentWidth + cellWidth / 2f
+                    val centerY = visibleItem.offset + visibleItem.size / 2f
+                    val score = abs(centerX - viewportCenterX) + abs(centerY - viewportCenterY)
+                    item.mediaId to score
+                }
+            }
+        }
+        .minByOrNull { it.second }
+        ?.first
 }
 
 private fun PhotoFeedItem.toScrubberLabel(): String {

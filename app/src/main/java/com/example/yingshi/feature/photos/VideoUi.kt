@@ -1,9 +1,12 @@
 package com.example.yingshi.feature.photos
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,6 +73,66 @@ internal fun VideoMediaMarker(
             }
         }
     }
+}
+
+@Composable
+internal fun InlineVideoPlaybackButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Surface(
+        modifier = if (enabled) modifier.clickable(onClick = onClick) else modifier,
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.34f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = Color.White.copy(alpha = 0.20f),
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .padding(9.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            VideoGlyph(
+                state = if (isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
+                tint = Color.White.copy(alpha = 0.94f),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun VideoDurationBadge(
+    durationMillis: Long?,
+    modifier: Modifier = Modifier,
+) {
+    val label = formatVideoDurationLabel(durationMillis) ?: return
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = Color.Black.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White.copy(alpha = 0.92f),
+        )
+    }
+}
+
+internal fun formatVideoDurationLabel(durationMillis: Long?): String? {
+    val safeMillis = durationMillis?.takeIf { it > 0L } ?: return null
+    val totalSeconds = (safeMillis / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "%d:%02d".format(minutes, seconds)
 }
 
 @Composable

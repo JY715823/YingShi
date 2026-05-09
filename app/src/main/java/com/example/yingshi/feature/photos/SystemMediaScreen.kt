@@ -119,6 +119,7 @@ fun SystemMediaScreen(
     onOpenCreatePost: (CreatePostRoute) -> Unit,
     modifier: Modifier = Modifier,
     scrollTrigger: Int = 0,
+    inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val appContext = context.applicationContext as Application
@@ -185,6 +186,9 @@ fun SystemMediaScreen(
     val spacing = YingShiThemeTokens.spacing
     val coroutineScope = rememberCoroutineScope()
     val density = PhotoFeedDensity.valueOf(densityName)
+    val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
+        !selectionMode &&
+        density.columns <= 4
     val updateDensity = remember(density) {
         { nextDensity: PhotoFeedDensity ->
             if (nextDensity != density) {
@@ -202,6 +206,59 @@ fun SystemMediaScreen(
     }
     val gridBlocks = remember(visibleItems) {
         buildSystemMediaGridBlocks(visibleItems)
+    }
+    var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
+    var pausedInlineVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var inlineVideoProgressById by remember { mutableStateOf<Map<String, InlineVideoPlaybackProgress>>(emptyMap()) }
+    val visibleInlineVideoIds by remember(gridState, gridBlocks) {
+        derivedStateOf {
+            visibleSystemMediaVideoIds(
+                gridState = gridState,
+                gridBlocks = gridBlocks,
+            )
+        }
+    }
+    val centeredInlineVideoId by remember(gridState, gridBlocks) {
+        derivedStateOf {
+            centeredSystemMediaVideoId(
+                gridState = gridState,
+                gridBlocks = gridBlocks,
+            )
+        }
+    }
+    LaunchedEffect(inlineVideoAutoPlayAllowed) {
+        if (!inlineVideoAutoPlayAllowed) {
+            manualInlineVideoId = null
+        }
+    }
+    LaunchedEffect(visibleInlineVideoIds) {
+        val manualId = manualInlineVideoId
+        if (manualId != null && manualId !in visibleInlineVideoIds) {
+            manualInlineVideoId = null
+        }
+    }
+    val activeInlineVideoId = if (inlineVideoAutoPlayAllowed) {
+        manualInlineVideoId?.takeIf { it in visibleInlineVideoIds } ?: centeredInlineVideoId
+    } else {
+        null
+    }
+    val playingInlineVideoId = activeInlineVideoId?.takeUnless { it in pausedInlineVideoIds }
+    val onToggleInlineVideo = remember(inlineVideoAutoPlayAllowed, activeInlineVideoId, pausedInlineVideoIds) {
+        toggle@{ item: SystemMediaItem ->
+            if (!inlineVideoAutoPlayAllowed || item.type != SystemMediaType.VIDEO) {
+                return@toggle
+            }
+            if (activeInlineVideoId == item.id) {
+                pausedInlineVideoIds = if (item.id in pausedInlineVideoIds) {
+                    pausedInlineVideoIds - item.id
+                } else {
+                    pausedInlineVideoIds + item.id
+                }
+            } else {
+                manualInlineVideoId = item.id
+                pausedInlineVideoIds = pausedInlineVideoIds - item.id
+            }
+        }
     }
     val systemRowMapping = remember(gridBlocks, density.columns) {
         val mediaToRow = mutableMapOf<String, String>()
@@ -633,6 +690,11 @@ fun SystemMediaScreen(
                                             selectionMode = selectionMode,
                                             selected = selectedIdSet.contains(item.id),
                                             selectionFlash = selectionFlashByMediaId[item.id],
+                                            inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
+                                            isInlineVideoPlaying = playingInlineVideoId == item.id,
+                                            isInlineVideoActive = activeInlineVideoId == item.id,
+                                            isInlineVideoPaused = item.id in pausedInlineVideoIds,
+                                            inlineVideoProgress = inlineVideoProgressById[item.id],
                                             onClick = {
                                                 if (selectionMode) {
                                                     val wasSelected = selectedIds.contains(item.id)
@@ -664,6 +726,10 @@ fun SystemMediaScreen(
                                             onLongPress = {
                                                 selectionMode = true
                                                 selectedIds = selectedIds.toggleSystemMediaId(item.id)
+                                            },
+                                            onToggleInlineVideo = { onToggleInlineVideo(item) },
+                                            onInlineVideoProgressChange = { progress ->
+                                                inlineVideoProgressById = inlineVideoProgressById + (item.id to progress)
                                             },
                                         )
                                     }
@@ -919,9 +985,16 @@ private fun SystemMediaCard(
     selectionMode: Boolean,
     selected: Boolean,
     selectionFlash: SelectionNumberFlash?,
+    inlineVideoAutoPlayEnabled: Boolean,
+    isInlineVideoPlaying: Boolean,
+    isInlineVideoActive: Boolean,
+    isInlineVideoPaused: Boolean,
+    inlineVideoProgress: InlineVideoPlaybackProgress?,
     onClick: () -> Unit,
     onOpenMedia: () -> Unit,
     onLongPress: () -> Unit,
+    onToggleInlineVideo: () -> Unit,
+    onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
 ) {
     val context = LocalContext.current
     val shape = RoundedCornerShape(0.dp)
@@ -931,6 +1004,13 @@ private fun SystemMediaCard(
         null
     }
     val selectionHotspotOnly = selectionMode && density.columns in 2..4
+    val supportsInlineVideo = inlineVideoAutoPlayEnabled &&
+        !selectionMode &&
+        item.type == SystemMediaType.VIDEO &&
+        density.columns <= 4
+    val showSelectionVideoMarker = selectionMode &&
+        item.type == SystemMediaType.VIDEO &&
+        density.columns <= 4
 
     Box(
         modifier = Modifier
@@ -963,6 +1043,15 @@ private fun SystemMediaCard(
             )
         }
 
+        if (supportsInlineVideo && isInlineVideoPlaying) {
+            SystemMediaInlineVideoPlayer(
+                item = item,
+                playWhenReady = true,
+                modifier = Modifier.fillMaxSize(),
+                onPlaybackProgressChange = onInlineVideoProgressChange,
+            )
+        }
+
         if (item.linkedPostIds.isNotEmpty()) {
             SystemMediaBadge(
                 text = "已发帖",
@@ -972,7 +1061,7 @@ private fun SystemMediaCard(
             )
         }
 
-        if (!selectionMode) {
+        if (!selectionMode && item.type != SystemMediaType.VIDEO) {
             SystemMediaTypeBadge(
                 text = item.type.label,
                 modifier = Modifier
@@ -981,12 +1070,42 @@ private fun SystemMediaCard(
             )
         }
 
-        if (item.type == SystemMediaType.VIDEO) {
+        if (item.type == SystemMediaType.VIDEO && !supportsInlineVideo) {
             SystemMediaBadge(
                 text = "视频",
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(6.dp),
+            )
+        }
+
+        if (supportsInlineVideo) {
+            InlineVideoPlaybackButton(
+                isPlaying = isInlineVideoActive && !isInlineVideoPaused,
+                onClick = onToggleInlineVideo,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+
+        if (showSelectionVideoMarker) {
+            InlineVideoPlaybackButton(
+                isPlaying = false,
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+
+        if (item.type == SystemMediaType.VIDEO) {
+            VideoDurationBadge(
+                durationMillis = item.gridVideoBadgeDurationMillis(inlineVideoProgress),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 6.dp),
             )
         }
 
@@ -1018,6 +1137,15 @@ private fun SystemMediaCard(
             modifier = Modifier.align(Alignment.Center),
         )
     }
+}
+
+private fun SystemMediaItem.gridVideoBadgeDurationMillis(
+    progress: InlineVideoPlaybackProgress?,
+): Long? {
+    val totalMillis = progress?.durationMillis ?: videoDurationMillis
+    if (totalMillis == null || totalMillis <= 0L) return null
+    val positionMillis = progress?.positionMillis ?: 0L
+    return (totalMillis - positionMillis).coerceIn(0L, totalMillis)
 }
 
 @Composable
@@ -1575,6 +1703,41 @@ private fun calculateSystemMediaScrollProgress(
         .coerceIn(0f, 1f)
     return ((firstMediaOrdinal + offsetFraction) / scrollableStart.toFloat())
         .coerceIn(0f, 1f)
+}
+
+private fun visibleSystemMediaVideoIds(
+    gridState: LazyGridState,
+    gridBlocks: List<SystemMediaGridBlock>,
+): Set<String> {
+    return gridState.layoutInfo.visibleItemsInfo
+        .mapNotNull { visible ->
+            val block = gridBlocks.getOrNull(visible.index) as? SystemMediaGridBlock.Media
+            block?.item?.takeIf { it.type == SystemMediaType.VIDEO }?.id
+        }
+        .toSet()
+}
+
+private fun centeredSystemMediaVideoId(
+    gridState: LazyGridState,
+    gridBlocks: List<SystemMediaGridBlock>,
+): String? {
+    val layoutInfo = gridState.layoutInfo
+    if (layoutInfo.visibleItemsInfo.isEmpty()) return null
+    val viewportCenterX = layoutInfo.viewportSize.width / 2f
+    val viewportCenterY = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+
+    return layoutInfo.visibleItemsInfo
+        .mapNotNull { visible ->
+            val block = gridBlocks.getOrNull(visible.index) as? SystemMediaGridBlock.Media
+                ?: return@mapNotNull null
+            val item = block.item.takeIf { it.type == SystemMediaType.VIDEO } ?: return@mapNotNull null
+            val centerX = visible.offset.x + visible.size.width / 2f
+            val centerY = visible.offset.y + visible.size.height / 2f
+            val score = abs(centerX - viewportCenterX) + abs(centerY - viewportCenterY)
+            item.id to score
+        }
+        .minByOrNull { it.second }
+        ?.first
 }
 
 private fun SystemMediaItem.toSystemMediaScrubberLabel(): String {

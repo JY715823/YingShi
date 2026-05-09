@@ -912,6 +912,7 @@ object FakeAlbumRepository {
             aspectRatio = aspectRatio,
             palette = palette,
             linkedPostIds = postIds,
+            videoDurationMillis = videoDurationMillis,
         )
     }
 

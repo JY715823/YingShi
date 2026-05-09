@@ -171,7 +171,7 @@ internal fun SystemMediaItem.toAppContentMediaSource(): AppContentMediaSource {
         width = width,
         height = height,
         durationMillis = if (type == SystemMediaType.VIDEO) {
-            null
+            videoDurationMillis
         } else {
             null
         },

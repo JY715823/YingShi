@@ -427,6 +427,7 @@ fun YingShiApp() {
                         },
                         onOpenCreatePost = { createPostRoute = it },
                         scrollTrigger = systemMediaScrollTrigger,
+                        inlineVideoAutoPlayEnabled = systemMediaViewerRoute == null,
                     )
 
                     systemMediaViewerRoute?.let { route ->
@@ -491,6 +492,7 @@ fun YingShiApp() {
                             notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
                         },
                         photoFeedScrollTrigger = photoFeedScrollTrigger,
+                        inlineVideoAutoPlayEnabled = photoViewerRoute == null,
                     )
                     RootDestination.LIFE -> LifeScreen()
                     RootDestination.ME -> MyScreen(

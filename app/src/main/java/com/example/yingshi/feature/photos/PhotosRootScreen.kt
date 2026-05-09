@@ -85,6 +85,7 @@ fun PhotosRootScreen(
     onOpenCreatePost: (CreatePostRoute) -> Unit = { },
     onOpenNotifications: () -> Unit = { },
     photoFeedScrollTrigger: Int = 0,
+    inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
@@ -287,6 +288,7 @@ fun PhotosRootScreen(
                                     onOpenViewer = onOpenViewer,
                                     onOpenCreatePost = onOpenCreatePost,
                                     scrollTrigger = photoFeedScrollTrigger,
+                                    inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                                 )
                             } else {
                                 val feedItems = FakePhotoFeedRepository.getPhotoFeed()
@@ -303,6 +305,7 @@ fun PhotosRootScreen(
                                         onSelectionStateChange = { photoSelectionState = it },
                                         onOpenViewer = onOpenViewer,
                                         scrollTrigger = photoFeedScrollTrigger,
+                                        inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                                     )
 
                                     androidx.compose.animation.AnimatedVisibility(

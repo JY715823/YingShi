@@ -2,12 +2,11 @@
 
 import android.app.Activity
 import android.content.ContextWrapper
-import android.net.Uri
-import android.widget.VideoView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -44,7 +43,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -85,6 +84,18 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import androidx.media3.common.AudioAttributes as Media3AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.imageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -320,6 +331,8 @@ fun PhotoViewerScreen(
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
+    var videoControlsVisible by remember { mutableStateOf(true) }
+    var videoControlsActivityNonce by remember { mutableIntStateOf(0) }
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { viewerItems.size },
@@ -432,6 +445,27 @@ fun PhotoViewerScreen(
         videoPlaybackState = ViewerVideoPlaybackState(
             mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
         )
+        videoControlsVisible = true
+        videoControlsActivityNonce += 1
+    }
+    LaunchedEffect(
+        currentItem.mediaId,
+        currentItem.mediaType,
+        videoControlsVisible,
+        videoControlsActivityNonce,
+        videoPlaybackState.isPlaying,
+        videoPlaybackState.isLoading,
+        videoPlaybackState.errorMessage,
+        videoPlaybackState.isCompleted,
+    ) {
+        if (currentItem.mediaType != AppMediaType.VIDEO || !videoControlsVisible) return@LaunchedEffect
+        if (videoPlaybackState.isLoading || videoPlaybackState.errorMessage != null) return@LaunchedEffect
+        kotlinx.coroutines.delay(2800)
+        videoControlsVisible = false
+    }
+    fun revealVideoControls() {
+        videoControlsVisible = true
+        videoControlsActivityNonce += 1
     }
     BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
@@ -537,20 +571,54 @@ fun PhotoViewerScreen(
                     FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
                 },
                 overlaysVisible = overlaysVisible,
+                videoControlsVisible = videoControlsVisible,
+                onVideoAreaClick = {
+                    if (videoControlsVisible) {
+                        videoControlsVisible = false
+                        videoControlsActivityNonce += 1
+                    } else {
+                        revealVideoControls()
+                    }
+                },
                 onTogglePlayback = {
+                    revealVideoControls()
                     val durationMillis = videoPlaybackState.durationMillis
                         ?: currentItem.viewerVideoDurationMillis()
-                    val shouldRestart = videoPlaybackState.progressMillis >= durationMillis
-                    videoPlaybackState = if (videoPlaybackState.isPlaying) {
+                    val shouldRestart = videoPlaybackState.isCompleted ||
+                        (durationMillis > 0L && videoPlaybackState.progressMillis >= durationMillis)
+                    videoPlaybackState = if (videoPlaybackState.errorMessage != null) {
+                        videoPlaybackState.retryState().copy(mediaId = currentItem.mediaId)
+                    } else if (videoPlaybackState.isPlaying) {
                         videoPlaybackState.copy(isPlaying = false)
                     } else {
                         videoPlaybackState.copy(
                             mediaId = currentItem.mediaId,
                             isPlaying = true,
                             progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
+                            seekRequestMillis = if (shouldRestart) 0L else videoPlaybackState.seekRequestMillis,
+                            seekRequestNonce = if (shouldRestart) {
+                                videoPlaybackState.seekRequestNonce + 1
+                            } else {
+                                videoPlaybackState.seekRequestNonce
+                            },
                             errorMessage = null,
+                            isCompleted = false,
                         )
                     }
+                },
+                onSeekPlayback = { progressMillis ->
+                    revealVideoControls()
+                    val durationMillis = videoPlaybackState.durationMillis
+                        ?: currentItem.viewerVideoDurationMillis()
+                    val targetMillis = progressMillis.coerceIn(0L, durationMillis.coerceAtLeast(0L))
+                    videoPlaybackState = videoPlaybackState.copy(
+                        mediaId = currentItem.mediaId,
+                        progressMillis = targetMillis,
+                        seekRequestMillis = targetMillis,
+                        seekRequestNonce = videoPlaybackState.seekRequestNonce + 1,
+                        errorMessage = null,
+                        isCompleted = false,
+                    )
                 },
                 onVideoPlaybackStateChange = { mediaId, state ->
                     if (mediaId == currentItem.mediaId) {
@@ -1147,7 +1215,10 @@ private fun PhotoViewerCanvas(
     videoPlaybackState: ViewerVideoPlaybackState?,
     originalLoadState: OriginalLoadState,
     overlaysVisible: Boolean,
+    videoControlsVisible: Boolean,
+    onVideoAreaClick: () -> Unit,
     onTogglePlayback: () -> Unit,
+    onSeekPlayback: (Long) -> Unit,
     onVideoPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
     modifier: Modifier = Modifier,
@@ -1155,7 +1226,6 @@ private fun PhotoViewerCanvas(
     val spacing = YingShiThemeTokens.spacing
     val density = LocalDensity.current
     val isVideo = media.mediaType == AppMediaType.VIDEO
-    val canvasAspectRatio = media.viewerAspectRatio().coerceIn(0.05f, 20f)
 
     BoxWithConstraints(
         modifier = modifier.padding(
@@ -1166,16 +1236,19 @@ private fun PhotoViewerCanvas(
         ),
         contentAlignment = Alignment.Center,
     ) {
-        val canvasWidth = if (maxHeight * canvasAspectRatio <= maxWidth) {
-            maxHeight * canvasAspectRatio
+        val mediaAspectRatio = media.viewerAspectRatio().coerceIn(0.05f, 20f)
+        val fittedMediaWidth = if (maxHeight * mediaAspectRatio <= maxWidth) {
+            maxHeight * mediaAspectRatio
         } else {
             maxWidth
         }
-        val canvasHeight = if (maxWidth / canvasAspectRatio <= maxHeight) {
-            maxWidth / canvasAspectRatio
+        val fittedMediaHeight = if (maxWidth / mediaAspectRatio <= maxHeight) {
+            maxWidth / mediaAspectRatio
         } else {
             maxHeight
         }
+        val canvasWidth = if (isVideo) maxWidth else fittedMediaWidth
+        val canvasHeight = if (isVideo) maxHeight else fittedMediaHeight
         val contentSize = with(density) {
             IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
         }
@@ -1211,6 +1284,7 @@ private fun PhotoViewerCanvas(
                         .width(canvasWidth)
                         .height(canvasHeight),
                 ) {
+                    val revealInteractionSource = remember(media.mediaId) { MutableInteractionSource() }
                     ViewerVideoCanvas(
                         media = media,
                         playbackState = videoPlaybackState,
@@ -1221,13 +1295,48 @@ private fun PhotoViewerCanvas(
                             .fillMaxSize()
                             .then(zoomTransformModifier),
                     )
-                    if (overlaysVisible && videoPlaybackState != null) {
+                    if (videoPlaybackState?.errorMessage == null) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable(
+                                    interactionSource = revealInteractionSource,
+                                    indication = null,
+                                    onClick = onVideoAreaClick,
+                                ),
+                        )
+                    }
+                    if (overlaysVisible && videoControlsVisible && videoPlaybackState != null) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .clickable(onClick = onTogglePlayback),
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = if (videoPlaybackState.isPlaying) 0.14f else 0.18f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(76.dp)
+                                    .padding(22.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                VideoGlyph(
+                                    state = if (videoPlaybackState.isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
+                                    tint = ViewerSurface.copy(alpha = 0.92f),
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                    if (overlaysVisible && videoControlsVisible && videoPlaybackState != null) {
                         val durationMillis = videoPlaybackState.durationMillis
                             ?: media.viewerVideoDurationMillis()
                         ViewerVideoControls(
                             playbackState = videoPlaybackState,
                             durationMillis = durationMillis,
                             onTogglePlayback = onTogglePlayback,
+                            onSeekPlayback = onSeekPlayback,
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .padding(horizontal = spacing.lg, vertical = spacing.lg),
@@ -1477,6 +1586,7 @@ private fun ViewerVideoPosterFallback(
     }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun ViewerVideoCanvas(
     media: PhotoFeedItem,
@@ -1488,6 +1598,7 @@ private fun ViewerVideoCanvas(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val context = LocalContext.current
     val videoUrl = remember(media.mediaSource, media.mediaType) {
         media.mediaSource.viewerVideoUrl(media.mediaType)
     }
@@ -1506,9 +1617,41 @@ private fun ViewerVideoCanvas(
     val requestHeaders = remember(videoUrl, accessToken) {
         backendMediaRequestHeaders(videoUrl, accessToken)
     }
-    val videoViewRef = remember(media.mediaId) { mutableStateOf<VideoView?>(null) }
     var retryVersion by remember(media.mediaId) { mutableStateOf(0) }
-    var isPrepared by remember(media.mediaId, retryVersion) { mutableStateOf(false) }
+    val retryRequestNonce = playbackState?.retryRequestNonce ?: 0
+    var isPrepared by remember(media.mediaId, retryVersion, retryRequestNonce) { mutableStateOf(false) }
+    val initialPositionMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
+    val player = remember(media.mediaId, videoUrl, requestHeaders, retryVersion, retryRequestNonce) {
+        if (videoUrl.isNullOrBlank()) {
+            null
+        } else {
+            ExoPlayer.Builder(context).build().apply {
+                setAudioAttributes(
+                    Media3AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true,
+                )
+                setMediaSource(
+                    ProgressiveMediaSource.Factory(
+                        DefaultDataSource.Factory(
+                            context,
+                            DefaultHttpDataSource.Factory()
+                                .setAllowCrossProtocolRedirects(true)
+                                .setConnectTimeoutMs(8_000)
+                                .setReadTimeoutMs(8_000)
+                                .setDefaultRequestProperties(requestHeaders),
+                        ),
+                    ).createMediaSource(MediaItem.fromUri(videoUrl)),
+                )
+                if (initialPositionMillis > 0L) {
+                    seekTo(initialPositionMillis)
+                }
+                prepare()
+            }
+        }
+    }
 
     fun updatePlaybackState(transform: (ViewerVideoPlaybackState) -> ViewerVideoPlaybackState) {
         val current = playbackState ?: ViewerVideoPlaybackState(mediaId = media.mediaId)
@@ -1539,36 +1682,113 @@ private fun ViewerVideoCanvas(
         }
     }
 
-    DisposableEffect(media.mediaId, retryVersion) {
-        onDispose {
-            videoViewRef.value?.pause()
-            videoViewRef.value?.stopPlayback()
-            videoViewRef.value = null
+    DisposableEffect(player) {
+        if (player == null) {
+            onDispose { }
+        } else {
+            val listener = object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackStateValue: Int) {
+                    when (playbackStateValue) {
+                        Player.STATE_BUFFERING -> {
+                            updatePlaybackState {
+                                it.copy(
+                                    isLoading = true,
+                                    errorMessage = null,
+                                )
+                            }
+                        }
+
+                        Player.STATE_READY -> {
+                            isPrepared = true
+                            updatePlaybackState {
+                                it.copy(
+                                    isLoading = false,
+                                    errorMessage = null,
+                                    isCompleted = false,
+                                    durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
+                                )
+                            }
+                        }
+
+                        Player.STATE_ENDED -> {
+                            updatePlaybackState {
+                                it.copy(
+                                    isPlaying = false,
+                                    isLoading = false,
+                                    isCompleted = true,
+                                    progressMillis = player.viewerDurationMillis() ?: it.progressMillis,
+                                    durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
+                                )
+                            }
+                        }
+
+                        else -> Unit
+                    }
+                }
+
+                override fun onIsPlayingChanged(isPlayingValue: Boolean) {
+                    updatePlaybackState {
+                        it.copy(
+                            isLoading = player.playbackState == Player.STATE_BUFFERING,
+                            durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
+                        )
+                    }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    isPrepared = false
+                    updatePlaybackState {
+                        it.copy(
+                            isPlaying = false,
+                            isLoading = false,
+                            errorMessage = "视频加载失败，请重试",
+                            isCompleted = false,
+                        )
+                    }
+                }
+            }
+            player.addListener(listener)
+            onDispose {
+                player.removeListener(listener)
+                player.release()
+            }
         }
     }
 
     DisposableEffect(isCurrent) {
         if (!isCurrent) {
-            videoViewRef.value?.pause()
+            player?.pause()
             updatePlaybackState { it.copy(isPlaying = false) }
         }
-        onDispose { }
+        onDispose {
+        }
     }
 
     LaunchedEffect(isCurrent, isPlaying, errorMessage, videoUrl, retryVersion) {
+        if (player == null) return@LaunchedEffect
+        player.playWhenReady = isCurrent && isPlaying && errorMessage == null
+        if (isCurrent && isPlaying && errorMessage == null) {
+            player.play()
+        } else {
+            player.pause()
+        }
         while (isCurrent && videoUrl != null && errorMessage == null) {
-            val videoView = videoViewRef.value
-            if (videoView != null && isPrepared) {
+            if (isPrepared) {
                 updatePlaybackState {
                     it.copy(
-                        progressMillis = videoView.currentPosition.toLong().coerceAtLeast(0L),
-                        durationMillis = videoView.duration.toLong().takeIf { duration -> duration > 0 }
-                            ?: it.durationMillis,
+                        progressMillis = player.currentPosition.coerceAtLeast(0L),
+                        durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
+                        isLoading = player.playbackState == Player.STATE_BUFFERING,
                     )
                 }
             }
             kotlinx.coroutines.delay(300)
         }
+    }
+
+    LaunchedEffect(playbackState?.seekRequestNonce, player) {
+        val targetMillis = playbackState?.seekRequestMillis ?: return@LaunchedEffect
+        player?.seekTo(targetMillis.coerceAtLeast(0L))
     }
     val hasPosterImage = videoPosterState.model != null &&
         posterPainter.state !is AsyncImagePainter.State.Error
@@ -1579,65 +1799,23 @@ private fun ViewerVideoCanvas(
         modifier = modifier
             .background(ViewerNightBottom),
     ) {
-        if (!videoUrl.isNullOrBlank()) {
-            key(retryVersion) {
+        if (!videoUrl.isNullOrBlank() && player != null) {
+            key(retryVersion, retryRequestNonce) {
                 AndroidView(
                     factory = { viewContext ->
-                        VideoView(viewContext).apply {
-                            setVideoURI(Uri.parse(videoUrl), requestHeaders)
-                            setOnPreparedListener { player ->
-                                isPrepared = true
-                                player.isLooping = false
-                                val resumePositionMillis = playbackState?.progressMillis?.toInt()?.coerceAtLeast(0) ?: 0
-                                if (resumePositionMillis > 0) {
-                                    seekTo(resumePositionMillis)
-                                }
-                                updatePlaybackState {
-                                    it.copy(
-                                        isLoading = false,
-                                        errorMessage = null,
-                                        durationMillis = duration.toLong().takeIf { value -> value > 0 }
-                                            ?: it.durationMillis,
-                                    )
-                                }
-                                if (isCurrent && playbackState?.isPlaying == true) {
-                                    start()
-                                }
-                            }
-                            setOnErrorListener { _, _, _ ->
-                                isPrepared = false
-                                updatePlaybackState {
-                                    it.copy(
-                                        isPlaying = false,
-                                        isLoading = false,
-                                        errorMessage = "视频加载失败，请重试",
-                                    )
-                                }
-                                true
-                            }
-                            setOnCompletionListener {
-                                updatePlaybackState {
-                                    it.copy(
-                                        isPlaying = false,
-                                        progressMillis = duration.toLong().takeIf { value -> value > 0 }
-                                            ?: it.progressMillis,
-                                    )
-                                }
-                            }
-                            videoViewRef.value = this
+                        PlayerView(viewContext).apply {
+                            useController = false
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            this.player = player
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
-                    update = { videoView ->
-                        videoViewRef.value = videoView
-                        if (!isCurrent || errorMessage != null) {
-                            if (videoView.isPlaying) videoView.pause()
-                            return@AndroidView
-                        }
-                        if (isPlaying && isPrepared && !videoView.isPlaying) {
-                            videoView.start()
-                        } else if (!isPlaying && videoView.isPlaying) {
-                            videoView.pause()
+                    update = { playerView ->
+                        playerView.player = player
+                        if (isCurrent && errorMessage == null && isPlaying) {
+                            player.play()
+                        } else {
+                            player.pause()
                         }
                     },
                 )
@@ -1663,47 +1841,10 @@ private fun ViewerVideoCanvas(
             )
         }
 
-        Surface(
-            modifier = Modifier.align(Alignment.Center),
-            shape = CircleShape,
-            color = Color.White.copy(alpha = if (isPlaying) 0.14f else 0.18f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .padding(22.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                VideoGlyph(
-                    state = if (isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
-                    tint = ViewerSurface.copy(alpha = 0.92f),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-
-        Text(
-            text = (playbackState ?: ViewerVideoPlaybackState()).primaryStatusLabel(
-                missingUrl = videoUrl.isNullOrBlank(),
-            ),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(top = 112.dp)
-                .background(
-                    color = Color.Black.copy(alpha = 0.18f),
-                    shape = RoundedCornerShape(radius.capsule),
-                )
-                .padding(horizontal = spacing.sm, vertical = spacing.xs),
-            style = MaterialTheme.typography.labelLarge,
-            color = ViewerSurface.copy(alpha = 0.84f),
-        )
-
         if (videoPosterState.isLoading || isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(top = 174.dp)
                     .size(24.dp),
                 color = ViewerSurface.copy(alpha = 0.88f),
                 strokeWidth = 2.dp,
@@ -1714,7 +1855,7 @@ private fun ViewerVideoCanvas(
             Surface(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(top = 174.dp),
+                    .padding(top = 96.dp),
                 shape = RoundedCornerShape(radius.capsule),
                 color = Color.Black.copy(alpha = 0.32f),
                 border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
@@ -1740,18 +1881,25 @@ private fun ViewerVideoControls(
     playbackState: ViewerVideoPlaybackState,
     durationMillis: Long,
     onTogglePlayback: () -> Unit,
+    onSeekPlayback: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val progressFraction = if (durationMillis <= 0L) {
-        0f
+    val safeDurationMillis = durationMillis.coerceAtLeast(0L)
+    val progressFraction = if (safeDurationMillis <= 0L) 0f else {
+        (playbackState.progressMillis.toFloat() / safeDurationMillis.toFloat()).coerceIn(0f, 1f)
+    }
+    var draggedFraction by remember(playbackState.mediaId) { mutableStateOf<Float?>(null) }
+    val displayedFraction = draggedFraction ?: progressFraction
+    val displayedProgressMillis = if (safeDurationMillis <= 0L) {
+        0L
     } else {
-        (playbackState.progressMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
+        (displayedFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
     }
 
     Surface(
-        modifier = modifier,
+        modifier = modifier.widthIn(min = 240.dp, max = 420.dp),
         shape = RoundedCornerShape(radius.xl),
         color = Color.Black.copy(alpha = 0.22f),
         border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
@@ -1793,26 +1941,30 @@ private fun ViewerVideoControls(
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = playbackState.controlStatusLabel(),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = ViewerSurface.copy(alpha = 0.92f),
-                    )
-                    Text(
-                        text = "${formatVideoProgress(playbackState.progressMillis)} / ${formatVideoProgress(durationMillis)}",
+                        text = "${formatVideoProgress(displayedProgressMillis)} / ${formatVideoProgress(safeDurationMillis)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = ViewerSurface.copy(alpha = 0.68f),
                     )
                 }
             }
 
-            LinearProgressIndicator(
-                progress = { progressFraction },
+            Slider(
+                value = displayedFraction,
+                onValueChange = { draggedFraction = it.coerceIn(0f, 1f) },
+                onValueChangeFinished = {
+                    val targetFraction = draggedFraction ?: displayedFraction
+                    val targetMillis = if (safeDurationMillis <= 0L) {
+                        0L
+                    } else {
+                        (targetFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
+                    }
+                    draggedFraction = null
+                    onSeekPlayback(targetMillis)
+                },
+                enabled = safeDurationMillis > 0L && playbackState.errorMessage == null,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(radius.capsule)),
-                color = ViewerSurface.copy(alpha = 0.88f),
-                trackColor = ViewerSurface.copy(alpha = 0.18f),
+                    .height(28.dp),
             )
         }
     }
@@ -1829,6 +1981,10 @@ private fun PhotoFeedItem.viewerAspectRatio(): Float {
 
 private fun PhotoFeedItem.viewerVideoDurationMillis(): Long {
     return videoDurationMillis ?: DefaultViewerVideoDurationMillis
+}
+
+private fun ExoPlayer.viewerDurationMillis(): Long? {
+    return duration.takeIf { it != C.TIME_UNSET && it > 0L }
 }
 
 private fun formatVideoProgress(timeMillis: Long): String {

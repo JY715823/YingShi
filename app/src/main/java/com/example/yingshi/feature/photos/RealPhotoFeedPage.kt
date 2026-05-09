@@ -38,6 +38,7 @@ fun RealPhotoFeedPage(
     onOpenCreatePost: (CreatePostRoute) -> Unit,
     modifier: Modifier = Modifier,
     scrollTrigger: Int = 0,
+    inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -186,6 +187,7 @@ fun RealPhotoFeedPage(
                             onSelectionStateChange = onSelectionStateChange,
                             onOpenViewer = onOpenViewer,
                             scrollTrigger = scrollTrigger,
+                            inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                         )
 
                         androidx.compose.animation.AnimatedVisibility(

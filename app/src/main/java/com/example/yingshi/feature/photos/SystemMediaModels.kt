@@ -39,6 +39,7 @@ data class SystemMediaItem(
     val aspectRatio: Float,
     val palette: PhotoThumbnailPalette,
     val linkedPostIds: List<String>,
+    val videoDurationMillis: Long? = null,
 )
 
 @Immutable

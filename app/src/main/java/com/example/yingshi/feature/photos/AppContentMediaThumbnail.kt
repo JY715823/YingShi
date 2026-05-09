@@ -42,6 +42,7 @@ internal fun AppContentMediaThumbnail(
     requestSize: Int = 512,
     showLoadingIndicator: Boolean = true,
     showStatusBadge: Boolean = false,
+    showVideoPlayOverlay: Boolean = true,
     originalLoadState: OriginalLoadState = OriginalLoadState.NotLoaded,
     onOriginalLoadStateChange: (OriginalLoadState) -> Unit = {},
 ) {
@@ -193,7 +194,7 @@ internal fun AppContentMediaThumbnail(
             )
         }
 
-        if (mediaType == AppMediaType.VIDEO) {
+        if (mediaType == AppMediaType.VIDEO && showVideoPlayOverlay) {
             VideoThumbnailPlayOverlay(
                 modifier = Modifier.align(Alignment.Center),
             )
