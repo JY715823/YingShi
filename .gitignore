@@ -50,3 +50,6 @@ captures/
 # Kotlin / Java crash or temp
 hs_err_pid*
 replay_pid*
+
+*.apk
+app/release/

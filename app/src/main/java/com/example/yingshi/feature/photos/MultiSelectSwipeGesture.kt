@@ -1,6 +1,5 @@
 package com.example.yingshi.feature.photos
 
-import android.util.Log
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
@@ -11,13 +10,13 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
+import kotlin.math.abs
 import kotlin.math.sqrt
-
-private const val TAG = "MSelect"
 
 data class MultiSelectHitResult(
     val mediaId: String,
     val rowKey: String?,
+    val rowIndex: Int = -1,
     val isSelectable: Boolean,
     val colIndex: Int = 0,
     val columnsInRow: Int = 0,
@@ -26,6 +25,7 @@ data class MultiSelectHitResult(
 class MultiSelectHitTestAdapter(
     val hitTest: (Offset) -> MultiSelectHitResult?,
     val mediaIdsInRow: (String) -> List<String>,
+    val rowKeyAtIndex: (Int) -> String?,
 )
 
 @Composable
@@ -52,191 +52,188 @@ fun Modifier.multiSelectSwipeGesture(
 
             val adapter = currentAdapter.value
             val firstHit = adapter.hitTest(down.position)
-            if (firstHit == null || !firstHit.isSelectable) return@awaitEachGesture
+            if (firstHit == null || !firstHit.isSelectable || firstHit.rowKey == null) {
+                return@awaitEachGesture
+            }
 
-            val gestureStartIds = currentSelectedIds.value
-            val isSelectMode = firstHit.mediaId !in gestureStartIds
+            val gestureStartSelectedIds = currentSelectedIds.value.toSet()
             val firstTouchId = firstHit.mediaId
-            val firstTouchRow = firstHit.rowKey
-            val firstTouchCol = firstHit.colIndex
-            val firstTouchY = down.position.y
-
-            // State
-            val toggledIds = mutableSetOf<String>()       // currently flipped
-            var currentIds = gestureStartIds
-            var lastItemId: String? = null
-            var lastCol: Int? = null                      // track column for direction detection
-            var lastPosX = down.position.x
-            var lastPosY = down.position.y
-
-            // Row tracking
-            var lastRow = firstTouchRow
-            // We track which rows have been entered (value = meaningful expanded ids or empty placeholder)
-            // A row with an empty set = placeholder (first-touch row or previously entered)
-            val rowState = mutableMapOf<String, MutableSet<String>?>()
-            if (firstTouchRow != null) rowState[firstTouchRow] = null // placeholder
-
+            val isSelectMode = firstTouchId !in gestureStartSelectedIds
+            var currentIds = gestureStartSelectedIds
             var gestureActive = false
-            var initialToggleDone = false
-            var hasExpandedAnyRow = false
-            var frameSeq = 0
+            var lastHit: MultiSelectHitResult? = null
+            var lastPos = down.position
+            var blockSwipeSelectForThisGesture = false
 
-            fun short(id: String) = id.takeLast(6)
-            fun setStr(ids: Set<String>) = ids.map { short(it) }.joinToString(",")
-            fun matchesMode(id: String) = if (isSelectMode) id !in gestureStartIds else id in gestureStartIds
-            fun toggleOne(id: String) { currentIds = if (id in currentIds) currentIds - id else currentIds + id }
-            fun revertOne(id: String) {
-                if (id in gestureStartIds) { if (id !in currentIds) currentIds = currentIds + id }
-                else { if (id in currentIds) currentIds = currentIds - id }
-            }
-            fun flush() { currentOnSelectionChange.value(currentIds) }
-
-            fun ensureInit() {
-                if (initialToggleDone) return
-                initialToggleDone = true
-                toggleOne(firstTouchId)
-                toggledIds.add(firstTouchId)
-                lastItemId = firstTouchId
-                Log.d(TAG, "  INIT ${short(firstTouchId)} N=${currentIds.size}")
-                flush()
-            }
-
-            fun expandRow(rk: String, tc: Int, cols: Int, y: Float, isFirst: Boolean, isOrig: Boolean) {
-                val all = adapter.mediaIdsInRow(rk)
-                if (all.isEmpty()) return
-                val dn = y > firstTouchY
-                val ids = when {
-                    isOrig && dn -> all.drop(firstTouchCol + 1)
-                    isOrig && !dn -> all.take(firstTouchCol)
-                    isFirst -> all
-                    dn -> all.take(tc + 1)
-                    else -> all.drop(tc)
-                }
-                val lbl = if (isOrig) "ORIG" else if (isFirst) "FULL" else "PART"
-                val added = mutableSetOf<String>()
-                for (id in ids) {
-                    if (id == firstTouchId) continue
-                    if (!matchesMode(id)) continue
-                    if (id in toggledIds) continue
-                    toggleOne(id); toggledIds.add(id); added.add(id)
-                }
-                if (added.isNotEmpty()) rowState[rk] = added
-                Log.d(TAG, "  EXP-$lbl ${short(rk)} +[${setStr(added)}] N=${currentIds.size}")
-            }
-
-            fun undoRow(rk: String) {
-                val ids = rowState.remove(rk) ?: return
-                if (ids == null) return  // placeholder, no items
-                for (id in ids) { revertOne(id); toggledIds.remove(id) }
-                Log.d(TAG, "  UNDO ${short(rk)} ids=[${setStr(ids)}] N=${currentIds.size}")
-            }
-
-            fun process(hit: MultiSelectHitResult, pos: Offset) {
-                val id = hit.mediaId
-                val nr = hit.rowKey
-
-                // Row transition
-                if (nr != null && nr != lastRow) {
-                    val seen = nr in rowState
-                    val wasExpanded = rowState[nr] !== null && rowState[nr]?.isNotEmpty() == true
-                    Log.d(TAG, "  ROW ${short(lastRow ?: "null")} -> ${short(nr)} seen=$seen expanded=$wasExpanded")
-
-                    if (!seen) {
-                        // New row: expand
-                        val isFirst = !hasExpandedAnyRow
-                        hasExpandedAnyRow = true
-                        if (isFirst && firstTouchRow != null && rowState[firstTouchRow] == null) {
-                            expandRow(firstTouchRow, firstTouchCol, hit.columnsInRow, pos.y, true, true)
-                            flush()
-                        }
-                        expandRow(nr, hit.colIndex, hit.columnsInRow, pos.y, isFirst, false)
-                        flush()
-                        lastItemId = null // reset dedup for new row
-                    } else if (!wasExpanded && nr != firstTouchRow) {
-                        // Previously seen (placeholder or empty), moving back: undo the old row
-                        undoRow(lastRow!!)
-                        flush()
-                        lastItemId = null
-                    }
-                    // If wasExpanded: row is currently expanded, moving back into it
-                    // Individual items handle it via toggledIds
-                    lastRow = nr
-                }
-
-                ensureInit()
-
-                if (id == firstTouchId) { lastItemId = id; lastCol = hit.colIndex; return }
-                if (!matchesMode(id)) { lastItemId = id; lastCol = hit.colIndex; return }
-                if (id == lastItemId) return
-
-                // Detect direction within same row
-                val movingBack = lastCol != null && nr == lastRow && hit.colIndex < lastCol!!
-
-                if (movingBack) {
-                    // Revert the item we just left (passed through in reverse)
-                    if (lastItemId != null && lastItemId != firstTouchId && lastItemId in toggledIds) {
-                        revertOne(lastItemId!!); toggledIds.remove(lastItemId!!)
-                        Log.d(TAG, "  REV-EXIT ${short(lastItemId!!)} N=${currentIds.size}")
-                    }
-                    // Revert current item (moving back into it)
-                    if (id in toggledIds) {
-                        revertOne(id); toggledIds.remove(id)
-                        Log.d(TAG, "  REV ${short(id)} N=${currentIds.size}")
-                    }
+            fun shouldFlip(mediaId: String): Boolean {
+                return if (isSelectMode) {
+                    mediaId !in gestureStartSelectedIds
                 } else {
-                    // Moving forward: only toggle new items, don't revert
-                    if (id !in toggledIds) {
-                        toggleOne(id); toggledIds.add(id)
-                        Log.d(TAG, "  TOG ${short(id)} N=${currentIds.size}")
-                    }
+                    mediaId in gestureStartSelectedIds
                 }
-                lastItemId = id; lastCol = hit.colIndex
-                flush()
-
-                lastPosX = pos.x; lastPosY = pos.y
             }
 
-            Log.d(TAG, "╔══ id=${short(firstTouchId)} row=$firstTouchRow col=$firstTouchCol mode=${if (isSelectMode) "SEL" else "DESEL"} startN=${gestureStartIds.size}")
+            fun applyRangeTo(hit: MultiSelectHitResult) {
+                if (!hit.isSelectable || hit.rowKey == null || hit.rowIndex < 0) return
+                val rangeIds = adapter.mediaIdsBetween(
+                    startRowIndex = firstHit.rowIndex,
+                    startColIndex = firstHit.colIndex,
+                    endRowIndex = hit.rowIndex,
+                    endColIndex = hit.colIndex,
+                ).filter(::shouldFlip).toSet()
+
+                val nextIds = if (isSelectMode) {
+                    gestureStartSelectedIds + rangeIds
+                } else {
+                    gestureStartSelectedIds - rangeIds
+                }
+                if (nextIds != currentIds) {
+                    currentIds = nextIds
+                    currentOnSelectionChange.value(currentIds)
+                }
+            }
 
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val changes: List<PointerInputChange> = event.changes
                 if (changes.isEmpty()) continue
                 val change = changes[0]
-                frameSeq++
 
                 if (!change.pressed) {
-                    Log.d(TAG, "╚══ UP N=${currentIds.size} frames=$frameSeq")
-                    if (gestureActive) { currentOnGestureActiveChanged.value?.invoke(false); currentOnTouchPositionChanged.value?.invoke(null) }
+                    if (gestureActive) {
+                        currentOnGestureActiveChanged.value?.invoke(false)
+                        currentOnTouchPositionChanged.value?.invoke(null)
+                    }
                     break
                 }
 
-                val pastSlop = gestureActive || run {
-                    val dx = change.position.x - down.position.x
-                    val dy = change.position.y - down.position.y
-                    sqrt(dx * dx + dy * dy) >= touchSlop
+                if (!gestureActive) {
+                    if (blockSwipeSelectForThisGesture) {
+                        continue
+                    }
+                    val totalDx = change.position.x - down.position.x
+                    val totalDy = change.position.y - down.position.y
+                    val absDx = abs(totalDx)
+                    val absDy = abs(totalDy)
+
+                    // Vertical intent wins early: keep this whole gesture for scrolling only.
+                    val hasVerticalIntent = absDy >= touchSlop && absDy > absDx * 1.1f
+                    if (hasVerticalIntent) {
+                        blockSwipeSelectForThisGesture = true
+                        continue
+                    }
+
+                    // Require stronger and dominant horizontal movement to start swipe-select.
+                    val hasHorizontalIntent = absDx >= (touchSlop * 1.35f) && absDx > absDy * 1.2f
+                    if (!hasHorizontalIntent) {
+                        // Keep non-horizontal movement as normal list/grid scroll.
+                        continue
+                    }
+                    gestureActive = true
+                    currentOnGestureActiveChanged.value?.invoke(true)
+                    applyRangeTo(firstHit)
                 }
 
-                val hit = adapter.hitTest(change.position)
-
-                if (!pastSlop) {
-                    if (hit != null && hit.isSelectable) process(hit, change.position)
-                    continue
-                }
-
-                if (!gestureActive) { gestureActive = true; Log.d(TAG, "  DRAG"); currentOnGestureActiveChanged.value?.invoke(true) }
                 change.consume()
-
-                if (hit != null && hit.isSelectable) {
-                    // Dedup threshold: only process if finger moved >4px or item changed
-                    val dx = change.position.x - lastPosX
-                    val dy = change.position.y - lastPosY
-                    if (sqrt(dx * dx + dy * dy) >= 4f || hit.mediaId != lastItemId) {
-                        process(hit, change.position)
+                val hit = adapter.hitTest(change.position)
+                if (hit != null) {
+                    val dx = change.position.x - lastPos.x
+                    val dy = change.position.y - lastPos.y
+                    if (sqrt(dx * dx + dy * dy) >= 4f || hit.mediaId != lastHit?.mediaId) {
+                        applyRangeTo(hit)
+                        lastHit = hit
+                        lastPos = change.position
                     }
                 }
                 currentOnTouchPositionChanged.value?.invoke(change.position)
             }
         }
     }
+}
+
+private fun MultiSelectHitTestAdapter.mediaIdsBetween(
+    startRowIndex: Int,
+    startColIndex: Int,
+    endRowIndex: Int,
+    endColIndex: Int,
+): List<String> {
+    if (startRowIndex < 0 || endRowIndex < 0) return emptyList()
+    if (startRowIndex == endRowIndex) {
+        val rowIds = rowKeyAtIndex(startRowIndex)?.let(mediaIdsInRow).orEmpty()
+        if (rowIds.isEmpty()) return emptyList()
+        val left = minOf(startColIndex, endColIndex).coerceIn(0, rowIds.lastIndex)
+        val right = maxOf(startColIndex, endColIndex).coerceIn(0, rowIds.lastIndex)
+        return rowIds.subList(left, right + 1)
+    }
+    return if (endRowIndex >= startRowIndex) {
+        buildForwardRange(
+            startRowIndex = startRowIndex,
+            startColIndex = startColIndex,
+            endRowIndex = endRowIndex,
+            endColIndex = endColIndex,
+        )
+    } else {
+        buildBackwardRange(
+            startRowIndex = startRowIndex,
+            startColIndex = startColIndex,
+            endRowIndex = endRowIndex,
+            endColIndex = endColIndex,
+        )
+    }
+}
+
+private fun MultiSelectHitTestAdapter.buildForwardRange(
+    startRowIndex: Int,
+    startColIndex: Int,
+    endRowIndex: Int,
+    endColIndex: Int,
+): List<String> {
+    val ids = mutableListOf<String>()
+    for (rowIndex in startRowIndex..endRowIndex) {
+        val rowIds = rowKeyAtIndex(rowIndex)?.let(mediaIdsInRow).orEmpty()
+        if (rowIds.isEmpty()) continue
+
+        val firstCol = if (rowIndex == startRowIndex) {
+            startColIndex.coerceIn(0, rowIds.lastIndex)
+        } else {
+            0
+        }
+        val lastCol = if (rowIndex == endRowIndex) {
+            endColIndex.coerceIn(0, rowIds.lastIndex)
+        } else {
+            rowIds.lastIndex
+        }
+        if (firstCol <= lastCol) {
+            ids += rowIds.subList(firstCol, lastCol + 1)
+        }
+    }
+    return ids
+}
+
+private fun MultiSelectHitTestAdapter.buildBackwardRange(
+    startRowIndex: Int,
+    startColIndex: Int,
+    endRowIndex: Int,
+    endColIndex: Int,
+): List<String> {
+    val ids = mutableListOf<String>()
+    for (rowIndex in endRowIndex..startRowIndex) {
+        val rowIds = rowKeyAtIndex(rowIndex)?.let(mediaIdsInRow).orEmpty()
+        if (rowIds.isEmpty()) continue
+
+        val firstCol = if (rowIndex == endRowIndex) {
+            endColIndex.coerceIn(0, rowIds.lastIndex)
+        } else {
+            0
+        }
+        val lastCol = if (rowIndex == startRowIndex) {
+            startColIndex.coerceIn(0, rowIds.lastIndex)
+        } else {
+            rowIds.lastIndex
+        }
+        if (firstCol <= lastCol) {
+            ids += rowIds.subList(firstCol, lastCol + 1)
+        }
+    }
+    return ids
 }

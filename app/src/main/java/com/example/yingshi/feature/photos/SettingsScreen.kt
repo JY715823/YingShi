@@ -27,7 +27,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.yingshi.BuildConfig
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -157,13 +156,11 @@ fun SettingsScreen(
                 subtitle = "保持轻量说明，暂不做复杂诊断导出。",
                 value = "debug / local shell",
             )
-            if (BuildConfig.DEBUG) {
-                SettingsEntryRow(
-                    title = "后端联调诊断",
-                    subtitle = "查看或修改 baseUrl，切换 fake / real，并直接测试 health、login、albums、media、comments、trash。",
-                    onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
-                )
-            }
+            SettingsEntryRow(
+                title = "后端联调诊断",
+                subtitle = "查看或修改 baseUrl，切换 fake / real，并直接测试 health、login、albums、media、comments、trash。",
+                onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
+            )
         }
     }
 }

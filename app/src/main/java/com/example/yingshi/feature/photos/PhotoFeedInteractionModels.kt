@@ -5,17 +5,18 @@ import androidx.compose.runtime.Immutable
 @Immutable
 data class PhotoFeedSelectionState(
     val selectedMediaIds: Set<String> = emptySet(),
+    val isInSelectionMode: Boolean = false,
 ) {
-    val isInSelectionMode: Boolean
-        get() = selectedMediaIds.isNotEmpty()
-
     val selectedCount: Int
         get() = selectedMediaIds.size
 
     fun contains(mediaId: String): Boolean = selectedMediaIds.contains(mediaId)
 
     fun enterWith(mediaId: String): PhotoFeedSelectionState {
-        return copy(selectedMediaIds = setOf(mediaId))
+        return copy(
+            selectedMediaIds = setOf(mediaId),
+            isInSelectionMode = true,
+        )
     }
 
     fun toggle(mediaId: String): PhotoFeedSelectionState {
@@ -40,6 +41,12 @@ data class PhotoFeedSelectionState(
 
     fun clear(): PhotoFeedSelectionState = PhotoFeedSelectionState()
 }
+
+@Immutable
+data class SelectionNumberFlash(
+    val number: Int,
+    val nonce: Int,
+)
 
 @Immutable
 data class PhotoFeedScrubberAnchor(

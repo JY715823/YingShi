@@ -162,7 +162,6 @@ fun PhotosRootScreen(
                             val feedItems = FakePhotoFeedRepository.getPhotoFeed()
                             val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
                             if (selectedMedia.isEmpty()) {
-                                photoSelectionState = photoSelectionState.clear()
                                 return@TextButton
                             }
 
@@ -331,7 +330,7 @@ fun PhotosRootScreen(
                                             },
                                             onDelete = {
                                                 if (photoSelectionState.selectedMediaIds.isEmpty()) {
-                                                    photoSelectionState = photoSelectionState.clear()
+                                                    return@PhotoSelectionActionBarV2
                                                 } else {
                                                     showDeleteConfirm = true
                                                 }
@@ -419,7 +418,11 @@ private fun PhotoTopBar(
             }
 
             Text(
-                text = "已选 ${selectionState.selectedCount} 项",
+                text = if (selectionState.selectedCount > 0) {
+                    "已选 ${selectionState.selectedCount} 项"
+                } else {
+                    "请选择媒体"
+                },
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleMedium,
@@ -729,7 +732,7 @@ private fun PhotoSelectionActionBarV2(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "已选 $selectedCount 项",
+                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -751,7 +754,7 @@ private fun PhotoSelectionActionBarV2(
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
                 Text(
-                    text = "已选 $selectedCount 项",
+                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -810,7 +813,7 @@ private fun PhotoSelectionActionBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "已选 $selectedCount 项",
+                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -832,7 +835,7 @@ private fun PhotoSelectionActionBar(
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
                 Text(
-                    text = "已选 $selectedCount 项",
+                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )

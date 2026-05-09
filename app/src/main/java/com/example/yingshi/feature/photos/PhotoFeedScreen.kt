@@ -1,6 +1,8 @@
 package com.example.yingshi.feature.photos
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -47,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -61,6 +64,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.imageLoader
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.repository.RepositoryMode
@@ -99,6 +103,8 @@ fun PhotoFeedScreen(
     var scrubberDragLabel by remember { mutableStateOf("") }
     var scrubberLabelWidthPx by remember { mutableIntStateOf(0) }
     val liveSelectedIds = remember { mutableStateOf(selectionState.selectedMediaIds) }
+    var selectionFlashNonce by remember { mutableIntStateOf(0) }
+    var selectionFlashByMediaId by remember { mutableStateOf<Map<String, SelectionNumberFlash>>(emptyMap()) }
 
     LaunchedEffect(selectionState.selectedMediaIds) {
         liveSelectedIds.value = selectionState.selectedMediaIds
@@ -126,6 +132,12 @@ fun PhotoFeedScreen(
             }
         }
     }
+    val rowKeys = remember(blocks) {
+        blocks.filterIsInstance<PhotoFeedGridRow>().map { it.key }
+    }
+    val rowKeyToIndex = remember(rowKeys) {
+        rowKeys.mapIndexed { index, rowKey -> rowKey to index }.toMap()
+    }
     val scrollAnchors = remember(blocks, density) {
         buildPhotoFeedScrollAnchors(
             blocks = blocks,
@@ -135,7 +147,7 @@ fun PhotoFeedScreen(
     }
     val listState = rememberLazyListState()
     val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
-    val hitTestAdapter = remember(listState, blocks, density, rowKeyToMediaIds, spacingPx) {
+    val hitTestAdapter = remember(listState, blocks, density, rowKeyToMediaIds, rowKeys, rowKeyToIndex, spacingPx) {
         val colSpacingPx = spacingPx
         MultiSelectHitTestAdapter(
             hitTest = { touchPos ->
@@ -164,6 +176,7 @@ fun PhotoFeedScreen(
                         return@MultiSelectHitTestAdapter MultiSelectHitResult(
                             mediaId = mediaItem.mediaId,
                             rowKey = block.key,
+                            rowIndex = rowKeyToIndex[block.key] ?: -1,
                             isSelectable = true,
                             colIndex = colIndex,
                             columnsInRow = block.items.size,
@@ -173,10 +186,9 @@ fun PhotoFeedScreen(
                 null
             },
             mediaIdsInRow = { rowKey -> rowKeyToMediaIds[rowKey].orEmpty() },
+            rowKeyAtIndex = { rowIndex -> rowKeys.getOrNull(rowIndex) },
         )
     }
-    var trailPosition by remember { mutableStateOf<Offset?>(null) }
-    var isGestureActive by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var lastRequestedAnchorIndex by remember { mutableIntStateOf(-1) }
     val currentVisibleDateLabel by remember(listState, blocks, feedItems) {
@@ -258,10 +270,13 @@ fun PhotoFeedScreen(
                     hitTestAdapter = hitTestAdapter,
                     selectedIds = liveSelectedIds.value,
                     onSelectionChange = { newIds ->
-                        onSelectionStateChange(PhotoFeedSelectionState(selectedMediaIds = newIds))
+                        onSelectionStateChange(
+                            PhotoFeedSelectionState(
+                                selectedMediaIds = newIds,
+                                isInSelectionMode = true,
+                            ),
+                        )
                     },
-                    onGestureActiveChanged = { isGestureActive = it },
-                    onTouchPositionChanged = { trailPosition = it },
                 ),
         ) {
             LazyColumn(
@@ -291,10 +306,19 @@ fun PhotoFeedScreen(
                             row = block,
                             density = density,
                             selectionState = selectionState,
+                            selectionFlash = selectionFlashByMediaId,
                             onMediaClick = { item ->
                                 onSelectionStateChange(
                                     if (selectionState.isInSelectionMode) {
-                                        selectionState.toggle(item.mediaId)
+                                        selectionState.toggle(item.mediaId).also { nextState ->
+                                            if (item.mediaId !in selectionState.selectedMediaIds &&
+                                                item.mediaId in nextState.selectedMediaIds
+                                            ) {
+                                                selectionFlashNonce += 1
+                                                selectionFlashByMediaId = selectionFlashByMediaId +
+                                                    (item.mediaId to SelectionNumberFlash(nextState.selectedCount, selectionFlashNonce))
+                                            }
+                                        }
                                     } else {
                                         onOpenViewer(
                                             PhotoViewerRoute(
@@ -308,6 +332,16 @@ fun PhotoFeedScreen(
                                     },
                                 )
                             },
+                            onOpenMedia = { item ->
+                                onOpenViewer(
+                                    PhotoViewerRoute(
+                                        mediaItems = feedItems,
+                                        initialIndex = mediaPositionLookup[item.mediaId] ?: 0,
+                                        sourceLabel = "photos-feed",
+                                        showPostSegments = false,
+                                    ),
+                                )
+                            },
                             onMediaLongPress = { item ->
                                 onSelectionStateChange(
                                     if (selectionState.isInSelectionMode) {
@@ -319,16 +353,6 @@ fun PhotoFeedScreen(
                             },
                         )
                     }
-                }
-            }
-
-            if (isGestureActive && trailPosition != null) {
-                Canvas(modifier = Modifier.matchParentSize()) {
-                    drawCircle(
-                        color = Color(0xFF3B82F6).copy(alpha = 0.15f),
-                        radius = 28.dp.toPx(),
-                        center = trailPosition!!,
-                    )
                 }
             }
 
@@ -706,7 +730,9 @@ private fun PhotoFeedGridRowContent(
     row: PhotoFeedGridRow,
     density: PhotoFeedDensity,
     selectionState: PhotoFeedSelectionState,
+    selectionFlash: Map<String, SelectionNumberFlash>,
     onMediaClick: (PhotoFeedItem) -> Unit,
+    onOpenMedia: (PhotoFeedItem) -> Unit,
     onMediaLongPress: (PhotoFeedItem) -> Unit,
 ) {
     val spacing = rowSpacing(density)
@@ -721,8 +747,10 @@ private fun PhotoFeedGridRowContent(
                 density = density,
                 isInSelectionMode = selectionState.isInSelectionMode,
                 isSelected = selectionState.contains(item.mediaId),
+                selectionFlash = selectionFlash[item.mediaId],
                 modifier = Modifier.weight(1f),
                 onClick = { onMediaClick(item) },
+                onOpenMedia = { onOpenMedia(item) },
                 onLongPress = { onMediaLongPress(item) },
             )
         }
@@ -740,16 +768,19 @@ private fun PhotoFeedCard(
     density: PhotoFeedDensity,
     isInSelectionMode: Boolean,
     isSelected: Boolean,
+    selectionFlash: SelectionNumberFlash?,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    onOpenMedia: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    val selectionHotspotOnly = isInSelectionMode && density.columns in 2..4
     Box(
         modifier = modifier
             .aspectRatio(1f)
             .background(Color.Transparent)
             .combinedClickable(
-                onClick = onClick,
+                onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
                 onLongClick = onLongPress,
             ),
     ) {
@@ -764,27 +795,32 @@ private fun PhotoFeedCard(
         )
 
         if (isInSelectionMode) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        if (isSelected) {
-                            Color(0xFF3B82F6).copy(alpha = 0.12f)
-                        } else {
-                            Color.Black.copy(alpha = 0.04f)
-                        },
-                    ),
-            )
+            if (selectionHotspotOnly) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(46.dp)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    SelectionBadge(
+                        selected = isSelected,
+                        modifier = Modifier.padding(end = 2.dp, bottom = 2.dp),
+                    )
+                }
+            } else {
+                SelectionBadge(
+                    selected = isSelected,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 2.dp, bottom = 2.dp),
+                )
+            }
         }
-
-        if (isInSelectionMode) {
-            SelectionBadge(
-                selected = isSelected,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(6.dp),
-            )
-        }
+        SelectionNumberFlashOverlay(
+            flash = selectionFlash,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 
@@ -812,6 +848,41 @@ private fun SelectionBadge(
             Text(
                 text = "✓",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionNumberFlashOverlay(
+    flash: SelectionNumberFlash?,
+    modifier: Modifier = Modifier,
+) {
+    if (flash == null) return
+    val alpha = remember(flash.nonce) { Animatable(0f) }
+    LaunchedEffect(flash.nonce) {
+        alpha.snapTo(0f)
+        alpha.animateTo(1f, animationSpec = tween(durationMillis = 300))
+        delay(800)
+        alpha.animateTo(0f, animationSpec = tween(durationMillis = 500))
+    }
+
+    if (alpha.value > 0f) {
+        Box(
+            modifier = modifier
+                .alpha(alpha.value)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF202124).copy(alpha = 0.72f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = flash.number.toString(),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                ),
                 color = Color.White,
             )
         }

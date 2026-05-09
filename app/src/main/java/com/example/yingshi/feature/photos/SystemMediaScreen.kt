@@ -11,6 +11,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -18,6 +20,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -67,6 +70,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -81,6 +85,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -147,6 +152,8 @@ fun SystemMediaScreen(
     var selectedIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
+    var selectionFlashNonce by remember { mutableIntStateOf(0) }
+    var selectionFlashByMediaId by remember { mutableStateOf<Map<String, SelectionNumberFlash>>(emptyMap()) }
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -186,6 +193,7 @@ fun SystemMediaScreen(
     }
     val selectedIdSet = selectedIds.toSet()
     val selectedItems = uiState.filteredItems.filter { selectedIdSet.contains(it.id) }
+    val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
     val visibleItems by remember(uiState.filteredItems, renderedCount) {
         derivedStateOf {
             uiState.filteredItems.take(renderedCount.coerceAtMost(uiState.filteredItems.size))
@@ -196,48 +204,81 @@ fun SystemMediaScreen(
     }
     val systemRowMapping = remember(gridBlocks, density.columns) {
         val mediaToRow = mutableMapOf<String, String>()
+        val mediaToColumn = mutableMapOf<String, Int>()
         val rowToMedia = mutableMapOf<String, MutableList<String>>()
+        val rowKeys = mutableListOf<String>()
         var mediaInRow = 0
         var rowIndex = 0
         gridBlocks.forEach { block ->
-            if (block is SystemMediaGridBlock.Media) {
-                val rowKey = "sys-row-$rowIndex"
-                mediaToRow[block.item.id] = rowKey
-                rowToMedia.getOrPut(rowKey) { mutableListOf() }.add(block.item.id)
-                mediaInRow++
-                if (mediaInRow >= density.columns) {
-                    mediaInRow = 0
-                    rowIndex++
+            when (block) {
+                is SystemMediaGridBlock.Media -> {
+                    val rowKey = "sys-row-$rowIndex"
+                    if (mediaInRow == 0) {
+                        rowKeys += rowKey
+                    }
+                    mediaToRow[block.item.id] = rowKey
+                    mediaToColumn[block.item.id] = mediaInRow
+                    rowToMedia.getOrPut(rowKey) { mutableListOf() }.add(block.item.id)
+                    mediaInRow++
+                    if (mediaInRow >= density.columns) {
+                        mediaInRow = 0
+                        rowIndex++
+                    }
+                }
+                is SystemMediaGridBlock.MonthHeader,
+                is SystemMediaGridBlock.DayHeader,
+                -> {
+                    if (mediaInRow > 0) {
+                        mediaInRow = 0
+                        rowIndex++
+                    }
                 }
             }
         }
-        Pair(mediaToRow, rowToMedia.mapValues { it.value.toList() })
+        SystemMediaRowMapping(
+            mediaToRow = mediaToRow,
+            mediaToColumn = mediaToColumn,
+            rowToMedia = rowToMedia.mapValues { it.value.toList() },
+            rowKeys = rowKeys,
+        )
     }
-    val hitTestAdapter = remember(gridState, gridBlocks, systemRowMapping) {
-        val (mediaToRow, rowToMedia) = systemRowMapping
+    val hitTestAdapter = remember(gridState, gridBlocks, systemRowMapping, density.columns, spacingPx) {
+        val colSpacingPx = spacingPx
         MultiSelectHitTestAdapter(
             hitTest = { touchPos ->
                 val layout = gridState.layoutInfo
+                val tx = touchPos.x.toInt()
+                val ty = touchPos.y.toInt()
+                val viewportW = layout.viewportSize.width.coerceAtLeast(1)
+                val totalSpacing = (density.columns - 1) * colSpacingPx
+                val cellWidth = ((viewportW - totalSpacing).toFloat() / density.columns)
+                val segmentWidth = cellWidth + colSpacingPx
                 for (vi in layout.visibleItemsInfo) {
-                    if (touchPos.x.toInt() in vi.offset.x until (vi.offset.x + vi.size.width) &&
-                        touchPos.y.toInt() in vi.offset.y until (vi.offset.y + vi.size.height)
-                    ) {
-                        val block = gridBlocks.getOrNull(vi.index) as? SystemMediaGridBlock.Media
-                            ?: return@MultiSelectHitTestAdapter null
-                        MultiSelectHitResult(
-                            mediaId = block.item.id,
-                            rowKey = mediaToRow[block.item.id],
-                            isSelectable = true,
-                        )
-                    }
+                    val block = gridBlocks.getOrNull(vi.index) as? SystemMediaGridBlock.Media ?: continue
+                    val itemEndY = vi.offset.y + vi.size.height
+                    if (ty !in vi.offset.y until itemEndY) continue
+
+                    val rowKey = systemRowMapping.mediaToRow[block.item.id] ?: continue
+                    val rowItems = systemRowMapping.rowToMedia[rowKey].orEmpty()
+                    if (rowItems.isEmpty()) continue
+
+                    val colIndex = (tx / segmentWidth).toInt().coerceIn(0, density.columns - 1)
+                    val mediaId = rowItems.getOrNull(colIndex) ?: return@MultiSelectHitTestAdapter null
+                    return@MultiSelectHitTestAdapter MultiSelectHitResult(
+                        mediaId = mediaId,
+                        rowKey = rowKey,
+                        rowIndex = systemRowMapping.rowIndexForMedia(mediaId),
+                        isSelectable = true,
+                        colIndex = colIndex,
+                        columnsInRow = rowItems.size,
+                    )
                 }
                 null
             },
-            mediaIdsInRow = { rowKey -> rowToMedia[rowKey].orEmpty() },
+            mediaIdsInRow = { rowKey -> systemRowMapping.rowToMedia[rowKey].orEmpty() },
+            rowKeyAtIndex = { rowIndex -> systemRowMapping.rowKeys.getOrNull(rowIndex) },
         )
     }
-    var trailPosition by remember { mutableStateOf<Offset?>(null) }
-    var isGestureActive by remember { mutableStateOf(false) }
     val currentScrollProgress by remember(gridState, gridBlocks, uiState.filteredItems.size) {
         derivedStateOf {
             calculateSystemMediaScrollProgress(
@@ -546,20 +587,8 @@ fun SystemMediaScreen(
                                 onSelectionChange = { newIds ->
                                     selectedIds = newIds.toList()
                                 },
-                                onGestureActiveChanged = { isGestureActive = it },
-                                onTouchPositionChanged = { trailPosition = it },
                             ),
                     ) {
-                        if (isGestureActive && trailPosition != null) {
-                            Canvas(modifier = Modifier.matchParentSize()) {
-                                drawCircle(
-                                    color = Color(0xFF3B82F6).copy(alpha = 0.15f),
-                                    radius = 28.dp.toPx(),
-                                    center = trailPosition!!,
-                                )
-                            }
-                        }
-
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(density.columns),
                             state = gridState,
@@ -598,13 +627,18 @@ fun SystemMediaScreen(
                                         val item = block.item
                                         SystemMediaCard(
                                             item = item,
+                                            density = density,
                                             selectionMode = selectionMode,
                                             selected = selectedIdSet.contains(item.id),
+                                            selectionFlash = selectionFlashByMediaId[item.id],
                                             onClick = {
                                                 if (selectionMode) {
+                                                    val wasSelected = selectedIds.contains(item.id)
                                                     selectedIds = selectedIds.toggleSystemMediaId(item.id)
-                                                    if (selectedIds.isEmpty()) {
-                                                        selectionMode = false
+                                                    if (!wasSelected && selectedIds.contains(item.id)) {
+                                                        selectionFlashNonce += 1
+                                                        selectionFlashByMediaId = selectionFlashByMediaId +
+                                                            (item.id to SelectionNumberFlash(selectedIds.size, selectionFlashNonce))
                                                     }
                                                 } else {
                                                     onOpenViewer(
@@ -615,6 +649,15 @@ fun SystemMediaScreen(
                                                         ),
                                                     )
                                                 }
+                                            },
+                                            onOpenMedia = {
+                                                onOpenViewer(
+                                                    SystemMediaViewerRoute(
+                                                        mediaItems = uiState.filteredItems,
+                                                        initialIndex = uiState.filteredItems.indexOfFirst { it.id == item.id }
+                                                            .coerceAtLeast(0),
+                                                    ),
+                                                )
                                             },
                                             onLongPress = {
                                                 selectionMode = true
@@ -821,7 +864,7 @@ private fun SystemMediaTopBar(
             )
             Text(
                 text = if (selectionMode) {
-                    "多选中 $selectedCount 项"
+                    if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
                 } else {
                     "筛选：${selectedFilter.label}"
                 },
@@ -870,9 +913,12 @@ private fun SystemMediaFilterRow(
 @Composable
 private fun SystemMediaCard(
     item: SystemMediaItem,
+    density: PhotoFeedDensity,
     selectionMode: Boolean,
     selected: Boolean,
+    selectionFlash: SelectionNumberFlash?,
     onClick: () -> Unit,
+    onOpenMedia: () -> Unit,
     onLongPress: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -882,6 +928,7 @@ private fun SystemMediaCard(
     } else {
         null
     }
+    val selectionHotspotOnly = selectionMode && density.columns in 2..4
 
     Box(
         modifier = Modifier
@@ -889,7 +936,7 @@ private fun SystemMediaCard(
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
             .combinedClickable(
-                onClick = onClick,
+                onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
                 onLongClick = onLongPress,
             ),
     ) {
@@ -911,20 +958,6 @@ private fun SystemMediaCard(
                 contentDescription = item.displayName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-            )
-        }
-
-        if (selectionMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        if (selected) {
-                            Color(0xFF3B82F6).copy(alpha = 0.12f)
-                        } else {
-                            Color.Black.copy(alpha = 0.04f)
-                        },
-                    ),
             )
         }
 
@@ -956,13 +989,32 @@ private fun SystemMediaCard(
         }
 
         if (selectionMode) {
-            SystemMediaSelectionBadge(
-                selected = selected,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(6.dp),
-            )
+            if (selectionHotspotOnly) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(46.dp)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    SystemMediaSelectionBadge(
+                        selected = selected,
+                        modifier = Modifier.padding(end = 2.dp, bottom = 2.dp),
+                    )
+                }
+            } else {
+                SystemMediaSelectionBadge(
+                    selected = selected,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 2.dp, bottom = 2.dp),
+                )
+            }
         }
+        SelectionNumberFlashOverlay(
+            flash = selectionFlash,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 
@@ -1026,7 +1078,7 @@ private fun SystemMediaSelectionBar(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "已选 $selectedCount 项",
+                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -1171,6 +1223,41 @@ private fun SystemMediaSelectionBadge(
     }
 }
 
+@Composable
+private fun SelectionNumberFlashOverlay(
+    flash: SelectionNumberFlash?,
+    modifier: Modifier = Modifier,
+) {
+    if (flash == null) return
+    val alpha = remember(flash.nonce) { Animatable(0f) }
+    LaunchedEffect(flash.nonce) {
+        alpha.snapTo(0f)
+        alpha.animateTo(1f, animationSpec = tween(durationMillis = 300))
+        delay(800)
+        alpha.animateTo(0f, animationSpec = tween(durationMillis = 500))
+    }
+
+    if (alpha.value > 0f) {
+        Box(
+            modifier = modifier
+                .alpha(alpha.value)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF202124).copy(alpha = 0.72f))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = flash.number.toString(),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                ),
+                color = Color.White,
+            )
+        }
+    }
+}
+
 private sealed interface SystemMediaGridBlock {
     val key: String
 
@@ -1188,6 +1275,21 @@ private sealed interface SystemMediaGridBlock {
         override val key: String,
         val item: SystemMediaItem,
     ) : SystemMediaGridBlock
+}
+
+private data class SystemMediaRowMapping(
+    val mediaToRow: Map<String, String>,
+    val mediaToColumn: Map<String, Int>,
+    val rowToMedia: Map<String, List<String>>,
+    val rowKeys: List<String>,
+) {
+    private val rowKeyToIndex: Map<String, Int> = rowKeys
+        .mapIndexed { index, rowKey -> rowKey to index }
+        .toMap()
+
+    fun rowIndexForMedia(mediaId: String): Int {
+        return mediaToRow[mediaId]?.let { rowKey -> rowKeyToIndex[rowKey] } ?: -1
+    }
 }
 
 @Composable

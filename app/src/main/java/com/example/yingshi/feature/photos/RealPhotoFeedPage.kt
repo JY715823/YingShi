@@ -213,7 +213,7 @@ fun RealPhotoFeedPage(
                                 },
                                 onDelete = {
                                     if (selectionState.selectedMediaIds.isEmpty()) {
-                                        onSelectionStateChange(selectionState.clear())
+                                        return@RealFeedSelectionBarV2
                                     } else {
                                         showDeleteConfirm = true
                                     }
@@ -247,7 +247,7 @@ private fun RealFeedSelectionBarV2(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "已选中 $selectedCount 项",
+                text = if (selectedCount > 0) "已选中 $selectedCount 项" else "请选择媒体",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -292,7 +292,7 @@ private fun RealFeedSelectionBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "已选中 $selectedCount 项",
+                text = if (selectedCount > 0) "已选中 $selectedCount 项" else "请选择媒体",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
