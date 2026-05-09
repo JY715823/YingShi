@@ -10,8 +10,18 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sqrt
+
+private const val AutoScrollFrameDelayMillis = 16L
+private const val AutoScrollMinStepPx = 4f
+private const val AutoScrollMaxStepPx = 38f
 
 data class MultiSelectHitResult(
     val mediaId: String,
@@ -36,6 +46,7 @@ fun Modifier.multiSelectSwipeGesture(
     onSelectionChange: (Set<String>) -> Unit,
     onGestureActiveChanged: ((Boolean) -> Unit)? = null,
     onTouchPositionChanged: ((Offset?) -> Unit)? = null,
+    onAutoScroll: (suspend (Float) -> Float)? = null,
 ): Modifier {
     val currentEnabled = rememberUpdatedState(enabled)
     val currentAdapter = rememberUpdatedState(hitTestAdapter)
@@ -43,9 +54,11 @@ fun Modifier.multiSelectSwipeGesture(
     val currentOnSelectionChange = rememberUpdatedState(onSelectionChange)
     val currentOnGestureActiveChanged = rememberUpdatedState(onGestureActiveChanged)
     val currentOnTouchPositionChanged = rememberUpdatedState(onTouchPositionChanged)
+    val currentOnAutoScroll = rememberUpdatedState(onAutoScroll)
     val touchSlop = LocalViewConfiguration.current.touchSlop
 
     return pointerInput(Unit) {
+        coroutineScope {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             if (!currentEnabled.value) return@awaitEachGesture
@@ -63,7 +76,11 @@ fun Modifier.multiSelectSwipeGesture(
             var gestureActive = false
             var lastHit: MultiSelectHitResult? = null
             var lastPos = down.position
+            var lastTouchPosition = down.position
             var blockSwipeSelectForThisGesture = false
+            var autoScrollJob: Job? = null
+            val edgeSizePx = minOf(96.dp.toPx(), size.height * 0.22f)
+                .coerceAtLeast(48.dp.toPx())
 
             fun shouldFlip(mediaId: String): Boolean {
                 return if (isSelectMode) {
@@ -93,61 +110,141 @@ fun Modifier.multiSelectSwipeGesture(
                 }
             }
 
-            while (true) {
+            fun updateRangeAt(position: Offset) {
+                val hit = adapter.hitTest(position)
+                if (hit != null) {
+                    val dx = position.x - lastPos.x
+                    val dy = position.y - lastPos.y
+                    if (sqrt(dx * dx + dy * dy) >= 4f || hit.mediaId != lastHit?.mediaId) {
+                        applyRangeTo(hit)
+                        lastHit = hit
+                        lastPos = position
+                    }
+                }
+            }
+
+            fun stopAutoScroll() {
+                autoScrollJob?.cancel()
+                autoScrollJob = null
+            }
+
+            fun stopActiveGesture() {
+                stopAutoScroll()
+                currentOnGestureActiveChanged.value?.invoke(false)
+                currentOnTouchPositionChanged.value?.invoke(null)
+            }
+
+            fun updateAutoScroll(position: Offset) {
+                lastTouchPosition = position
+                val scrollDelta = calculateEdgeAutoScrollDelta(
+                    touchY = position.y,
+                    viewportHeight = size.height.toFloat(),
+                    edgeSize = edgeSizePx,
+                )
+                if (scrollDelta == 0f || currentOnAutoScroll.value == null) {
+                    stopAutoScroll()
+                    return
+                }
+                if (autoScrollJob?.isActive == true) return
+
+                autoScrollJob = launch {
+                    while (isActive) {
+                        if (!currentEnabled.value) break
+                        val nextDelta = calculateEdgeAutoScrollDelta(
+                            touchY = lastTouchPosition.y,
+                            viewportHeight = size.height.toFloat(),
+                            edgeSize = edgeSizePx,
+                        )
+                        if (nextDelta == 0f) break
+
+                        val consumed = currentOnAutoScroll.value?.invoke(nextDelta) ?: 0f
+                        if (abs(consumed) > 0.5f) {
+                            updateRangeAt(lastTouchPosition)
+                        }
+                        delay(AutoScrollFrameDelayMillis)
+                    }
+                    stopAutoScroll()
+                }
+            }
+
+            try {
+                while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 val changes: List<PointerInputChange> = event.changes
                 if (changes.isEmpty()) continue
                 val change = changes[0]
 
-                if (!change.pressed) {
-                    if (gestureActive) {
-                        currentOnGestureActiveChanged.value?.invoke(false)
-                        currentOnTouchPositionChanged.value?.invoke(null)
+                    if (!currentEnabled.value) {
+                        if (gestureActive) {
+                            stopActiveGesture()
+                        }
+                        break
                     }
-                    break
+
+                    if (!change.pressed) {
+                        if (gestureActive) {
+                            stopActiveGesture()
+                        }
+                        break
+                    }
+
+                    if (!gestureActive) {
+                        if (blockSwipeSelectForThisGesture) {
+                            continue
+                        }
+                        val totalDx = change.position.x - down.position.x
+                        val totalDy = change.position.y - down.position.y
+                        val absDx = abs(totalDx)
+                        val absDy = abs(totalDy)
+
+                        // Vertical intent wins early: keep this whole gesture for scrolling only.
+                        val hasVerticalIntent = absDy >= touchSlop && absDy > absDx * 1.1f
+                        if (hasVerticalIntent) {
+                            blockSwipeSelectForThisGesture = true
+                            continue
+                        }
+
+                        // Require stronger and dominant horizontal movement to start swipe-select.
+                        val hasHorizontalIntent = absDx >= (touchSlop * 1.35f) && absDx > absDy * 1.2f
+                        if (!hasHorizontalIntent) {
+                            // Keep non-horizontal movement as normal list/grid scroll.
+                            continue
+                        }
+                        gestureActive = true
+                        currentOnGestureActiveChanged.value?.invoke(true)
+                        applyRangeTo(firstHit)
+                    }
+
+                    change.consume()
+                    updateRangeAt(change.position)
+                    updateAutoScroll(change.position)
+                    currentOnTouchPositionChanged.value?.invoke(change.position)
                 }
-
-                if (!gestureActive) {
-                    if (blockSwipeSelectForThisGesture) {
-                        continue
-                    }
-                    val totalDx = change.position.x - down.position.x
-                    val totalDy = change.position.y - down.position.y
-                    val absDx = abs(totalDx)
-                    val absDy = abs(totalDy)
-
-                    // Vertical intent wins early: keep this whole gesture for scrolling only.
-                    val hasVerticalIntent = absDy >= touchSlop && absDy > absDx * 1.1f
-                    if (hasVerticalIntent) {
-                        blockSwipeSelectForThisGesture = true
-                        continue
-                    }
-
-                    // Require stronger and dominant horizontal movement to start swipe-select.
-                    val hasHorizontalIntent = absDx >= (touchSlop * 1.35f) && absDx > absDy * 1.2f
-                    if (!hasHorizontalIntent) {
-                        // Keep non-horizontal movement as normal list/grid scroll.
-                        continue
-                    }
-                    gestureActive = true
-                    currentOnGestureActiveChanged.value?.invoke(true)
-                    applyRangeTo(firstHit)
-                }
-
-                change.consume()
-                val hit = adapter.hitTest(change.position)
-                if (hit != null) {
-                    val dx = change.position.x - lastPos.x
-                    val dy = change.position.y - lastPos.y
-                    if (sqrt(dx * dx + dy * dy) >= 4f || hit.mediaId != lastHit?.mediaId) {
-                        applyRangeTo(hit)
-                        lastHit = hit
-                        lastPos = change.position
-                    }
-                }
-                currentOnTouchPositionChanged.value?.invoke(change.position)
+            } finally {
+                stopAutoScroll()
             }
         }
+        }
+    }
+}
+
+private fun calculateEdgeAutoScrollDelta(
+    touchY: Float,
+    viewportHeight: Float,
+    edgeSize: Float,
+): Float {
+    if (viewportHeight <= 0f || edgeSize <= 0f) return 0f
+    val clampedEdge = edgeSize.coerceAtMost(viewportHeight / 2f)
+    return when {
+        touchY < clampedEdge -> {
+            val progress = ((clampedEdge - touchY) / clampedEdge).coerceIn(0f, 1f)
+            -(AutoScrollMinStepPx + (AutoScrollMaxStepPx - AutoScrollMinStepPx) * progress)
+        }
+        touchY > viewportHeight - clampedEdge -> {
+            val progress = ((touchY - (viewportHeight - clampedEdge)) / clampedEdge).coerceIn(0f, 1f)
+            AutoScrollMinStepPx + (AutoScrollMaxStepPx - AutoScrollMinStepPx) * progress
+        }
+        else -> 0f
     }
 }
 
