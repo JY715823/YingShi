@@ -294,6 +294,8 @@ fun PhotoFeedScreen(
             }
         }
     }
+    var pendingTargetLoadAttemptBlockCount by remember { mutableIntStateOf(-1) }
+    var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size) {
         if (scrollAnchors.size <= 1) {
@@ -315,9 +317,28 @@ fun PhotoFeedScreen(
     LaunchedEffect(scrollTrigger, blocks) {
         val mediaId = PhotoFeedPageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
         val targetBlockIndex = findBlockIndexForMedia(blocks, mediaId)
-        if (targetBlockIndex < 0) return@LaunchedEffect
+        if (mediaId != pendingTargetMediaIdSnapshot) {
+            pendingTargetMediaIdSnapshot = mediaId
+            pendingTargetLoadAttemptBlockCount = -1
+        }
+        if (targetBlockIndex < 0) {
+            if (!hasMore) {
+                PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
+                PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+                pendingTargetMediaIdSnapshot = null
+                pendingTargetLoadAttemptBlockCount = -1
+                return@LaunchedEffect
+            }
+            if (!isLoadingMore && pendingTargetLoadAttemptBlockCount != blocks.size) {
+                pendingTargetLoadAttemptBlockCount = blocks.size
+                onLoadMore()
+            }
+            return@LaunchedEffect
+        }
         PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
         PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+        pendingTargetMediaIdSnapshot = null
+        pendingTargetLoadAttemptBlockCount = -1
         val visibleIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }
         if (targetBlockIndex in visibleIndices) return@LaunchedEffect
         listState.scrollToItem(headerIndexForMedia(blocks, targetBlockIndex, density))

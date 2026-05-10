@@ -183,6 +183,8 @@ fun SystemMediaScreen(
     var lastRequestedScrubberIndex by remember {
         mutableIntStateOf(-1)
     }
+    var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
+    var pendingTargetRenderedCount by remember { mutableIntStateOf(-1) }
     val spacing = YingShiThemeTokens.spacing
     val coroutineScope = rememberCoroutineScope()
     val density = PhotoFeedDensity.valueOf(densityName)
@@ -381,17 +383,45 @@ fun SystemMediaScreen(
     LaunchedEffect(
         scrollTrigger,
         uiState.filteredItems,
+        renderedCount,
         density.columns,
     ) {
         val mediaId = LocalSystemMediaPageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
         val targetIndex = uiState.filteredItems.indexOfFirst { it.id == mediaId }
-        LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
-        LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
-        if (targetIndex < 0) return@LaunchedEffect
-        if (targetIndex in gridState.layoutInfo.visibleItemsInfo.map { it.index }) return@LaunchedEffect
+        if (mediaId != pendingTargetMediaIdSnapshot) {
+            pendingTargetMediaIdSnapshot = mediaId
+            pendingTargetRenderedCount = -1
+        }
+        if (targetIndex < 0) {
+            pendingTargetMediaIdSnapshot = null
+            pendingTargetRenderedCount = -1
+            LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
+            LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            return@LaunchedEffect
+        }
+        if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
+            val nextRenderedCount = (targetIndex + SystemMediaRenderPageSize)
+                .coerceAtMost(uiState.filteredItems.size)
+            if (nextRenderedCount > renderedCount && pendingTargetRenderedCount != nextRenderedCount) {
+                pendingTargetRenderedCount = nextRenderedCount
+                renderedCount = nextRenderedCount
+            }
+            return@LaunchedEffect
+        }
+        if (targetIndex in gridState.layoutInfo.visibleItemsInfo.map { it.index }) {
+            pendingTargetMediaIdSnapshot = null
+            pendingTargetRenderedCount = -1
+            LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
+            LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            return@LaunchedEffect
+        }
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() }
             .first { it }
         gridState.scrollToItem(targetIndex)
+        pendingTargetMediaIdSnapshot = null
+        pendingTargetRenderedCount = -1
+        LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
+        LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
