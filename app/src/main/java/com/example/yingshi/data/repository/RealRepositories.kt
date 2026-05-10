@@ -10,6 +10,7 @@ import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
+import com.example.yingshi.data.model.RemoteMediaFeedPage
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
@@ -64,6 +65,32 @@ class RealMediaRepository(
                 ApiResult.Error(
                     code = "MEDIA_FEED_REQUEST_FAILED",
                     message = "Stage 11.4 real media feed request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getMediaFeedPage(
+        cursor: String?,
+        pageSize: Int,
+    ): ApiResult<RemoteMediaFeedPage> {
+        return runCatching {
+            val envelope = mediaApi.getMediaFeed(
+                cursor = cursor,
+                pageSize = pageSize,
+            )
+            RemoteMediaFeedPage(
+                items = envelope.data.map { it.toRemoteModel() },
+                nextCursor = envelope.page?.nextCursor,
+                hasMore = envelope.page?.hasMore ?: false,
+            )
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "MEDIA_FEED_PAGE_REQUEST_FAILED",
+                    message = "REAL media feed page request failed",
                     throwable = it,
                 )
             },

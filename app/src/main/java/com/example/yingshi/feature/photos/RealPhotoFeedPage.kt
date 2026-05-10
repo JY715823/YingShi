@@ -190,8 +190,11 @@ fun RealPhotoFeedPage(
                             modifier = Modifier.fillMaxSize(),
                             selectionState = selectionState,
                             bottomOverlayPadding = if (selectionState.isInSelectionMode) 88.dp else 0.dp,
+                            isLoadingMore = uiState.isLoadingMore,
+                            hasMore = uiState.hasMore,
                             onSelectionStateChange = onSelectionStateChange,
                             onOpenViewer = onOpenViewer,
+                            onLoadMore = viewModel::loadNextPage,
                             scrollTrigger = scrollTrigger,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                         )

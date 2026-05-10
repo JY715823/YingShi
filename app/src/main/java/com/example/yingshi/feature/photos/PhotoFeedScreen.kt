@@ -89,8 +89,11 @@ fun PhotoFeedScreen(
     modifier: Modifier = Modifier,
     selectionState: PhotoFeedSelectionState = PhotoFeedSelectionState(),
     bottomOverlayPadding: Dp = 0.dp,
+    isLoadingMore: Boolean = false,
+    hasMore: Boolean = false,
     onSelectionStateChange: (PhotoFeedSelectionState) -> Unit = { },
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
+    onLoadMore: () -> Unit = { },
     scrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
@@ -146,7 +149,7 @@ fun PhotoFeedScreen(
         rowKeys.mapIndexed { index, rowKey -> rowKey to index }.toMap()
     }
     val scrollAnchors = remember(blocks, density) {
-        buildPhotoFeedScrollAnchors(
+        buildPhotoFeedScrubberAnchors(
             blocks = blocks,
             density = density,
             leadingItemCount = PhotoFeedLeadingItemCount,
@@ -317,7 +320,7 @@ fun PhotoFeedScreen(
         PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
         val visibleIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }
         if (targetBlockIndex in visibleIndices) return@LaunchedEffect
-        listState.scrollToItem(targetBlockIndex)
+        listState.scrollToItem(headerIndexForMedia(blocks, targetBlockIndex, density))
     }
 
     LaunchedEffect(listState) {
@@ -326,6 +329,17 @@ fun PhotoFeedScreen(
         }.collect { (index, offset) ->
             PhotoFeedPageStateStore.savedFirstVisibleItemIndex = index
             PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset = offset
+        }
+    }
+
+    LaunchedEffect(listState, blocks.size, hasMore, isLoadingMore) {
+        snapshotFlow {
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            lastVisibleIndex >= blocks.lastIndex - 3
+        }.collect { shouldLoadMore ->
+            if (shouldLoadMore && hasMore && !isLoadingMore) {
+                onLoadMore()
+            }
         }
     }
 
@@ -439,6 +453,19 @@ fun PhotoFeedScreen(
                         )
                     }
                 }
+                if (isLoadingMore) {
+                    item(key = "photo-feed-loading-more", contentType = "loading-more") {
+                        Text(
+                            text = "加载更多中...",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 18.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             androidx.compose.animation.AnimatedVisibility(
@@ -540,11 +567,6 @@ private data class PrefetchTarget(
     val url: String,
     val mediaType: AppMediaType,
     val mimeType: String?,
-)
-
-private data class PhotoFeedScrollAnchor(
-    val itemIndex: Int,
-    val label: String,
 )
 
 @Composable
@@ -1052,29 +1074,6 @@ private fun SelectionNumberFlashOverlay(
                 color = Color.White,
             )
         }
-    }
-}
-
-private fun buildPhotoFeedScrollAnchors(
-    blocks: List<PhotoFeedBlock>,
-    density: PhotoFeedDensity,
-    leadingItemCount: Int,
-): List<PhotoFeedScrollAnchor> {
-    if (blocks.isEmpty()) return emptyList()
-
-    val anchors = blocks.mapIndexedNotNull { index, block ->
-        val row = block as? PhotoFeedGridRow ?: return@mapIndexedNotNull null
-        val item = row.items.firstOrNull() ?: return@mapIndexedNotNull null
-        PhotoFeedScrollAnchor(
-            itemIndex = leadingItemCount + index,
-            label = item.toScrubberLabel(),
-        )
-    }
-
-    return if (density.columns >= 16) {
-        anchors.filterIndexed { index, _ -> index % 2 == 0 || index == anchors.lastIndex }
-    } else {
-        anchors
     }
 }
 

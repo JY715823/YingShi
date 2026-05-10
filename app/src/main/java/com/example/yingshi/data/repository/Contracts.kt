@@ -10,6 +10,7 @@ import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
+import com.example.yingshi.data.model.RemoteMediaFeedPage
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
@@ -29,6 +30,11 @@ interface MediaRepository {
         page: Int = 1,
         pageSize: Int = 20,
     ): ApiResult<List<RemoteMedia>>
+
+    suspend fun getMediaFeedPage(
+        cursor: String? = null,
+        pageSize: Int = 60,
+    ): ApiResult<RemoteMediaFeedPage>
 
     suspend fun deleteMediaFromPost(
         postId: String,

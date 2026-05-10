@@ -15,8 +15,10 @@ import kotlinx.coroutines.launch
 
 data class RealPhotoFeedUiState(
     val isLoading: Boolean = false,
+    val isLoadingMore: Boolean = false,
     val isDeleting: Boolean = false,
     val tokenMissing: Boolean = false,
+    val hasMore: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
     val feedItems: List<PhotoFeedItem> = emptyList(),
@@ -25,6 +27,9 @@ data class RealPhotoFeedUiState(
 class RealPhotoFeedViewModel(
     private val mediaRepository: MediaRepository = RepositoryProvider.mediaRepository,
 ) : ViewModel() {
+    private val pageSize = 60
+    private var nextCursor: String? = null
+    private var loadMoreInFlight = false
     private val _uiState = MutableStateFlow(RealPhotoFeedUiState(isLoading = true))
     val uiState: StateFlow<RealPhotoFeedUiState> = _uiState.asStateFlow()
 
@@ -42,19 +47,25 @@ class RealPhotoFeedViewModel(
         }
 
         viewModelScope.launch {
+            nextCursor = null
+            loadMoreInFlight = false
             _uiState.update {
                 it.copy(
                     isLoading = true,
+                    isLoadingMore = false,
                     tokenMissing = false,
+                    hasMore = false,
                     errorMessage = null,
                     statusMessage = null,
                 )
             }
-            when (val result = mediaRepository.getMediaFeed()) {
+            when (val result = mediaRepository.getMediaFeedPage(pageSize = pageSize)) {
                 is ApiResult.Success -> {
+                    nextCursor = result.data.nextCursor
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        feedItems = result.data.map { it.toPhotoFeedItem() },
+                        feedItems = result.data.items.map { it.toPhotoFeedItem() },
+                        hasMore = result.data.hasMore,
                     )
                 }
                 is ApiResult.Error -> {
@@ -65,6 +76,46 @@ class RealPhotoFeedViewModel(
                 }
                 ApiResult.Loading -> Unit
             }
+        }
+    }
+
+    fun loadNextPage() {
+        val cursor = nextCursor ?: return
+        if (loadMoreInFlight || _uiState.value.isLoading || _uiState.value.isLoadingMore) return
+        if (!AuthSessionManager.isLoggedIn) return
+
+        loadMoreInFlight = true
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoadingMore = true,
+                    errorMessage = null,
+                    statusMessage = null,
+                )
+            }
+            when (val result = mediaRepository.getMediaFeedPage(cursor = cursor, pageSize = pageSize)) {
+                is ApiResult.Success -> {
+                    nextCursor = result.data.nextCursor
+                    _uiState.update { state ->
+                        val nextItems = result.data.items.map { it.toPhotoFeedItem() }
+                        state.copy(
+                            isLoadingMore = false,
+                            hasMore = result.data.hasMore,
+                            feedItems = (state.feedItems + nextItems).distinctBy { it.mediaId },
+                        )
+                    }
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isLoadingMore = false,
+                            errorMessage = result.toBackendUiMessage("加载更多照片失败。"),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+            loadMoreInFlight = false
         }
     }
 

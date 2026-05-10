@@ -10,6 +10,7 @@ import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
+import com.example.yingshi.data.model.RemoteMediaFeedPage
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
@@ -60,6 +61,29 @@ class FakeMediaRepositoryShell : MediaRepository {
                 )
             }
         return ApiResult.Success(items)
+    }
+
+    override suspend fun getMediaFeedPage(
+        cursor: String?,
+        pageSize: Int,
+    ): ApiResult<RemoteMediaFeedPage> {
+        val page = cursor?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+        val result = getMediaFeed(page = page, pageSize = pageSize)
+        return when (result) {
+            is ApiResult.Success -> {
+                val totalCount = FakePhotoFeedRepository.getPhotoFeed().size
+                val loadedCount = page * pageSize
+                ApiResult.Success(
+                    RemoteMediaFeedPage(
+                        items = result.data,
+                        nextCursor = if (loadedCount < totalCount) (page + 1).toString() else null,
+                        hasMore = loadedCount < totalCount,
+                    ),
+                )
+            }
+            is ApiResult.Error -> result
+            ApiResult.Loading -> ApiResult.Loading
+        }
     }
 
     override suspend fun deleteMediaFromPost(

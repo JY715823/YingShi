@@ -232,3 +232,20 @@ internal fun findBlockIndexForMedia(
         block is PhotoFeedGridRow && block.items.any { it.mediaId == mediaId }
     }
 }
+
+internal fun headerIndexForMedia(
+    blocks: List<PhotoFeedBlock>,
+    mediaBlockIndex: Int,
+    density: PhotoFeedDensity,
+): Int {
+    if (mediaBlockIndex <= 0) return mediaBlockIndex.coerceAtLeast(0)
+    val headerIndex = blocks
+        .take(mediaBlockIndex + 1)
+        .indexOfLast { block ->
+            when {
+                density.columns <= 4 -> block is PhotoFeedDayHeader
+                else -> block is PhotoFeedSectionHeader
+            }
+        }
+    return if (headerIndex >= 0) headerIndex else mediaBlockIndex
+}

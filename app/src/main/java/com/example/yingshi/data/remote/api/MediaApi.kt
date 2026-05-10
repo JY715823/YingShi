@@ -12,6 +12,8 @@ import retrofit2.http.Query
 interface MediaApi {
     @GET("api/media/feed")
     suspend fun getMediaFeed(
+        @Query("cursor") cursor: String? = null,
+        @Query("pageSize") pageSize: Int? = null,
     ): ApiEnvelopeDto<List<MediaDto>>
 
     @GET("api/media/files/{mediaId}")

@@ -23,6 +23,12 @@ data class RemoteMedia(
     val displayTimeSource: String? = null,
 )
 
+data class RemoteMediaFeedPage(
+    val items: List<RemoteMedia>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
+)
+
 data class RemoteAlbum(
     val albumId: String,
     val title: String,
