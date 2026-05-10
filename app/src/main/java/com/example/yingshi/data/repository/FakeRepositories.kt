@@ -34,6 +34,7 @@ import com.example.yingshi.feature.photos.FakePhotoFeedRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.PostDetailUiModel
 import com.example.yingshi.feature.photos.TrashEntryType
+import java.io.InputStream
 
 class FakeMediaRepositoryShell : MediaRepository {
     override suspend fun getMediaFeed(
@@ -439,6 +440,20 @@ class FakeUploadRepositoryShell : UploadRepository {
         fileName: String,
         mimeType: String,
         fileBytes: ByteArray,
+        onProgressPercent: (Int) -> Unit,
+    ): ApiResult<RemoteMedia> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "FAKE upload keeps using confirm-upload placeholder in this stage",
+        )
+    }
+
+    override suspend fun uploadLocalStream(
+        uploadId: String,
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        openInputStream: () -> InputStream,
         onProgressPercent: (Int) -> Unit,
     ): ApiResult<RemoteMedia> {
         return ApiResult.Error(

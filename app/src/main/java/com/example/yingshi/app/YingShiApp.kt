@@ -143,6 +143,12 @@ fun YingShiApp() {
             PhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
             PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
         }
+        photoViewerRoute = null
+        systemMediaViewerRoute = null
+        systemMediaRoute = null
+        createPostRoute = null
+        postDetailRoute = null
+        transferCenterRoute = null
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.PHOTOS.name
         photoFeedScrollTrigger++
@@ -175,25 +181,12 @@ fun YingShiApp() {
     LaunchedEffect(operationResults.size) {
         if (operationResults.isEmpty()) return@LaunchedEffect
         val pendingEvents = operationResults.toList()
-        var postRouteToOpen: PostDetailPlaceholderRoute? = null
         pendingEvents.forEach { event ->
             Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
-            if (event.succeeded && event.successCount > 0) {
+            if (event.shouldAutoOpenResult && event.successCount > 0 && event.resultMediaIds.isNotEmpty()) {
                 requestPhotoFeedRefresh(event.resultMediaIds)
             }
-            if (event.succeeded &&
-                event.operationType == com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
-                postRouteToOpen == null
-            ) {
-                postRouteToOpen = event.postRoute
-            }
             com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
-        }
-        postRouteToOpen?.let {
-            createPostRoute = null
-            systemMediaViewerRoute = null
-            systemMediaRoute = null
-            postDetailRoute = it
         }
     }
 
@@ -396,27 +389,13 @@ fun YingShiApp() {
                         route = route,
                         onBack = { transferCenterRoute = null },
                         onOpenTaskMedia = { task ->
-                            transferCenterRoute = null
-                            val opened = task.resultMediaId?.let { mediaId ->
-                                com.example.yingshi.feature.photos.FakePhotoFeedRepository.findPhotoFeedItem(mediaId)
-                            }
-                            if (opened != null) {
-                                val feedItems = com.example.yingshi.feature.photos.FakePhotoFeedRepository.getPhotoFeed()
-                                val initialIndex = feedItems.indexOfFirst { it.mediaId == opened.mediaId }
-                                if (initialIndex >= 0) {
-                                    photoViewerRoute = PhotoViewerRoute(
-                                        mediaItems = feedItems,
-                                        initialIndex = initialIndex,
-                                        sourceLabel = "传输中心",
-                                        showPostSegments = false,
-                                    )
-                                }
+                            val mediaId = task.resultMediaId?.takeIf { it.isNotBlank() }
+                            if (mediaId != null) {
+                                requestPhotoFeedRefresh(listOf(mediaId))
                             } else {
-                                selectedDestinationName = RootDestination.PHOTOS.name
-                                photosTopDestinationName = PhotosTopDestination.PHOTOS.name
                                 Toast.makeText(
                                     context,
-                                    "已切回照片页，请在最新媒体中查看。",
+                                    "该任务没有可定位的目标媒体。",
                                     Toast.LENGTH_SHORT,
                                 ).show()
                             }

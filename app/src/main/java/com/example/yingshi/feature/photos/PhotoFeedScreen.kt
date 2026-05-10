@@ -48,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -151,7 +152,11 @@ fun PhotoFeedScreen(
             leadingItemCount = PhotoFeedLeadingItemCount,
         )
     }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = PhotoFeedPageStateStore.savedFirstVisibleItemIndex
+            .coerceIn(0, blocks.lastIndex.coerceAtLeast(0)),
+        initialFirstVisibleItemScrollOffset = PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset,
+    )
     val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
     var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
     var pausedInlineVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -313,6 +318,15 @@ fun PhotoFeedScreen(
         val visibleIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }
         if (targetBlockIndex in visibleIndices) return@LaunchedEffect
         listState.scrollToItem(targetBlockIndex)
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            PhotoFeedPageStateStore.savedFirstVisibleItemIndex = index
+            PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset = offset
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {

@@ -19,6 +19,7 @@ import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
+import java.io.InputStream
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
@@ -128,6 +129,15 @@ interface UploadRepository {
         fileName: String,
         mimeType: String,
         fileBytes: ByteArray,
+        onProgressPercent: (Int) -> Unit = {},
+    ): ApiResult<RemoteMedia>
+
+    suspend fun uploadLocalStream(
+        uploadId: String,
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        openInputStream: () -> InputStream,
         onProgressPercent: (Int) -> Unit = {},
     ): ApiResult<RemoteMedia>
 

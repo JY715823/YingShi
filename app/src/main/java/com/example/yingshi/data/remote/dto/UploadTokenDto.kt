@@ -20,6 +20,7 @@ data class CreateUploadTokenRequestDto(
     val capturedAtMillis: Long? = null,
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
+    val sourceFingerprint: String? = null,
 )
 
 data class UploadCompleteResponseDto(

@@ -32,15 +32,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
+import java.security.MessageDigest
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
 object LocalSystemMediaBridgeRepository {
     private const val UploadLogTag = "SystemMediaUpload"
-    private const val ReadLocalMediaTimeoutMillis = 20_000L
+    private const val ReadLocalMediaTimeoutMillis = 180_000L
     private const val CreateUploadTokenTimeoutMillis = 15_000L
-    private const val UploadFileTimeoutMillis = 120_000L
+    private const val UploadFileTimeoutMillis = 10 * 60_000L
 
     enum class MutationKind {
         OVERLAY_ONLY,
@@ -70,12 +71,13 @@ object LocalSystemMediaBridgeRepository {
         val successCount: Int = 0,
         val failureCount: Int = 0,
         val totalCount: Int = 0,
+        val shouldAutoOpenResult: Boolean = false,
     )
 
     private data class RealUploadMetadata(
         val fileName: String,
         val mimeType: String,
-        val fileBytes: ByteArray,
+        val fileSizeBytes: Long,
         val width: Int,
         val height: Int,
         val durationMillis: Long? = null,
@@ -139,8 +141,10 @@ object LocalSystemMediaBridgeRepository {
     private val hiddenMediaIds = linkedSetOf<String>()
     private val linkedPostIdsByMediaId = linkedMapOf<String, LinkedHashSet<String>>()
     private val realUploadedMediaIdsByOperationId = linkedMapOf<String, LinkedHashMap<String, String>>()
+    private val appMediaIdBySystemSourceKey = linkedMapOf<String, String>()
     private val operationRequestsById = linkedMapOf<String, PendingOperationRequest>()
     private val uploadJobsByTaskId = linkedMapOf<String, Job>()
+    private val publishedFirstSuccessOperationIds = linkedSetOf<String>()
 
     val uploadTasks: List<SystemMediaUploadTaskUiModel>
         get() = uploadTasksState
@@ -192,6 +196,9 @@ object LocalSystemMediaBridgeRepository {
             mediaIds = normalizedItems.map { it.id },
             postId = post.id,
         )
+        normalizedItems.forEach { item ->
+            rememberAppMediaIdForSource(item, item.id)
+        }
         return post
     }
 
@@ -201,6 +208,10 @@ object LocalSystemMediaBridgeRepository {
         draft: CreatePostDraft = defaultCreatePostDraft(mediaItems),
     ): Int {
         val normalizedItems = normalizeSystemMedia(mediaItems)
+        publishDuplicateNoticeIfNeeded(
+            operationType = OperationType.CREATE_POST,
+            skippedCount = mediaItems.size - normalizedItems.size,
+        )
         if (normalizedItems.isEmpty()) return 0
         return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
             enqueueCreatePostUploadReal(
@@ -219,7 +230,12 @@ object LocalSystemMediaBridgeRepository {
     fun importSystemMediaToApp(
         mediaItems: List<SystemMediaItem>,
     ): Int {
-        val normalizedItems = normalizeSystemMedia(mediaItems)
+        val dedupedItems = deduplicateImportCandidates(mediaItems)
+        publishDuplicateNoticeIfNeeded(
+            operationType = OperationType.IMPORT_TO_APP,
+            skippedCount = dedupedItems.skippedCount,
+        )
+        val normalizedItems = dedupedItems.items
         if (normalizedItems.isEmpty()) return 0
         FakePhotoFeedRepository.importSystemMediaToFeed(
             mediaItems = normalizedItems,
@@ -229,6 +245,9 @@ object LocalSystemMediaBridgeRepository {
             kind = MutationKind.OVERLAY_ONLY,
             mediaIds = normalizedItems.map { it.id },
         )
+        normalizedItems.forEach { item ->
+            rememberAppMediaIdForSource(item, item.id)
+        }
         return normalizedItems.size
     }
 
@@ -236,7 +255,12 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaItems: List<SystemMediaItem>,
     ): Int {
-        val normalizedItems = normalizeSystemMedia(mediaItems)
+        val dedupedItems = deduplicateImportCandidates(mediaItems)
+        publishDuplicateNoticeIfNeeded(
+            operationType = OperationType.IMPORT_TO_APP,
+            skippedCount = dedupedItems.skippedCount,
+        )
+        val normalizedItems = dedupedItems.items
         if (normalizedItems.isEmpty()) return 0
         return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
             enqueueImportToAppUploadReal(
@@ -289,6 +313,9 @@ object LocalSystemMediaBridgeRepository {
             mediaIds = normalizedItems.map { it.id },
             postId = postId,
         )
+        normalizedItems.forEach { item ->
+            rememberAppMediaIdForSource(item, item.id)
+        }
         return addedCount
     }
 
@@ -299,6 +326,10 @@ object LocalSystemMediaBridgeRepository {
     ): Int {
         val normalizedItems = normalizeSystemMedia(mediaItems)
             .filterNot { it.linkedPostIds.contains(postId) }
+        publishDuplicateNoticeIfNeeded(
+            operationType = OperationType.ADD_TO_EXISTING_POST,
+            skippedCount = mediaItems.size - normalizeSystemMedia(mediaItems).size,
+        )
         if (normalizedItems.isEmpty()) return 0
         return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
             enqueueAddToExistingPostUploadReal(
@@ -372,28 +403,181 @@ object LocalSystemMediaBridgeRepository {
     ): Boolean {
         val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return false
         val request = operationRequestsById[task.operationId] ?: return false
-        clearOperationState(task.operationId, keepRequest = false)
+        val retryItem = request.mediaItems.firstOrNull { it.id == task.mediaId } ?: return false
+        uploadJobsByTaskId.remove(taskId)?.cancel(CancellationException("Upload task retry requested"))
+        uploadTasksState.removeAll { it.taskId == taskId }
+        finalizedOperationIds.remove(task.operationId)
+        publishedOperationSummaryIds.remove(task.operationId)
+        publishedFirstSuccessOperationIds.remove(task.operationId)
         return when (request) {
             is ImportToAppOperationRequest -> {
-                enqueueImportToAppUpload(
+                retryImportToAppUpload(
                     context = context,
-                    mediaItems = request.mediaItems,
-                ) > 0
+                    operationId = task.operationId,
+                    request = request,
+                    retryItem = retryItem,
+                )
             }
             is CreatePostOperationRequest -> {
-                enqueueCreatePostUpload(
+                retryCreatePostUpload(
                     context = context,
-                    mediaItems = request.mediaItems,
-                    draft = request.draft,
-                ) > 0
+                    operationId = task.operationId,
+                    request = request,
+                    retryItem = retryItem,
+                )
             }
             is AddToExistingPostOperationRequest -> {
-                enqueueAddToExistingPostUpload(
+                retryAddToExistingPostUpload(
                     context = context,
-                    postId = request.postId,
-                    mediaItems = request.mediaItems,
-                ) > 0
+                    operationId = task.operationId,
+                    request = request,
+                    retryItem = retryItem,
+                )
             }
+        }
+    }
+
+    private fun retryImportToAppUpload(
+        context: Context,
+        operationId: String,
+        request: ImportToAppOperationRequest,
+        retryItem: SystemMediaItem,
+    ): Boolean {
+        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            enqueueRealUploadTask(
+                context = context,
+                operationId = operationId,
+                mediaItem = retryItem,
+                targetLabel = request.targetLabel,
+                sourceItems = request.mediaItems,
+                finalizeAction = { uploadedMedia ->
+                    finalizeImportToAppReal(uploadedMedia)
+                },
+            )
+            true
+        } else {
+            enqueueFakeUploadTask(
+                operationId = operationId,
+                mediaItem = retryItem,
+                targetLabel = request.targetLabel,
+                onOperationSuccess = {
+                    val importedCount = importSystemMediaToApp(request.mediaItems)
+                    OperationResultEvent(
+                        eventId = if (importedCount > 0) "$operationId-success" else "$operationId-failure",
+                        operationId = operationId,
+                        operationType = OperationType.IMPORT_TO_APP,
+                        succeeded = importedCount > 0,
+                        message = if (importedCount > 0) {
+                            "Imported to app photo feed."
+                        } else {
+                            "No media can be imported."
+                        },
+                    )
+                },
+            )
+            true
+        }
+    }
+
+    private fun retryCreatePostUpload(
+        context: Context,
+        operationId: String,
+        request: CreatePostOperationRequest,
+        retryItem: SystemMediaItem,
+    ): Boolean {
+        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            enqueueRealUploadTask(
+                context = context,
+                operationId = operationId,
+                mediaItem = retryItem,
+                targetLabel = request.targetLabel,
+                sourceItems = request.mediaItems,
+                finalizeAction = { uploadedMedia ->
+                    finalizeCreatePostReal(
+                        draft = request.draft,
+                        sourceItems = request.mediaItems,
+                        uploadedMedia = uploadedMedia,
+                    )
+                },
+            )
+            true
+        } else {
+            enqueueFakeUploadTask(
+                operationId = operationId,
+                mediaItem = retryItem,
+                targetLabel = request.targetLabel,
+                onOperationSuccess = {
+                    val createdPost = createPostFromSystemMediaDraft(
+                        draft = request.draft,
+                        mediaItems = request.mediaItems,
+                    )
+                    if (createdPost == null) {
+                        OperationResultEvent(
+                            eventId = "$operationId-failure",
+                            operationId = operationId,
+                            operationType = OperationType.CREATE_POST,
+                            succeeded = false,
+                            message = "Create post failed. Please retry.",
+                        )
+                    } else {
+                        OperationResultEvent(
+                            eventId = "$operationId-success",
+                            operationId = operationId,
+                            operationType = OperationType.CREATE_POST,
+                            succeeded = true,
+                            message = "Post created. Photo feed and albums refreshed.",
+                            postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
+                        )
+                    }
+                },
+            )
+            true
+        }
+    }
+
+    private fun retryAddToExistingPostUpload(
+        context: Context,
+        operationId: String,
+        request: AddToExistingPostOperationRequest,
+        retryItem: SystemMediaItem,
+    ): Boolean {
+        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            enqueueRealUploadTask(
+                context = context,
+                operationId = operationId,
+                mediaItem = retryItem,
+                targetLabel = request.targetLabel,
+                sourceItems = request.mediaItems,
+                finalizeAction = { uploadedMedia ->
+                    finalizeAppendToPostReal(
+                        postId = request.postId,
+                        sourceItems = request.mediaItems,
+                        uploadedMedia = uploadedMedia,
+                    )
+                },
+            )
+            true
+        } else {
+            enqueueFakeUploadTask(
+                operationId = operationId,
+                mediaItem = retryItem,
+                targetLabel = request.targetLabel,
+                onOperationSuccess = {
+                    val addedCount = addSystemMediaToExistingPost(request.postId, request.mediaItems)
+                    OperationResultEvent(
+                        eventId = if (addedCount > 0) "$operationId-success" else "$operationId-failure",
+                        operationId = operationId,
+                        operationType = OperationType.ADD_TO_EXISTING_POST,
+                        succeeded = addedCount > 0,
+                        message = if (addedCount > 0) {
+                            "Media added to post. Detail and media manager refreshed."
+                        } else {
+                            "These media items are already in the target post."
+                        },
+                    )
+                },
+            )
+            true
         }
     }
 
@@ -661,11 +845,31 @@ object LocalSystemMediaBridgeRepository {
         draft: CreatePostDraft,
     ): Int {
         val operationId = "real-create-post-${System.currentTimeMillis()}"
+        val reusableMediaIdsBySourceId = reusableAppMediaIdsBySourceId(mediaItems)
+        val uploadItems = mediaItems.filterNot { reusableMediaIdsBySourceId.containsKey(it.id) }
         operationRequestsById[operationId] = CreatePostOperationRequest(
             draft = draft,
             mediaItems = mediaItems,
         )
-        mediaItems.forEach { item ->
+        rememberUploadedMediaIds(
+            operationId = operationId,
+            sourceMediaIdsToUploadedMediaIds = reusableMediaIdsBySourceId,
+        )
+        if (uploadItems.isEmpty()) {
+            finalizeRealOperationWithKnownMedia(
+                operationId = operationId,
+                sourceItems = mediaItems,
+                finalizeAction = { uploadedMedia ->
+                    finalizeCreatePostReal(
+                        draft = draft,
+                        sourceItems = mediaItems,
+                        uploadedMedia = uploadedMedia,
+                    )
+                },
+            )
+            return mediaItems.size
+        }
+        uploadItems.forEach { item ->
             enqueueRealUploadTask(
                 context = context,
                 operationId = operationId,
@@ -681,7 +885,7 @@ object LocalSystemMediaBridgeRepository {
                 },
             )
         }
-        return mediaItems.size
+        return uploadItems.size
     }
 
     private fun enqueueAddToExistingPostUploadReal(
@@ -690,11 +894,31 @@ object LocalSystemMediaBridgeRepository {
         mediaItems: List<SystemMediaItem>,
     ): Int {
         val operationId = "real-append-post-$postId-${System.currentTimeMillis()}"
+        val reusableMediaIdsBySourceId = reusableAppMediaIdsBySourceId(mediaItems)
+        val uploadItems = mediaItems.filterNot { reusableMediaIdsBySourceId.containsKey(it.id) }
         operationRequestsById[operationId] = AddToExistingPostOperationRequest(
             postId = postId,
             mediaItems = mediaItems,
         )
-        mediaItems.forEach { item ->
+        rememberUploadedMediaIds(
+            operationId = operationId,
+            sourceMediaIdsToUploadedMediaIds = reusableMediaIdsBySourceId,
+        )
+        if (uploadItems.isEmpty()) {
+            finalizeRealOperationWithKnownMedia(
+                operationId = operationId,
+                sourceItems = mediaItems,
+                finalizeAction = { uploadedMedia ->
+                    finalizeAppendToPostReal(
+                        postId = postId,
+                        sourceItems = mediaItems,
+                        uploadedMedia = uploadedMedia,
+                    )
+                },
+            )
+            return mediaItems.size
+        }
+        uploadItems.forEach { item ->
             enqueueRealUploadTask(
                 context = context,
                 operationId = operationId,
@@ -710,7 +934,7 @@ object LocalSystemMediaBridgeRepository {
                 },
             )
         }
-        return mediaItems.size
+        return uploadItems.size
     }
 
     private fun enqueueRealUploadTask(
@@ -782,7 +1006,7 @@ object LocalSystemMediaBridgeRepository {
 
                 debugUploadLog(
                     "metadata operation=$operationId uri=${metadata.sourceUri} file=${metadata.fileName} " +
-                        "mime=${metadata.mimeType} size=${metadata.fileBytes.size} " +
+                        "mime=${metadata.mimeType} size=${metadata.fileSizeBytes} " +
                         "width=${metadata.width} height=${metadata.height} duration=${metadata.durationMillis}",
                 )
                 updateUploadTask(
@@ -794,7 +1018,7 @@ object LocalSystemMediaBridgeRepository {
                 val tokenPayload = CreateUploadTokenPayload(
                     fileName = metadata.fileName,
                     mimeType = metadata.mimeType,
-                    fileSizeBytes = metadata.fileBytes.size.toLong(),
+                    fileSizeBytes = metadata.fileSizeBytes,
                     mediaType = mediaItem.type.name.lowercase(Locale.ROOT),
                     width = metadata.width,
                     height = metadata.height,
@@ -803,6 +1027,7 @@ object LocalSystemMediaBridgeRepository {
                     capturedAtMillis = metadata.capturedAtMillis,
                     importedAtMillis = metadata.importedAtMillis,
                     displayTimeSource = "ORIGINAL",
+                    sourceFingerprint = mediaItem.sourceFingerprint(),
                 )
                 val tokenResult = runUploadApiWithTimeout(
                     timeoutMillis = CreateUploadTokenTimeoutMillis,
@@ -862,11 +1087,15 @@ object LocalSystemMediaBridgeRepository {
                     timeoutMillis = UploadFileTimeoutMillis,
                     timeoutMessage = "Upload timed out. Check network or server and retry.",
                 ) {
-                    RepositoryProvider.uploadRepository.uploadLocalFile(
+                    RepositoryProvider.uploadRepository.uploadLocalStream(
                         uploadId = uploadId,
                         fileName = metadata.fileName,
                         mimeType = metadata.mimeType,
-                        fileBytes = metadata.fileBytes,
+                        fileSizeBytes = metadata.fileSizeBytes,
+                        openInputStream = {
+                            context.contentResolver.openInputStream(metadata.sourceUri)
+                                ?: error("Cannot open selected media stream.")
+                        },
                         onProgressPercent = { progress ->
                             val mappedProgress = (35 + progress * 55 / 100).coerceIn(35, 90)
                             uploadScope.launch {
@@ -900,7 +1129,7 @@ object LocalSystemMediaBridgeRepository {
                                 taskId = uploadId,
                                 state = UploadState.FAILURE,
                                 progressPercent = 95,
-                        statusMessage = "Upload failed",
+                                statusMessage = "Upload failed",
                                 errorMessage = message,
                                 canRetry = true,
                             )
@@ -917,7 +1146,7 @@ object LocalSystemMediaBridgeRepository {
                         )
                         rememberUploadedMediaId(
                             operationId = operationId,
-                            sourceMediaId = mediaItem.id,
+                            sourceItem = mediaItem,
                             uploadedMediaId = uploadedMediaId,
                         )
                         publishMutation(
@@ -925,6 +1154,11 @@ object LocalSystemMediaBridgeRepository {
                             mediaIds = listOf(mediaItem.id),
                         )
                         notifyRealBackendContentChanged(mediaIds = setOf(uploadedMediaId))
+                        publishFirstSuccessIfNeeded(
+                            operationId = operationId,
+                            operationType = operationRequestsById[operationId]?.operationType ?: OperationType.IMPORT_TO_APP,
+                            mediaId = uploadedMediaId,
+                        )
                         debugUploadLog(
                             "upload success operation=$operationId uploadId=$uploadId mediaId=$uploadedMediaId " +
                                 "preview=${uploadResult.data.previewUrl} media=${uploadResult.data.mediaUrl} " +
@@ -946,7 +1180,7 @@ object LocalSystemMediaBridgeRepository {
                             taskId = uploadId,
                             state = UploadState.FAILURE,
                             progressPercent = 35,
-                        statusMessage = "Upload failed",
+                            statusMessage = "Upload failed",
                             errorMessage = message,
                             canRetry = true,
                         )
@@ -1198,6 +1432,81 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
+    private fun finalizeRealOperationWithKnownMedia(
+        operationId: String,
+        sourceItems: List<SystemMediaItem>,
+        finalizeAction: suspend (UploadedOperationMedia) -> ApiResult<RealFinalizeResult>,
+    ) {
+        if (finalizedOperationIds.contains(operationId)) return
+        uploadScope.launch {
+            val uploadedMap = realUploadedMediaIdsByOperationId[operationId].orEmpty()
+            val orderedIds = sourceItems.mapNotNull { uploadedMap[it.id] }.distinct()
+            if (orderedIds.isEmpty()) {
+                publishOperationResult(
+                    OperationResultEvent(
+                        eventId = "$operationId-duplicate-${System.currentTimeMillis()}",
+                        operationId = operationId,
+                        operationType = operationRequestsById[operationId]?.operationType ?: OperationType.IMPORT_TO_APP,
+                        succeeded = false,
+                        message = "已跳过重复媒体。",
+                        totalCount = sourceItems.size,
+                    ),
+                )
+                return@launch
+            }
+
+            finalizedOperationIds += operationId
+            when (
+                val result = finalizeAction(
+                    UploadedOperationMedia(
+                        orderedUploadedMediaIds = orderedIds,
+                        uploadedMediaIdBySourceId = uploadedMap.toMap(),
+                    ),
+                )
+            ) {
+                is ApiResult.Success -> {
+                    publishMutation(
+                        kind = MutationKind.OVERLAY_ONLY,
+                        mediaIds = sourceItems.map { it.id },
+                    )
+                    notifyRealBackendContentChanged(
+                        postIds = result.data.affectedPostIds,
+                        mediaIds = orderedIds.toSet(),
+                    )
+                    publishOperationResult(
+                        OperationResultEvent(
+                            eventId = "$operationId-reused-${System.currentTimeMillis()}",
+                            operationId = operationId,
+                            operationType = result.data.operationType,
+                            succeeded = true,
+                            message = result.data.successMessage,
+                            postRoute = result.data.postRoute,
+                            resultMediaIds = orderedIds,
+                            successCount = sourceItems.size,
+                            failureCount = 0,
+                            totalCount = sourceItems.size,
+                        ),
+                    )
+                }
+                is ApiResult.Error -> {
+                    finalizedOperationIds.remove(operationId)
+                    publishOperationResult(
+                        OperationResultEvent(
+                            eventId = "$operationId-reused-failure-${System.currentTimeMillis()}",
+                            operationId = operationId,
+                            operationType = operationRequestsById[operationId]?.operationType ?: OperationType.CREATE_POST,
+                            succeeded = false,
+                            message = result.message.ifBlank { "重复媒体复用失败，请稍后重试。" },
+                            failureCount = sourceItems.size,
+                            totalCount = sourceItems.size,
+                        ),
+                    )
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
     private fun publishMutation(
         kind: MutationKind,
         mediaIds: Collection<String> = emptyList(),
@@ -1213,11 +1522,27 @@ object LocalSystemMediaBridgeRepository {
 
     private fun rememberUploadedMediaId(
         operationId: String,
-        sourceMediaId: String,
+        sourceItem: SystemMediaItem,
         uploadedMediaId: String,
     ) {
+        rememberUploadedMediaIds(
+            operationId = operationId,
+            sourceMediaIdsToUploadedMediaIds = mapOf(sourceItem.id to uploadedMediaId),
+        )
+        rememberAppMediaIdForSource(sourceItem, uploadedMediaId)
+    }
+
+    private fun rememberUploadedMediaIds(
+        operationId: String,
+        sourceMediaIdsToUploadedMediaIds: Map<String, String>,
+    ) {
+        if (sourceMediaIdsToUploadedMediaIds.isEmpty()) return
         val uploadedIds = realUploadedMediaIdsByOperationId.getOrPut(operationId) { linkedMapOf() }
-        uploadedIds[sourceMediaId] = uploadedMediaId
+        sourceMediaIdsToUploadedMediaIds.forEach { (sourceMediaId, uploadedMediaId) ->
+            if (sourceMediaId.isNotBlank() && uploadedMediaId.isNotBlank()) {
+                uploadedIds[sourceMediaId] = uploadedMediaId
+            }
+        }
     }
 
     private fun isUploadTaskCancelled(taskId: String): Boolean {
@@ -1393,14 +1718,19 @@ object LocalSystemMediaBridgeRepository {
         mediaItem: SystemMediaItem,
     ): RealUploadMetadata = withContext(Dispatchers.IO) {
         val contentResolver = context.contentResolver
+        var queriedSizeBytes: Long? = null
         val queriedDisplayName = contentResolver.query(
             mediaItem.uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
+            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
             null,
             null,
             null,
         )?.use { cursor ->
             if (cursor.moveToFirst()) {
+                queriedSizeBytes = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    .takeIf { it >= 0 && !cursor.isNull(it) }
+                    ?.let(cursor::getLong)
+                    ?.takeIf { it > 0L }
                 cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     .takeIf { it >= 0 }
                     ?.let(cursor::getString)
@@ -1416,9 +1746,13 @@ object LocalSystemMediaBridgeRepository {
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: mediaItem.mimeType.ifBlank { fakeMimeType(mediaItem.type) }
-        val fileBytes = contentResolver.openInputStream(mediaItem.uri)?.use { it.readBytes() }
-            ?: error("Cannot read local media bytes.")
-        if (fileBytes.isEmpty()) {
+        val fileSizeBytes = queriedSizeBytes
+            ?: mediaItem.sizeBytes?.takeIf { it > 0L }
+            ?: contentResolver.openAssetFileDescriptor(mediaItem.uri, "r")?.use { descriptor ->
+                descriptor.length.takeIf { it > 0L }
+            }
+            ?: error("Cannot resolve selected media size.")
+        if (fileSizeBytes <= 0L) {
             error("Selected media file is empty.")
         }
         val (resolvedWidth, resolvedHeight, resolvedDuration) = resolvePickedMediaMetadata(
@@ -1436,7 +1770,7 @@ object LocalSystemMediaBridgeRepository {
         RealUploadMetadata(
             fileName = fileName,
             mimeType = mimeType,
-            fileBytes = fileBytes,
+            fileSizeBytes = fileSizeBytes,
             width = uploadWidth,
             height = uploadHeight,
             durationMillis = if (mediaItem.type == SystemMediaType.VIDEO) {
@@ -1496,7 +1830,117 @@ object LocalSystemMediaBridgeRepository {
     private fun normalizeSystemMedia(
         mediaItems: List<SystemMediaItem>,
     ): List<SystemMediaItem> {
-        return mediaItems.distinctBy { it.id }
+        return mediaItems.distinctBy { it.sourceDeduplicationKey() }
+    }
+
+    private data class DeduplicatedImportItems(
+        val items: List<SystemMediaItem>,
+        val skippedCount: Int,
+    )
+
+    private fun deduplicateImportCandidates(
+        mediaItems: List<SystemMediaItem>,
+    ): DeduplicatedImportItems {
+        val normalizedItems = normalizeSystemMedia(mediaItems)
+        val newItems = normalizedItems.filter { item ->
+            knownAppMediaIdForSource(item) == null
+        }
+        return DeduplicatedImportItems(
+            items = newItems,
+            skippedCount = (mediaItems.size - normalizedItems.size) + (normalizedItems.size - newItems.size),
+        )
+    }
+
+    private fun reusableAppMediaIdsBySourceId(
+        mediaItems: List<SystemMediaItem>,
+    ): Map<String, String> {
+        return mediaItems.mapNotNull { item ->
+            val knownMediaId = knownAppMediaIdForSource(item) ?: return@mapNotNull null
+            item.id to knownMediaId
+        }.toMap()
+    }
+
+    private fun knownAppMediaIdForSource(
+        item: SystemMediaItem,
+    ): String? {
+        val sourceKey = item.sourceDeduplicationKey()
+        appMediaIdBySystemSourceKey[sourceKey]?.let { return it }
+        if (RepositoryProvider.currentMode != RepositoryMode.REAL) {
+            FakePhotoFeedRepository.findPhotoFeedItem(item.id)?.mediaId?.let { mediaId ->
+                rememberAppMediaIdForSource(item, mediaId)
+                return mediaId
+            }
+        }
+        return null
+    }
+
+    private fun rememberAppMediaIdForSource(
+        item: SystemMediaItem,
+        appMediaId: String,
+    ) {
+        if (appMediaId.isBlank()) return
+        appMediaIdBySystemSourceKey[item.sourceDeduplicationKey()] = appMediaId
+    }
+
+    private fun SystemMediaItem.sourceDeduplicationKey(): String {
+        val uriString = uri.toString().trim()
+        if (!id.startsWith("picked-") && mediaStoreId > 0L) {
+            return "store:${type.name.lowercase(Locale.ROOT)}:$mediaStoreId"
+        }
+        if (id.startsWith("picked-")) {
+            return metadataDeduplicationKey()
+        }
+        if (uriString.isNotBlank()) {
+            return "uri:$uriString"
+        }
+        return metadataDeduplicationKey()
+    }
+
+    private fun SystemMediaItem.sourceFingerprint(): String {
+        val bytes = sourceDeduplicationKey().toByteArray(Charsets.UTF_8)
+        return MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun SystemMediaItem.metadataDeduplicationKey(): String {
+        return buildString {
+            append("meta:")
+            append(type.name.lowercase(Locale.ROOT))
+            append('|')
+            append(mimeType.trim().lowercase(Locale.ROOT))
+            append('|')
+            append(displayName.trim().lowercase(Locale.ROOT))
+            append('|')
+            append(sizeBytes ?: -1L)
+            append('|')
+            append(displayTimeMillis)
+            append('|')
+            append(width ?: -1)
+            append('x')
+            append(height ?: -1)
+            append('|')
+            append(videoDurationMillis ?: -1L)
+        }
+    }
+
+    private fun publishDuplicateNoticeIfNeeded(
+        operationType: OperationType,
+        skippedCount: Int,
+    ) {
+        if (skippedCount <= 0) return
+        publishOperationResult(
+            OperationResultEvent(
+                eventId = "duplicate-${operationType.name.lowercase(Locale.ROOT)}-${System.currentTimeMillis()}",
+                operationId = "duplicate-${System.currentTimeMillis()}",
+                operationType = operationType,
+                succeeded = false,
+                message = "已跳过 $skippedCount 个重复媒体。",
+                successCount = 0,
+                failureCount = 0,
+                totalCount = skippedCount,
+            ),
+        )
     }
 
     private fun Uri.toPickedSystemMediaItem(
@@ -1511,6 +1955,7 @@ object LocalSystemMediaBridgeRepository {
             SystemMediaType.IMAGE
         }
         val displayName = resolvePickedDisplayName(context, index)
+        val sizeBytes = resolvePickedSizeBytes(context)
         val (width, height, durationMillis) = resolvePickedMediaMetadata(context, this, type)
         val aspectRatio = resolvePickedMediaAspectRatio(width, height, type)
         val displayTimeMillis = resolvePickedMediaDisplayTimeMillis(context, index)
@@ -1519,8 +1964,14 @@ object LocalSystemMediaBridgeRepository {
         }
 
         return SystemMediaItem(
-            id = "picked-${displayTimeMillis}-${index + 1}-${displayName.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) }}",
-            mediaStoreId = displayName.hashCode().toLong().and(Long.MAX_VALUE),
+            id = buildPickedMediaId(
+                uri = this,
+                displayName = displayName,
+                displayTimeMillis = displayTimeMillis,
+                sizeBytes = sizeBytes,
+                type = type,
+            ),
+            mediaStoreId = this.toString().hashCode().toLong().and(Long.MAX_VALUE),
             uri = this,
             type = type,
             mimeType = mimeType.ifBlank { if (type == SystemMediaType.VIDEO) "video/mp4" else "image/jpeg" },
@@ -1536,7 +1987,26 @@ object LocalSystemMediaBridgeRepository {
             palette = pickedPaletteFor(index, type),
             linkedPostIds = emptyList(),
             videoDurationMillis = durationMillis,
+            sizeBytes = sizeBytes,
         )
+    }
+
+    private fun buildPickedMediaId(
+        uri: Uri,
+        displayName: String,
+        displayTimeMillis: Long,
+        sizeBytes: Long?,
+        type: SystemMediaType,
+    ): String {
+        val rawKey = listOf(
+            uri.toString(),
+            displayName,
+            displayTimeMillis.toString(),
+            sizeBytes?.toString().orEmpty(),
+            type.name,
+        ).joinToString("|")
+        val stableHash = rawKey.hashCode().let { if (it == Int.MIN_VALUE) 0 else kotlin.math.abs(it) }
+        return "picked-$stableHash"
     }
 
     private fun Uri.resolvePickedDisplayName(
@@ -1557,6 +2027,25 @@ object LocalSystemMediaBridgeRepository {
                 null
             }
         }.orEmpty().ifBlank { "picked-${index + 1}" }
+    }
+
+    private fun Uri.resolvePickedSizeBytes(
+        context: Context,
+    ): Long? {
+        return context.contentResolver.query(
+            this,
+            arrayOf(OpenableColumns.SIZE),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val columnIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (columnIndex >= 0) cursor.getLongOrNull(columnIndex) else null
+            } else {
+                null
+            }
+        }
     }
 
     private fun Uri.resolvePickedMediaDisplayTimeMillis(
@@ -1804,6 +2293,29 @@ object LocalSystemMediaBridgeRepository {
         )
     }
 
+    private fun publishFirstSuccessIfNeeded(
+        operationId: String,
+        operationType: OperationType,
+        mediaId: String,
+    ) {
+        if (mediaId.isBlank()) return
+        if (!publishedFirstSuccessOperationIds.add(operationId)) return
+        publishOperationResult(
+            OperationResultEvent(
+                eventId = "$operationId-first-success-${System.currentTimeMillis()}",
+                operationId = operationId,
+                operationType = operationType,
+                succeeded = true,
+                message = "\u5df2\u4e0a\u4f20 1 \u4e2a\uff0c\u6b63\u5728\u7ee7\u7eed\u4e0a\u4f20\u5269\u4f59\u5a92\u4f53\u3002",
+                resultMediaIds = listOf(mediaId),
+                successCount = 1,
+                failureCount = 0,
+                totalCount = uploadTasksState.count { it.operationId == operationId }.coerceAtLeast(1),
+                shouldAutoOpenResult = true,
+            ),
+        )
+    }
+
     private fun uploadSummaryMessage(
         successCount: Int,
         failureCount: Int,
@@ -1848,6 +2360,7 @@ object LocalSystemMediaBridgeRepository {
         uploadTasksState.removeAll { it.operationId == operationId }
         finalizedOperationIds.remove(operationId)
         publishedOperationSummaryIds.remove(operationId)
+        publishedFirstSuccessOperationIds.remove(operationId)
         realUploadedMediaIdsByOperationId.remove(operationId)
         if (!keepRequest) {
             operationRequestsById.remove(operationId)

@@ -68,6 +68,7 @@ class MediaStoreSystemMediaDataSource(
             MediaStore.MediaColumns.WIDTH,
             MediaStore.MediaColumns.HEIGHT,
             MediaStore.Video.VideoColumns.DURATION,
+            MediaStore.MediaColumns.SIZE,
         )
         val selection = buildString {
             append("(")
@@ -100,6 +101,7 @@ class MediaStoreSystemMediaDataSource(
             val widthIndex = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
             val heightIndex = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
             val durationIndex = cursor.getColumnIndex(MediaStore.Video.VideoColumns.DURATION)
+            val sizeIndex = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
 
             while (cursor.moveToNext()) {
                 val mediaStoreId = cursor.getLong(idIndex)
@@ -127,6 +129,7 @@ class MediaStoreSystemMediaDataSource(
                 } else {
                     null
                 }
+                val sizeBytes = cursor.getLongOrNull(sizeIndex)
 
                 items += SystemMediaItem(
                     id = "${type.name.lowercase(Locale.ROOT)}-$mediaStoreId",
@@ -146,6 +149,7 @@ class MediaStoreSystemMediaDataSource(
                     palette = paletteFor(mediaStoreId),
                     linkedPostIds = emptyList(),
                     videoDurationMillis = durationMillis,
+                    sizeBytes = sizeBytes,
                 )
             }
         }

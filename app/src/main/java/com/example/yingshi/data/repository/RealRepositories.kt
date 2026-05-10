@@ -47,6 +47,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okio.BufferedSink
 import retrofit2.HttpException
+import java.io.InputStream
 
 class RealMediaRepository(
     private val mediaApi: MediaApi,
@@ -553,6 +554,7 @@ class RealUploadRepository(
                     capturedAtMillis = payload.capturedAtMillis,
                     importedAtMillis = payload.importedAtMillis,
                     displayTimeSource = payload.displayTimeSource,
+                    sourceFingerprint = payload.sourceFingerprint,
                 ),
             ).data.toRemoteModel()
         }.fold(
@@ -581,6 +583,41 @@ class RealUploadRepository(
                 body = ProgressRequestBody(
                     bytes = fileBytes,
                     mimeType = mimeType,
+                    onProgressPercent = onProgressPercent,
+                ),
+            )
+            uploadApi.uploadFile(
+                uploadId = uploadId,
+                file = filePart,
+            ).data.media.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_FILE_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "Upload file failed. Please retry."),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun uploadLocalStream(
+        uploadId: String,
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        openInputStream: () -> InputStream,
+        onProgressPercent: (Int) -> Unit,
+    ): ApiResult<RemoteMedia> {
+        return runCatching {
+            val filePart = MultipartBody.Part.createFormData(
+                name = "file",
+                filename = fileName,
+                body = ProgressInputStreamRequestBody(
+                    expectedLengthBytes = fileSizeBytes,
+                    mimeType = mimeType,
+                    openInputStream = openInputStream,
                     onProgressPercent = onProgressPercent,
                 ),
             )
@@ -652,6 +689,54 @@ private class ProgressRequestBody(
                 lastProgress = progress
                 notifyProgress(progress)
             }
+        }
+    }
+
+    private fun notifyProgress(progress: Int) {
+        runCatching {
+            onProgressPercent(progress.coerceIn(0, 100))
+        }
+    }
+}
+
+private class ProgressInputStreamRequestBody(
+    private val expectedLengthBytes: Long,
+    private val mimeType: String,
+    private val openInputStream: () -> InputStream,
+    private val onProgressPercent: (Int) -> Unit,
+) : RequestBody() {
+    override fun contentType() = mimeType.toMediaTypeOrNull()
+
+    override fun contentLength() = -1L
+
+    override fun writeTo(sink: BufferedSink) {
+        if (expectedLengthBytes <= 0L) {
+            notifyProgress(100)
+            return
+        }
+
+        var written = 0L
+        var lastProgress = -1
+        val buffer = ByteArray(UploadProgressChunkBytes)
+        notifyProgress(0)
+        openInputStream().use { input ->
+            while (true) {
+                val readCount = input.read(buffer)
+                if (readCount < 0) break
+                if (readCount == 0) continue
+                sink.write(buffer, 0, readCount)
+                written += readCount.toLong()
+                val progress = ((written * 100L) / expectedLengthBytes)
+                    .toInt()
+                    .coerceIn(0, 100)
+                if (progress != lastProgress) {
+                    lastProgress = progress
+                    notifyProgress(progress)
+                }
+            }
+        }
+        if (lastProgress < 100) {
+            notifyProgress(100)
         }
     }
 

@@ -26,9 +26,20 @@ object RemoteServiceFactory {
             .build()
     }
 
+    private val uploadOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.MINUTES)
+            .writeTimeout(10, TimeUnit.MINUTES)
+            .callTimeout(10, TimeUnit.MINUTES)
+            .addInterceptor(AuthInterceptor(AuthSessionManager))
+            .build()
+    }
+
     private data class ServiceGraph(
         val baseUrl: String,
         val retrofit: Retrofit,
+        val uploadRetrofit: Retrofit,
     )
 
     @Volatile
@@ -60,12 +71,19 @@ object RemoteServiceFactory {
                         .client(okHttpClient)
                         .addConverterFactory(GsonConverterFactory.create())
                         .build(),
+                    uploadRetrofit = Retrofit.Builder()
+                        .baseUrl(expectedBaseUrl)
+                        .client(uploadOkHttpClient)
+                        .addConverterFactory(GsonConverterFactory.create())
+                        .build(),
                 ).also { serviceGraph = it }
             }
         }
     }
 
     private inline fun <reified T> createService(): T = currentGraph().retrofit.create(T::class.java)
+
+    private inline fun <reified T> createUploadService(): T = currentGraph().uploadRetrofit.create(T::class.java)
 
     val authApi: AuthApi
         get() = createService()
@@ -82,5 +100,5 @@ object RemoteServiceFactory {
     val trashApi: TrashApi
         get() = createService()
     val uploadApi: UploadApi
-        get() = createService()
+        get() = createUploadService()
 }
