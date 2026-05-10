@@ -439,6 +439,7 @@ class FakeUploadRepositoryShell : UploadRepository {
         fileName: String,
         mimeType: String,
         fileBytes: ByteArray,
+        onProgressPercent: (Int) -> Unit,
     ): ApiResult<RemoteMedia> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",

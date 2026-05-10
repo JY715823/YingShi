@@ -2,7 +2,6 @@
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -90,6 +90,7 @@ fun PhotosRootScreen(
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val notificationUnreadCount = FakeNotificationRepository.unreadCount()
+    val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val transferAttentionCount = LocalSystemMediaBridgeRepository.remainingUploadTaskCount()
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
@@ -368,6 +369,23 @@ fun PhotosRootScreen(
                         }
                     }
                 }
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isPhotoSelectionMode && uploadTasks.isNotEmpty(),
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
+            ) {
+                SystemMediaUploadTaskPanel(
+                    tasks = uploadTasks,
+                    onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
+                    onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                    onRetryTask = { LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
+                )
             }
         }
     }

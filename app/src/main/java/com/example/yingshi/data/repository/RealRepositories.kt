@@ -44,7 +44,8 @@ import com.example.yingshi.data.remote.mapper.toRemoteSummary
 import com.example.yingshi.data.remote.result.ApiResult
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
 import retrofit2.HttpException
 
 class RealMediaRepository(
@@ -571,12 +572,17 @@ class RealUploadRepository(
         fileName: String,
         mimeType: String,
         fileBytes: ByteArray,
+        onProgressPercent: (Int) -> Unit,
     ): ApiResult<RemoteMedia> {
         return runCatching {
             val filePart = MultipartBody.Part.createFormData(
                 name = "file",
                 filename = fileName,
-                body = fileBytes.toRequestBody(mimeType.toMediaTypeOrNull()),
+                body = ProgressRequestBody(
+                    bytes = fileBytes,
+                    mimeType = mimeType,
+                    onProgressPercent = onProgressPercent,
+                ),
             )
             uploadApi.uploadFile(
                 uploadId = uploadId,
@@ -618,6 +624,45 @@ class RealUploadRepository(
         )
     }
 }
+
+private class ProgressRequestBody(
+    private val bytes: ByteArray,
+    private val mimeType: String,
+    private val onProgressPercent: (Int) -> Unit,
+) : RequestBody() {
+    override fun contentType() = mimeType.toMediaTypeOrNull()
+
+    override fun contentLength() = bytes.size.toLong()
+
+    override fun writeTo(sink: BufferedSink) {
+        if (bytes.isEmpty()) {
+            notifyProgress(100)
+            return
+        }
+
+        var written = 0
+        var lastProgress = -1
+        notifyProgress(0)
+        while (written < bytes.size) {
+            val byteCount = minOf(UploadProgressChunkBytes, bytes.size - written)
+            sink.write(bytes, written, byteCount)
+            written += byteCount
+            val progress = ((written.toLong() * 100L) / bytes.size.toLong()).toInt().coerceIn(0, 100)
+            if (progress != lastProgress) {
+                lastProgress = progress
+                notifyProgress(progress)
+            }
+        }
+    }
+
+    private fun notifyProgress(progress: Int) {
+        runCatching {
+            onProgressPercent(progress.coerceIn(0, 100))
+        }
+    }
+}
+
+private const val UploadProgressChunkBytes = 64 * 1024
 
 private fun uploadRequestErrorMessage(
     throwable: Throwable,

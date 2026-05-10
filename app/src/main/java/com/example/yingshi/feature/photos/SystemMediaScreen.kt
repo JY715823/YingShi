@@ -132,6 +132,7 @@ fun SystemMediaScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
+    val uploadTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
@@ -860,6 +861,23 @@ fun SystemMediaScreen(
                     selectionMode = false
                     selectedIds = emptyList()
                 },
+            )
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = !selectionMode && uploadTasks.isNotEmpty(),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+        ) {
+            SystemMediaUploadTaskPanel(
+                tasks = uploadTasks,
+                onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
+                onDismissTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                onRetryTask = { LocalSystemMediaBridgeRepository.retryUploadTask(context, it) },
             )
         }
     }

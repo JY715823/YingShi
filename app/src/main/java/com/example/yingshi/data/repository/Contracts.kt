@@ -128,6 +128,7 @@ interface UploadRepository {
         fileName: String,
         mimeType: String,
         fileBytes: ByteArray,
+        onProgressPercent: (Int) -> Unit = {},
     ): ApiResult<RemoteMedia>
 
     suspend fun confirmUpload(

@@ -20,8 +20,10 @@ import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -132,6 +134,7 @@ object LocalSystemMediaBridgeRepository {
     private val linkedPostIdsByMediaId = linkedMapOf<String, LinkedHashSet<String>>()
     private val realUploadedMediaIdsByOperationId = linkedMapOf<String, LinkedHashMap<String, String>>()
     private val operationRequestsById = linkedMapOf<String, PendingOperationRequest>()
+    private val uploadJobsByTaskId = linkedMapOf<String, Job>()
 
     val uploadTasks: List<SystemMediaUploadTaskUiModel>
         get() = uploadTasksState
@@ -333,12 +336,15 @@ object LocalSystemMediaBridgeRepository {
     fun cancelUploadTask(taskId: String) {
         val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
         if (task.isTerminal) return
-        updateOperationTasks(
-            operationId = task.operationId,
+        updateUploadTask(
+            taskId = taskId,
             state = UploadState.CANCELLED,
-            statusMessage = "Upload canceled",
+            progressPercent = task.progressPercent,
+            statusMessage = "上传已取消",
             canRetry = true,
         )
+        uploadJobsByTaskId.remove(taskId)?.cancel(CancellationException("Upload task canceled by user"))
+        publishOperationSummaryIfReady(task.operationId)
         uploadScope.launch {
             RepositoryProvider.uploadRepository.cancelUpload(taskId)
         }
@@ -709,18 +715,44 @@ object LocalSystemMediaBridgeRepository {
         sourceItems: List<SystemMediaItem>,
         finalizeAction: suspend (UploadedOperationMedia) -> ApiResult<RealFinalizeResult>,
     ) {
-        uploadScope.launch {
-            var activeTaskId = "${operationId}-${mediaItem.id}"
+        val initialTaskId = "${operationId}-${mediaItem.id}"
+        uploadTasksState.removeAll { it.taskId == initialTaskId }
+        uploadTasksState.add(
+            SystemMediaUploadTaskUiModel(
+                taskId = initialTaskId,
+                operationId = operationId,
+                mediaId = mediaItem.id,
+                fileName = mediaItem.displayName.ifBlank { mediaItem.id },
+                targetLabel = targetLabel,
+                mediaType = mediaItem.type,
+                previewUri = mediaItem.uri.toString(),
+                progressPercent = 0,
+                state = UploadState.WAITING,
+                statusMessage = "等待读取本地媒体",
+            ),
+        )
+
+        val job = uploadScope.launch {
+            var activeTaskId = initialTaskId
             try {
                 debugUploadLog(
                     "enqueue operation=$operationId target=$targetLabel mediaId=${mediaItem.id} " +
                         "uri=${mediaItem.uri} mime=${mediaItem.mimeType} displayName=${mediaItem.displayName}",
+                )
+                updateUploadTask(
+                    taskId = activeTaskId,
+                    state = UploadState.UPLOADING,
+                    progressPercent = 3,
+                    statusMessage = "正在读取本地媒体",
                 )
                 val metadata = runCatching {
                     withTimeout(ReadLocalMediaTimeoutMillis) {
                         readRealUploadMetadata(context, mediaItem)
                     }
                 }.getOrElse { throwable ->
+                    if (throwable is CancellationException && throwable !is TimeoutCancellationException) {
+                        throw throwable
+                    }
                     val message = friendlyUploadError(
                         throwable = throwable,
                         fallback = "Cannot read selected media. Please select again.",
@@ -740,11 +772,18 @@ object LocalSystemMediaBridgeRepository {
                     debugUploadLog("read failed operation=$operationId mediaId=${mediaItem.id}: $message", throwable)
                     return@launch
                 }
+                if (isUploadTaskCancelled(activeTaskId)) return@launch
 
                 debugUploadLog(
                     "metadata operation=$operationId uri=${metadata.sourceUri} file=${metadata.fileName} " +
                         "mime=${metadata.mimeType} size=${metadata.fileBytes.size} " +
                         "width=${metadata.width} height=${metadata.height} duration=${metadata.durationMillis}",
+                )
+                updateUploadTask(
+                    taskId = activeTaskId,
+                    state = UploadState.UPLOADING,
+                    progressPercent = 12,
+                    statusMessage = "正在创建上传任务",
                 )
                 val tokenPayload = CreateUploadTokenPayload(
                     fileName = metadata.fileName,
@@ -786,28 +825,31 @@ object LocalSystemMediaBridgeRepository {
                     }
                     ApiResult.Loading -> return@launch
                 }
+                if (!replaceUploadTaskId(
+                        oldTaskId = activeTaskId,
+                        newTaskId = uploadId,
+                        fileName = metadata.fileName,
+                        progressPercent = 20,
+                        statusMessage = "等待上传",
+                    )
+                ) {
+                    return@launch
+                }
                 activeTaskId = uploadId
                 debugUploadLog("token success operation=$operationId uploadId=$uploadId endpoint=/api/uploads/$uploadId/file")
 
-                uploadTasksState.add(
-                    SystemMediaUploadTaskUiModel(
-                        taskId = uploadId,
-                        operationId = operationId,
-                        mediaId = mediaItem.id,
-                        fileName = metadata.fileName,
-                        targetLabel = targetLabel,
-                        mediaType = mediaItem.type,
-                        previewUri = mediaItem.uri.toString(),
-                        progressPercent = 8,
-                        state = UploadState.WAITING,
-                        statusMessage = "Waiting to upload",
-                    ),
-                )
                 updateUploadTask(
                     taskId = uploadId,
                     state = UploadState.UPLOADING,
                     progressPercent = 35,
                     statusMessage = "濠殿喗绻愮徊钘夛耿椤忓懐鈻斿┑鐘辫兌閻?35%",
+                )
+
+                updateUploadTask(
+                    taskId = uploadId,
+                    state = UploadState.UPLOADING,
+                    progressPercent = 35,
+                    statusMessage = "正在上传 35%",
                 )
 
                 val uploadResult = runUploadApiWithTimeout(
@@ -819,6 +861,19 @@ object LocalSystemMediaBridgeRepository {
                         fileName = metadata.fileName,
                         mimeType = metadata.mimeType,
                         fileBytes = metadata.fileBytes,
+                        onProgressPercent = { progress ->
+                            val mappedProgress = (35 + progress * 55 / 100).coerceIn(35, 90)
+                            uploadScope.launch {
+                                if (!isUploadTaskCancelled(uploadId)) {
+                                    updateUploadTask(
+                                        taskId = uploadId,
+                                        state = UploadState.UPLOADING,
+                                        progressPercent = mappedProgress,
+                                        statusMessage = "正在上传 $mappedProgress%",
+                                    )
+                                }
+                            }
+                        },
                     )
                 }
                 when (uploadResult) {
@@ -826,6 +881,12 @@ object LocalSystemMediaBridgeRepository {
                         if (uploadTasksState.firstOrNull { it.taskId == uploadId }?.state == UploadState.CANCELLED) {
                             return@launch
                         }
+                        updateUploadTask(
+                            taskId = uploadId,
+                            state = UploadState.UPLOADING,
+                            progressPercent = 95,
+                            statusMessage = "上传完成，正在处理",
+                        )
                         val uploadedMediaId = uploadResult.data.mediaId
                         if (uploadedMediaId.isBlank()) {
                             val message = "Server upload succeeded but returned no media ID."
@@ -888,6 +949,17 @@ object LocalSystemMediaBridgeRepository {
                     }
                     ApiResult.Loading -> Unit
                 }
+            } catch (throwable: CancellationException) {
+                if (!isUploadTaskCancelled(activeTaskId)) {
+                    updateUploadTask(
+                        taskId = activeTaskId,
+                        state = UploadState.CANCELLED,
+                        progressPercent = uploadTasksState.firstOrNull { it.taskId == activeTaskId }?.progressPercent ?: 0,
+                        statusMessage = "上传已取消",
+                        canRetry = true,
+                    )
+                }
+                publishOperationSummaryIfReady(operationId)
             } catch (throwable: Throwable) {
                 val message = friendlyUploadError(
                     throwable = throwable,
@@ -917,8 +989,12 @@ object LocalSystemMediaBridgeRepository {
                 }
                 publishOperationSummaryIfReady(operationId)
                 debugUploadLog("upload crashed operation=$operationId task=$activeTaskId", throwable)
+            } finally {
+                uploadJobsByTaskId.remove(initialTaskId)
+                uploadJobsByTaskId.remove(activeTaskId)
             }
         }
+        uploadJobsByTaskId[initialTaskId] = job
     }
 
     private suspend fun finalizeImportToAppReal(
@@ -1138,6 +1214,36 @@ object LocalSystemMediaBridgeRepository {
         uploadedIds[sourceMediaId] = uploadedMediaId
     }
 
+    private fun isUploadTaskCancelled(taskId: String): Boolean {
+        return uploadTasksState.firstOrNull { it.taskId == taskId }?.state == UploadState.CANCELLED
+    }
+
+    private fun replaceUploadTaskId(
+        oldTaskId: String,
+        newTaskId: String,
+        fileName: String,
+        progressPercent: Int,
+        statusMessage: String,
+    ): Boolean {
+        val currentIndex = uploadTasksState.indexOfFirst { it.taskId == oldTaskId }
+        if (currentIndex < 0) return false
+        val current = uploadTasksState[currentIndex]
+        if (current.state == UploadState.CANCELLED) return false
+        uploadTasksState[currentIndex] = current.copy(
+            taskId = newTaskId,
+            fileName = fileName,
+            progressPercent = progressPercent,
+            state = UploadState.WAITING,
+            statusMessage = statusMessage,
+            errorMessage = null,
+            canRetry = false,
+        )
+        uploadJobsByTaskId.remove(oldTaskId)?.let { job ->
+            uploadJobsByTaskId[newTaskId] = job
+        }
+        return true
+    }
+
     private fun updateUploadTask(
         taskId: String,
         state: UploadState,
@@ -1239,6 +1345,8 @@ object LocalSystemMediaBridgeRepository {
                 message = timeoutMessage,
                 throwable = throwable,
             )
+        } catch (throwable: CancellationException) {
+            throw throwable
         } catch (throwable: Throwable) {
             ApiResult.Error(
                 code = "UPLOAD_REQUEST_FAILED",
