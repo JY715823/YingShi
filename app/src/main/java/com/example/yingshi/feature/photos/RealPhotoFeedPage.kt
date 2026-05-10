@@ -62,6 +62,12 @@ fun RealPhotoFeedPage(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(scrollTrigger) {
+        if (scrollTrigger > 0) {
+            viewModel.refresh()
+        }
+    }
+
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },

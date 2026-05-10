@@ -46,6 +46,7 @@ import com.example.yingshi.feature.photos.NotificationDetailRoute
 import com.example.yingshi.feature.photos.NotificationDetailScreen
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
+import com.example.yingshi.feature.photos.PhotoFeedPageStateStore
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
@@ -136,6 +137,16 @@ fun YingShiApp() {
     val operationResults = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
+    val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
+        val targetMediaId = resultMediaIds.firstOrNull { it.isNotBlank() }
+        if (targetMediaId != null) {
+            PhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
+            PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+        }
+        selectedDestinationName = RootDestination.PHOTOS.name
+        photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+        photoFeedScrollTrigger++
+    }
     val quickAddPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
     ) { uris ->
@@ -167,6 +178,9 @@ fun YingShiApp() {
         var postRouteToOpen: PostDetailPlaceholderRoute? = null
         pendingEvents.forEach { event ->
             Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+            if (event.succeeded && event.successCount > 0) {
+                requestPhotoFeedRefresh(event.resultMediaIds)
+            }
             if (event.succeeded &&
                 event.operationType == com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
                 postRouteToOpen == null
