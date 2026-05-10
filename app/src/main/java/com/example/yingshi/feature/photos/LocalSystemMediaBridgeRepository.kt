@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
@@ -33,6 +34,7 @@ import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 object LocalSystemMediaBridgeRepository {
     private const val UploadLogTag = "SystemMediaUpload"
@@ -76,6 +78,9 @@ object LocalSystemMediaBridgeRepository {
         val width: Int,
         val height: Int,
         val durationMillis: Long? = null,
+        val displayTimeMillis: Long,
+        val capturedAtMillis: Long?,
+        val importedAtMillis: Long,
         val sourceUri: Uri,
     )
 
@@ -793,9 +798,9 @@ object LocalSystemMediaBridgeRepository {
                     width = metadata.width,
                     height = metadata.height,
                     durationMillis = metadata.durationMillis,
-                    displayTimeMillis = mediaItem.displayTimeMillis,
-                    capturedAtMillis = mediaItem.displayTimeMillis,
-                    importedAtMillis = System.currentTimeMillis(),
+                    displayTimeMillis = metadata.displayTimeMillis,
+                    capturedAtMillis = metadata.capturedAtMillis,
+                    importedAtMillis = metadata.importedAtMillis,
                     displayTimeSource = "ORIGINAL",
                 )
                 val tokenResult = runUploadApiWithTimeout(
@@ -1420,13 +1425,27 @@ object LocalSystemMediaBridgeRepository {
             uri = mediaItem.uri,
             type = mediaItem.type,
         )
+        val (uploadWidth, uploadHeight) = resolveUploadDimensions(
+            mediaItem = mediaItem,
+            resolvedWidth = resolvedWidth,
+            resolvedHeight = resolvedHeight,
+        )
+        val displayTimeMillis = normalizeUploadTimeMillis(mediaItem.displayTimeMillis)
+        val importedAtMillis = System.currentTimeMillis()
         RealUploadMetadata(
             fileName = fileName,
             mimeType = mimeType,
             fileBytes = fileBytes,
-            width = (mediaItem.width ?: resolvedWidth)?.coerceAtLeast(1) ?: 1,
-            height = (mediaItem.height ?: resolvedHeight)?.coerceAtLeast(1) ?: 1,
-            durationMillis = resolvedDuration,
+            width = uploadWidth,
+            height = uploadHeight,
+            durationMillis = if (mediaItem.type == SystemMediaType.VIDEO) {
+                resolvedDuration ?: mediaItem.videoDurationMillis
+            } else {
+                null
+            },
+            displayTimeMillis = displayTimeMillis,
+            capturedAtMillis = displayTimeMillis,
+            importedAtMillis = importedAtMillis,
             sourceUri = mediaItem.uri,
         )
     }
@@ -1576,6 +1595,34 @@ object LocalSystemMediaBridgeRepository {
         }.getOrDefault(null to null)
     }
 
+    private fun resolveUploadDimensions(
+        mediaItem: SystemMediaItem,
+        resolvedWidth: Int?,
+        resolvedHeight: Int?,
+    ): Pair<Int, Int> {
+        if (resolvedWidth != null && resolvedHeight != null && resolvedWidth > 0 && resolvedHeight > 0) {
+            return resolvedWidth to resolvedHeight
+        }
+        if (mediaItem.width != null && mediaItem.height != null && mediaItem.width > 0 && mediaItem.height > 0) {
+            return mediaItem.width to mediaItem.height
+        }
+
+        val ratio = mediaItem.aspectRatio
+            .takeIf { it.isFinite() && it > 0f }
+            ?.coerceIn(0.15f, 6f)
+            ?: if (mediaItem.type == SystemMediaType.VIDEO) 16f / 9f else 1f
+        val longEdge = if (mediaItem.type == SystemMediaType.VIDEO) 1920 else 1600
+        return if (ratio >= 1f) {
+            longEdge to (longEdge / ratio).roundToInt().coerceAtLeast(1)
+        } else {
+            (longEdge * ratio).roundToInt().coerceAtLeast(1) to longEdge
+        }
+    }
+
+    private fun normalizeUploadTimeMillis(timeMillis: Long): Long {
+        return timeMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
+    }
+
     private fun android.database.Cursor.getLongOrNull(columnIndex: Int): Long? {
         if (columnIndex < 0 || isNull(columnIndex)) return null
         return getLong(columnIndex)
@@ -1596,9 +1643,17 @@ object LocalSystemMediaBridgeRepository {
                         BitmapFactory.decodeStream(inputStream, null, bounds)
                     }
                 }
+                val orientationDegrees = resolveImageOrientationDegrees(context, uri)
+                val rawWidth = bounds.outWidth.takeIf { it > 0 }
+                val rawHeight = bounds.outHeight.takeIf { it > 0 }
+                val (resolvedWidth, resolvedHeight) = if (orientationDegrees == 90 || orientationDegrees == 270) {
+                    rawHeight to rawWidth
+                } else {
+                    rawWidth to rawHeight
+                }
                 Triple(
-                    bounds.outWidth.takeIf { it > 0 },
-                    bounds.outHeight.takeIf { it > 0 },
+                    resolvedWidth,
+                    resolvedHeight,
                     null,
                 )
             }
@@ -1628,6 +1683,25 @@ object LocalSystemMediaBridgeRepository {
                 }
             }
         }
+    }
+
+    private fun resolveImageOrientationDegrees(
+        context: Context,
+        uri: Uri,
+    ): Int {
+        return runCatching {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                when (ExifInterface(inputStream).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL,
+                )) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    else -> 0
+                }
+            } ?: 0
+        }.getOrDefault(0)
     }
 
     private fun resolvePickedMediaAspectRatio(
