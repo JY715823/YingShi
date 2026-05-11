@@ -81,8 +81,6 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val PhotoFeedLeadingItemCount = 0
-private const val PhotoFeedPrefetchCount = 36
-private const val PhotoFeedThumbnailRequestSize = 320
 private const val PhotoFeedPendingTargetRefreshGraceMillis = 450L
 
 @Composable
@@ -103,7 +101,6 @@ fun PhotoFeedScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
-    PrefetchPhotoFeedThumbnails(feedItems)
     val mediaPositionLookup = remember(feedItems) {
         feedItems.mapIndexed { index, item -> item.mediaId to index }.toMap()
     }
@@ -131,6 +128,12 @@ fun PhotoFeedScreen(
 
     val density = PhotoFeedDensity.valueOf(
         densityName ?: settingsState.defaultPhotoFeedDensity.name,
+    )
+    val thumbnailRequestSize = photoFeedThumbnailRequestSize(density)
+    PrefetchPhotoFeedThumbnails(
+        feedItems = feedItems,
+        density = density,
+        requestSize = thumbnailRequestSize,
     )
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
         !selectionState.isInSelectionMode &&
@@ -479,6 +482,7 @@ fun PhotoFeedScreen(
                             onInlineVideoProgressChange = { item, progress ->
                                 inlineVideoProgressById = inlineVideoProgressById + (item.mediaId to progress)
                             },
+                            thumbnailRequestSize = thumbnailRequestSize,
                             onMediaClick = { item ->
                                 onSelectionStateChange(
                                     if (selectionState.isInSelectionMode) {
@@ -614,6 +618,19 @@ fun PhotoFeedScreen(
 
 @Composable
 private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
+    PrefetchPhotoFeedThumbnails(
+        feedItems = feedItems,
+        density = PhotoFeedDensity.DENSE_4,
+        requestSize = photoFeedThumbnailRequestSize(PhotoFeedDensity.DENSE_4),
+    )
+}
+
+@Composable
+private fun PrefetchPhotoFeedThumbnails(
+    feedItems: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
+    requestSize: Int,
+) {
     if (RepositoryProvider.currentMode != RepositoryMode.REAL) return
 
     val context = LocalContext.current
@@ -621,9 +638,9 @@ private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val prefetchTargets = remember(feedItems) {
+    val prefetchTargets = remember(feedItems, density, requestSize) {
         feedItems
-            .take(PhotoFeedPrefetchCount)
+            .take(photoFeedPrefetchCount(density))
             .mapNotNull { item ->
                 val url = item.mediaSource.thumbnailModelUrl(item.mediaType) ?: return@mapNotNull null
                 PrefetchTarget(
@@ -652,8 +669,9 @@ private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
                 context = context,
                 url = target.url,
                 accessToken = accessToken,
-                memoryCacheKey = sharedPreviewMemoryCacheKey(target.url),
-                size = PhotoFeedThumbnailRequestSize,
+                memoryCacheKey = photoFeedPreviewMemoryCacheKey(target.url, requestSize),
+                placeholderMemoryCacheKey = sharedPreviewMemoryCacheKey(target.url),
+                size = requestSize,
             )?.let(imageLoader::enqueue)
         }
     }
@@ -976,6 +994,7 @@ private fun PhotoFeedGridRowContent(
     inlineVideoProgressById: Map<String, InlineVideoPlaybackProgress>,
     onToggleInlineVideo: (PhotoFeedItem) -> Unit,
     onInlineVideoProgressChange: (PhotoFeedItem, InlineVideoPlaybackProgress) -> Unit,
+    thumbnailRequestSize: Int,
     onMediaClick: (PhotoFeedItem) -> Unit,
     onOpenMedia: (PhotoFeedItem) -> Unit,
     onMediaLongPress: (PhotoFeedItem) -> Unit,
@@ -1001,6 +1020,7 @@ private fun PhotoFeedGridRowContent(
                 isInlineVideoPaused = item.mediaId in pausedInlineVideoIds,
                 inlineVideoProgress = inlineVideoProgressById[item.mediaId],
                 modifier = Modifier.weight(1f),
+                thumbnailRequestSize = thumbnailRequestSize,
                 onClick = { onMediaClick(item) },
                 onOpenMedia = { onOpenMedia(item) },
                 onLongPress = { onMediaLongPress(item) },
@@ -1031,6 +1051,7 @@ private fun PhotoFeedCard(
     isInlineVideoPaused: Boolean,
     inlineVideoProgress: InlineVideoPlaybackProgress?,
     modifier: Modifier = Modifier,
+    thumbnailRequestSize: Int,
     onClick: () -> Unit,
     onOpenMedia: () -> Unit,
     onLongPress: () -> Unit,
@@ -1061,7 +1082,7 @@ private fun PhotoFeedCard(
             palette = item.palette,
             modifier = Modifier.matchParentSize(),
             contentDescription = item.mediaId,
-            requestSize = PhotoFeedThumbnailRequestSize,
+            requestSize = thumbnailRequestSize,
             showLoadingIndicator = false,
             showVideoPlayOverlay = !(supportsInlineVideo || showSelectionVideoMarker),
         )
@@ -1372,6 +1393,37 @@ private fun rowSpacing(density: PhotoFeedDensity): Dp {
         density.columns <= 4 -> 2.dp
         density.columns <= 8 -> 2.dp
         else -> 2.dp
+    }
+}
+
+private fun photoFeedThumbnailRequestSize(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 960
+        PhotoFeedDensity.COMFORT_3 -> 720
+        PhotoFeedDensity.DENSE_4 -> 512
+        PhotoFeedDensity.OVERVIEW_8 -> 256
+        PhotoFeedDensity.OVERVIEW_16 -> 160
+    }
+}
+
+private fun photoFeedPrefetchCount(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 24
+        PhotoFeedDensity.COMFORT_3 -> 30
+        PhotoFeedDensity.DENSE_4 -> 40
+        PhotoFeedDensity.OVERVIEW_8 -> 64
+        PhotoFeedDensity.OVERVIEW_16 -> 96
+    }
+}
+
+private fun photoFeedPreviewMemoryCacheKey(
+    url: String,
+    requestSize: Int,
+): String {
+    return if (requestSize >= 512) {
+        sharedPreviewMemoryCacheKey(url)
+    } else {
+        sharedSizedPreviewMemoryCacheKey(url, requestSize)
     }
 }
 

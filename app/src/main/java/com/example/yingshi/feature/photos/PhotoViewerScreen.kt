@@ -993,6 +993,19 @@ private fun PrefetchViewerMediaAssets(
         val imageLoader = context.imageLoader
         targets.forEach { item ->
             if (item.mediaType == AppMediaType.VIDEO) {
+                val posterImageUrl = item.mediaSource
+                    ?.thumbnailModelUrl(item.mediaType)
+                    ?.takeUnless { looksLikeVideoSource(it, item.mediaSource?.mimeType) }
+                if (posterImageUrl != null) {
+                    backendMediaImageRequest(
+                        context = context,
+                        url = posterImageUrl,
+                        accessToken = accessToken,
+                        memoryCacheKey = sharedPreviewMemoryCacheKey(posterImageUrl),
+                        size = 1280,
+                    )?.let(imageLoader::enqueue)
+                    return@forEach
+                }
                 item.mediaSource?.viewerVideoUrl(item.mediaType)?.let { videoUrl ->
                     prefetchVideoPoster(
                         context = context,
@@ -1603,11 +1616,34 @@ private fun ViewerVideoCanvas(
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
+    val posterImageUrl = remember(media.mediaSource, media.mediaType) {
+        media.mediaSource
+            .thumbnailModelUrl(media.mediaType)
+            ?.takeUnless { looksLikeVideoSource(it, media.mediaSource?.mimeType) }
+    }
+    val posterImageRequest = remember(context, posterImageUrl, accessToken) {
+        backendMediaImageRequest(
+            context = context,
+            url = posterImageUrl,
+            accessToken = accessToken,
+            memoryCacheKey = posterImageUrl?.let(::sharedPreviewMemoryCacheKey),
+            size = 1280,
+        )
+    }
+    val posterImagePainter = rememberAsyncImagePainter(model = posterImageRequest)
+    val posterImageState = posterImagePainter.state
+    val fallbackPosterVideoUrl = if (posterImageUrl.isNullOrBlank() ||
+        posterImageState is AsyncImagePainter.State.Error
+    ) {
+        videoUrl
+    } else {
+        null
+    }
     val videoPosterState = rememberVideoPosterState(
-        url = videoUrl,
+        url = fallbackPosterVideoUrl,
         accessToken = accessToken,
     ).value
-    val posterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
+    val extractedPosterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
     val requestHeaders = remember(videoUrl, accessToken) {
         backendMediaRequestHeaders(videoUrl, accessToken)
     }
@@ -1784,8 +1820,16 @@ private fun ViewerVideoCanvas(
         val targetMillis = playbackState?.seekRequestMillis ?: return@LaunchedEffect
         player?.seekTo(targetMillis.coerceAtLeast(0L))
     }
-    val hasPosterImage = videoPosterState.model != null &&
-        posterPainter.state !is AsyncImagePainter.State.Error
+    val hasServerPosterImage = posterImageRequest != null &&
+        posterImageState !is AsyncImagePainter.State.Error
+    val hasExtractedPosterImage = videoPosterState.model != null &&
+        extractedPosterPainter.state !is AsyncImagePainter.State.Error
+    val posterPainter = if (hasServerPosterImage) {
+        posterImagePainter
+    } else {
+        extractedPosterPainter
+    }
+    val hasPosterImage = hasServerPosterImage || hasExtractedPosterImage
     val shouldShowPoster = hasPosterImage &&
         (!isPrepared || (playbackState?.progressMillis ?: 0L) <= 0L || errorMessage != null)
 
@@ -1828,14 +1872,14 @@ private fun ViewerVideoCanvas(
                 message = when {
                     videoUrl.isNullOrBlank() -> "暂无视频地址"
                     errorMessage != null -> "视频加载失败"
-                    videoPosterState.isLoading || isLoading -> "视频准备中"
+                    posterImageState is AsyncImagePainter.State.Loading || videoPosterState.isLoading || isLoading -> "视频准备中"
                     else -> "暂无视频封面"
                 },
                 modifier = Modifier.fillMaxSize(),
             )
         }
 
-        if (videoPosterState.isLoading || isLoading) {
+        if (posterImageState is AsyncImagePainter.State.Loading || videoPosterState.isLoading || isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)

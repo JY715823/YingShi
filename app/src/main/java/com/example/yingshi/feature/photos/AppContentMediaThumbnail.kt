@@ -67,13 +67,15 @@ internal fun AppContentMediaThumbnail(
         context,
         mediaType,
         modelUrl,
+        requestSize,
         accessToken,
     ) {
         backendMediaImageRequest(
             context = context,
             url = modelUrl,
             accessToken = accessToken,
-            memoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
+            memoryCacheKey = modelUrl?.let { thumbnailMemoryCacheKey(it, requestSize) },
+            placeholderMemoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
             size = requestSize,
         )
     }
@@ -237,6 +239,17 @@ internal fun AppContentMediaThumbnail(
                 }
             }
         }
+    }
+}
+
+private fun thumbnailMemoryCacheKey(
+    url: String,
+    requestSize: Int,
+): String {
+    return if (requestSize >= 512) {
+        sharedPreviewMemoryCacheKey(url)
+    } else {
+        sharedSizedPreviewMemoryCacheKey(url, requestSize)
     }
 }
 

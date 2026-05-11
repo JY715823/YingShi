@@ -1,24 +1,27 @@
-# Current Task: Preview Quality And Cover Compatibility
+# Current Task: Photo Feed Thumbnail Loading Polish
 
 ## Background
 
-The backend is improving local preview generation and may return true image URLs for video covers through `?variant=cover`. Android already consumes `previewUrl`, `thumbnailUrl`, and `coverUrl`; this pass only keeps the model resolution compatible with those backend URLs.
+The backend now serves clearer preview-v2 images and optional video cover images. The Android photo feed should request preview sizes that match the current grid density, keep scrolling smooth in dense modes, and reuse already loaded preview/cover assets when entering Viewer where possible.
 
 ## Goals
 
-1. Continue using backend `previewUrl` / `thumbnailUrl` for image thumbnails.
-2. Treat backend `?variant=cover` and `?variant=preview` URLs as valid video poster images.
-3. Keep the existing fallback to video-source poster extraction when no image cover is available.
-4. Avoid changes to photo-feed paging, positioning, upload center, trash, post detail, and Viewer playback controls.
+1. Use density-aware image request sizes for 2/3/4/8/16-column photo feed grids.
+2. Keep large cells clear while avoiding oversized decodes for dense 8/16-column grids.
+3. Reduce thumbnail flicker by sharing disk cache and avoiding tiny memory-cache entries from poisoning Viewer previews.
+4. Prefer backend video cover images in Viewer before falling back to video-source poster extraction.
+5. Avoid changes to paging, upload center, trash, post detail, and Viewer playback controls.
 
 ## Scope
 
-- Android media source URL resolution for app-content thumbnails.
-- Compatibility with backend cover/preview variant URLs.
+- Photo feed thumbnail request sizing and prefetch sizing.
+- App-content thumbnail memory/disk cache key behavior.
+- Viewer image/video poster prefetch and display source selection.
+- Compatibility with backend `?variant=preview` and `?variant=cover` URLs.
 
 ## Acceptance
 
-1. Photo feed can display backend image previews.
-2. Video media can use backend cover images when provided.
-3. Existing video poster fallback stays available.
+1. Photo feed 2/3/4/8/16-column modes use appropriate preview request sizes.
+2. Image and video cover loading remains stable while scrolling.
+3. Viewer can reuse or quickly load feed preview/cover assets.
 4. Android `assembleDebug` passes.

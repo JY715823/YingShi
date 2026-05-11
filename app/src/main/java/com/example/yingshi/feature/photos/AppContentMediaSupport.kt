@@ -219,12 +219,14 @@ internal fun backendMediaImageRequest(
     url: String?,
     accessToken: String?,
     memoryCacheKey: String? = url?.let(::sharedPreviewMemoryCacheKey),
+    placeholderMemoryCacheKey: String? = null,
     size: Int? = null,
 ): ImageRequest? {
     if (url.isNullOrBlank()) return null
     return ImageRequest.Builder(context).apply {
         data(url)
         memoryCacheKey?.let(::memoryCacheKey)
+        placeholderMemoryCacheKey?.let(::placeholderMemoryCacheKey)
         diskCacheKey(sharedMediaDiskCacheKey(url))
         networkCachePolicy(CachePolicy.ENABLED)
         diskCachePolicy(CachePolicy.ENABLED)
@@ -258,6 +260,11 @@ internal fun backendMediaOriginalImageRequest(
 }
 
 internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:$url"
+
+internal fun sharedSizedPreviewMemoryCacheKey(
+    url: String,
+    size: Int,
+): String = "media:$url:size:$size"
 
 internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:$url"
 
