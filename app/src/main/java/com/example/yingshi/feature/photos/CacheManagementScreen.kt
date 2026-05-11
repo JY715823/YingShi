@@ -20,13 +20,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun CacheManagementScreen(
@@ -35,8 +45,19 @@ fun CacheManagementScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val summary = FakeMediaCacheRepository.getGlobalSummary()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var refreshVersion by rememberSaveable { mutableIntStateOf(0) }
+    val summary by produceState<RealMediaCacheSummary?>(
+        initialValue = null,
+        context,
+        refreshVersion,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            MediaCacheRepository.getSummary(context)
+        }
+    }
+    val currentSummary = summary
 
     Column(
         modifier = modifier
@@ -55,56 +76,80 @@ fun CacheManagementScreen(
 
         CacheSection(
             title = "当前缓存概览",
-            subtitle = "当前只处理 app 内容区的本地 fake 缓存状态，不扫描真实磁盘，也不影响系统媒体工具区。",
+            subtitle = "只统计 App 自己的缓存目录；不会扫描或删除系统相册源文件，也不会影响后端文件。",
         ) {
-            CacheSummaryBlock(summary = summary)
+            CacheSummaryBlock(summary = currentSummary)
         }
 
         CacheSection(
             title = "缓存分类",
-            subtitle = "先把入口和分类结构摆对，方便后续再接真实缓存统计。",
+            subtitle = "图片缩略图、视频封面主要在 Coil 图片缓存里；远程视频播放片段单独在 App 视频缓存里。",
         ) {
-            CacheInfoRow(title = "总缓存占位", value = summary.totalSizeLabel)
-            CacheInfoRow(title = "预览缓存", value = "${summary.previewCachedCount} 项")
-            CacheInfoRow(title = "原图缓存", value = "${summary.originalCachedCount} 项")
-            CacheInfoRow(title = "视频缓存", value = "${summary.videoCachedCount} 项")
+            CacheInfoRow(title = "媒体缓存总量", value = currentSummary?.totalSizeLabel ?: "统计中")
+            CacheInfoRow(title = "缩略图 / 视频封面", value = currentSummary?.thumbnailCoverSizeLabel ?: "统计中")
+            CacheInfoRow(title = "原图 / 原视频", value = currentSummary?.originalMediaSizeLabel ?: "统计中")
+            CacheInfoRow(
+                title = "已登记媒体状态",
+                value = currentSummary?.let {
+                    "${it.registeredMediaCount} 项"
+                } ?: "统计中",
+            )
         }
 
         CacheSection(
             title = "清理入口",
-            subtitle = "这轮仍只做本地状态变化，为后续真实预览、原图、视频缓存清理预留结构。",
+            subtitle = "清理只发生在 App 缓存目录和本地缓存状态里；清完后照片流会重新从后端加载 preview / cover。",
         ) {
             CacheActionRow(
-                title = "清理预览缓存",
-                subtitle = "当前可清理 ${summary.previewCachedCount} 项预览缓存状态。",
+                title = "清理缩略图 / 视频封面",
+                subtitle = "当前约 ${currentSummary?.thumbnailCoverSizeLabel ?: "统计中"}。会清理 Coil 图片缓存和本地视频封面文件。",
                 onClick = {
-                    FakeMediaCacheRepository.clearAllPreviewCaches()
-                    Toast.makeText(context, "已清理全部预览缓存状态。", Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            MediaCacheRepository.clearThumbnailAndCoverCache(context)
+                        }
+                        refreshVersion += 1
+                        Toast.makeText(
+                            context,
+                            if (ok) "已清理缩略图和视频封面缓存。" else "部分缓存清理失败，已保留可继续使用的文件。",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
                 },
             )
             CacheActionRow(
-                title = "清理原图缓存",
-                subtitle = "当前可清理 ${summary.originalCachedCount} 项原图缓存，并重置原图加载状态。",
+                title = "清理原图 / 原视频缓存",
+                subtitle = "当前约 ${currentSummary?.originalMediaSizeLabel ?: "统计中"}。只清理 App 产生的原图状态和远程视频缓存片段。",
                 onClick = {
-                    FakeMediaCacheRepository.clearAllOriginalCaches()
-                    Toast.makeText(context, "已清理全部原图缓存状态。", Toast.LENGTH_SHORT).show()
-                },
-            )
-            CacheActionRow(
-                title = "清理视频缓存",
-                subtitle = "当前可清理 ${summary.videoCachedCount} 项视频缓存状态。",
-                onClick = {
-                    FakeMediaCacheRepository.clearAllVideoCaches()
-                    Toast.makeText(context, "已清理全部视频缓存状态。", Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            MediaCacheRepository.clearOriginalMediaCache(context)
+                        }
+                        refreshVersion += 1
+                        Toast.makeText(
+                            context,
+                            if (ok) "已清理原图和原视频缓存。" else "部分原媒体缓存清理失败，已保留可继续使用的文件。",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
                 },
             )
             CacheActionRow(
                 title = "清理全部缓存",
-                subtitle = "一次性清理预览、原图、视频全部 fake 缓存状态。",
+                subtitle = "一次性清理缩略图、封面、原图状态和远程视频缓存片段。",
                 danger = true,
                 onClick = {
-                    FakeMediaCacheRepository.clearAllCaches()
-                    Toast.makeText(context, "已清理全部缓存状态。", Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            MediaCacheRepository.clearAllMediaCaches(context)
+                        }
+                        refreshVersion += 1
+                        Toast.makeText(
+                            context,
+                            if (ok) "已清理全部媒体缓存。" else "部分媒体缓存清理失败，已保留可继续使用的文件。",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
                 },
             )
         }
@@ -175,7 +220,7 @@ private fun CacheSection(
 
 @Composable
 private fun CacheSummaryBlock(
-    summary: AppMediaCacheSummary,
+    summary: RealMediaCacheSummary?,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -189,17 +234,21 @@ private fun CacheSummaryBlock(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             Text(
-                text = summary.totalSizeLabel,
+                text = summary?.totalSizeLabel ?: "统计中",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "已登记 ${summary.mediaCount} 项 app 内容媒体",
+                text = summary?.let {
+                    "缩略图 / 封面 ${it.thumbnailCoverSizeLabel} · 原图 / 原视频 ${it.originalMediaSizeLabel}"
+                } ?: "正在扫描 App 缓存目录",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "预览 ${summary.previewCachedCount} · 原图 ${summary.originalCachedCount} · 视频 ${summary.videoCachedCount}",
+                text = summary?.let {
+                    "已登记 ${it.registeredPreviewCount} 项预览 · ${it.registeredOriginalCount} 项原图 · ${it.registeredVideoCount} 项视频状态"
+                } ?: " ",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )

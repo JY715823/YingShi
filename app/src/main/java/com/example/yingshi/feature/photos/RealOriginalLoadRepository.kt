@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
 import coil.imageLoader
+import coil.memory.MemoryCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -152,6 +153,22 @@ internal object RealOriginalLoadRepository {
             activeJobs.clear()
         }
         statesByRequestKey.clear()
+    }
+
+    fun clearCachedOriginalFiles(context: Context): Boolean {
+        val keys = statesByRequestKey.keys.toList()
+        var ok = true
+        keys.forEach { key ->
+            val diskKey = sharedOriginalDiskCacheKey(key.originalUrl)
+            val memoryKey = sharedOriginalMemoryCacheKey(key.originalUrl)
+            ok = runCatching {
+                context.imageLoader.diskCache?.remove(diskKey)
+                context.imageLoader.memoryCache?.remove(MemoryCache.Key(memoryKey))
+                true
+            }.getOrDefault(false) && ok
+        }
+        clearAllOriginals()
+        return ok
     }
 
     fun getPostSummaryForTargets(targets: List<RealOriginalMediaTarget>): PostOriginalLoadSummary {

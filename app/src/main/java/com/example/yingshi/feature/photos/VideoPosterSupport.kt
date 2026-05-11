@@ -153,3 +153,13 @@ private fun sha256(value: String): String {
 
 private val videoPosterLocks = ConcurrentHashMap<String, Any>()
 private val videoPosterMemoryCache = ConcurrentHashMap<String, Bitmap>()
+
+internal fun clearVideoPosterMemoryCache() {
+    videoPosterMemoryCache.values.forEach { bitmap ->
+        if (!bitmap.isRecycled) {
+            runCatching { bitmap.recycle() }
+        }
+    }
+    videoPosterMemoryCache.clear()
+    videoPosterLocks.clear()
+}

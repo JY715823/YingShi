@@ -1,27 +1,29 @@
-# Current Task: Photo Feed Thumbnail Loading Polish
+# Current Task: Android Media Cache Management Baseline
 
 ## Background
 
-The backend now serves clearer preview-v2 images and optional video cover images. The Android photo feed should request preview sizes that match the current grid density, keep scrolling smooth in dense modes, and reuse already loaded preview/cover assets when entering Viewer where possible.
+The Android client now uses backend preview-v2 images, video cover images, Coil disk / memory caching, local extracted video posters, and Media3 for remote App video playback. Cache management should stop being a fake-only placeholder and expose a safe baseline view of App-owned media cache usage.
 
 ## Goals
 
-1. Use density-aware image request sizes for 2/3/4/8/16-column photo feed grids.
-2. Keep large cells clear while avoiding oversized decodes for dense 8/16-column grids.
-3. Reduce thumbnail flicker by sharing disk cache and avoiding tiny memory-cache entries from poisoning Viewer previews.
-4. Prefer backend video cover images in Viewer before falling back to video-source poster extraction.
-5. Avoid changes to paging, upload center, trash, post detail, and Viewer playback controls.
+1. Show real App-owned media cache usage in cache management.
+2. Distinguish thumbnail / cover cache from original / remote-video cache as safely as the current storage layout allows.
+3. Allow clearing thumbnail / video-cover cache without deleting App media records, system album files, backend originals, or backend preview-v2 / cover files.
+4. Allow clearing original / remote-video local cache, limited to App-generated cache files and local original-load state.
+5. Keep photo feed previews, video covers, Viewer, paging, multi-select, and video preview behavior intact after cache cleanup.
 
 ## Scope
 
-- Photo feed thumbnail request sizing and prefetch sizing.
-- App-content thumbnail memory/disk cache key behavior.
-- Viewer image/video poster prefetch and display source selection.
-- Compatibility with backend `?variant=preview` and `?variant=cover` URLs.
+- Android cache management page.
+- Coil media image cache directory and local video poster files.
+- Media3 App remote-video cache directory.
+- Original-load local state reset and exact Coil original disk entries when known.
+- No Server changes.
 
 ## Acceptance
 
-1. Photo feed 2/3/4/8/16-column modes use appropriate preview request sizes.
-2. Image and video cover loading remains stable while scrolling.
-3. Viewer can reuse or quickly load feed preview/cover assets.
-4. Android `assembleDebug` passes.
+1. Settings / cache management shows media cache usage.
+2. Clearing thumbnail / cover cache lets photo feed reload preview / cover images normally.
+3. Clearing original / remote-video cache does not delete system album files, backend media records, or backend files.
+4. Re-entering photo feed continues to benefit from Coil / poster / video cache.
+5. Android `assembleDebug` passes.

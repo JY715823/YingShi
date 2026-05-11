@@ -90,8 +90,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -1665,13 +1663,11 @@ private fun ViewerVideoCanvas(
                 )
                 setMediaSource(
                     ProgressiveMediaSource.Factory(
-                        DefaultDataSource.Factory(
-                            context,
-                            DefaultHttpDataSource.Factory()
-                                .setAllowCrossProtocolRedirects(true)
-                                .setConnectTimeoutMs(8_000)
-                                .setReadTimeoutMs(8_000)
-                                .setDefaultRequestProperties(requestHeaders),
+                        AppMediaVideoCache.dataSourceFactory(
+                            context = context,
+                            requestHeaders = requestHeaders,
+                            connectTimeoutMs = 8_000,
+                            readTimeoutMs = 8_000,
                         ),
                     ).createMediaSource(MediaItem.fromUri(videoUrl)),
                 )

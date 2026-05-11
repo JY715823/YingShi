@@ -62,6 +62,8 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.database)
+    implementation(libs.androidx.media3.datasource)
     implementation(libs.androidx.media3.ui)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
