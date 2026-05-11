@@ -1,29 +1,35 @@
-# Current Task: Trash List Detail Preview Polish
+﻿# Current Task: Trash Restore And Permanent Delete Closure
 
 ## Background
 
-Delete semantics are now confirmed before mutation. This pass improves the trash surfaces so deleted content remains visible, readable, and clearly separated by source and delete type.
+Trash list and detail previews are now readable. This pass closes the actual restore and permanent-delete loop across Android and Server.
 
 ## Goals
 
-1. Deleted App media and posts should appear in trash lists without requiring app restart or repeated navigation.
-2. Trash rows should clearly distinguish post deletion, remove-from-post records, and global media deletion records.
-3. Trash detail should show media previews / video covers, delete time, delete type, source position, and related post / album context.
-4. Trash media previews should reuse the existing preview / cover loading path whenever a media source is available.
-5. Existing restore / permanent-delete wording from the previous pass should stay clear and unchanged.
+1. Restore single trash items and refresh active content after success.
+2. Restore a whole current trash category, keeping failed items and showing a clear partial-result message.
+3. After restoring App media, refresh the photo feed and target the restored media or its time group.
+4. Permanently delete trash items with an explicit irreversible confirmation.
+5. For globally deleted App media, Server permanently deletes the media record and the media-owned `local-storage` original / `preview-v2` / `cover-v1` files.
 
 ## Scope
 
-- Android fake and REAL trash list rows.
-- Android fake and REAL trash detail preview / metadata surfaces.
-- Trash snapshot media-source propagation for stable preview / cover rendering.
-- No restore loop, batch restore, physical `local-storage` deletion, upload, pagination, cache, or playback-control changes.
-- No Server changes.
+- Android fake and REAL trash list/detail restore and permanent-delete actions.
+- Android restore-to-photo-feed target propagation.
+- Server trash `purge` endpoint and safe local-storage cleanup for `mediaSystemDeleted` items.
+- Trash API contract documentation.
+
+## Non Goals
+
+- No upload center, pagination-core, preview cache, Viewer playback, or post-detail layout changes.
+- No App physical deletion for Android system gallery files.
+- No full background cleanup scheduler.
 
 ## Acceptance
 
-1. Trash list updates when delete mutations write records.
-2. Trash rows show distinct type and source language.
-3. Trash detail shows media preview / cover, delete time, type, source, and related post / album context where available.
-4. Preview / cover loading remains compatible with backend `?variant=preview` / `?variant=cover`.
-5. Android `assembleDebug` passes.
+1. Single restore removes the trash item and refreshes active content.
+2. Batch restore succeeds per item, preserves failures, and reports partial success.
+3. Restored media can jump back to the photo feed target.
+4. Permanent delete requires confirmation and cannot be restored after success.
+5. Server purges owned media files without deleting unrelated files or directories.
+6. Android `assembleDebug` passes and Server tests pass.

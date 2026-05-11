@@ -41,6 +41,7 @@ fun RealTrashPageScreen(
     showPendingCleanup: Boolean = false,
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
+    onRestoreTargetMediaIds: (List<String>) -> Unit = { },
 ) {
     val sessionKey = realBackendSessionKey("real-trash-list")
     val viewModel: RealTrashListViewModel = viewModel(
@@ -90,6 +91,23 @@ fun RealTrashPageScreen(
                 RealTrashSectionCard(
                     title = "请求失败",
                     body = uiState.errorMessage ?: "",
+                )
+            }
+        }
+
+        if (!showPendingCleanup && uiState.entries.isNotEmpty()) {
+            item {
+                RealTrashBulkActionCard(
+                    selectedType = selectedType,
+                    count = uiState.entries.size,
+                    isMutating = uiState.isMutating,
+                    onRestoreAll = {
+                        viewModel.restoreEntries(
+                            entries = uiState.entries,
+                            selectedType = selectedType,
+                            onFirstRestoredMediaIds = onRestoreTargetMediaIds,
+                        )
+                    },
                 )
             }
         }
@@ -223,6 +241,50 @@ private fun RealTrashEntryRow(
 }
 
 @Composable
+private fun RealTrashBulkActionCard(
+    selectedType: TrashEntryType,
+    count: Int,
+    isMutating: Boolean,
+    onRestoreAll: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                Text(
+                    text = "批量恢复",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "恢复当前「${selectedType.label}」分类中的 $count 项；失败项会继续留在回收站。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(
+                enabled = !isMutating,
+                onClick = onRestoreAll,
+            ) {
+                Text(if (isMutating) "恢复中…" else "恢复全部")
+            }
+        }
+    }
+}
+
+@Composable
 private fun RealTrashEntryPreview(
     entry: TrashEntryUiModel,
     modifier: Modifier = Modifier,
@@ -349,6 +411,7 @@ fun RealTrashDetailScreen(
     route: TrashDetailRoute,
     onBack: () -> Unit,
     onEntryRemoved: () -> Unit,
+    onEntryRestored: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sessionKey = realBackendSessionKey("real-trash-detail-${route.entryId}")
@@ -419,7 +482,12 @@ fun RealTrashDetailScreen(
                     statusMessage = uiState.statusMessage,
                     errorMessage = uiState.errorMessage,
                     isMutating = uiState.isMutating,
-                    onRestore = { viewModel.restore(onBack) },
+                    onRestore = {
+                        viewModel.restore { restoredItem ->
+                            val mediaIds = restoredItem.toTrashEntryUiModel().restoreTargetMediaIds()
+                            onEntryRestored(mediaIds)
+                        }
+                    },
                     onRemove = { viewModel.remove(onEntryRemoved) },
                     onUndoRemove = viewModel::undoRemove,
                 )
@@ -551,7 +619,7 @@ private fun RealTrashDetailContent(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "后续完整实现会删除记录并物理删除 Server local-storage 中对应文件。本轮后端仍先把项目移到待清理区，并保留 24 小时撤销入口。",
+                    "确认后会删除回收站记录。全局媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
                 )
             },
             confirmButton = {

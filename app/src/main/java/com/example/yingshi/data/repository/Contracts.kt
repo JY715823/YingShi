@@ -121,6 +121,7 @@ interface TrashRepository {
     suspend fun getTrashDetail(trashItemId: String): ApiResult<RemoteTrashDetail>
     suspend fun restoreTrashItem(trashItemId: String): ApiResult<RemoteTrashItem>
     suspend fun moveTrashItemOut(trashItemId: String): ApiResult<RemotePendingCleanup>
+    suspend fun purgeTrashItem(trashItemId: String): ApiResult<RemoteTrashItem>
     suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem>
     suspend fun getPendingCleanupItems(): ApiResult<List<RemotePendingCleanup>>
 }

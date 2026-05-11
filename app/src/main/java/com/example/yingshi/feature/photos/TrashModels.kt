@@ -96,3 +96,19 @@ data class TrashDetailRoute(
 data class TrashPendingCleanupRoute(
     val source: String = "trash-page",
 )
+
+fun TrashEntryUiModel.restoreTargetMediaIds(): List<String> {
+    return buildList {
+        sourceMediaId?.takeIf { it.isNotBlank() }?.let(::add)
+        mediaSnapshot?.mediaId?.takeIf { it.isNotBlank() }?.let(::add)
+        postSnapshot?.mediaSnapshots
+            ?.map { it.mediaId }
+            ?.filter { it.isNotBlank() }
+            ?.let(::addAll)
+        relationSnapshots
+            .map { it.mediaSnapshot.mediaId }
+            .filter { it.isNotBlank() }
+            .let(::addAll)
+        addAll(relatedMediaIds.filter { it.isNotBlank() })
+    }.distinct()
+}

@@ -79,6 +79,7 @@ fun PhotosRootScreen(
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
+    onTrashRestoreTargetMediaIds: (List<String>) -> Unit = { },
     onOpenSystemMedia: () -> Unit = { },
     onOpenTransferCenter: () -> Unit = { },
     onOpenCreatePost: (CreatePostRoute) -> Unit = { },
@@ -372,6 +373,7 @@ fun PhotosRootScreen(
                                 showPendingCleanup = trashShowPendingCleanup,
                                 onShowPendingCleanupChange = onTrashShowPendingCleanupChange,
                                 onOpenTrashDetail = onOpenTrashDetail,
+                                onRestoreTargetMediaIds = onTrashRestoreTargetMediaIds,
                             )
                         }
                     }

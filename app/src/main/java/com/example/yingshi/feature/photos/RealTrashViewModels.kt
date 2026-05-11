@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.RemoteTrashDetail
+import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 
 data class RealTrashListUiState(
     val isLoading: Boolean = false,
+    val isMutating: Boolean = false,
     val tokenMissing: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
@@ -101,6 +103,63 @@ class RealTrashListViewModel(
         }
     }
 
+    fun restoreEntries(
+        entries: List<TrashEntryUiModel>,
+        selectedType: TrashEntryType?,
+        onFirstRestoredMediaIds: (List<String>) -> Unit,
+    ) {
+        if (entries.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMutating = true,
+                    errorMessage = null,
+                    statusMessage = null,
+                )
+            }
+            var successCount = 0
+            var failureCount = 0
+            var firstRestoredMediaIds: List<String> = emptyList()
+            entries.forEach { entry ->
+                when (val result = trashRepository.restoreTrashItem(entry.id)) {
+                    is ApiResult.Success -> {
+                        successCount += 1
+                        if (firstRestoredMediaIds.isEmpty()) {
+                            firstRestoredMediaIds = result.data.toTrashEntryUiModel().restoreTargetMediaIds()
+                                .ifEmpty { entry.restoreTargetMediaIds() }
+                        }
+                    }
+                    is ApiResult.Error -> {
+                        failureCount += 1
+                    }
+                    ApiResult.Loading -> Unit
+                }
+            }
+            if (successCount > 0) {
+                notifyRealBackendContentChanged()
+            }
+            refresh(selectedType)
+            _uiState.update {
+                it.copy(
+                    isMutating = false,
+                    statusMessage = when {
+                        successCount > 0 && failureCount > 0 -> "批量恢复完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
+                        successCount > 0 -> "已恢复 $successCount 项。"
+                        else -> null
+                    },
+                    errorMessage = if (successCount == 0 && failureCount > 0) {
+                        "批量恢复失败，回收站条目已保留。"
+                    } else {
+                        it.errorMessage
+                    },
+                )
+            }
+            if (firstRestoredMediaIds.isNotEmpty()) {
+                onFirstRestoredMediaIds(firstRestoredMediaIds)
+            }
+        }
+    }
+
     companion object {
         fun factory(): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -159,15 +218,15 @@ class RealTrashDetailViewModel(
         }
     }
 
-    fun restore(onSuccess: () -> Unit) {
-        mutate("已恢复到正常列表。", onSuccess) {
+    fun restore(onSuccess: (RemoteTrashItem) -> Unit) {
+        mutateTrashItem("已恢复到正常列表。", onSuccess) {
             trashRepository.restoreTrashItem(route.entryId)
         }
     }
 
     fun remove(onSuccess: () -> Unit) {
-        mutate("已移出回收站，进入 24 小时可撤销状态。", onSuccess) {
-            trashRepository.moveTrashItemOut(route.entryId)
+        mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
+            trashRepository.purgeTrashItem(route.entryId)
         }
     }
 
@@ -200,6 +259,46 @@ class RealTrashDetailViewModel(
                     }
                     if (onSuccess != null) {
                         onSuccess()
+                    } else {
+                        refresh()
+                    }
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            errorMessage = result.toBackendUiMessage("回收站操作失败。"),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    private fun mutateTrashItem(
+        successMessage: String,
+        onSuccess: ((RemoteTrashItem) -> Unit)? = null,
+        block: suspend () -> ApiResult<RemoteTrashItem>,
+    ) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMutating = true,
+                    errorMessage = null,
+                )
+            }
+            when (val result = block()) {
+                is ApiResult.Success -> {
+                    notifyRealBackendContentChanged()
+                    _uiState.update {
+                        it.copy(
+                            isMutating = false,
+                            statusMessage = successMessage,
+                        )
+                    }
+                    if (onSuccess != null) {
+                        onSuccess(result.data)
                     } else {
                         refresh()
                     }

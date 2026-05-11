@@ -91,6 +91,22 @@ object FakeTrashRepository {
         return true
     }
 
+    fun permanentlyDeleteEntry(entryId: String): Boolean {
+        val entry = getEntry(entryId)
+        if (entry != null) {
+            entries.remove(entry)
+            latestSnackbarMessage = TrashSnackbarMessageUiModel(
+                entryId = entryId,
+                message = "已永久删除回收站记录。",
+            )
+            return true
+        }
+        val pending = pendingRemovals.firstOrNull { it.entry.id == entryId } ?: return false
+        pendingRemovals.remove(pending)
+        consumeSnackbarMessage(entryId)
+        return true
+    }
+
     fun restoreEntry(entryId: String): TrashMutationResult {
         val entry = getEntry(entryId)
             ?: return TrashMutationResult(

@@ -530,6 +530,21 @@ class RealTrashRepository(
         )
     }
 
+    override suspend fun purgeTrashItem(trashItemId: String): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            trashApi.purgeTrashItem(trashItemId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "TRASH_PURGE_REQUEST_FAILED",
+                    message = "Stage 11.6 real permanent trash delete request failed before backend is ready",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
     override suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
             trashApi.undoRemoveTrashItem(trashItemId).data.toRemoteModel()

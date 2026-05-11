@@ -33,6 +33,11 @@ interface TrashApi {
         @Path("trashItemId") trashItemId: String,
     ): ApiEnvelopeDto<PendingCleanupDto>
 
+    @POST("api/trash/items/{trashItemId}/purge")
+    suspend fun purgeTrashItem(
+        @Path("trashItemId") trashItemId: String,
+    ): ApiEnvelopeDto<TrashItemDto>
+
     @POST("api/trash/items/{trashItemId}/undo-remove")
     suspend fun undoRemoveTrashItem(
         @Path("trashItemId") trashItemId: String,

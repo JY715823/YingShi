@@ -459,6 +459,15 @@ fun YingShiApp() {
                         route = route,
                         onBack = { trashDetailRoute = null },
                         onEntryRemoved = { trashDetailRoute = null },
+                        onEntryRestored = { mediaIds ->
+                            trashDetailRoute = null
+                            if (mediaIds.isNotEmpty()) {
+                                requestPhotoFeedRefresh(mediaIds)
+                            } else {
+                                selectedDestinationName = RootDestination.PHOTOS.name
+                                photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+                            }
+                        },
                     )
                 }
             }
@@ -479,6 +488,11 @@ fun YingShiApp() {
                         onOpenViewer = { photoViewerRoute = it },
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenTrashDetail = { trashDetailRoute = it },
+                        onTrashRestoreTargetMediaIds = { mediaIds ->
+                            if (mediaIds.isNotEmpty()) {
+                                requestPhotoFeedRefresh(mediaIds)
+                            }
+                        },
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
                         onOpenTransferCenter = { transferCenterRoute = TransferCenterRoute(source = "photos-top-bar") },
                         onOpenCreatePost = { createPostRoute = it },

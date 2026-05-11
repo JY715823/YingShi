@@ -54,6 +54,7 @@ fun TrashDetailScreen(
     route: TrashDetailRoute,
     onBack: () -> Unit,
     onEntryRemoved: () -> Unit,
+    onEntryRestored: (List<String>) -> Unit = { },
     modifier: Modifier = Modifier,
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
@@ -61,6 +62,7 @@ fun TrashDetailScreen(
             route = route,
             onBack = onBack,
             onEntryRemoved = onEntryRemoved,
+            onEntryRestored = onEntryRestored,
             modifier = modifier,
         )
         return
@@ -96,10 +98,11 @@ fun TrashDetailScreen(
             entry = entry,
             onBack = onBack,
             onRestore = {
+                val targetMediaIds = entry.restoreTargetMediaIds()
                 val result = FakeTrashRepository.restoreEntry(entry.id)
                 Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
                 if (result.success) {
-                    onBack()
+                    onEntryRestored(targetMediaIds)
                 }
             },
             onRemove = {
@@ -128,14 +131,14 @@ fun TrashDetailScreen(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "后续完整实现会删除记录并物理删除 Server local-storage 中对应文件。本轮先统一语义：确认后会把该项目移入待清理区，仍保留 24 小时撤销入口。",
+                    "确认后会删除回收站记录。REAL 模式下，全局媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showPermanentDeleteConfirm = false
-                        if (FakeTrashRepository.moveEntryOutOfTrash(entry.id)) {
+                        if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
                             onEntryRemoved()
                         } else {
                             Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()

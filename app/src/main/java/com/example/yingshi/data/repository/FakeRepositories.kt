@@ -412,6 +412,21 @@ class FakeTrashRepositoryShell : TrashRepository {
         }
     }
 
+    override suspend fun purgeTrashItem(trashItemId: String): ApiResult<RemoteTrashItem> {
+        val entry = FakeTrashRepository.getEntry(trashItemId)
+            ?: FakeTrashRepository.getPendingCleanupEntry(trashItemId)?.entry
+            ?: return ApiResult.Error(code = "TRASH_ITEM_NOT_FOUND", message = "Fake trash item not found")
+        val deleted = FakeTrashRepository.permanentlyDeleteEntry(trashItemId)
+        return if (deleted) {
+            ApiResult.Success(entry.toRemoteTrashItem())
+        } else {
+            ApiResult.Error(
+                code = "TRASH_PURGE_FAILED",
+                message = "Fake trash item could not be permanently deleted",
+            )
+        }
+    }
+
     override suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem> {
         val pending = FakeTrashRepository.getPendingCleanupEntry(trashItemId)
             ?: return ApiResult.Error(code = "TRASH_PENDING_NOT_FOUND", message = "Fake pending cleanup item not found")

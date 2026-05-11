@@ -44,6 +44,7 @@ fun TrashPageScreen(
     showPendingCleanup: Boolean = false,
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
+    onRestoreTargetMediaIds: (List<String>) -> Unit = { },
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
         RealTrashPageScreen(
@@ -53,6 +54,7 @@ fun TrashPageScreen(
             showPendingCleanup = showPendingCleanup,
             onShowPendingCleanupChange = onShowPendingCleanupChange,
             onOpenTrashDetail = onOpenTrashDetail,
+            onRestoreTargetMediaIds = onRestoreTargetMediaIds,
         )
         return
     }
@@ -124,6 +126,37 @@ fun TrashPageScreen(
                     )
                 }
             } else {
+                item {
+                    TrashBulkActionCard(
+                        selectedType = selectedType,
+                        count = entries.size,
+                        onRestoreAll = {
+                            var successCount = 0
+                            var failureCount = 0
+                            var firstRestoredMediaIds = emptyList<String>()
+                            entries.forEach { entry ->
+                                val targetIds = entry.restoreTargetMediaIds()
+                                val result = FakeTrashRepository.restoreEntry(entry.id)
+                                if (result.success) {
+                                    successCount += 1
+                                    if (firstRestoredMediaIds.isEmpty()) {
+                                        firstRestoredMediaIds = targetIds
+                                    }
+                                } else {
+                                    failureCount += 1
+                                }
+                            }
+                            transientMessage = when {
+                                successCount > 0 && failureCount > 0 -> "批量恢复完成：成功 $successCount 项，失败 $failureCount 项。"
+                                successCount > 0 -> "已恢复 $successCount 项。"
+                                else -> "批量恢复失败，条目已保留。"
+                            }
+                            if (firstRestoredMediaIds.isNotEmpty()) {
+                                onRestoreTargetMediaIds(firstRestoredMediaIds)
+                            }
+                        },
+                    )
+                }
                 items(
                     items = entries,
                     key = { it.id },
@@ -145,6 +178,46 @@ fun TrashPageScreen(
             }
         }
 
+    }
+}
+
+@Composable
+private fun TrashBulkActionCard(
+    selectedType: TrashEntryType,
+    count: Int,
+    onRestoreAll: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                Text(
+                    text = "批量恢复",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "恢复当前「${selectedType.label}」分类中的 $count 项；失败项会继续留在回收站。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(onClick = onRestoreAll) {
+                Text("恢复全部")
+            }
+        }
     }
 }
 @Composable
