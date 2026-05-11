@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -82,6 +83,7 @@ import kotlin.math.roundToInt
 private const val PhotoFeedLeadingItemCount = 0
 private const val PhotoFeedPrefetchCount = 36
 private const val PhotoFeedThumbnailRequestSize = 320
+private const val PhotoFeedPendingTargetRefreshGraceMillis = 450L
 
 @Composable
 fun PhotoFeedScreen(
@@ -91,9 +93,11 @@ fun PhotoFeedScreen(
     bottomOverlayPadding: Dp = 0.dp,
     isLoadingMore: Boolean = false,
     hasMore: Boolean = false,
+    loadMoreErrorMessage: String? = null,
     onSelectionStateChange: (PhotoFeedSelectionState) -> Unit = { },
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     onLoadMore: () -> Unit = { },
+    onRetryLoadMore: () -> Unit = { },
     scrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
@@ -112,6 +116,8 @@ fun PhotoFeedScreen(
     val liveSelectedIds = remember { mutableStateOf(selectionState.selectedMediaIds) }
     var selectionFlashNonce by remember { mutableIntStateOf(0) }
     var selectionFlashByMediaId by remember { mutableStateOf<Map<String, SelectionNumberFlash>>(emptyMap()) }
+    var highlightedTargetMediaId by remember { mutableStateOf<String?>(null) }
+    var highlightedTargetNonce by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(selectionState.selectedMediaIds) {
         liveSelectedIds.value = selectionState.selectedMediaIds
@@ -296,6 +302,7 @@ fun PhotoFeedScreen(
     }
     var pendingTargetLoadAttemptBlockCount by remember { mutableIntStateOf(-1) }
     var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
+    var restoredSavedAnchorMediaId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size) {
         if (scrollAnchors.size <= 1) {
@@ -316,6 +323,7 @@ fun PhotoFeedScreen(
 
     LaunchedEffect(scrollTrigger, blocks) {
         val mediaId = PhotoFeedPageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
+        val highlightNonce = PhotoFeedPageStateStore.pendingHighlightNonce
         val targetBlockIndex = findBlockIndexForMedia(blocks, mediaId)
         if (mediaId != pendingTargetMediaIdSnapshot) {
             pendingTargetMediaIdSnapshot = mediaId
@@ -323,6 +331,10 @@ fun PhotoFeedScreen(
         }
         if (targetBlockIndex < 0) {
             if (!hasMore) {
+                delay(PhotoFeedPendingTargetRefreshGraceMillis)
+                if (PhotoFeedPageStateStore.pendingScrollTargetMediaId != mediaId) {
+                    return@LaunchedEffect
+                }
                 PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
                 PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
                 pendingTargetMediaIdSnapshot = null
@@ -335,30 +347,68 @@ fun PhotoFeedScreen(
             }
             return@LaunchedEffect
         }
+        val targetScrollOffset = calculatePhotoFeedTargetScrollOffset(listState)
+        listState.scrollToItem(
+            index = targetBlockIndex,
+            scrollOffset = targetScrollOffset,
+        )
+        highlightedTargetMediaId = mediaId
+        highlightedTargetNonce = highlightNonce
+        restoredSavedAnchorMediaId = mediaId
+        PhotoFeedPageStateStore.savedFirstVisibleItemIndex = targetBlockIndex
+        PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset = targetScrollOffset
+        PhotoFeedPageStateStore.savedFirstVisibleMediaId = mediaId
         PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
         PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
         pendingTargetMediaIdSnapshot = null
         pendingTargetLoadAttemptBlockCount = -1
-        val visibleIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }
-        if (targetBlockIndex in visibleIndices) return@LaunchedEffect
-        listState.scrollToItem(headerIndexForMedia(blocks, targetBlockIndex, density))
+    }
+
+    LaunchedEffect(blocks) {
+        if (PhotoFeedPageStateStore.pendingScrollTargetMediaId != null) return@LaunchedEffect
+        val savedMediaId = PhotoFeedPageStateStore.savedFirstVisibleMediaId ?: return@LaunchedEffect
+        if (savedMediaId == restoredSavedAnchorMediaId) return@LaunchedEffect
+        val targetBlockIndex = findBlockIndexForMedia(blocks, savedMediaId)
+        if (targetBlockIndex < 0) return@LaunchedEffect
+        val currentIndex = listState.firstVisibleItemIndex
+        if (abs(currentIndex - targetBlockIndex) <= 1) {
+            restoredSavedAnchorMediaId = savedMediaId
+            return@LaunchedEffect
+        }
+        restoredSavedAnchorMediaId = savedMediaId
+        listState.scrollToItem(
+            index = targetBlockIndex,
+            scrollOffset = PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset,
+        )
     }
 
     LaunchedEffect(listState) {
         snapshotFlow {
-            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-        }.collect { (index, offset) ->
+            val firstVisible = listState.layoutInfo.visibleItemsInfo.firstOrNull()
+            val itemIndex = firstVisible?.index ?: listState.firstVisibleItemIndex
+            val itemOffset = firstVisible?.offset ?: listState.firstVisibleItemScrollOffset
+            val firstMediaId = (blocks.getOrNull(itemIndex) as? PhotoFeedGridRow)
+                ?.items
+                ?.firstOrNull()
+                ?.mediaId
+            PhotoFeedVisiblePosition(
+                index = itemIndex,
+                offset = itemOffset,
+                mediaId = firstMediaId,
+            )
+        }.collect { (index, offset, mediaId) ->
             PhotoFeedPageStateStore.savedFirstVisibleItemIndex = index
             PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset = offset
+            PhotoFeedPageStateStore.savedFirstVisibleMediaId = mediaId
         }
     }
 
-    LaunchedEffect(listState, blocks.size, hasMore, isLoadingMore) {
+    LaunchedEffect(listState, blocks.size, hasMore, isLoadingMore, loadMoreErrorMessage) {
         snapshotFlow {
             val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             lastVisibleIndex >= blocks.lastIndex - 3
         }.collect { shouldLoadMore ->
-            if (shouldLoadMore && hasMore && !isLoadingMore) {
+            if (shouldLoadMore && hasMore && !isLoadingMore && loadMoreErrorMessage == null) {
                 onLoadMore()
             }
         }
@@ -418,6 +468,8 @@ fun PhotoFeedScreen(
                             density = density,
                             selectionState = selectionState,
                             selectionFlash = selectionFlashByMediaId,
+                            highlightedMediaId = highlightedTargetMediaId,
+                            highlightNonce = highlightedTargetNonce,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
                             playingInlineVideoId = playingInlineVideoId,
                             activeInlineVideoId = activeInlineVideoId,
@@ -487,6 +539,26 @@ fun PhotoFeedScreen(
                         )
                     }
                 }
+                if (!isLoadingMore && loadMoreErrorMessage != null) {
+                    item(key = "photo-feed-load-more-error", contentType = "load-more-error") {
+                        PhotoFeedLoadMoreErrorRow(
+                            message = loadMoreErrorMessage,
+                            onRetry = onRetryLoadMore,
+                        )
+                    }
+                } else if (!isLoadingMore && !hasMore && feedItems.isNotEmpty()) {
+                    item(key = "photo-feed-no-more", contentType = "no-more") {
+                        Text(
+                            text = "没有更多了",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 18.dp),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.70f),
+                        )
+                    }
+                }
             }
 
             androidx.compose.animation.AnimatedVisibility(
@@ -517,7 +589,10 @@ fun PhotoFeedScreen(
                         scrollAnchors.getOrNull(anchorIndex)?.let { anchor ->
                             lastRequestedAnchorIndex = anchorIndex
                             coroutineScope.launch {
-                                listState.scrollToItem(anchor.itemIndex)
+                                listState.scrollToItem(
+                                    index = anchor.itemIndex,
+                                    scrollOffset = calculatePhotoFeedScrubberScrollOffset(listState),
+                                )
                             }
                         }
                     },
@@ -589,6 +664,39 @@ private data class PrefetchTarget(
     val mediaType: AppMediaType,
     val mimeType: String?,
 )
+
+private data class PhotoFeedVisiblePosition(
+    val index: Int,
+    val offset: Int,
+    val mediaId: String?,
+)
+
+@Composable
+private fun PhotoFeedLoadMoreErrorRow(
+    message: String,
+    onRetry: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+        )
+        Text(
+            text = "重试",
+            modifier = Modifier.clickable(onClick = onRetry),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
 
 @Composable
 private fun PhotoFeedToolbar(
@@ -859,6 +967,8 @@ private fun PhotoFeedGridRowContent(
     density: PhotoFeedDensity,
     selectionState: PhotoFeedSelectionState,
     selectionFlash: Map<String, SelectionNumberFlash>,
+    highlightedMediaId: String?,
+    highlightNonce: Int,
     inlineVideoAutoPlayEnabled: Boolean,
     playingInlineVideoId: String?,
     activeInlineVideoId: String?,
@@ -883,6 +993,8 @@ private fun PhotoFeedGridRowContent(
                 isInSelectionMode = selectionState.isInSelectionMode,
                 isSelected = selectionState.contains(item.mediaId),
                 selectionFlash = selectionFlash[item.mediaId],
+                isHighlighted = highlightedMediaId == item.mediaId,
+                highlightNonce = highlightNonce,
                 inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                 isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
                 isInlineVideoActive = activeInlineVideoId == item.mediaId,
@@ -911,6 +1023,8 @@ private fun PhotoFeedCard(
     isInSelectionMode: Boolean,
     isSelected: Boolean,
     selectionFlash: SelectionNumberFlash?,
+    isHighlighted: Boolean,
+    highlightNonce: Int,
     inlineVideoAutoPlayEnabled: Boolean,
     isInlineVideoPlaying: Boolean,
     isInlineVideoActive: Boolean,
@@ -1019,6 +1133,11 @@ private fun PhotoFeedCard(
             flash = selectionFlash,
             modifier = Modifier.align(Alignment.Center),
         )
+        TargetMediaHighlightOverlay(
+            visible = isHighlighted,
+            nonce = highlightNonce,
+            modifier = Modifier.matchParentSize(),
+        )
     }
 }
 
@@ -1098,6 +1217,40 @@ private fun SelectionNumberFlashOverlay(
     }
 }
 
+@Composable
+private fun TargetMediaHighlightOverlay(
+    visible: Boolean,
+    nonce: Int,
+    modifier: Modifier = Modifier,
+) {
+    if (!visible) return
+    val alpha = remember(nonce) { Animatable(0f) }
+    val highlightColor = MaterialTheme.colorScheme.primary
+    LaunchedEffect(nonce) {
+        alpha.snapTo(0f)
+        alpha.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+        )
+        delay(420)
+        alpha.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 520),
+        )
+    }
+
+    if (alpha.value > 0f) {
+        Box(
+            modifier = modifier
+                .background(highlightColor.copy(alpha = 0.16f * alpha.value))
+                .border(
+                    width = 3.dp,
+                    color = highlightColor.copy(alpha = 0.92f * alpha.value),
+                ),
+        )
+    }
+}
+
 private fun resolveCurrentVisibleDateLabel(
     itemIndex: Int,
     blocks: List<PhotoFeedBlock>,
@@ -1140,6 +1293,22 @@ private fun calculatePhotoFeedScrollProgress(
 
     return ((listState.firstVisibleItemIndex + offsetFraction) / scrollableStart.toFloat())
         .coerceIn(0f, 1f)
+}
+
+private fun calculatePhotoFeedTargetScrollOffset(listState: LazyListState): Int {
+    val layoutInfo = listState.layoutInfo
+    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset)
+        .takeIf { it > 0 }
+        ?: layoutInfo.viewportSize.height
+    return -(viewportHeight * 0.36f).roundToInt()
+}
+
+private fun calculatePhotoFeedScrubberScrollOffset(listState: LazyListState): Int {
+    val layoutInfo = listState.layoutInfo
+    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset)
+        .takeIf { it > 0 }
+        ?: layoutInfo.viewportSize.height
+    return -(viewportHeight * 0.24f).roundToInt()
 }
 
 private fun visiblePhotoFeedVideoIds(

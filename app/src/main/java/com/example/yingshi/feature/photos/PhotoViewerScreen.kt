@@ -483,9 +483,6 @@ fun PhotoViewerScreen(
         showTimeEditorSheet = false
     }
     BackHandler(enabled = !zoomState.isZoomed && !showCommentPreview && commentPanelState == null && !showRelatedPostsSheet && !showTimeEditorSheet) {
-        PhotoFeedPageStateStore.pendingScrollTargetMediaId =
-            viewerItems.getOrNull(currentIndex)?.mediaId
-        PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
         onBack()
     }
     ViewerStatusBarEffect()
@@ -670,9 +667,6 @@ fun PhotoViewerScreen(
 
         PhotoViewerTopBar(
             onBack = {
-                PhotoFeedPageStateStore.pendingScrollTargetMediaId =
-                    viewerItems.getOrNull(currentIndex)?.mediaId
-                PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
                 onBack()
             },
             timeLabel = overlayUiModel.timeLabel,

@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 data class RealPhotoFeedUiState(
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val loadMoreErrorMessage: String? = null,
     val isDeleting: Boolean = false,
     val tokenMissing: Boolean = false,
     val hasMore: Boolean = false,
@@ -30,6 +31,7 @@ class RealPhotoFeedViewModel(
     private val pageSize = 60
     private var nextCursor: String? = null
     private var loadMoreInFlight = false
+    private var loadMoreBlockedByError = false
     private val _uiState = MutableStateFlow(RealPhotoFeedUiState(isLoading = true))
     val uiState: StateFlow<RealPhotoFeedUiState> = _uiState.asStateFlow()
 
@@ -47,32 +49,40 @@ class RealPhotoFeedViewModel(
         }
 
         viewModelScope.launch {
+            val minLoadedItemCount = _uiState.value.feedItems.size.coerceAtLeast(pageSize)
             nextCursor = null
             loadMoreInFlight = false
+            loadMoreBlockedByError = false
             _uiState.update {
                 it.copy(
                     isLoading = true,
                     isLoadingMore = false,
+                    loadMoreErrorMessage = null,
                     tokenMissing = false,
                     hasMore = false,
                     errorMessage = null,
                     statusMessage = null,
                 )
             }
-            when (val result = mediaRepository.getMediaFeedPage(pageSize = pageSize)) {
+            when (val result = loadRefreshPages(minLoadedItemCount = minLoadedItemCount)) {
                 is ApiResult.Success -> {
                     nextCursor = result.data.nextCursor
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        feedItems = result.data.items.map { it.toPhotoFeedItem() },
-                        hasMore = result.data.hasMore,
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            feedItems = result.data.items.map { item -> item.toPhotoFeedItem() },
+                            hasMore = result.data.hasMore,
+                            loadMoreErrorMessage = null,
+                        )
+                    }
                 }
                 is ApiResult.Error -> {
-                    _uiState.value = RealPhotoFeedUiState(
-                        isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取后端照片流失败。"),
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = result.toBackendUiMessage("读取后端照片流失败。"),
+                        )
+                    }
                 }
                 ApiResult.Loading -> Unit
             }
@@ -82,6 +92,7 @@ class RealPhotoFeedViewModel(
     fun loadNextPage() {
         val cursor = nextCursor ?: return
         if (loadMoreInFlight || _uiState.value.isLoading || _uiState.value.isLoadingMore) return
+        if (loadMoreBlockedByError) return
         if (!AuthSessionManager.isLoggedIn) return
 
         loadMoreInFlight = true
@@ -89,27 +100,31 @@ class RealPhotoFeedViewModel(
             _uiState.update {
                 it.copy(
                     isLoadingMore = true,
+                    loadMoreErrorMessage = null,
                     errorMessage = null,
                     statusMessage = null,
                 )
             }
             when (val result = mediaRepository.getMediaFeedPage(cursor = cursor, pageSize = pageSize)) {
                 is ApiResult.Success -> {
+                    loadMoreBlockedByError = false
                     nextCursor = result.data.nextCursor
                     _uiState.update { state ->
                         val nextItems = result.data.items.map { it.toPhotoFeedItem() }
                         state.copy(
                             isLoadingMore = false,
+                            loadMoreErrorMessage = null,
                             hasMore = result.data.hasMore,
                             feedItems = (state.feedItems + nextItems).distinctBy { it.mediaId },
                         )
                     }
                 }
                 is ApiResult.Error -> {
+                    loadMoreBlockedByError = true
                     _uiState.update {
                         it.copy(
                             isLoadingMore = false,
-                            errorMessage = result.toBackendUiMessage("加载更多照片失败。"),
+                            loadMoreErrorMessage = result.toBackendUiMessage("加载更多照片失败。"),
                         )
                     }
                 }
@@ -117,6 +132,54 @@ class RealPhotoFeedViewModel(
             }
             loadMoreInFlight = false
         }
+    }
+
+    private suspend fun loadRefreshPages(minLoadedItemCount: Int): ApiResult<RefreshPageBundle> {
+        val firstPage = when (val result = mediaRepository.getMediaFeedPage(pageSize = pageSize)) {
+            is ApiResult.Success -> result.data
+            is ApiResult.Error -> return ApiResult.Error(
+                code = result.code,
+                message = result.message,
+                throwable = result.throwable,
+            )
+            ApiResult.Loading -> return ApiResult.Loading
+        }
+
+        val items = firstPage.items.toMutableList()
+        var cursor = firstPage.nextCursor
+        var hasMore = firstPage.hasMore
+        while (hasMore && cursor != null && items.size < minLoadedItemCount) {
+            when (val result = mediaRepository.getMediaFeedPage(cursor = cursor, pageSize = pageSize)) {
+                is ApiResult.Success -> {
+                    val page = result.data
+                    items += page.items
+                    cursor = page.nextCursor
+                    hasMore = page.hasMore
+                }
+                is ApiResult.Error -> return ApiResult.Error(
+                    code = result.code,
+                    message = result.message,
+                    throwable = result.throwable,
+                )
+                ApiResult.Loading -> return ApiResult.Loading
+            }
+        }
+
+        return ApiResult.Success(
+            RefreshPageBundle(
+                items = items.distinctBy { it.mediaId },
+                nextCursor = cursor,
+                hasMore = hasMore,
+            ),
+        )
+    }
+
+    fun retryLoadNextPage() {
+        loadMoreBlockedByError = false
+        _uiState.update {
+            it.copy(loadMoreErrorMessage = null)
+        }
+        loadNextPage()
     }
 
     fun deleteSelectedMedia(mediaIds: Set<String>) {
@@ -187,3 +250,9 @@ class RealPhotoFeedViewModel(
         }
     }
 }
+
+private data class RefreshPageBundle(
+    val items: List<com.example.yingshi.data.model.RemoteMedia>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
+)

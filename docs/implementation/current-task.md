@@ -1,36 +1,39 @@
-# Current Task: Photo Feed Paging Step 1
+# Current Task: Photo Feed Paging And Positioning Wrap-Up
 
 ## Background
 
-上传/导入链路已经具备进度、失败保留、重试、取消、基础去重和成功后刷新定位能力。媒体数量继续增长后，照片流不能长期依赖一次性加载全量数据。
+The photo feed already supports cursor paging in REAL mode and bottom incremental loading. This wrap-up pass focuses on making the paging stage feel stable in daily use: refresh should preserve position, explicit target jumps should still work across pages, and loading states should not loop or feel stuck.
 
 ## Goals
 
-1. REAL 模式照片流首屏按页加载媒体。
-2. 滚动到底部时自动加载下一页。
-3. 已加载媒体按 `mediaId` 去重后继续使用现有时间分组、密度切换、多选和视频预览逻辑。
-4. FAKE 模式保持可用，不因 REAL 分页改造被破坏。
-5. 时间滑条跳转日期时，优先滚到日期/月份/年份标题，使标题在顶部可见。
+1. Preserve the current photo-feed scroll position during normal refreshes.
+2. Keep Viewer return and Transfer Center return from forcing unwanted jumps.
+3. Continue cross-page target loading for explicit jumps such as upload/import success or Transfer Center "view".
+4. Stop cross-page loading safely when the target cannot be found.
+5. Add basic bottom loading states: loading, retry after failure, and no-more-data.
+6. Keep FAKE and REAL modes usable without changing Viewer playback, upload flow, trash, or post detail behavior.
 
 ## Scope
 
-- Android REAL 照片流 ViewModel 分页状态。
-- Android 照片流 UI 触底加载更多回调。
-- Android 时间滑条锚点定位。
-- Server `/api/media/feed` 兼容式分页参数与 page envelope。
+- Android photo feed scroll state persistence.
+- Android REAL photo feed refresh behavior.
+- Android photo feed cross-page target handling.
+- Android bottom paging status and retry UI.
+- System media Viewer return position parity.
 
 ## Non Goals
 
-- 不做跨页目标媒体定位。
-- 不做刷新不丢滚动位置的大优化。
-- 不做加载状态视觉大改。
-- 不改 Viewer、上传中心、回收站、帖子详情等无关模块。
+- No database-level feed paging change.
+- No advanced refresh animation or full loading-state redesign.
+- No Viewer playback control changes.
+- No upload center, trash detail, post detail, or backend API changes.
 
 ## Acceptance
 
-1. REAL 模式照片流首屏正常加载。
-2. 滚动到底部继续加载下一页。
-3. 加载更多后时间分组、去重、密度切换、多选、视频预览保持正常。
-4. FAKE 模式照片流保持可用。
-5. 时间滑条跳转日期时，对应标题不会被顶出屏幕。
-6. Android `assembleDebug` 通过，Server 测试通过。
+1. Normal photo-feed refresh does not jump to top without reason.
+2. Returning from Viewer or Transfer Center generally restores the previous feed position.
+3. Upload/import success and Transfer Center "view" still locate the target across loaded pages.
+4. Missing targets do not cause infinite loading or random jumps.
+5. First-page loading, bottom loading, retry after load-more failure, and no-more-data states are visible and stable.
+6. Time grouping, density switching, multi-select, video preview, and time scrubber keep working.
+7. Android `assembleDebug` passes.

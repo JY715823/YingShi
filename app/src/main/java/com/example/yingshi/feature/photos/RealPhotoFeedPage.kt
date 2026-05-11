@@ -192,9 +192,11 @@ fun RealPhotoFeedPage(
                             bottomOverlayPadding = if (selectionState.isInSelectionMode) 88.dp else 0.dp,
                             isLoadingMore = uiState.isLoadingMore,
                             hasMore = uiState.hasMore,
+                            loadMoreErrorMessage = uiState.loadMoreErrorMessage,
                             onSelectionStateChange = onSelectionStateChange,
                             onOpenViewer = onOpenViewer,
                             onLoadMore = viewModel::loadNextPage,
+                            onRetryLoadMore = viewModel::retryLoadNextPage,
                             scrollTrigger = scrollTrigger,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                         )

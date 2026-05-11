@@ -292,10 +292,6 @@ fun SystemMediaViewerScreen(
     }
 
     BackHandler {
-        viewerItems.getOrNull(currentIndex)?.let { item ->
-            LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = item.id
-        }
-        LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
         onBack()
     }
 
@@ -332,10 +328,6 @@ fun SystemMediaViewerScreen(
                 showMenu = currentItem != null,
                 overlaysVisible = !zoomState.isZoomed,
                 onBack = {
-                    viewerItems.getOrNull(currentIndex)?.let { item ->
-                        LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = item.id
-                    }
-                    LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = route.initialIndex
                     onBack()
                 },
                 onOpenMenu = { showMenuSheet = true },

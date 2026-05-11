@@ -142,6 +142,7 @@ fun YingShiApp() {
         if (targetMediaId != null) {
             PhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
             PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            PhotoFeedPageStateStore.pendingHighlightNonce += 1
         }
         photoViewerRoute = null
         systemMediaViewerRoute = null
