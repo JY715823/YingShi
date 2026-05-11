@@ -2729,6 +2729,7 @@ private fun deleteFakeViewerMedia(item: PhotoFeedItem) {
                 width = item.width,
                 height = item.height,
                 videoDurationMillis = item.videoDurationMillis,
+                mediaSource = item.mediaSource,
                 sourcePostId = item.postIds.firstOrNull(),
                 sourcePostTitle = item.postIds.firstOrNull()?.let(FakeAlbumRepository::getPost)?.title,
             ),

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -262,14 +263,13 @@ private fun PendingCleanupRow(
             Box(
                 modifier = Modifier
                     .weight(0.22f)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(pending.entry.palette.start, pending.entry.palette.end),
-                        ),
-                        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                    )
-                    .padding(vertical = 26.dp),
-            )
+                    .aspectRatio(1f),
+            ) {
+                TrashEntryPreview(
+                    entry = pending.entry,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
             Column(
                 modifier = Modifier.weight(0.78f),
                 verticalArrangement = Arrangement.spacedBy(spacing.xxs),
@@ -285,7 +285,7 @@ private fun PendingCleanupRow(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "移出于 ${formatTrashEntryTime(pending.removedAtMillis)}",
+                    text = "${trashEntrySourceLine(pending.entry)} · 移出于 ${formatTrashEntryTime(pending.removedAtMillis)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -387,14 +387,13 @@ private fun TrashEntryRow(
             Box(
                 modifier = Modifier
                     .weight(0.28f)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(entry.palette.start, entry.palette.end),
-                        ),
-                        shape = RoundedCornerShape(radius.lg),
-                    )
-                    .padding(vertical = 36.dp),
-            )
+                    .aspectRatio(1f),
+            ) {
+                TrashEntryPreview(
+                    entry = entry,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
             Column(
                 modifier = Modifier.weight(0.72f),
                 verticalArrangement = Arrangement.spacedBy(spacing.xxs),
@@ -410,12 +409,17 @@ private fun TrashEntryRow(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
+                    text = trashEntryTypeDescription(entry),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
                     text = entry.previewInfo,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = formatTrashEntryTime(entry.deletedAtMillis),
+                    text = "${trashEntrySourceLine(entry)} · ${formatTrashEntryTime(entry.deletedAtMillis)}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
                 )
@@ -425,6 +429,93 @@ private fun TrashEntryRow(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
+    }
+}
+
+@Composable
+private fun TrashEntryPreview(
+    entry: TrashEntryUiModel,
+    modifier: Modifier = Modifier,
+) {
+    val media = entry.primaryPreviewMedia()
+    if (media?.mediaSource != null) {
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = media.palette,
+            modifier = modifier,
+            requestSize = 256,
+            showLoadingIndicator = true,
+            showStatusBadge = true,
+            showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
+        )
+        return
+    }
+
+    Box(
+        modifier = modifier
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(entry.palette.start, entry.palette.end),
+                ),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+            ),
+    ) {
+        val label = when (media?.mediaType) {
+            AppMediaType.VIDEO -> "视频"
+            AppMediaType.IMAGE -> "图片"
+            null -> "记录"
+        }
+        Surface(
+            modifier = Modifier
+                .padding(YingShiThemeTokens.spacing.xs)
+                .align(Alignment.BottomStart),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+private fun TrashEntryUiModel.primaryPreviewMedia(): TrashMediaSnapshot? {
+    return mediaSnapshot
+        ?: postSnapshot?.mediaSnapshots?.firstOrNull { it.isCover }
+        ?: postSnapshot?.mediaSnapshots?.firstOrNull()
+}
+
+private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
+    return when (entry.type) {
+        TrashEntryType.POST_DELETED -> "帖子整体进入 App 回收站"
+        TrashEntryType.MEDIA_REMOVED -> "只移除了当前帖子关联"
+        TrashEntryType.MEDIA_SYSTEM_DELETED -> "App 全局媒体删除"
+    }
+}
+
+private fun trashEntrySourceLine(entry: TrashEntryUiModel): String {
+    return when (entry.type) {
+        TrashEntryType.POST_DELETED -> {
+            val albumCount = entry.postSnapshot?.post?.albumIds?.size?.coerceAtLeast(1) ?: 0
+            val mediaCount = entry.postSnapshot?.mediaSnapshots?.size ?: entry.relatedMediaIds.size
+            "所属相册 $albumCount 个 · 媒体 $mediaCount 项"
+        }
+        TrashEntryType.MEDIA_REMOVED -> {
+            val postTitle = entry.relationSnapshots.firstOrNull()?.postTitle
+                ?: entry.mediaSnapshot?.sourcePostTitle
+                ?: entry.sourcePostId
+                ?: "当前帖子"
+            "来源帖子：$postTitle"
+        }
+        TrashEntryType.MEDIA_SYSTEM_DELETED -> {
+            val postCount = entry.relationSnapshots.size.takeIf { it > 0 }
+                ?: entry.relatedPostIds.size
+            "影响帖子 $postCount 个"
         }
     }
 }

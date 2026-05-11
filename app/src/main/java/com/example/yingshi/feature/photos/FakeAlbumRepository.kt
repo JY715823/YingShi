@@ -32,6 +32,7 @@ object FakeAlbumRepository {
         val width: Int? = null,
         val height: Int? = null,
         val videoDurationMillis: Long? = null,
+        val mediaSource: AppContentMediaSource? = null,
         val isCover: Boolean,
     )
 
@@ -387,6 +388,7 @@ object FakeAlbumRepository {
                 width = media.width,
                 height = media.height,
                 videoDurationMillis = media.videoDurationMillis,
+                mediaSource = media.mediaSource,
             )
         }.filterNot { media ->
             FakePhotoFeedRepository.isMediaHidden(media.id)
@@ -756,6 +758,7 @@ object FakeAlbumRepository {
                         width = dimensions.first,
                         height = dimensions.second,
                         videoDurationMillis = descriptor.videoDurationMillis,
+                        mediaSource = null,
                         isCover = index == 0,
                     ),
                 )
@@ -859,6 +862,7 @@ object FakeAlbumRepository {
             aspectRatio = aspectRatio,
             isCover = isCover,
             videoDurationMillis = videoDurationMillis,
+            mediaSource = mediaSource,
         )
     }
 
@@ -875,6 +879,7 @@ object FakeAlbumRepository {
             width = width,
             height = height,
             videoDurationMillis = videoDurationMillis,
+            mediaSource = mediaSource,
             isCover = isCover,
             sourcePostId = sourcePostId,
             sourcePostTitle = sourcePostTitle.ifBlank { "当前帖子" },
@@ -938,6 +943,7 @@ object FakeAlbumRepository {
             width = width,
             height = height,
             videoDurationMillis = videoDurationMillis,
+            mediaSource = mediaSource,
             isCover = isCover,
         )
     }
@@ -967,6 +973,7 @@ object FakeAlbumRepository {
             width = width,
             height = height,
             videoDurationMillis = null,
+            mediaSource = this.toAppContentMediaSource(),
             isCover = isCover,
         )
     }

@@ -426,6 +426,22 @@ private fun TrashMediaCanvas(
     media: TrashMediaSnapshot,
     modifier: Modifier = Modifier,
 ) {
+    if (media.mediaSource != null) {
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = media.palette,
+            modifier = modifier
+                .aspectRatio(media.aspectRatio.coerceIn(0.45f, 2.2f))
+                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg)),
+            requestSize = 720,
+            showLoadingIndicator = true,
+            showStatusBadge = true,
+            showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
+        )
+        return
+    }
+
     Box(
         modifier = modifier
             .aspectRatio(media.aspectRatio.coerceIn(0.78f, 1.32f))
