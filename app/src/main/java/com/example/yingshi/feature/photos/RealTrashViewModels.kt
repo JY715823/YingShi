@@ -61,25 +61,18 @@ class RealTrashListViewModel(
             val itemsDeferred = async {
                 trashRepository.getTrashItems(selectedType?.toApiItemType())
             }
-            val pendingDeferred = async {
-                trashRepository.getPendingCleanupItems()
-            }
 
             val itemsResult = itemsDeferred.await()
-            val pendingResult = pendingDeferred.await()
 
             val itemError = (itemsResult as? ApiResult.Error)
                 ?.toBackendUiMessage("读取回收站列表失败。")
-            val pendingError = (pendingResult as? ApiResult.Error)
-                ?.toBackendUiMessage("读取待清理列表失败。")
 
             _uiState.value = RealTrashListUiState(
                 isLoading = false,
-                errorMessage = itemError ?: pendingError,
+                errorMessage = itemError,
                 entries = (itemsResult as? ApiResult.Success)?.data.orEmpty()
                     .map { it.toTrashEntryUiModel() },
-                pendingEntries = (pendingResult as? ApiResult.Success)?.data.orEmpty()
-                    .map { it.toTrashPendingCleanupUiModel() },
+                pendingEntries = emptyList(),
                 statusMessage = _uiState.value.statusMessage,
             )
         }
@@ -156,6 +149,54 @@ class RealTrashListViewModel(
             }
             if (firstRestoredMediaIds.isNotEmpty()) {
                 onFirstRestoredMediaIds(firstRestoredMediaIds)
+            }
+        }
+    }
+
+    fun purgeEntries(
+        entries: List<TrashEntryUiModel>,
+        selectedType: TrashEntryType?,
+    ) {
+        if (entries.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMutating = true,
+                    errorMessage = null,
+                    statusMessage = null,
+                )
+            }
+            var successCount = 0
+            var failureCount = 0
+            entries.forEach { entry ->
+                when (trashRepository.purgeTrashItem(entry.id)) {
+                    is ApiResult.Success -> {
+                        successCount += 1
+                    }
+                    is ApiResult.Error -> {
+                        failureCount += 1
+                    }
+                    ApiResult.Loading -> Unit
+                }
+            }
+            if (successCount > 0) {
+                notifyRealBackendContentChanged()
+            }
+            refresh(selectedType)
+            _uiState.update {
+                it.copy(
+                    isMutating = false,
+                    statusMessage = when {
+                        successCount > 0 && failureCount > 0 -> "清空当前分类完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
+                        successCount > 0 -> "已清空当前分类 $successCount 项。"
+                        else -> null
+                    },
+                    errorMessage = if (successCount == 0 && failureCount > 0) {
+                        "清空当前分类失败，条目已保留。"
+                    } else {
+                        it.errorMessage
+                    },
+                )
             }
         }
     }

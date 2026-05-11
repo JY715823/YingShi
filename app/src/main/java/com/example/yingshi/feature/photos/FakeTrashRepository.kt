@@ -86,7 +86,7 @@ object FakeTrashRepository {
         )
         latestSnackbarMessage = TrashSnackbarMessageUiModel(
             entryId = entryId,
-            message = "已移出回收站（24h可撤销）",
+            message = "已移出回收站。",
         )
         return true
     }
@@ -239,7 +239,7 @@ object FakeTrashRepository {
                     id = "trash-system-${media.mediaId}-$deletedAtMillis",
                     type = TrashEntryType.MEDIA_SYSTEM_DELETED,
                     deletedAtMillis = deletedAtMillis,
-                    title = media.sourcePostTitle?.let { "系统删除「$it」中的媒体" } ?: "系统删除媒体",
+                    title = media.sourcePostTitle?.let { "删除「$it」中的媒体" } ?: "删除媒体",
                     previewInfo = "${formatTrashMediaLabel(media.displayTimeMillis)} · 已从全局媒体流和相关帖子中本地隐藏",
                     sourcePostId = media.sourcePostId,
                     sourceMediaId = media.mediaId,

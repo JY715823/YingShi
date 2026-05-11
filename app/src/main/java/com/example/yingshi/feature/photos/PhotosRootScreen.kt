@@ -72,7 +72,7 @@ fun PhotosRootScreen(
     modifier: Modifier = Modifier,
     selectedTopDestinationName: String = PhotosTopDestination.PHOTOS.name,
     onSelectedTopDestinationChange: (String) -> Unit = { },
-    trashSelectedTypeName: String = TrashEntryType.POST_DELETED.name,
+    trashSelectedTypeName: String = TrashEntryType.MEDIA_SYSTEM_DELETED.name,
     onTrashSelectedTypeNameChange: (String) -> Unit = { },
     trashShowPendingCleanup: Boolean = false,
     onTrashShowPendingCleanupChange: (Boolean) -> Unit = { },

@@ -95,11 +95,11 @@ object FakeNotificationRepository {
         NotificationCenterItemUiModel(
             id = "notice-restore-1",
             type = NotificationCenterItemType.DELETE_RESTORE,
-            title = "恢复入口仍在保留期内",
-            body = "最近一次移出回收站的内容仍保留 24h 可撤销语义。",
+            title = "回收站恢复入口已更新",
+            body = "现在可以在回收站按分类批量恢复或清空内容。",
             createdAtMillis = 1_777_393_600_000L,
             isRead = true,
-            targetSummary = "将进入回收站待清理 / 恢复详情占位",
+            targetSummary = "将进入回收站分类操作区",
         ),
         NotificationCenterItemUiModel(
             id = "notice-cache-1",

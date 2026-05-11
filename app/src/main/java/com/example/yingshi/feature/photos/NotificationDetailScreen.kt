@@ -248,7 +248,7 @@ private fun notificationPlaceholderDescription(type: NotificationCenterItemType)
         NotificationCenterItemType.CONTENT_UPDATE ->
             "这类通知后续会接帖子或相册的真实内容变更入口；当前只展示跳转占位。"
         NotificationCenterItemType.DELETE_RESTORE ->
-            "这类通知后续会接回收站、待清理区域或删除态详情；当前只展示跳转占位。"
+            "这类通知后续会接回收站分类操作或删除态详情；当前只展示跳转占位。"
         NotificationCenterItemType.SYSTEM ->
             "这类通知后续会接真实系统提醒详情；当前先保留为轻量详情页。"
     }

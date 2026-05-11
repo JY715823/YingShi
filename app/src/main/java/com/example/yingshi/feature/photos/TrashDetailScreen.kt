@@ -131,7 +131,7 @@ fun TrashDetailScreen(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。REAL 模式下，全局媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。REAL 模式下，媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
                 )
             },
             confirmButton = {

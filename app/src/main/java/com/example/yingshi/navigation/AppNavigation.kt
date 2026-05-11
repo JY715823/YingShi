@@ -28,6 +28,6 @@ enum class PhotosTopDestination(
     TRASH(
         label = "回收站",
         headline = "删除与恢复入口",
-        supporting = "承接删除、恢复和待清理入口，不混入系统媒体工具区语义。",
+        supporting = "承接删除、恢复和清空分类入口，不混入系统媒体工具区语义。",
     ),
 }

@@ -1,6 +1,7 @@
 ﻿package com.example.yingshi.feature.photos
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,7 +39,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 @Composable
 fun RealTrashPageScreen(
     modifier: Modifier = Modifier,
-    selectedTypeName: String = TrashEntryType.POST_DELETED.name,
+    selectedTypeName: String = TrashEntryType.MEDIA_SYSTEM_DELETED.name,
     onSelectedTypeNameChange: (String) -> Unit = { },
     showPendingCleanup: Boolean = false,
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
@@ -52,6 +55,8 @@ fun RealTrashPageScreen(
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
     val spacing = YingShiThemeTokens.spacing
+    var showCategoryMenu by remember { mutableStateOf(false) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(selectedTypeName) {
         viewModel.refresh(selectedType)
@@ -67,12 +72,21 @@ fun RealTrashPageScreen(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         item {
-            RealTrashTypeRow(
+            RealTrashCategoryActionRow(
                 selectedType = selectedType,
-                pendingCount = uiState.pendingEntries.size,
-                showPendingCleanup = showPendingCleanup,
+                entryCount = uiState.entries.size,
+                menuExpanded = showCategoryMenu,
+                isMutating = uiState.isMutating,
+                onMenuExpandedChange = { showCategoryMenu = it },
                 onTypeSelected = { onSelectedTypeNameChange(it.name) },
-                onPendingClick = { onShowPendingCleanupChange(!showPendingCleanup) },
+                onRestoreCurrent = {
+                    viewModel.restoreEntries(
+                        entries = uiState.entries,
+                        selectedType = selectedType,
+                        onFirstRestoredMediaIds = onRestoreTargetMediaIds,
+                    )
+                },
+                onRequestClearCurrent = { showClearConfirm = true },
             )
         }
 
@@ -95,92 +109,77 @@ fun RealTrashPageScreen(
             }
         }
 
-        if (!showPendingCleanup && uiState.entries.isNotEmpty()) {
-            item {
-                RealTrashBulkActionCard(
-                    selectedType = selectedType,
-                    count = uiState.entries.size,
-                    isMutating = uiState.isMutating,
-                    onRestoreAll = {
-                        viewModel.restoreEntries(
-                            entries = uiState.entries,
-                            selectedType = selectedType,
-                            onFirstRestoredMediaIds = onRestoreTargetMediaIds,
-                        )
-                    },
-                )
-            }
-        }
-
-        if (showPendingCleanup) {
-            if (uiState.pendingEntries.isEmpty()) {
+        when {
+            uiState.isLoading && uiState.entries.isEmpty() -> {
                 item {
                     RealTrashSectionCard(
-                        title = "暂无可撤销条目",
-                        body = "",
+                        title = "读取中",
+                        body = "正在从后端读取回收站列表…",
                     )
                 }
-            } else {
+            }
+            uiState.entries.isEmpty() -> {
+                item {
+                    RealTrashSectionCard(
+                        title = "当前分类为空",
+                        body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
+                    )
+                }
+            }
+            else -> {
                 items(
-                    items = uiState.pendingEntries,
-                    key = { it.entry.id },
-                ) { pending ->
+                    items = uiState.entries,
+                    key = { it.id },
+                ) { entry ->
                     RealTrashEntryRow(
-                        entry = pending.entry,
+                        entry = entry,
+                        onClick = {
+                            onOpenTrashDetail(
+                                TrashDetailRoute(entryId = entry.id),
+                            )
+                        },
                         trailing = {
-                            TextButton(
-                                onClick = { viewModel.undoPendingCleanup(pending.entry.id, selectedType) },
-                            ) {
-                                Text("撤销")
-                            }
+                            Text(
+                                text = "查看",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                         },
                     )
                 }
             }
         }
+    }
 
-        if (!showPendingCleanup) {
-            when {
-                uiState.isLoading && uiState.entries.isEmpty() -> {
-                    item {
-                        RealTrashSectionCard(
-                            title = "读取中",
-                            body = "正在从后端读取回收站列表…",
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("清空当前分类？") },
+            text = {
+                Text(
+                    "将永久删除当前「${selectedType.label}」分类中的 ${uiState.entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；帖子删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = uiState.entries.isNotEmpty() && !uiState.isMutating,
+                    onClick = {
+                        showClearConfirm = false
+                        viewModel.purgeEntries(
+                            entries = uiState.entries,
+                            selectedType = selectedType,
                         )
-                    }
+                    },
+                ) {
+                    Text("清空当前分类")
                 }
-                uiState.entries.isEmpty() -> {
-                    item {
-                        RealTrashSectionCard(
-                            title = "当前分类为空",
-                            body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
-                        )
-                    }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) {
+                    Text("取消")
                 }
-                else -> {
-                    items(
-                        items = uiState.entries,
-                        key = { it.id },
-                    ) { entry ->
-                        RealTrashEntryRow(
-                            entry = entry,
-                            onClick = {
-                                onOpenTrashDetail(
-                                    TrashDetailRoute(entryId = entry.id),
-                                )
-                            },
-                            trailing = {
-                                Text(
-                                    text = "查看",
-                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-        }
+            },
+        )
     }
 }
 
@@ -241,46 +240,126 @@ private fun RealTrashEntryRow(
 }
 
 @Composable
-private fun RealTrashBulkActionCard(
+private fun RealTrashCategoryActionRow(
     selectedType: TrashEntryType,
-    count: Int,
+    entryCount: Int,
+    menuExpanded: Boolean,
     isMutating: Boolean,
-    onRestoreAll: () -> Unit,
+    onMenuExpandedChange: (Boolean) -> Unit,
+    onTypeSelected: (TrashEntryType) -> Unit,
+    onRestoreCurrent: () -> Unit,
+    onRequestClearCurrent: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    Surface(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.padding(spacing.md),
-            horizontalArrangement = Arrangement.spacedBy(spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-            ) {
-                Text(
-                    text = "批量恢复",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = "恢复当前「${selectedType.label}」分类中的 $count 项；失败项会继续留在回收站。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            TextButton(
+        Box {
+            RealTrashIconActionButton(
+                text = "☰",
                 enabled = !isMutating,
-                onClick = onRestoreAll,
+                onClick = { onMenuExpandedChange(true) },
+            )
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { onMenuExpandedChange(false) },
             ) {
-                Text(if (isMutating) "恢复中…" else "恢复全部")
+                TrashCategoryMenuTypes.forEach { type ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (type == selectedType) {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surface
+                                        },
+                                        androidx.compose.foundation.shape.RoundedCornerShape(
+                                            YingShiThemeTokens.radius.md,
+                                        ),
+                                    )
+                                    .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = type.label,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (type == selectedType) {
+                                            FontWeight.SemiBold
+                                        } else {
+                                            FontWeight.Medium
+                                        },
+                                    ),
+                                    color = if (type == selectedType) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                                if (type == selectedType) {
+                                    Text(
+                                        text = "✓",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        },
+                        onClick = {
+                            onMenuExpandedChange(false)
+                            onTypeSelected(type)
+                        },
+                    )
+                }
             }
         }
+        Box(modifier = Modifier.weight(1f))
+        TextButton(
+            enabled = entryCount > 0 && !isMutating,
+            onClick = onRestoreCurrent,
+        ) {
+            Text(if (isMutating) "处理中…" else "恢复当前分类")
+        }
+        RealTrashIconActionButton(
+            text = "🗑",
+            enabled = entryCount > 0 && !isMutating,
+            onClick = onRequestClearCurrent,
+        )
+    }
+}
+
+@Composable
+private fun RealTrashIconActionButton(
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (enabled) {
+            MaterialTheme.colorScheme.surface
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+        },
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.52f)
+            },
+        )
     }
 }
 
@@ -336,73 +415,8 @@ private fun realTrashEntrySourceLine(entry: TrashEntryUiModel): String {
         }
         TrashEntryType.MEDIA_SYSTEM_DELETED -> {
             val postCount = entry.relatedPostIds.size
-            "全局媒体删除 · 影响帖子 $postCount 个"
+            "媒体删除 · 影响帖子 $postCount 个"
         }
-    }
-}
-
-@Composable
-private fun RealTrashTypeRow(
-    selectedType: TrashEntryType,
-    pendingCount: Int,
-    showPendingCleanup: Boolean,
-    onTypeSelected: (TrashEntryType) -> Unit,
-    onPendingClick: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            TrashEntryType.entries.forEach { type ->
-                RealTrashSegmentChip(
-                    text = type.label,
-                    selected = type == selectedType,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onTypeSelected(type) },
-                )
-            }
-        }
-        RealTrashSegmentChip(
-            text = "24h 可撤销 $pendingCount",
-            selected = showPendingCleanup,
-            onClick = onPendingClick,
-        )
-    }
-}
-
-@Composable
-private fun RealTrashSegmentChip(
-    text: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
-        },
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
     }
 }
 
@@ -602,12 +616,7 @@ private fun RealTrashDetailContent(
                     }
                 }
                 if (detail.pendingCleanup != null) {
-                    TextButton(
-                        enabled = !isMutating,
-                        onClick = onUndoRemove,
-                    ) {
-                        Text(if (isMutating) "处理中…" else "撤销移出")
-                    }
+                    // Pending cleanup is no longer exposed in the client UI.
                 }
             }
         }
@@ -619,7 +628,7 @@ private fun RealTrashDetailContent(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。全局媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
                 )
             },
             confirmButton = {
@@ -658,7 +667,7 @@ private fun RealTrashDeletedPreview(
                 title = when (type) {
                     TrashEntryType.POST_DELETED -> "原帖子媒体"
                     TrashEntryType.MEDIA_REMOVED -> "被移除的媒体"
-                    TrashEntryType.MEDIA_SYSTEM_DELETED -> "被系统删除的媒体"
+                    TrashEntryType.MEDIA_SYSTEM_DELETED -> "被删除的媒体"
                 },
                 mediaIds = mediaIds,
             )

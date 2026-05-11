@@ -491,7 +491,7 @@ fun PhotoViewerScreen(
             title = { Text(text = "删除当前 App 媒体到回收站？") },
             text = {
                 Text(
-                    text = "这是 App 全局媒体删除：当前媒体会从照片流消失，并影响所有引用它的帖子。删除后会进入 App 回收站，后续可在回收站中恢复。",
+                    text = "这是 App 媒体删除：当前媒体会从照片流消失，并影响所有引用它的帖子。删除后会进入 App 回收站，后续可在回收站中恢复。",
                 )
             },
             confirmButton = {

@@ -75,7 +75,7 @@ fun RealPhotoFeedPage(
             title = { Text("删除 App 媒体到回收站？") },
             text = {
                 Text(
-                    "将从照片流全局删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关帖子里的引用。REAL 模式会调用后端全局媒体删除接口，成功后写入后端回收站；失败项会保留并显示原因。",
+                    "将从照片流删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关帖子里的引用。REAL 模式会调用后端媒体删除接口，成功后写入后端回收站；失败项会保留并显示原因。",
                 )
             },
             confirmButton = {

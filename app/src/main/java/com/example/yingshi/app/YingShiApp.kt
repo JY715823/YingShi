@@ -82,7 +82,7 @@ fun YingShiApp() {
         mutableStateOf(PhotosTopDestination.PHOTOS.name)
     }
     var trashSelectedTypeName by rememberSaveable {
-        mutableStateOf(TrashEntryType.POST_DELETED.name)
+        mutableStateOf(TrashEntryType.MEDIA_SYSTEM_DELETED.name)
     }
     var trashShowPendingCleanup by rememberSaveable {
         mutableStateOf(false)
@@ -365,7 +365,6 @@ fun YingShiApp() {
                                     notificationDetailRoute = null
                                     selectedDestinationName = RootDestination.PHOTOS.name
                                     photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                    trashShowPendingCleanup = true
                                 }
                                 "notice-cache-1" -> {
                                     notificationCenterRoute = null
