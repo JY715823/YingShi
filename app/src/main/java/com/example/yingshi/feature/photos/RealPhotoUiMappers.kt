@@ -127,6 +127,43 @@ fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
 }
 
 fun RemoteTrashItem.toTrashEntryUiModel(): TrashEntryUiModel {
+    val mediaKind = resolveAppMediaType(
+        rawType = sourceMediaType,
+        mimeType = sourceMediaMimeType,
+        thumbnailUrl = null,
+        mediaUrl = sourceMediaId,
+        videoUrl = null,
+        coverUrl = null,
+        originalUrl = null,
+    )
+    val mediaId = sourceMediaId ?: relatedMediaIds.firstOrNull()
+    val mediaSnapshot = mediaId?.let { id ->
+        TrashMediaSnapshot(
+            mediaId = id,
+            displayTimeMillis = deletedAtMillis,
+            palette = realPaletteFor(id),
+            mediaType = mediaKind,
+            aspectRatio = resolveAppContentAspectRatio(
+                aspectRatio = sourceMediaAspectRatio,
+                width = sourceMediaWidth,
+                height = sourceMediaHeight,
+                mediaType = mediaKind,
+            ),
+            width = sourceMediaWidth,
+            height = sourceMediaHeight,
+            videoDurationMillis = sourceMediaDurationMillis,
+            mediaSource = realTrashMediaSource(
+                mediaId = id,
+                mediaType = mediaKind,
+                width = sourceMediaWidth,
+                height = sourceMediaHeight,
+                durationMillis = sourceMediaDurationMillis,
+                mimeType = sourceMediaMimeType,
+            ),
+            sourcePostId = sourcePostId,
+            sourcePostTitle = title.takeIf { it.isNotBlank() },
+        )
+    }
     return TrashEntryUiModel(
         id = trashItemId,
         type = toTrashEntryType(),
@@ -137,6 +174,7 @@ fun RemoteTrashItem.toTrashEntryUiModel(): TrashEntryUiModel {
         sourceMediaId = sourceMediaId,
         relatedPostIds = relatedPostIds,
         relatedMediaIds = relatedMediaIds,
+        mediaSnapshot = mediaSnapshot,
         palette = realPaletteFor(sourceMediaId ?: sourcePostId ?: trashItemId),
     )
 }

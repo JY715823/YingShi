@@ -1,36 +1,37 @@
-# Current Task: Trash Category Action Bar Refinement
+# Current Task: Trash Media Grid And Viewer Refinement
 
 ## Background
 
-Trash restore and permanent-delete closure is in place. This pass refines the Android trash category operation area so categories are chosen from a menu, current-category batch operations are obvious, and old pending-cleanup wording no longer appears in the client.
+Trash category actions are now menu-based. This pass refines the media-oriented trash categories so media deletion and media removal read like a media grid, while post deletion keeps its existing list/detail shape.
 
 ## Goals
 
-1. Replace trash category chips with a compact top action row.
-2. Default the trash page to the media-deletion category.
-3. Provide a hamburger category menu for media deletion, post deletion, and media removal.
-4. Support restoring all items in the current category with partial-failure reporting.
-5. Support clearing the current category after an irreversible confirmation.
-6. Remove client-facing `24h` undo / pending-cleanup wording.
+1. Replace the long restore-current-category label with a compact icon action.
+2. Render `媒体删除` as a media grid grouped by trash-entry month.
+3. Render `媒体移除` as a media grid with only the source post title under each item.
+4. Show days-in-trash on media grid cards, turning red after 25 days.
+5. Show video play marker and duration when media metadata is available.
+6. Provide a dedicated trash media viewer with top-right restore/delete and bottom-right original-load action.
+7. Keep media-deletion viewer free of related-post entry, and keep media-removal viewer free of normal photo-flow Viewer complexity.
 
 ## Scope
 
-- Android fake and REAL trash list top action area.
-- Android trash category names and notification/navigation copy related to trash.
-- Android current-category batch restore and current-category permanent purge wiring.
+- Android fake and REAL trash list rendering for media categories.
+- Android fake and REAL trash media detail/viewer surfaces.
+- Minimal Server trash DTO metadata extension for source media type, size, aspect ratio, duration, and mime type.
 
 ## Non Goals
 
-- No trash grid redesign, post grid redesign, or Viewer refinement.
-- No upload center, pagination-core, preview cache, or playback changes.
-- No Server API changes in this pass.
+- No post-deletion grid redesign.
+- No upload center, photo-feed pagination, preview cache, or normal Viewer playback changes.
+- No broad Server trash purge behavior changes.
 
 ## Acceptance
 
-1. Trash opens to `媒体删除` by default and no longer shows chips.
-2. The action row has a left hamburger menu, empty middle space, and right-side restore / clear actions.
-3. The category menu includes `媒体删除`, `帖子删除`, and `媒体移除`; the selected row is highlighted and checked.
-4. Restore current category preserves failures and shows a clear result.
-5. Clear current category asks for confirmation and only purges the selected category.
-6. Client UI no longer displays `24h 可撤销` or `待清理`.
-7. Android `assembleDebug` passes.
+1. Trash restore-current-category action is icon-sized instead of long text.
+2. `媒体删除` shows a media grid grouped by deleted month.
+3. `媒体移除` shows a media grid, and each cell only shows the source post title below it.
+4. Media grid cells show days in trash, with days above 25 highlighted red.
+5. Videos show play marker and duration when metadata is available.
+6. Media trash viewer shows restore/delete at top right and original-load at bottom right.
+7. Android `assembleDebug` passes; Server tests pass when Server changed.

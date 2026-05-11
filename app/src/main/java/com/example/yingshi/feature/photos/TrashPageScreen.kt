@@ -8,10 +8,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,15 +34,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
 @Composable
@@ -86,10 +97,95 @@ fun TrashPageScreen(
         FakeTrashRepository.consumeSnackbarMessage(message.entryId)
     }
 
-    LazyColumn(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
+    if (selectedType.isMediaTrashType()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = modifier,
+            state = rememberLazyGridState(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                TrashCategoryActionRow(
+                    selectedType = selectedType,
+                    entryCount = entries.size,
+                    menuExpanded = showCategoryMenu,
+                    onMenuExpandedChange = { showCategoryMenu = it },
+                    onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onRestoreCurrent = {
+                        var successCount = 0
+                        var failureCount = 0
+                        var firstRestoredMediaIds = emptyList<String>()
+                        entries.forEach { entry ->
+                            val targetIds = entry.restoreTargetMediaIds()
+                            val result = FakeTrashRepository.restoreEntry(entry.id)
+                            if (result.success) {
+                                successCount += 1
+                                if (firstRestoredMediaIds.isEmpty()) {
+                                    firstRestoredMediaIds = targetIds
+                                }
+                            } else {
+                                failureCount += 1
+                            }
+                        }
+                        transientMessage = when {
+                            successCount > 0 && failureCount > 0 -> "批量恢复完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
+                            successCount > 0 -> "已恢复当前分类 $successCount 项。"
+                            else -> "批量恢复失败，条目已保留。"
+                        }
+                        if (firstRestoredMediaIds.isNotEmpty()) {
+                            onRestoreTargetMediaIds(firstRestoredMediaIds)
+                        }
+                    },
+                    onRequestClearCurrent = { showClearConfirm = true },
+                )
+            }
+
+            transientMessage?.let { message ->
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    TrashSnackbarCard(message = message)
+                }
+            }
+
+            if (entries.isEmpty()) {
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    TrashEmptyCard(text = "暂无删除条目")
+                }
+            } else {
+                trashMonthGroups(entries).forEach { group ->
+                    item(
+                        key = "trash-month-${group.key}",
+                        span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
+                    ) {
+                        TrashGridMonthHeader(title = group.title)
+                    }
+                    gridItems(
+                        items = group.entries,
+                        key = { it.id },
+                    ) { entry ->
+                        TrashMediaGridCell(
+                            entry = entry,
+                            showPostTitle = selectedType == TrashEntryType.MEDIA_REMOVED,
+                            onClick = {
+                                onOpenTrashDetail(
+                                    TrashDetailRoute(
+                                        entryId = entry.id,
+                                        entryType = entry.type,
+                                        sourcePostId = entry.sourcePostId,
+                                        sourceMediaId = entry.sourceMediaId,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
         item {
             TrashCategoryActionRow(
                 selectedType = selectedType,
@@ -159,6 +255,7 @@ fun TrashPageScreen(
             }
         }
 
+    }
     }
 
     if (showClearConfirm) {
@@ -284,7 +381,7 @@ private fun TrashCategoryActionRow(
             enabled = entryCount > 0,
             onClick = onRestoreCurrent,
         ) {
-            Text("恢复当前分类")
+            Text("↩")
         }
         TrashIconActionButton(
             text = "🗑",
@@ -340,6 +437,110 @@ private fun TrashSnackbarCard(message: String) {
             ),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun TrashGridMonthHeader(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.onBackground,
+    )
+}
+
+@Composable
+private fun TrashMediaGridCell(
+    entry: TrashEntryUiModel,
+    showPostTitle: Boolean,
+    onClick: () -> Unit,
+) {
+    val media = entry.primaryPreviewMedia()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(4.dp)),
+        ) {
+            TrashEntryPreview(
+                entry = entry,
+                modifier = Modifier.matchParentSize(),
+            )
+            TrashDaysBadge(
+                days = trashDaysSince(entry.deletedAtMillis),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 5.dp, end = 5.dp),
+            )
+            if (media?.mediaType == AppMediaType.VIDEO) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 5.dp, bottom = 5.dp),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = Color.Black.copy(alpha = 0.38f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        VideoGlyph(
+                            state = VideoGlyphState.PLAY,
+                            tint = Color.White.copy(alpha = 0.94f),
+                            modifier = Modifier.size(9.dp),
+                        )
+                        Text(
+                            text = formatVideoDurationLabel(media.videoDurationMillis) ?: "视频",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White.copy(alpha = 0.94f),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showPostTitle) {
+            Text(
+                text = trashGridPostTitle(entry),
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrashDaysBadge(
+    days: Long,
+    modifier: Modifier = Modifier,
+) {
+    val danger = days > 25
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (danger) Color(0xFFE5484D).copy(alpha = 0.88f) else Color.Black.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+        Text(
+            text = "${days.coerceAtLeast(0)}天",
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
         )
     }
 }
@@ -519,4 +720,43 @@ private fun TrashEmptyCard(text: String) {
 
 private fun formatTrashEntryTime(timeMillis: Long): String {
     return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
+}
+
+private fun TrashEntryType.isMediaTrashType(): Boolean {
+    return this == TrashEntryType.MEDIA_SYSTEM_DELETED || this == TrashEntryType.MEDIA_REMOVED
+}
+
+private data class TrashMonthGroup(
+    val key: String,
+    val title: String,
+    val entries: List<TrashEntryUiModel>,
+)
+
+private fun trashMonthGroups(entries: List<TrashEntryUiModel>): List<TrashMonthGroup> {
+    val formatter = SimpleDateFormat("yyyy年M月", Locale.CHINA)
+    val keyFormatter = SimpleDateFormat("yyyy-MM", Locale.CHINA)
+    return entries
+        .sortedByDescending { it.deletedAtMillis }
+        .groupBy { keyFormatter.format(Date(it.deletedAtMillis)) }
+        .map { (key, groupEntries) ->
+            TrashMonthGroup(
+                key = key,
+                title = formatter.format(Date(groupEntries.first().deletedAtMillis)),
+                entries = groupEntries,
+            )
+        }
+}
+
+private fun trashDaysSince(timeMillis: Long): Long {
+    val now = System.currentTimeMillis()
+    if (timeMillis <= 0L || now <= timeMillis) return 0L
+    return TimeUnit.MILLISECONDS.toDays(now - timeMillis)
+}
+
+private fun trashGridPostTitle(entry: TrashEntryUiModel): String {
+    return entry.relationSnapshots.firstOrNull()?.postTitle
+        ?: entry.mediaSnapshot?.sourcePostTitle
+        ?: entry.title.removePrefix("从「").substringBefore("」移除媒体")
+        ?: entry.sourcePostId
+        ?: "来源帖子"
 }

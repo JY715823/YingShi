@@ -172,6 +172,12 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
         deletedAtMillis = deletedAtMillis,
         relatedPostIds = relatedPostIds,
         relatedMediaIds = relatedMediaIds,
+        sourceMediaType = sourceMediaType,
+        sourceMediaWidth = sourceMediaWidth,
+        sourceMediaHeight = sourceMediaHeight,
+        sourceMediaAspectRatio = sourceMediaAspectRatio,
+        sourceMediaDurationMillis = sourceMediaDurationMillis,
+        sourceMediaMimeType = sourceMediaMimeType,
     )
 }
 

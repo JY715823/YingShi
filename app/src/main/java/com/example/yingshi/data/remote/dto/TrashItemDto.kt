@@ -11,6 +11,12 @@ data class TrashItemDto(
     val deletedAtMillis: Long,
     val relatedPostIds: List<String> = emptyList(),
     val relatedMediaIds: List<String> = emptyList(),
+    val sourceMediaType: String? = null,
+    val sourceMediaWidth: Int? = null,
+    val sourceMediaHeight: Int? = null,
+    val sourceMediaAspectRatio: Float? = null,
+    val sourceMediaDurationMillis: Long? = null,
+    val sourceMediaMimeType: String? = null,
 )
 
 data class TrashPageResponseDto(

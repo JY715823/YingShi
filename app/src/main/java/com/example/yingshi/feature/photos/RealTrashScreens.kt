@@ -11,8 +11,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,12 +35,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.model.RemoteTrashDetail
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 @Composable
 fun RealTrashPageScreen(
@@ -67,85 +83,157 @@ fun RealTrashPageScreen(
         }
     }
 
-    LazyColumn(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        item {
-            RealTrashCategoryActionRow(
-                selectedType = selectedType,
-                entryCount = uiState.entries.size,
-                menuExpanded = showCategoryMenu,
-                isMutating = uiState.isMutating,
-                onMenuExpandedChange = { showCategoryMenu = it },
-                onTypeSelected = { onSelectedTypeNameChange(it.name) },
-                onRestoreCurrent = {
-                    viewModel.restoreEntries(
-                        entries = uiState.entries,
-                        selectedType = selectedType,
-                        onFirstRestoredMediaIds = onRestoreTargetMediaIds,
-                    )
-                },
-                onRequestClearCurrent = { showClearConfirm = true },
-            )
-        }
-
-        if (uiState.statusMessage != null) {
-            item {
-                RealTrashSectionCard(
-                    title = "操作结果",
-                    body = uiState.statusMessage ?: "",
-                    emphasized = true,
+    if (selectedType.isRealMediaTrashType()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                RealTrashCategoryActionRow(
+                    selectedType = selectedType,
+                    entryCount = uiState.entries.size,
+                    menuExpanded = showCategoryMenu,
+                    isMutating = uiState.isMutating,
+                    onMenuExpandedChange = { showCategoryMenu = it },
+                    onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onRestoreCurrent = {
+                        viewModel.restoreEntries(
+                            entries = uiState.entries,
+                            selectedType = selectedType,
+                            onFirstRestoredMediaIds = onRestoreTargetMediaIds,
+                        )
+                    },
+                    onRequestClearCurrent = { showClearConfirm = true },
                 )
             }
-        }
-
-        if (uiState.errorMessage != null) {
-            item {
-                RealTrashSectionCard(
-                    title = "请求失败",
-                    body = uiState.errorMessage ?: "",
-                )
+            uiState.statusMessage?.let { message ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    RealTrashSectionCard(title = "操作结果", body = message, emphasized = true)
+                }
+            }
+            uiState.errorMessage?.let { message ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    RealTrashSectionCard(title = "请求失败", body = message)
+                }
+            }
+            when {
+                uiState.isLoading && uiState.entries.isEmpty() -> {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        RealTrashSectionCard(title = "读取中", body = "正在从后端读取回收站列表…")
+                    }
+                }
+                uiState.entries.isEmpty() -> {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        RealTrashSectionCard(title = "当前分类为空", body = "这一类回收站项目还没有内容。")
+                    }
+                }
+                else -> {
+                    realTrashMonthGroups(uiState.entries).forEach { group ->
+                        item(
+                            key = "real-trash-month-${group.key}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            RealTrashGridMonthHeader(title = group.title)
+                        }
+                        gridItems(
+                            items = group.entries,
+                            key = { it.id },
+                        ) { entry ->
+                            RealTrashMediaGridCell(
+                                entry = entry,
+                                showPostTitle = selectedType == TrashEntryType.MEDIA_REMOVED,
+                                onClick = {
+                                    onOpenTrashDetail(TrashDetailRoute(entryId = entry.id))
+                                },
+                            )
+                        }
+                    }
+                }
             }
         }
+    } else {
+        LazyColumn(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            item {
+                RealTrashCategoryActionRow(
+                    selectedType = selectedType,
+                    entryCount = uiState.entries.size,
+                    menuExpanded = showCategoryMenu,
+                    isMutating = uiState.isMutating,
+                    onMenuExpandedChange = { showCategoryMenu = it },
+                    onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onRestoreCurrent = {
+                        viewModel.restoreEntries(
+                            entries = uiState.entries,
+                            selectedType = selectedType,
+                            onFirstRestoredMediaIds = onRestoreTargetMediaIds,
+                        )
+                    },
+                    onRequestClearCurrent = { showClearConfirm = true },
+                )
+            }
 
-        when {
-            uiState.isLoading && uiState.entries.isEmpty() -> {
+            if (uiState.statusMessage != null) {
                 item {
                     RealTrashSectionCard(
-                        title = "读取中",
-                        body = "正在从后端读取回收站列表…",
+                        title = "操作结果",
+                        body = uiState.statusMessage ?: "",
+                        emphasized = true,
                     )
                 }
             }
-            uiState.entries.isEmpty() -> {
+
+            if (uiState.errorMessage != null) {
                 item {
                     RealTrashSectionCard(
-                        title = "当前分类为空",
-                        body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
+                        title = "请求失败",
+                        body = uiState.errorMessage ?: "",
                     )
                 }
             }
-            else -> {
-                items(
-                    items = uiState.entries,
-                    key = { it.id },
-                ) { entry ->
-                    RealTrashEntryRow(
-                        entry = entry,
-                        onClick = {
-                            onOpenTrashDetail(
-                                TrashDetailRoute(entryId = entry.id),
-                            )
-                        },
-                        trailing = {
-                            Text(
-                                text = "查看",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                    )
+
+            when {
+                uiState.isLoading && uiState.entries.isEmpty() -> {
+                    item {
+                        RealTrashSectionCard(
+                            title = "读取中",
+                            body = "正在从后端读取回收站列表…",
+                        )
+                    }
+                }
+                uiState.entries.isEmpty() -> {
+                    item {
+                        RealTrashSectionCard(
+                            title = "当前分类为空",
+                            body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
+                        )
+                    }
+                }
+                else -> {
+                    items(
+                        items = uiState.entries,
+                        key = { it.id },
+                    ) { entry ->
+                        RealTrashEntryRow(
+                            entry = entry,
+                            onClick = {
+                                onOpenTrashDetail(
+                                    TrashDetailRoute(entryId = entry.id),
+                                )
+                            },
+                            trailing = {
+                                Text(
+                                    text = "查看",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -324,7 +412,7 @@ private fun RealTrashCategoryActionRow(
             enabled = entryCount > 0 && !isMutating,
             onClick = onRestoreCurrent,
         ) {
-            Text(if (isMutating) "处理中…" else "恢复当前分类")
+            Text(if (isMutating) "…" else "↩")
         }
         RealTrashIconActionButton(
             text = "🗑",
@@ -396,6 +484,109 @@ private fun RealTrashEntryPreview(
     )
 }
 
+@Composable
+private fun RealTrashGridMonthHeader(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp),
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.onBackground,
+    )
+}
+
+@Composable
+private fun RealTrashMediaGridCell(
+    entry: TrashEntryUiModel,
+    showPostTitle: Boolean,
+    onClick: () -> Unit,
+) {
+    val media = entry.mediaSnapshot
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(4.dp)),
+        ) {
+            RealTrashEntryPreview(
+                entry = entry,
+                modifier = Modifier.matchParentSize(),
+            )
+            RealTrashDaysBadge(
+                days = realTrashDaysSince(entry.deletedAtMillis),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 5.dp, end = 5.dp),
+            )
+            if (media?.mediaType == AppMediaType.VIDEO) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 5.dp, bottom = 5.dp),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = Color.Black.copy(alpha = 0.38f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        VideoGlyph(
+                            state = VideoGlyphState.PLAY,
+                            tint = Color.White.copy(alpha = 0.94f),
+                            modifier = Modifier.size(9.dp),
+                        )
+                        Text(
+                            text = formatVideoDurationLabel(media.videoDurationMillis) ?: "视频",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White.copy(alpha = 0.94f),
+                        )
+                    }
+                }
+            }
+        }
+        if (showPostTitle) {
+            Text(
+                text = realTrashGridPostTitle(entry),
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RealTrashDaysBadge(
+    days: Long,
+    modifier: Modifier = Modifier,
+) {
+    val danger = days > 25
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (danger) Color(0xFFE5484D).copy(alpha = 0.88f) else Color.Black.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+        Text(
+            text = "${days.coerceAtLeast(0)}天",
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+        )
+    }
+}
+
 private fun TrashEntryUiModel.previewMediaIds(): List<String> {
     return buildList {
         sourceMediaId?.takeIf { it.isNotBlank() }?.let(::add)
@@ -442,6 +633,26 @@ fun RealTrashDetailScreen(
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsTrash()) {
             viewModel.refresh()
         }
+    }
+
+    val mediaDetailEntry = detail?.item?.toTrashEntryUiModel()
+    if (mediaDetailEntry?.type?.isRealMediaTrashType() == true) {
+        RealTrashMediaViewerDetailContent(
+            detail = detail,
+            statusMessage = uiState.statusMessage,
+            errorMessage = uiState.errorMessage,
+            isMutating = uiState.isMutating,
+            onBack = onBack,
+            onRestore = {
+                viewModel.restore { restoredItem ->
+                    val mediaIds = restoredItem.toTrashEntryUiModel().restoreTargetMediaIds()
+                    onEntryRestored(mediaIds)
+                }
+            },
+            onRemove = { viewModel.remove(onEntryRemoved) },
+            modifier = modifier,
+        )
+        return
     }
 
     Column(
@@ -507,6 +718,200 @@ fun RealTrashDetailScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun RealTrashMediaViewerDetailContent(
+    detail: RemoteTrashDetail,
+    statusMessage: String?,
+    errorMessage: String?,
+    isMutating: Boolean,
+    onBack: () -> Unit,
+    onRestore: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val item = detail.item
+    val entry = item.toTrashEntryUiModel()
+    val media = entry.mediaSnapshot
+    var showPermanentDeleteConfirm by remember(item.trashItemId) {
+        mutableStateOf(false)
+    }
+    val target = media?.let {
+        RealOriginalMediaTarget(
+            mediaId = it.mediaId,
+            mediaType = it.mediaType,
+            mediaSource = it.mediaSource,
+        )
+    }
+    val originalLoadState = target?.let(RealOriginalLoadRepository::getState)
+        ?: OriginalLoadState.NotLoaded
+    val accessToken = AuthSessionManager.getAccessToken()
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF07111F)),
+    ) {
+        if (media == null) {
+            RealTrashSectionCard(
+                title = "原媒体预览不可用",
+                body = "当前删除项没有返回 sourceMediaId 或 relatedMediaIds，无法定位原媒体文件。",
+            )
+        } else {
+            AppContentMediaThumbnail(
+                mediaSource = media.mediaSource,
+                mediaType = media.mediaType,
+                palette = media.palette,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .aspectRatio(media.aspectRatio.coerceIn(0.45f, 2.2f)),
+                contentDescription = media.mediaId,
+                contentScale = ContentScale.Fit,
+                requestSize = 1080,
+                showLoadingIndicator = true,
+                showStatusBadge = true,
+                showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
+                originalLoadState = originalLoadState,
+                onOriginalLoadStateChange = { state ->
+                    target?.let { RealOriginalLoadRepository.setState(it, state) }
+                },
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RealTrashViewerOverlayButton(text = "<", onClick = onBack)
+            Box(modifier = Modifier.weight(1f))
+            if (detail.canRestore) {
+                RealTrashViewerOverlayButton(
+                    text = if (isMutating) "…" else "↩",
+                    onClick = onRestore,
+                )
+            }
+            if (detail.canMoveOutOfTrash) {
+                RealTrashViewerOverlayButton(
+                    text = if (isMutating) "…" else "🗑",
+                    destructive = true,
+                    onClick = { showPermanentDeleteConfirm = true },
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(YingShiThemeTokens.spacing.lg),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        ) {
+            if (target != null) {
+                RealTrashViewerOverlayButton(
+                    text = originalLoadState.actionLabel(),
+                    onClick = {
+                        if (originalLoadState != OriginalLoadState.Loaded &&
+                            originalLoadState != OriginalLoadState.Loading
+                        ) {
+                            RealOriginalLoadRepository.requestOriginal(context, target, accessToken)
+                        }
+                    },
+                )
+            }
+            if (entry.type == TrashEntryType.MEDIA_REMOVED) {
+                Surface(
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = Color.Black.copy(alpha = 0.38f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                ) {
+                    Text(
+                        text = realTrashGridPostTitle(entry),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White.copy(alpha = 0.92f),
+                    )
+                }
+            }
+            statusMessage?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.86f),
+                )
+            }
+            errorMessage?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFFFB4AB),
+                )
+            }
+        }
+    }
+
+    if (showPermanentDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPermanentDeleteConfirm = false },
+            title = { Text("永久删除该回收站项目？") },
+            text = {
+                Text(
+                    "确认后会删除回收站记录。媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isMutating,
+                    onClick = {
+                        showPermanentDeleteConfirm = false
+                        onRemove()
+                    },
+                ) {
+                    Text("永久删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermanentDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RealTrashViewerOverlayButton(
+    text: String,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (destructive) {
+            Color(0xFFE5484D).copy(alpha = 0.88f)
+        } else {
+            Color.Black.copy(alpha = 0.38f)
+        },
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White.copy(alpha = 0.94f),
+        )
     }
 }
 
@@ -746,15 +1151,67 @@ private fun RealTrashMediaStrip(
     }
 }
 
-private fun realTrashMediaSource(mediaId: String): AppContentMediaSource {
+internal fun realTrashMediaSource(
+    mediaId: String,
+    mediaType: AppMediaType = AppMediaType.IMAGE,
+    width: Int? = null,
+    height: Int? = null,
+    durationMillis: Long? = null,
+    mimeType: String? = null,
+): AppContentMediaSource {
     val baseUrl = BackendDebugConfig.currentBaseUrl().trimEnd('/')
     val previewUrl = "$baseUrl/api/media/files/$mediaId?variant=preview"
     val originalUrl = "$baseUrl/api/media/files/$mediaId"
+    val coverUrl = "$baseUrl/api/media/files/$mediaId?variant=cover"
     return AppContentMediaSource(
         thumbnailUrl = previewUrl,
         mediaUrl = originalUrl,
         originalUrl = originalUrl,
+        videoUrl = if (mediaType == AppMediaType.VIDEO) originalUrl else null,
+        coverUrl = if (mediaType == AppMediaType.VIDEO) coverUrl else previewUrl,
+        mimeType = mimeType,
+        width = width,
+        height = height,
+        durationMillis = durationMillis,
     )
+}
+
+private fun TrashEntryType.isRealMediaTrashType(): Boolean {
+    return this == TrashEntryType.MEDIA_SYSTEM_DELETED || this == TrashEntryType.MEDIA_REMOVED
+}
+
+private data class RealTrashMonthGroup(
+    val key: String,
+    val title: String,
+    val entries: List<TrashEntryUiModel>,
+)
+
+private fun realTrashMonthGroups(entries: List<TrashEntryUiModel>): List<RealTrashMonthGroup> {
+    val formatter = SimpleDateFormat("yyyy年M月", Locale.CHINA)
+    val keyFormatter = SimpleDateFormat("yyyy-MM", Locale.CHINA)
+    return entries
+        .sortedByDescending { it.deletedAtMillis }
+        .groupBy { keyFormatter.format(Date(it.deletedAtMillis)) }
+        .map { (key, groupEntries) ->
+            RealTrashMonthGroup(
+                key = key,
+                title = formatter.format(Date(groupEntries.first().deletedAtMillis)),
+                entries = groupEntries,
+            )
+        }
+}
+
+private fun realTrashDaysSince(timeMillis: Long): Long {
+    val now = System.currentTimeMillis()
+    if (timeMillis <= 0L || now <= timeMillis) return 0L
+    return TimeUnit.MILLISECONDS.toDays(now - timeMillis)
+}
+
+private fun realTrashGridPostTitle(entry: TrashEntryUiModel): String {
+    return entry.mediaSnapshot?.sourcePostTitle
+        ?: entry.title
+        ?: entry.sourcePostId
+        ?: "来源帖子"
 }
 
 @Composable
