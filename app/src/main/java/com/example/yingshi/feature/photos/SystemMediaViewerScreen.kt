@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
@@ -198,6 +199,7 @@ fun SystemMediaViewerScreen(
     val zoomState = remember { SystemViewerZoomState() }
     var showMenuSheet by rememberSaveable { mutableStateOf(false) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
+    var showSystemTrashConfirm by rememberSaveable { mutableStateOf(false) }
     var pendingTrashIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
@@ -281,6 +283,33 @@ fun SystemMediaViewerScreen(
                         },
                         Toast.LENGTH_SHORT,
                     ).show()
+                },
+            )
+        }
+
+        if (showSystemTrashConfirm) {
+            AlertDialog(
+                onDismissRequest = { showSystemTrashConfirm = false },
+                title = { Text("移到系统相册回收站？") },
+                text = {
+                    Text(
+                        "这是系统相册操作：当前媒体会交给 Android 系统回收站处理，不会进入 App 回收站，也不会删除后端 App 媒体记录；确认后还会出现 Android 系统确认框。",
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showSystemTrashConfirm = false
+                            launchSystemTrashRequest(item)
+                        },
+                    ) {
+                        Text("继续系统回收站")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSystemTrashConfirm = false }) {
+                        Text("取消")
+                    }
                 },
             )
         }
@@ -409,7 +438,7 @@ fun SystemMediaViewerScreen(
             },
             onMoveToTrash = {
                 showMenuSheet = false
-                launchSystemTrashRequest(currentItem)
+                showSystemTrashConfirm = true
             },
         )
     }
@@ -1043,7 +1072,7 @@ private fun SystemMediaViewerMenuSheet(
             )
             SystemMediaViewerMenuAction(
                 title = "移到系统回收站",
-                subtitle = "走 Android 系统确认流程，不进入 app 回收站。",
+                subtitle = "系统相册操作：走 Android 系统确认流程，不进入 App 回收站。",
                 danger = true,
                 onClick = onMoveToTrash,
             )

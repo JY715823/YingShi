@@ -21,9 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,7 +38,11 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -62,6 +68,9 @@ fun TrashDetailScreen(
 
     val context = LocalContext.current
     val entry = FakeTrashRepository.resolveDetailEntry(route)
+    var showPermanentDeleteConfirm by rememberSaveable(entry?.id) {
+        mutableStateOf(false)
+    }
 
     if (entry == null) {
         TrashDetailMissingState(
@@ -94,12 +103,7 @@ fun TrashDetailScreen(
                 }
             },
             onRemove = {
-                if (FakeTrashRepository.moveEntryOutOfTrash(entry.id)) {
-                    onEntryRemoved()
-                } else {
-                    Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
-                    onBack()
-                }
+                showPermanentDeleteConfirm = true
             },
         )
 
@@ -116,6 +120,38 @@ fun TrashDetailScreen(
                 systemWide = true,
             )
         }
+    }
+
+    if (showPermanentDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPermanentDeleteConfirm = false },
+            title = { Text("永久删除该回收站项目？") },
+            text = {
+                Text(
+                    "后续完整实现会删除记录并物理删除 Server local-storage 中对应文件。本轮先统一语义：确认后会把该项目移入待清理区，仍保留 24 小时撤销入口。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPermanentDeleteConfirm = false
+                        if (FakeTrashRepository.moveEntryOutOfTrash(entry.id)) {
+                            onEntryRemoved()
+                        } else {
+                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                ) {
+                    Text("永久删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermanentDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 }
 
@@ -148,7 +184,7 @@ private fun TrashDetailTopBar(
         }
         TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
         TrashActionChip(
-            text = if (entry.type == TrashEntryType.POST_DELETED) "移出回收站" else "删除",
+            text = "永久删除",
             emphasized = false,
             onClick = onRemove,
         )
@@ -178,7 +214,7 @@ private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 当前仅支持只读查看、恢复和移出回收站",
+                text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 当前仅支持只读查看、恢复和永久删除语义确认",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
             )

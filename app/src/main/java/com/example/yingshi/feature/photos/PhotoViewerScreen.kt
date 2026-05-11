@@ -488,14 +488,17 @@ fun PhotoViewerScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(text = "确认删除该媒体？") },
-            text = { Text(text = "删除后会进入回收站，可在回收站中恢复。") },
+            title = { Text(text = "删除当前 App 媒体到回收站？") },
+            text = {
+                Text(
+                    text = "这是 App 全局媒体删除：当前媒体会从照片流消失，并影响所有引用它的帖子。删除后会进入 App 回收站，后续可在回收站中恢复。",
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeleteConfirm = false
                         val deletingItem = currentItem
-                        if (route.showPostSegments) return@TextButton
                         when (RepositoryProvider.currentMode) {
                             RepositoryMode.FAKE -> {
                                 deleteFakeViewerMedia(deletingItem)
@@ -508,7 +511,7 @@ fun PhotoViewerScreen(
                                         pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
                                     }
                                 }
-                                Toast.makeText(context, "已删除当前媒体，并写入回收站。", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "已删除当前 App 媒体，并写入回收站。", Toast.LENGTH_SHORT).show()
                             }
                             RepositoryMode.REAL -> {
                                 coroutineScope.launch {
@@ -529,7 +532,7 @@ fun PhotoViewerScreen(
                         }
                     },
                 ) {
-                    Text(text = "删除")
+                    Text(text = "删除到 App 回收站")
                 }
             },
             dismissButton = {

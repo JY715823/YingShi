@@ -50,6 +50,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -161,6 +162,9 @@ fun SystemMediaScreen(
     }
     var pendingTrashIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
+    }
+    var pendingSystemTrashItems by remember {
+        mutableStateOf<List<SystemMediaItem>>(emptyList())
     }
     var densityName by rememberSaveable {
         mutableStateOf(PhotoFeedDensity.DENSE_4.name)
@@ -580,6 +584,35 @@ fun SystemMediaScreen(
         )
     }
 
+    if (pendingSystemTrashItems.isNotEmpty()) {
+        val trashCount = pendingSystemTrashItems.size
+        AlertDialog(
+            onDismissRequest = { pendingSystemTrashItems = emptyList() },
+            title = { Text("移到系统相册回收站？") },
+            text = {
+                Text(
+                    "将对已选 $trashCount 项系统相册媒体发起 Android 系统回收站操作。它们不会进入 App 回收站，也不会删除后端 App 媒体记录；确认后还会出现 Android 系统确认框。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val items = pendingSystemTrashItems
+                        pendingSystemTrashItems = emptyList()
+                        launchSystemTrashRequest(items)
+                    },
+                ) {
+                    Text("继续系统回收站")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSystemTrashItems = emptyList() }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -884,7 +917,7 @@ fun SystemMediaScreen(
                     }
                 },
                 onMoveToTrash = {
-                    launchSystemTrashRequest(selectedItems)
+                    pendingSystemTrashItems = selectedItems
                 },
                 onCancel = {
                     selectionMode = false

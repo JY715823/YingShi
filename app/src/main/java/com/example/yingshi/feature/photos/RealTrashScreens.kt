@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,6 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -366,6 +370,9 @@ private fun RealTrashDetailContent(
 ) {
     val item = detail.item
     val spacing = YingShiThemeTokens.spacing
+    var showPermanentDeleteConfirm by remember(item.trashItemId) {
+        mutableStateOf(false)
+    }
 
     if (statusMessage != null) {
         RealTrashSectionCard(
@@ -451,9 +458,9 @@ private fun RealTrashDetailContent(
                 if (detail.canMoveOutOfTrash) {
                     TextButton(
                         enabled = !isMutating,
-                        onClick = onRemove,
+                        onClick = { showPermanentDeleteConfirm = true },
                     ) {
-                        Text(if (isMutating) "处理中…" else "移出回收站")
+                        Text(if (isMutating) "处理中…" else "永久删除")
                     }
                 }
                 if (detail.pendingCleanup != null) {
@@ -466,6 +473,34 @@ private fun RealTrashDetailContent(
                 }
             }
         }
+    }
+
+    if (showPermanentDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPermanentDeleteConfirm = false },
+            title = { Text("永久删除该回收站项目？") },
+            text = {
+                Text(
+                    "后续完整实现会删除记录并物理删除 Server local-storage 中对应文件。本轮后端仍先把项目移到待清理区，并保留 24 小时撤销入口。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isMutating,
+                    onClick = {
+                        showPermanentDeleteConfirm = false
+                        onRemove()
+                    },
+                ) {
+                    Text("永久删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPermanentDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 }
 

@@ -356,24 +356,27 @@ fun MediaManagementScreen(
     }
 
     if (showDeleteSemanticDialog) {
+        val deleteCount = selectedForDelete.size
         AlertDialog(
             onDismissRequest = { showDeleteSemanticDialog = false },
-            title = { Text("选择删除语义") },
+            title = { Text("确认处理选中媒体？") },
             text = {
-                Text("本轮先在本地状态里区分“从当前帖子移除”和“系统删除该媒体”，并把结果写入不同回收站分段。")
+                Text(
+                    "已选 $deleteCount 项媒体。\n\n“只从帖子移除”只解除这些媒体和当前帖子的关联，媒体仍保留在照片流和其他帖子中。\n\n“全局删除媒体”会从照片流删除媒体，并影响所有引用它们的帖子；删除项会进入 App 回收站。",
+                )
             },
             confirmButton = {
                 TextButton(
                     onClick = { handleSemanticSelection(FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE) },
                 ) {
-                    Text("系统删除该媒体")
+                    Text("全局删除媒体")
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { handleSemanticSelection(FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY) },
                 ) {
-                    Text("从当前帖子移除")
+                    Text("只从帖子移除")
                 }
             },
         )
@@ -387,7 +390,7 @@ fun MediaManagementScreen(
             },
             title = { Text("空帖保护") },
             text = {
-                Text("继续删除会让当前帖子变成空帖。本轮不允许直接留下空帖子，你可以删除整个帖子或取消本次删除。")
+                Text("继续处理会让当前帖子变成空帖。本轮不允许直接留下空帖子。你可以确认删除整个帖子到回收站，或取消本次操作。")
             },
             confirmButton = {
                 TextButton(
@@ -399,7 +402,7 @@ fun MediaManagementScreen(
                         executeDelete(semantic)
                     },
                 ) {
-                    Text("删除整个帖子")
+                    Text("删除帖子到回收站")
                 }
             },
             dismissButton = {
@@ -653,11 +656,14 @@ private fun RealMediaManagementScreen(
     }
 
     if (showDeleteSemanticDialog) {
+        val deleteCount = selectedForDelete.size
         AlertDialog(
             onDismissRequest = { showDeleteSemanticDialog = false },
-            title = { Text("选择删除语义") },
+            title = { Text("确认处理选中媒体？") },
             text = {
-                Text("目录移除只删除当前帖子里的关联；系统删除会把媒体从整个空间删除，并写入后端回收站。")
+                Text(
+                    "已选 $deleteCount 项媒体。\n\n“仅从当前帖子移除”只删除当前帖子里的关联，媒体仍保留在照片流和其他帖子中。\n\n“全局删除媒体”会从整个 App 内容空间删除媒体，并写入后端回收站，照片流和相关帖子都会受到影响。",
+                )
             },
             confirmButton = {
                 TextButton(
@@ -667,7 +673,7 @@ private fun RealMediaManagementScreen(
                         exitMode()
                     },
                 ) {
-                    Text("系统删除媒体")
+                    Text("全局删除媒体")
                 }
             },
             dismissButton = {

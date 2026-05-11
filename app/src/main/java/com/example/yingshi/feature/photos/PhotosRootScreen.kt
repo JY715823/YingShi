@@ -146,13 +146,16 @@ fun PhotosRootScreen(
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
         if (showDeleteConfirm) {
+            val selectedCount = photoSelectionState.selectedCount
             AlertDialog(
                 onDismissRequest = { showDeleteConfirm = false },
                 title = {
-                    Text(text = "确认删除该媒体？")
+                    Text(text = "删除 App 媒体到回收站？")
                 },
                 text = {
-                    Text(text = "删除后会进入回收站，可在回收站中恢复。")
+                    Text(
+                        text = "将从照片流全局删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关帖子里的引用。媒体会进入 App 回收站，后续可在回收站中恢复。",
+                    )
                 },
                 confirmButton = {
                     TextButton(
@@ -162,6 +165,11 @@ fun PhotosRootScreen(
                             val feedItems = FakePhotoFeedRepository.getPhotoFeed()
                             val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
                             if (selectedMedia.isEmpty()) {
+                                Toast.makeText(
+                                    context,
+                                    "没有找到可删除的媒体，可能已经被移除。",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                                 return@TextButton
                             }
 
@@ -199,12 +207,12 @@ fun PhotosRootScreen(
                             photoSelectionState = photoSelectionState.clear()
                             Toast.makeText(
                                 context,
-                                "已执行本地系统删，并写入回收站。",
+                                "已删除 $selectedCount 项 App 媒体，并写入回收站。",
                                 Toast.LENGTH_SHORT,
                             ).show()
                         },
                     ) {
-                        Text(text = "删除")
+                        Text(text = "删除到 App 回收站")
                     }
                 },
                 dismissButton = {
