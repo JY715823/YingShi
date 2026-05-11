@@ -186,6 +186,11 @@ private fun canUseAsVideoPoster(
     if (url.isNullOrBlank()) return false
     val normalizedMimeType = mimeType?.trim()?.lowercase(Locale.ROOT)
     if (normalizedMimeType?.startsWith("image/") == true) return true
+    if (url.contains("variant=cover", ignoreCase = true) ||
+        url.contains("variant=preview", ignoreCase = true)
+    ) {
+        return true
+    }
     return looksLikeImageUrl(url)
 }
 

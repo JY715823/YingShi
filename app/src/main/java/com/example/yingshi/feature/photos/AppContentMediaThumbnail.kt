@@ -60,23 +60,6 @@ internal fun AppContentMediaThumbnail(
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val videoPosterUrl = remember(mediaSource, mediaType, thumbnailUrl) {
-        if (mediaType == AppMediaType.VIDEO &&
-            (thumbnailUrl.isNullOrBlank() || looksLikeVideoSource(thumbnailUrl, mediaSource?.mimeType))
-        ) {
-            mediaSource.viewerVideoUrl(mediaType) ?: thumbnailUrl
-        } else {
-            null
-        }
-    }
-    val videoPosterState = if (mediaType == AppMediaType.VIDEO && !videoPosterUrl.isNullOrBlank()) {
-        rememberVideoPosterState(
-            url = videoPosterUrl,
-            accessToken = accessToken,
-        ).value
-    } else {
-        VideoPosterState()
-    }
     val modelUrl = thumbnailUrl?.takeUnless {
         mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
     }
@@ -111,22 +94,51 @@ internal fun AppContentMediaThumbnail(
             null
         }
     }
-    val directPosterBitmap = videoPosterState.model as? Bitmap
     val previewPainter = rememberAsyncImagePainter(
-        model = if (directPosterBitmap == null) {
-            videoPosterState.model ?: previewRequest
-        } else {
-            previewRequest
-        },
+        model = previewRequest,
     )
     val originalPainter = rememberAsyncImagePainter(model = originalRequest)
     val previewState = previewPainter.state
     val originalState = originalPainter.state
+    val videoPosterUrl = if (mediaType == AppMediaType.VIDEO &&
+        (modelUrl.isNullOrBlank() ||
+            looksLikeVideoSource(thumbnailUrl, mediaSource?.mimeType) ||
+            previewState is AsyncImagePainter.State.Error)
+    ) {
+        mediaSource.viewerVideoUrl(mediaType) ?: thumbnailUrl
+    } else {
+        null
+    }
+    val videoPosterState = if (mediaType == AppMediaType.VIDEO && !videoPosterUrl.isNullOrBlank()) {
+        rememberVideoPosterState(
+            url = videoPosterUrl,
+            accessToken = accessToken,
+        ).value
+    } else {
+        VideoPosterState()
+    }
+    val directPosterBitmap = videoPosterState.model as? Bitmap
+    val videoPosterPainter = rememberAsyncImagePainter(
+        model = if (directPosterBitmap == null) {
+            videoPosterState.model
+        } else {
+            null
+        },
+    )
     val showOriginalImage = mediaType == AppMediaType.IMAGE &&
         originalLoadState == OriginalLoadState.Loaded &&
         originalState is AsyncImagePainter.State.Success
-    val activePainter = if (showOriginalImage) originalPainter else previewPainter
-    val activeState = if (showOriginalImage) originalState else previewState
+    val showVideoPosterImage = mediaType == AppMediaType.VIDEO && videoPosterState.model != null
+    val activePainter = when {
+        showOriginalImage -> originalPainter
+        showVideoPosterImage && directPosterBitmap == null -> videoPosterPainter
+        else -> previewPainter
+    }
+    val activeState = when {
+        showOriginalImage -> originalState
+        showVideoPosterImage && directPosterBitmap == null -> videoPosterPainter.state
+        else -> previewState
+    }
     LaunchedEffect(mediaType, originalImageUrl, originalLoadState, originalState) {
         if (RepositoryProvider.currentMode != RepositoryMode.FAKE) return@LaunchedEffect
         if (mediaType != AppMediaType.IMAGE || originalImageUrl.isNullOrBlank()) return@LaunchedEffect
@@ -143,7 +155,7 @@ internal fun AppContentMediaThumbnail(
         }
     }
     val showImage = directPosterBitmap != null ||
-        (videoPosterState.model != null || previewRequest != null || showOriginalImage) &&
+        (showVideoPosterImage || previewRequest != null || showOriginalImage) &&
         activeState !is AsyncImagePainter.State.Error
 
     Box(
