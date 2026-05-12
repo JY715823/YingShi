@@ -676,6 +676,9 @@ private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashIt
         state = state,
         sourcePostId = sourcePostId,
         sourceMediaId = sourceMediaId,
+        commentTargetMediaId = sourceMediaId
+            ?: mediaSnapshot?.mediaId
+            ?: relatedMediaIds.firstOrNull { it.isNotBlank() },
         title = title,
         previewInfo = previewInfo,
         deletedAtMillis = deletedAtMillis,

@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,11 +13,17 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,7 +91,20 @@ fun TrashDetailScreen(
     }
 
     if (entry.type == TrashEntryType.MEDIA_SYSTEM_DELETED || entry.type == TrashEntryType.MEDIA_REMOVED) {
-        TrashMediaViewerDetailScreen(
+        TrashMediaViewerDetailPagerScreen(
+            entry = entry,
+            showPermanentDeleteConfirm = showPermanentDeleteConfirm,
+            onShowPermanentDeleteConfirmChange = { showPermanentDeleteConfirm = it },
+            onBack = onBack,
+            onEntryRemoved = onEntryRemoved,
+            onEntryRestored = onEntryRestored,
+            modifier = modifier,
+        )
+        return
+    }
+
+    if (entry.type == TrashEntryType.POST_DELETED) {
+        TrashPostViewerDetailScreen(
             entry = entry,
             showPermanentDeleteConfirm = showPermanentDeleteConfirm,
             onShowPermanentDeleteConfirmChange = { showPermanentDeleteConfirm = it },
@@ -173,6 +193,202 @@ fun TrashDetailScreen(
 }
 
 @Composable
+private fun TrashMediaViewerDetailPagerScreen(
+    entry: TrashEntryUiModel,
+    showPermanentDeleteConfirm: Boolean,
+    onShowPermanentDeleteConfirmChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onEntryRemoved: () -> Unit,
+    onEntryRestored: (List<String>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val viewerEntries = remember(entry.id, entry.type) {
+        FakeTrashRepository.getEntries(entry.type)
+            .filter { it.type == entry.type && it.mediaSnapshot != null }
+            .ifEmpty { listOf(entry) }
+    }
+    val initialPage = viewerEntries.indexOfFirst { it.id == entry.id }
+        .takeIf { it >= 0 } ?: 0
+    val pagerState = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { viewerEntries.size },
+    )
+    val currentEntry = viewerEntries[pagerState.currentPage.coerceIn(0, viewerEntries.lastIndex)]
+    val currentMedia = currentEntry.mediaSnapshot
+    val comments = remember(currentMedia?.mediaId) {
+        currentMedia?.mediaId?.let(FakeCommentRepository::getMediaComments).orEmpty()
+    }
+    val originalLoadState = currentMedia?.mediaId?.let(FakeOriginalLoadRepository::getState)
+        ?: OriginalLoadState.NotLoaded
+    var showRestoreConfirm by remember(currentEntry.id) {
+        mutableStateOf(false)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFF050608)),
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1,
+            userScrollEnabled = viewerEntries.size > 1,
+            key = { page -> viewerEntries[page].id },
+        ) { page ->
+            val pageMedia = viewerEntries[page].mediaSnapshot
+            if (pageMedia == null) {
+                TrashDetailEmptyCard(
+                    text = "当前媒体快照不存在，暂时无法展示删除态详情。",
+                    modifier = Modifier
+                        .wrapContentSize(Alignment.Center)
+                        .padding(YingShiThemeTokens.spacing.lg),
+                )
+            } else {
+                val pageOriginalLoadState = FakeOriginalLoadRepository.getState(pageMedia.mediaId)
+                TrashViewerMediaCanvas(
+                    media = pageMedia,
+                    originalLoadState = pageOriginalLoadState,
+                    onOriginalLoadStateChange = { state ->
+                        when (state) {
+                            OriginalLoadState.Loaded -> FakeOriginalLoadRepository.loadOriginal(pageMedia.mediaId)
+                            OriginalLoadState.Failed -> FakeOriginalLoadRepository.clearOriginal(pageMedia.mediaId)
+                            else -> Unit
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TrashViewerOverlayButton(text = "<", onClick = onBack)
+            Box(modifier = Modifier.weight(1f))
+            TrashViewerOverlayButton(
+                text = "↩",
+                onClick = { showRestoreConfirm = true },
+            )
+            TrashViewerOverlayButton(
+                text = "🗑",
+                destructive = true,
+                onClick = { onShowPermanentDeleteConfirmChange(true) },
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(YingShiThemeTokens.spacing.lg),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        ) {
+            currentMedia?.let { snapshot ->
+                TrashViewerOverlayButton(
+                    text = originalLoadState.actionLabel(),
+                    onClick = {
+                        when (originalLoadState) {
+                            OriginalLoadState.Loading,
+                            OriginalLoadState.Loaded,
+                            -> Unit
+                            OriginalLoadState.NotLoaded,
+                            OriginalLoadState.Failed,
+                            -> FakeOriginalLoadRepository.loadOriginal(snapshot.mediaId)
+                        }
+                    },
+                )
+            }
+            if (currentEntry.type == TrashEntryType.MEDIA_REMOVED) {
+                Surface(
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = Color.Black.copy(alpha = 0.38f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                ) {
+                    Text(
+                        text = trashViewerPostTitle(currentEntry),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White.copy(alpha = 0.92f),
+                    )
+                }
+            }
+        }
+        TrashViewerCommentPreview(
+            comments = comments,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(YingShiThemeTokens.spacing.lg),
+        )
+    }
+
+    if (showPermanentDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { onShowPermanentDeleteConfirmChange(false) },
+            title = { Text("永久删除该回收站项目？") },
+            text = { Text("确认后会删除回收站记录，无法恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onShowPermanentDeleteConfirmChange(false)
+                        if (FakeTrashRepository.permanentlyDeleteEntry(currentEntry.id)) {
+                            onEntryRemoved()
+                        } else {
+                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                ) {
+                    Text("永久删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onShowPermanentDeleteConfirmChange(false) }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("确认恢复？") },
+            text = { Text("将恢复当前回收站媒体条目。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreConfirm = false
+                        val targetMediaIds = currentEntry.restoreTargetMediaIds()
+                        val result = FakeTrashRepository.restoreEntry(currentEntry.id)
+                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        if (result.success) {
+                            onEntryRestored(targetMediaIds)
+                        }
+                    },
+                ) {
+                    Text("恢复")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+}
+
+@Composable
 private fun TrashMediaViewerDetailScreen(
     entry: TrashEntryUiModel,
     showPermanentDeleteConfirm: Boolean,
@@ -184,6 +400,9 @@ private fun TrashMediaViewerDetailScreen(
 ) {
     val context = LocalContext.current
     val media = entry.mediaSnapshot
+    val comments = remember(media?.mediaId) {
+        media?.mediaId?.let(FakeCommentRepository::getMediaComments).orEmpty()
+    }
     val originalLoadState = media?.mediaId?.let(FakeOriginalLoadRepository::getState)
         ?: OriginalLoadState.NotLoaded
 
@@ -232,7 +451,10 @@ private fun TrashMediaViewerDetailScreen(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.sm),
+                .padding(
+                    horizontal = YingShiThemeTokens.spacing.lg,
+                    vertical = YingShiThemeTokens.spacing.md,
+                ),
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -295,6 +517,12 @@ private fun TrashMediaViewerDetailScreen(
                 }
             }
         }
+        TrashViewerCommentPreview(
+            comments = comments,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(YingShiThemeTokens.spacing.lg),
+        )
     }
 
     if (showPermanentDeleteConfirm) {
@@ -353,6 +581,415 @@ private fun TrashViewerOverlayButton(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             color = Color.White.copy(alpha = 0.94f),
+        )
+    }
+}
+
+@Composable
+private fun TrashViewerCommentPreview(
+    comments: List<CommentUiModel>,
+    modifier: Modifier = Modifier,
+) {
+    if (comments.isEmpty()) return
+    Surface(
+        modifier = modifier.fillMaxWidth(0.62f),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = Color.Black.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(YingShiThemeTokens.spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xxs),
+        ) {
+            Text(
+                text = "媒体评论",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White.copy(alpha = 0.92f),
+            )
+            comments.take(2).forEach { comment ->
+                Text(
+                    text = "${comment.author}: ${comment.content}",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.86f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrashPostViewerDetailScreen(
+    entry: TrashEntryUiModel,
+    showPermanentDeleteConfirm: Boolean,
+    onShowPermanentDeleteConfirmChange: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onEntryRemoved: () -> Unit,
+    onEntryRestored: (List<String>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val snapshot = entry.postSnapshot
+    val postComments = remember(snapshot?.post?.id) {
+        snapshot?.post?.id?.let(FakeCommentRepository::getPostComments).orEmpty()
+    }
+    var selectedMedia by remember(entry.id) {
+        mutableStateOf<TrashMediaSnapshot?>(null)
+    }
+    var showRestoreConfirm by remember(entry.id) {
+        mutableStateOf(false)
+    }
+
+    fun restorePost() {
+        val targetMediaIds = entry.restoreTargetMediaIds()
+        val result = FakeTrashRepository.restoreEntry(entry.id)
+        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+        if (result.success) {
+            onEntryRestored(targetMediaIds)
+        }
+    }
+
+    if (selectedMedia != null) {
+        TrashPostMediaViewerOverlay(
+            entry = entry,
+            media = selectedMedia,
+            onBack = { selectedMedia = null },
+            onRestorePost = { showRestoreConfirm = true },
+            onRequestDeletePost = { onShowPermanentDeleteConfirmChange(true) },
+        )
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    horizontal = YingShiThemeTokens.spacing.lg,
+                    vertical = YingShiThemeTokens.spacing.md,
+                ),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+        ) {
+            TrashPostViewerTopBar(
+                entry = entry,
+                onBack = onBack,
+                onRestore = { showRestoreConfirm = true },
+                onRemove = { onShowPermanentDeleteConfirmChange(true) },
+            )
+
+            if (snapshot == null) {
+                TrashDetailEmptyCard(text = "当前帖子快照不存在，暂时无法展示删除态详情。")
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+                    ) {
+                        Text(
+                            text = snapshot.post.title.ifBlank { "未命名帖子" },
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = snapshot.post.summary.ifBlank { entry.previewInfo },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 帖子时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)} · ${snapshot.mediaSnapshots.size} 项媒体",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                        )
+                    }
+                }
+
+                if (snapshot.mediaSnapshots.isEmpty()) {
+                    TrashDetailEmptyCard(text = "这个帖子里的媒体已不可用。")
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        snapshot.mediaSnapshots.chunked(3).forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                row.forEach { media ->
+                                    TrashPostMediaGridTile(
+                                        media = media,
+                                        onClick = { selectedMedia = media },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                repeat(3 - row.size) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                TrashReadOnlyCommentCard(
+                    title = "帖子评论",
+                    emptyText = "当前帖子没有可展示的评论。",
+                    comments = postComments,
+                )
+            }
+        }
+    }
+
+    if (showPermanentDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { onShowPermanentDeleteConfirmChange(false) },
+            title = { Text("永久删除该回收站项目？") },
+            text = {
+                Text("确认后会删除回收站记录。REAL 模式下，媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onShowPermanentDeleteConfirmChange(false)
+                        if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
+                            onEntryRemoved()
+                        } else {
+                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                    },
+                ) {
+                    Text("永久删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onShowPermanentDeleteConfirmChange(false) }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("确认恢复？") },
+            text = { Text("将恢复当前回收站帖子。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreConfirm = false
+                        restorePost()
+                    },
+                ) {
+                    Text("恢复")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun TrashPostViewerTopBar(
+    entry: TrashEntryUiModel,
+    onBack: () -> Unit,
+    onRestore: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TrashCircleButton(text = "<", onClick = onBack)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = entry.type.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = "回收站帖子查看",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+        TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
+        TrashActionChip(text = "删除", emphasized = false, onClick = onRemove)
+    }
+}
+
+@Composable
+private fun TrashPostMediaGridTile(
+    media: TrashMediaSnapshot,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick),
+    ) {
+        TrashMediaCanvas(
+            media = media,
+            modifier = Modifier.matchParentSize(),
+        )
+        if (media.mediaSource == null) {
+            TrashDeletedMediaOverlay(modifier = Modifier.matchParentSize())
+        }
+        if (media.mediaType == AppMediaType.VIDEO) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(5.dp),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                color = Color.Black.copy(alpha = 0.38f),
+            ) {
+                Text(
+                    text = formatVideoDurationLabel(media.videoDurationMillis) ?: "视频",
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrashPostMediaViewerOverlay(
+    entry: TrashEntryUiModel,
+    media: TrashMediaSnapshot?,
+    onBack: () -> Unit,
+    onRestorePost: () -> Unit,
+    onRequestDeletePost: () -> Unit,
+) {
+    val originalLoadState = media?.mediaId?.let(FakeOriginalLoadRepository::getState)
+        ?: OriginalLoadState.NotLoaded
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF07111F))
+            .statusBarsPadding(),
+    ) {
+        if (media == null || media.mediaSource == null) {
+            TrashDeletedMediaOverlay(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(0.72f)
+                    .aspectRatio(1f),
+            )
+        } else {
+            AppContentMediaThumbnail(
+                mediaSource = media.mediaSource,
+                mediaType = media.mediaType,
+                palette = media.palette,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .aspectRatio(media.aspectRatio.coerceIn(0.45f, 2.2f)),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                requestSize = 1080,
+                showLoadingIndicator = true,
+                showStatusBadge = true,
+                showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
+                originalLoadState = originalLoadState,
+                onOriginalLoadStateChange = { state ->
+                    when (state) {
+                        OriginalLoadState.Loaded -> FakeOriginalLoadRepository.loadOriginal(media.mediaId)
+                        OriginalLoadState.Failed -> FakeOriginalLoadRepository.clearOriginal(media.mediaId)
+                        else -> Unit
+                    }
+                },
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .padding(
+                    horizontal = YingShiThemeTokens.spacing.lg,
+                    vertical = YingShiThemeTokens.spacing.md,
+                ),
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TrashViewerOverlayButton(text = "<", onClick = onBack)
+            Box(modifier = Modifier.weight(1f))
+            TrashViewerOverlayButton(text = "↩", onClick = onRestorePost)
+            TrashViewerOverlayButton(text = "删", destructive = true, onClick = onRequestDeletePost)
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(YingShiThemeTokens.spacing.lg),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        ) {
+            if (media?.mediaSource != null) {
+                TrashViewerOverlayButton(
+                    text = originalLoadState.actionLabel(),
+                    onClick = {
+                        when (originalLoadState) {
+                            OriginalLoadState.Loading,
+                            OriginalLoadState.Loaded,
+                            -> Unit
+                            OriginalLoadState.NotLoaded,
+                            OriginalLoadState.Failed,
+                            -> FakeOriginalLoadRepository.loadOriginal(media.mediaId)
+                        }
+                    },
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                color = Color.Black.copy(alpha = 0.38f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+            ) {
+                Text(
+                    text = entry.postSnapshot?.post?.title ?: entry.title,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White.copy(alpha = 0.92f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrashDeletedMediaOverlay(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+            .background(Color.Black.copy(alpha = 0.44f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "已删除",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
         )
     }
 }
@@ -464,7 +1101,7 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
                     state = pagerState,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(320.dp),
+                        .height(372.dp),
                     beyondViewportPageCount = 1,
                     key = { page -> mediaSnapshots[page].mediaId },
                 ) { page ->
@@ -675,6 +1312,52 @@ private fun TrashMediaCanvas(
 }
 
 @Composable
+private fun TrashViewerMediaCanvas(
+    media: TrashMediaSnapshot,
+    originalLoadState: OriginalLoadState,
+    onOriginalLoadStateChange: (OriginalLoadState) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .padding(top = 68.dp, bottom = 104.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        val aspect = media.aspectRatio.coerceIn(0.45f, 2.2f)
+        val availableWidth = maxWidth
+        val availableHeight = maxHeight.coerceAtLeast(120.dp)
+        val widthFromHeight = availableHeight * aspect
+        val fittedWidth = if (widthFromHeight < availableWidth) widthFromHeight else availableWidth
+        val fittedHeight = fittedWidth / aspect
+
+        if (media.mediaSource != null) {
+            AppContentMediaThumbnail(
+                mediaSource = media.mediaSource,
+                mediaType = media.mediaType,
+                palette = media.palette,
+                modifier = Modifier
+                    .width(fittedWidth)
+                    .height(fittedHeight),
+                contentDescription = media.mediaId,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                requestSize = 1080,
+                showLoadingIndicator = true,
+                showStatusBadge = true,
+                showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
+                originalLoadState = originalLoadState,
+                onOriginalLoadStateChange = onOriginalLoadStateChange,
+            )
+        } else {
+            TrashDeletedMediaOverlay(
+                modifier = Modifier
+                    .width(fittedWidth)
+                    .height(fittedHeight),
+            )
+        }
+    }
+}
+
+@Composable
 private fun TrashReadOnlyCommentCard(
     title: String,
     emptyText: String,
@@ -725,6 +1408,7 @@ private fun TrashReadOnlyCommentCard(
                 }
             }
         }
+
     }
 }
 

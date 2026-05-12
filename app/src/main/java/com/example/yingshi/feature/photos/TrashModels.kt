@@ -35,6 +35,7 @@ data class TrashEntryUiModel(
     val previewInfo: String,
     val sourcePostId: String? = null,
     val sourceMediaId: String? = null,
+    val commentTargetMediaId: String? = null,
     val relatedPostIds: List<String> = emptyList(),
     val relatedMediaIds: List<String> = emptyList(),
     val postSnapshot: TrashPostSnapshot? = null,

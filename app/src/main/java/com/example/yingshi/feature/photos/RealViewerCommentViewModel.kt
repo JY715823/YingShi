@@ -89,7 +89,7 @@ class RealViewerCommentViewModel(
                     ),
                 )
             }
-            val commentState = commentRepository.getMediaComments(mediaId).toCommentListState()
+            val commentState = commentRepository.getMediaComments(mediaId, page = 1, size = 50).toCommentListState()
             _uiState.update { state ->
                 state.copy(
                     commentThreads = state.commentThreads + (

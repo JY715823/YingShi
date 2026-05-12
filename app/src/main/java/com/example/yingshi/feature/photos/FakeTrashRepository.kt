@@ -95,6 +95,9 @@ object FakeTrashRepository {
         val entry = getEntry(entryId)
         if (entry != null) {
             entries.remove(entry)
+            if (entry.type == TrashEntryType.POST_DELETED && entry.sourcePostId != null) {
+                removeMediaRemovedEntriesForPost(entry.sourcePostId)
+            }
             latestSnackbarMessage = TrashSnackbarMessageUiModel(
                 entryId = entryId,
                 message = "已永久删除回收站记录。",
@@ -124,6 +127,11 @@ object FakeTrashRepository {
                 val mediaSnapshot = entry.mediaSnapshot
                 if (postId == null || mediaSnapshot == null) {
                     false
+                } else if (FakeAlbumRepository.getPost(postId) == null) {
+                    return TrashMutationResult(
+                        success = false,
+                        message = "原帖子不可用，无法恢复到原帖子",
+                    )
                 } else {
                     FakeAlbumRepository.restoreMediaToPost(
                         postId = postId,
@@ -259,6 +267,15 @@ object FakeTrashRepository {
         }
         pendingRemovals.removeAll { pending ->
             pending.entry.type == TrashEntryType.POST_DELETED && pending.entry.sourcePostId == postId
+        }
+    }
+
+    private fun removeMediaRemovedEntriesForPost(postId: String) {
+        entries.removeAll { entry ->
+            entry.type == TrashEntryType.MEDIA_REMOVED && entry.sourcePostId == postId
+        }
+        pendingRemovals.removeAll { pending ->
+            pending.entry.type == TrashEntryType.MEDIA_REMOVED && pending.entry.sourcePostId == postId
         }
     }
 

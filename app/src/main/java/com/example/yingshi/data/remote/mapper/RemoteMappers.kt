@@ -167,6 +167,7 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
         state = state,
         sourcePostId = sourcePostId,
         sourceMediaId = sourceMediaId,
+        commentTargetMediaId = commentTargetMediaId,
         title = title,
         previewInfo = previewInfo,
         deletedAtMillis = deletedAtMillis,

@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -97,6 +98,12 @@ fun PhotosRootScreen(
     var showDeleteConfirm by rememberSaveable {
         mutableStateOf(false)
     }
+    var trashSelectionMode by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var trashSelectionExitNonce by rememberSaveable {
+        mutableIntStateOf(0)
+    }
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -118,6 +125,8 @@ fun PhotosRootScreen(
     val selectedSection = PhotosTopDestination.entries[pagerState.currentPage]
     val isPhotoSelectionMode =
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
+    val isTrashSelectionMode =
+        selectedSection == PhotosTopDestination.TRASH && trashSelectionMode
 
     LaunchedEffect(pagerState.currentPage) {
         val pageName = PhotosTopDestination.entries[pagerState.currentPage].name
@@ -133,6 +142,12 @@ fun PhotosRootScreen(
     if (isPhotoSelectionMode) {
         BackHandler {
             photoSelectionState = photoSelectionState.clear()
+        }
+    }
+    if (isTrashSelectionMode) {
+        BackHandler {
+            trashSelectionMode = false
+            trashSelectionExitNonce += 1
         }
     }
     SideEffect {
@@ -283,7 +298,7 @@ fun PhotosRootScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 beyondViewportPageCount = 1,
-                userScrollEnabled = !isPhotoSelectionMode,
+                userScrollEnabled = !isPhotoSelectionMode && !isTrashSelectionMode,
                 key = { page -> PhotosTopDestination.entries[page].name },
             ) { page ->
                 key(backendSessionKey, PhotosTopDestination.entries[page].name) {
@@ -374,6 +389,8 @@ fun PhotosRootScreen(
                                 onShowPendingCleanupChange = onTrashShowPendingCleanupChange,
                                 onOpenTrashDetail = onOpenTrashDetail,
                                 onRestoreTargetMediaIds = onTrashRestoreTargetMediaIds,
+                                selectionExitNonce = trashSelectionExitNonce,
+                                onSelectionModeChange = { trashSelectionMode = it },
                             )
                         }
                     }

@@ -326,7 +326,6 @@ private fun RealPostDetailContent(
     onDeletePostComment: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val sessionVersion = AuthSessionManager.sessionVersion
@@ -369,156 +368,145 @@ private fun RealPostDetailContent(
         detail.mediaItems.map { it.toRealOriginalMediaTarget() }
     }
     val postOriginalSummary = RealOriginalLoadRepository.getPostSummaryForTargets(originalTargets)
-    val placeholderCacheSummary = remember(postMediaIds) {
-        AppMediaCacheSummary(
-            mediaCount = postMediaIds.size,
-            previewCachedCount = 0,
-            originalCachedCount = 0,
-            videoCachedCount = 0,
-            totalBytes = 0L,
-            totalSizeLabel = "0 B",
-        )
-    }
-
-    Column(
-        modifier = modifier
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.xs, bottom = spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        PostDetailTopBar(
-            onBack = onBack,
-            onExport = {
-                Toast.makeText(context, "导出能力暂时仍为占位。", Toast.LENGTH_SHORT).show()
-            },
-            onEdit = onOpenGearEdit,
-        )
-
-        if (uiState.errorMessage != null) {
-            PostInlineNotice(
-                text = uiState.errorMessage,
-                actionLabel = "重试",
-                onAction = onRefresh,
+    PostDetailBodyLayout(
+        modifier = modifier,
+        topBar = {
+            PostDetailTopBar(
+                onBack = onBack,
+                onExport = {
+                    Toast.makeText(context, "导出能力暂时仍为占位。", Toast.LENGTH_SHORT).show()
+                },
+                onEdit = onOpenGearEdit,
             )
-        }
-
-        PostMediaArea(
-            detail = detail,
-            currentPage = currentPage,
-            modifier = Modifier.fillMaxWidth(),
-            onOpenMedia = { onOpenMediaViewer(currentPage) },
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(372.dp),
-                beyondViewportPageCount = 1,
-                key = { page -> detail.mediaItems[page].id },
-            ) { page ->
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PostMediaCard(
-                        media = detail.mediaItems[page],
-                        originalLoadState = if (detail.mediaItems[page].mediaType == AppMediaType.IMAGE) {
-                            RealOriginalLoadRepository.getState(detail.mediaItems[page].toRealOriginalMediaTarget())
-                        } else {
-                            OriginalLoadState.NotLoaded
-                        },
-                        onOriginalLoadStateChange = { state ->
-                            val media = detail.mediaItems[page]
-                            val mediaTarget = media.toRealOriginalMediaTarget()
-                            val mediaId = media.id
-                            val previousState = RealOriginalLoadRepository.getState(mediaTarget)
-                            if (previousState != state) {
-                                RealOriginalLoadRepository.setState(mediaTarget, state)
-                                if (page == currentPage) {
-                                    when (state) {
-                                        OriginalLoadState.Loaded -> {
-                                            Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+        },
+        notice = {
+            uiState.errorMessage?.let { message ->
+                PostInlineNotice(
+                    text = message,
+                    actionLabel = "重试",
+                    onAction = onRefresh,
+                )
+            }
+        },
+        mediaArea = {
+            PostMediaArea(
+                detail = detail,
+                currentPage = currentPage,
+                modifier = Modifier.fillMaxWidth(),
+                onOpenMedia = { onOpenMediaViewer(currentPage) },
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(372.dp),
+                    beyondViewportPageCount = 1,
+                    key = { page -> detail.mediaItems[page].id },
+                ) { page ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PostMediaCard(
+                            media = detail.mediaItems[page],
+                            originalLoadState = if (detail.mediaItems[page].mediaType == AppMediaType.IMAGE) {
+                                RealOriginalLoadRepository.getState(detail.mediaItems[page].toRealOriginalMediaTarget())
+                            } else {
+                                OriginalLoadState.NotLoaded
+                            },
+                            onOriginalLoadStateChange = { state ->
+                                val media = detail.mediaItems[page]
+                                val mediaTarget = media.toRealOriginalMediaTarget()
+                                val previousState = RealOriginalLoadRepository.getState(mediaTarget)
+                                if (previousState != state) {
+                                    RealOriginalLoadRepository.setState(mediaTarget, state)
+                                    if (page == currentPage) {
+                                        when (state) {
+                                            OriginalLoadState.Loaded -> {
+                                                Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+                                            }
+                                            OriginalLoadState.Failed -> {
+                                                Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+                                            }
+                                            else -> Unit
                                         }
-                                        OriginalLoadState.Failed -> {
-                                            Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
-                                        }
-                                        else -> Unit
                                     }
                                 }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onOpenMediaViewer(page) },
-                    )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onOpenMediaViewer(page) },
+                        )
+                    }
                 }
             }
-        }
-
-        PostMediaInfoRow(
-            media = currentMedia,
-            commentCount = currentMediaCommentCount,
-            originalLoadState = currentOriginalState,
-            showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE &&
-                currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType),
-            onCommentClick = { onOpenMediaComments(currentPage) },
-            onOriginalClick = {
-                when {
-                    currentMedia.mediaType != AppMediaType.IMAGE ||
-                        !currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType) -> {
-                        Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
-                    }
-
-                    currentOriginalState == OriginalLoadState.Loading -> {
-                        Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
-                    }
-
-                    currentOriginalState == OriginalLoadState.Loaded -> {
-                        Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
-                    }
-
-                    else -> {
-                        if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, accessToken)) {
-                            Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
-                        } else {
+        },
+        mediaInfo = {
+            PostMediaInfoRow(
+                media = currentMedia,
+                commentCount = currentMediaCommentCount,
+                originalLoadState = currentOriginalState,
+                showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE &&
+                    currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType),
+                onCommentClick = { onOpenMediaComments(currentPage) },
+                onOriginalClick = {
+                    when {
+                        currentMedia.mediaType != AppMediaType.IMAGE ||
+                            !currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType) -> {
                             Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
                         }
+
+                        currentOriginalState == OriginalLoadState.Loading -> {
+                            Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
+                        }
+
+                        currentOriginalState == OriginalLoadState.Loaded -> {
+                            Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
+                        }
+
+                        else -> {
+                            if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, accessToken)) {
+                                Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
-                }
-            },
-        )
-
-        PostInfoSection(
-            detail = detail,
-            originalSummary = postOriginalSummary,
-            onLoadAllOriginals = {
-                Toast.makeText(context, "开始加载全帖原图", Toast.LENGTH_SHORT).show()
-                coroutineScope.launch {
-                    val summary = RealOriginalLoadRepository.loadAllOriginals(
-                        context = context,
-                        targets = originalTargets,
-                        accessToken = accessToken,
-                    )
-                    val message = "已加载 ${summary.successCount} 张原图，" +
-                        "${summary.skippedCount} 张无原图，${summary.failedCount} 张失败"
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                }
-            },
-        )
-
-        RealCommentThreadCard(
-            title = "帖子评论",
-            subtitle = "这里展示的是整篇帖子的评论，不和媒体评论混合。",
-            stateKeyPrefix = "real-post-comment-${detail.postId}",
-            emptyText = "当前还没有帖子评论，来发第一条吧。",
-            state = uiState.postComments,
-            onRetry = onRefresh,
-            onCreateComment = onCreatePostComment,
-            onUpdateComment = onUpdatePostComment,
-            onDeleteComment = onDeletePostComment,
-        )
-    }
+                },
+            )
+        },
+        postInfo = {
+            PostInfoSection(
+                detail = detail,
+                originalSummary = postOriginalSummary,
+                onLoadAllOriginals = {
+                    Toast.makeText(context, "开始加载全帖原图", Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        val summary = RealOriginalLoadRepository.loadAllOriginals(
+                            context = context,
+                            targets = originalTargets,
+                            accessToken = accessToken,
+                        )
+                        val message = "已加载 ${summary.successCount} 张原图，" +
+                            "${summary.skippedCount} 张无原图，${summary.failedCount} 张失败"
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
+                },
+            )
+        },
+        comments = {
+            RealCommentThreadCard(
+                title = "帖子评论",
+                subtitle = "这里展示的是整篇帖子的评论，不和媒体评论混合。",
+                stateKeyPrefix = "real-post-comment-${detail.postId}",
+                emptyText = "当前还没有帖子评论，来发第一条吧。",
+                state = uiState.postComments,
+                onRetry = onRefresh,
+                onCreateComment = onCreatePostComment,
+                onUpdateComment = onUpdatePostComment,
+                onDeleteComment = onDeletePostComment,
+            )
+        },
+    )
 }
 
 @Composable
@@ -953,9 +941,102 @@ private fun PostDetailContent(
     }
     val currentOriginalState = FakeOriginalLoadRepository.getState(currentMedia.id)
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
-    val postCacheSummary = FakeMediaCacheRepository.getSummary(postMediaIds)
 
+    PostDetailBodyLayout(
+        modifier = modifier,
+        topBar = {
+            PostDetailTopBar(
+                onBack = onBack,
+                onExport = {
+                    Toast.makeText(context, "导出 / 保存将在后续阶段接入", Toast.LENGTH_SHORT).show()
+                },
+                onEdit = onOpenGearEdit,
+            )
+        },
+        mediaArea = {
+            PostMediaArea(
+                detail = detail,
+                currentPage = currentPage,
+                modifier = Modifier.fillMaxWidth(),
+                onOpenMedia = { onOpenMediaViewer(currentPage) },
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(372.dp),
+                    beyondViewportPageCount = 1,
+                    key = { page -> detail.mediaItems[page].id },
+                ) { page ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PostMediaCard(
+                            media = detail.mediaItems[page],
+                            originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onOpenMediaViewer(page) },
+                        )
+                    }
+                }
+            }
+        },
+        mediaInfo = {
+            PostMediaInfoRow(
+                media = currentMedia,
+                commentCount = CommentGateway.mediaCommentCount(currentMedia.id),
+                originalLoadState = currentOriginalState,
+                showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE,
+                onCommentClick = { onOpenMediaComments(currentPage) },
+                onOriginalClick = {
+                    when (currentOriginalState) {
+                        OriginalLoadState.NotLoaded -> {
+                            FakeOriginalLoadRepository.loadOriginal(currentMedia.id)
+                            Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                        }
 
+                        OriginalLoadState.Loading -> {
+                            Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
+                        }
+
+                        OriginalLoadState.Loaded -> {
+                            Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                        }
+
+                        OriginalLoadState.Failed -> {
+                            FakeOriginalLoadRepository.retryOriginal(currentMedia.id)
+                            Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+            )
+        },
+        postInfo = {
+            PostInfoSection(
+                detail = detail,
+                originalSummary = postOriginalSummary,
+                onLoadAllOriginals = {
+                    FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
+                    Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                },
+            )
+        },
+        comments = { PostCommentSection(postId = detail.postId) },
+    )
+}
+
+@Composable
+fun PostDetailBodyLayout(
+    modifier: Modifier = Modifier,
+    topBar: @Composable () -> Unit,
+    notice: @Composable () -> Unit = {},
+    mediaArea: @Composable () -> Unit,
+    mediaInfo: @Composable () -> Unit,
+    postInfo: @Composable () -> Unit,
+    comments: @Composable () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
     Column(
         modifier = modifier
             .statusBarsPadding()
@@ -964,81 +1045,12 @@ private fun PostDetailContent(
             .padding(top = spacing.xs, bottom = spacing.lg),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        PostDetailTopBar(
-            onBack = onBack,
-            onExport = {
-                Toast.makeText(context, "导出 / 保存将在后续阶段接入", Toast.LENGTH_SHORT).show()
-            },
-            onEdit = onOpenGearEdit,
-        )
-
-        PostMediaArea(
-            detail = detail,
-            currentPage = currentPage,
-            modifier = Modifier.fillMaxWidth(),
-            onOpenMedia = { onOpenMediaViewer(currentPage) },
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(372.dp),
-                beyondViewportPageCount = 1,
-                key = { page -> detail.mediaItems[page].id },
-            ) { page ->
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PostMediaCard(
-                        media = detail.mediaItems[page],
-                        originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onOpenMediaViewer(page) },
-                    )
-                }
-            }
-        }
-
-        PostMediaInfoRow(
-            media = currentMedia,
-            commentCount = CommentGateway.mediaCommentCount(currentMedia.id),
-            originalLoadState = currentOriginalState,
-            showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE,
-            onCommentClick = { onOpenMediaComments(currentPage) },
-            onOriginalClick = {
-                when (currentOriginalState) {
-                    OriginalLoadState.NotLoaded -> {
-                        FakeOriginalLoadRepository.loadOriginal(currentMedia.id)
-                        Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                    }
-
-                    OriginalLoadState.Loading -> {
-                        Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
-                    }
-
-                    OriginalLoadState.Loaded -> {
-                        Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                    }
-
-                    OriginalLoadState.Failed -> {
-                        FakeOriginalLoadRepository.retryOriginal(currentMedia.id)
-                        Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            },
-        )
-
-        PostInfoSection(
-            detail = detail,
-            originalSummary = postOriginalSummary,
-            onLoadAllOriginals = {
-                FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
-                Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
-            },
-        )
-
-        PostCommentSection(postId = detail.postId)
+        topBar()
+        notice()
+        mediaArea()
+        mediaInfo()
+        postInfo()
+        comments()
     }
 }
 
@@ -1069,7 +1081,7 @@ private fun PostDetailTopBar(
 }
 
 @Composable
-private fun PostMediaArea(
+fun PostMediaArea(
     detail: PostDetailUiModel,
     currentPage: Int,
     modifier: Modifier = Modifier,
@@ -1119,7 +1131,7 @@ private fun PostMediaArea(
 }
 
 @Composable
-private fun PostMediaCard(
+fun PostMediaCard(
     media: PostDetailMediaUiModel,
     originalLoadState: OriginalLoadState = OriginalLoadState.NotLoaded,
     onOriginalLoadStateChange: (OriginalLoadState) -> Unit = {},
@@ -1165,7 +1177,7 @@ private fun PostMediaCard(
 }
 
 @Composable
-private fun PostMediaInfoRow(
+fun PostMediaInfoRow(
     media: PostDetailMediaUiModel,
     commentCount: Int,
     originalLoadState: OriginalLoadState,
@@ -1194,7 +1206,7 @@ private fun PostMediaInfoRow(
 }
 
 @Composable
-private fun PostInfoSection(
+fun PostInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
     onLoadAllOriginals: () -> Unit,
@@ -1624,7 +1636,7 @@ private fun postViewerDateParts(timeMillis: Long): PostViewerDateParts {
     )
 }
 
-private fun formatPostTime(timeMillis: Long): String {
+fun formatPostTime(timeMillis: Long): String {
     return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
 }
 

@@ -172,6 +172,7 @@ fun RemoteTrashItem.toTrashEntryUiModel(): TrashEntryUiModel {
         previewInfo = previewInfo.ifBlank { defaultTrashPreview() },
         sourcePostId = sourcePostId,
         sourceMediaId = sourceMediaId,
+        commentTargetMediaId = commentTargetMediaId,
         relatedPostIds = relatedPostIds,
         relatedMediaIds = relatedMediaIds,
         mediaSnapshot = mediaSnapshot,

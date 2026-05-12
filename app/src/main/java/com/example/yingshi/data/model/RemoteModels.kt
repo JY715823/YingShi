@@ -55,6 +55,7 @@ data class RemoteTrashItem(
     val state: String?,
     val sourcePostId: String?,
     val sourceMediaId: String?,
+    val commentTargetMediaId: String?,
     val title: String,
     val previewInfo: String,
     val deletedAtMillis: Long,

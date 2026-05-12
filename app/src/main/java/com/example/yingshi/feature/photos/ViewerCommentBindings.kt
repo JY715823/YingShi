@@ -24,6 +24,7 @@ data class ViewerCommentBindings(
 fun rememberViewerCommentBindings(
     mediaId: String,
 ): ViewerCommentBindings {
+    val normalizedMediaId = mediaId.trim()
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
         val sessionKey = realBackendSessionKey("real-viewer-comments")
         val viewModel: RealViewerCommentViewModel = viewModel(
@@ -31,9 +32,11 @@ fun rememberViewerCommentBindings(
             factory = RealViewerCommentViewModel.factory(),
         )
         val uiState by viewModel.uiState.collectAsState()
-        val threadState = uiState.commentThreads[mediaId] ?: RealCommentThreadUiState(isLoading = true)
-        LaunchedEffect(mediaId) {
-            viewModel.ensureMediaComments(mediaId)
+        val threadState = uiState.commentThreads[normalizedMediaId] ?: RealCommentThreadUiState(isLoading = true)
+        LaunchedEffect(normalizedMediaId) {
+            if (normalizedMediaId.isNotBlank()) {
+                viewModel.ensureMediaComments(normalizedMediaId)
+            }
         }
         return ViewerCommentBindings(
             comments = threadState.comments,
@@ -41,20 +44,20 @@ fun rememberViewerCommentBindings(
             isMutating = threadState.isMutating,
             errorMessage = threadState.errorMessage,
             statusMessage = threadState.statusMessage,
-            onRetry = { viewModel.retryMediaComments(mediaId) },
-            onCreateComment = { content -> viewModel.createMediaComment(mediaId, content) },
-            onUpdateComment = { commentId, content -> viewModel.updateMediaComment(mediaId, commentId, content) },
-            onDeleteComment = { commentId -> viewModel.deleteMediaComment(mediaId, commentId) },
+            onRetry = { viewModel.retryMediaComments(normalizedMediaId) },
+            onCreateComment = { content -> viewModel.createMediaComment(normalizedMediaId, content) },
+            onUpdateComment = { commentId, content -> viewModel.updateMediaComment(normalizedMediaId, commentId, content) },
+            onDeleteComment = { commentId -> viewModel.deleteMediaComment(normalizedMediaId, commentId) },
         )
     }
 
-    val comments = CommentGateway.getMediaComments(mediaId)
+    val comments = CommentGateway.getMediaComments(normalizedMediaId)
     return ViewerCommentBindings(
         comments = comments,
-        onCreateComment = { content -> CommentGateway.addMediaComment(mediaId, content) },
+        onCreateComment = { content -> CommentGateway.addMediaComment(normalizedMediaId, content) },
         onUpdateComment = { commentId, content ->
-            CommentGateway.updateMediaComment(mediaId = mediaId, commentId = commentId, content = content)
+            CommentGateway.updateMediaComment(mediaId = normalizedMediaId, commentId = commentId, content = content)
         },
-        onDeleteComment = { commentId -> CommentGateway.deleteMediaComment(mediaId, commentId) },
+        onDeleteComment = { commentId -> CommentGateway.deleteMediaComment(normalizedMediaId, commentId) },
     )
 }

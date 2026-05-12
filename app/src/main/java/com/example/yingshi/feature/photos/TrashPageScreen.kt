@@ -3,6 +3,9 @@
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +63,8 @@ fun TrashPageScreen(
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
     onRestoreTargetMediaIds: (List<String>) -> Unit = { },
+    selectionExitNonce: Int = 0,
+    onSelectionModeChange: (Boolean) -> Unit = { },
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
         RealTrashPageScreen(
@@ -69,6 +75,8 @@ fun TrashPageScreen(
             onShowPendingCleanupChange = onShowPendingCleanupChange,
             onOpenTrashDetail = onOpenTrashDetail,
             onRestoreTargetMediaIds = onRestoreTargetMediaIds,
+            selectionExitNonce = selectionExitNonce,
+            onSelectionModeChange = onSelectionModeChange,
         )
         return
     }
@@ -83,9 +91,91 @@ fun TrashPageScreen(
     var showClearConfirm by rememberSaveable {
         mutableStateOf(false)
     }
+    var showDeleteSelectedConfirm by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var showRestoreConfirm by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var pendingRestoreEntries by remember {
+        mutableStateOf(emptyList<TrashEntryUiModel>())
+    }
+    var selectionMode by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var selectedEntryIds by rememberSaveable {
+        mutableStateOf(emptySet<String>())
+    }
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
     val entries = FakeTrashRepository.getEntries(selectedType)
+    val selectedEntries = entries.filter { it.id in selectedEntryIds }
     val snackbarMessage = FakeTrashRepository.getSnackbarMessage()
+
+    fun toggleSelection(entry: TrashEntryUiModel) {
+        selectionMode = true
+        selectedEntryIds = if (entry.id in selectedEntryIds) selectedEntryIds - entry.id else selectedEntryIds + entry.id
+    }
+
+    fun restoreEntries(targetEntries: List<TrashEntryUiModel>) {
+        var successCount = 0
+        var failureCount = 0
+        var firstRestoredMediaIds = emptyList<String>()
+        targetEntries.forEach { entry ->
+            val targetIds = entry.restoreTargetMediaIds()
+            val result = FakeTrashRepository.restoreEntry(entry.id)
+            if (result.success) {
+                successCount += 1
+                if (firstRestoredMediaIds.isEmpty()) firstRestoredMediaIds = targetIds
+            } else {
+                failureCount += 1
+            }
+        }
+        transientMessage = when {
+            successCount > 0 && failureCount > 0 -> "批量恢复完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
+            successCount > 0 -> "已恢复 $successCount 项。"
+            else -> "批量恢复失败，条目已保留。"
+        }
+        selectedEntryIds = emptySet()
+        selectionMode = false
+        if (firstRestoredMediaIds.isNotEmpty()) onRestoreTargetMediaIds(firstRestoredMediaIds)
+    }
+
+    fun requestRestoreFromTopBar() {
+        val targetEntries = if (selectionMode) selectedEntries else entries
+        if (selectionMode && targetEntries.isEmpty()) {
+            transientMessage = "未选择可恢复的条目"
+            return
+        }
+        pendingRestoreEntries = targetEntries
+        showRestoreConfirm = true
+    }
+
+    fun deleteEntries(targetEntries: List<TrashEntryUiModel>, successPrefix: String) {
+        var successCount = 0
+        var failureCount = 0
+        targetEntries.forEach { entry ->
+            if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) successCount += 1 else failureCount += 1
+        }
+        transientMessage = when {
+            successCount > 0 && failureCount > 0 -> "$successPrefix 完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
+            successCount > 0 -> "$successPrefix $successCount 项。"
+            else -> "$successPrefix 失败，条目已保留。"
+        }
+        selectedEntryIds = emptySet()
+        selectionMode = false
+    }
+
+    fun requestDeleteFromTopBar() {
+        if (selectionMode) {
+            if (selectedEntries.isEmpty()) {
+                transientMessage = "未选择可移除的条目"
+            } else {
+                showDeleteSelectedConfirm = true
+            }
+        } else {
+            showClearConfirm = true
+        }
+    }
 
     LaunchedEffect(snackbarMessage?.entryId) {
         val message = snackbarMessage ?: return@LaunchedEffect
@@ -97,11 +187,81 @@ fun TrashPageScreen(
         FakeTrashRepository.consumeSnackbarMessage(message.entryId)
     }
 
+    LaunchedEffect(selectedTypeName) {
+        selectedEntryIds = emptySet()
+        selectionMode = false
+    }
+
+    LaunchedEffect(selectionExitNonce) {
+        if (selectionExitNonce > 0) {
+            selectedEntryIds = emptySet()
+            selectionMode = false
+        }
+    }
+
+    LaunchedEffect(selectionMode) {
+        onSelectionModeChange(selectionMode)
+    }
+
     if (selectedType.isMediaTrashType()) {
+        val mediaEntries = entries.sortedByDescending { it.deletedAtMillis }
+        val mediaGridState = rememberLazyGridState()
+        val mediaGridColumns = 3
+        val rowItems = remember(mediaEntries) { mediaEntries.chunked(mediaGridColumns) }
+        val rowKeys = remember(rowItems) { rowItems.indices.map { "trash-media-row-$it" } }
+        val rowKeyToMediaIds = remember(rowItems, rowKeys) {
+            rowKeys.zip(rowItems).associate { (rowKey, rowEntries) ->
+                rowKey to rowEntries.map { it.id }
+            }
+        }
+        val rowKeyToIndex = remember(rowKeys) {
+            rowKeys.withIndex().associate { it.value to it.index }
+        }
+        val mediaRowStartIndex = 1 + (if (transientMessage != null) 1 else 0)
+        val hitTestAdapter = remember(
+            mediaGridState,
+            rowItems,
+            rowKeys,
+            rowKeyToMediaIds,
+            rowKeyToIndex,
+            mediaRowStartIndex,
+        ) {
+            MultiSelectHitTestAdapter(
+                hitTest = { touchPos ->
+                    val layout = mediaGridState.layoutInfo
+                    val visible = layout.visibleItemsInfo.firstOrNull { item ->
+                        item.index >= mediaRowStartIndex &&
+                            touchPos.y.toInt() in item.offset.y until (item.offset.y + item.size.height)
+                    } ?: return@MultiSelectHitTestAdapter null
+                    val rowIndex = visible.index - mediaRowStartIndex
+                    val row = rowItems.getOrNull(rowIndex) ?: return@MultiSelectHitTestAdapter null
+                    val colWidth = (visible.size.width.toFloat() / mediaGridColumns).coerceAtLeast(1f)
+                    val localX = (touchPos.x - visible.offset.x).coerceAtLeast(0f)
+                    val colIndex = (localX / colWidth).toInt().coerceIn(0, mediaGridColumns - 1)
+                    val entry = row.getOrNull(colIndex) ?: return@MultiSelectHitTestAdapter null
+                    MultiSelectHitResult(
+                        mediaId = entry.id,
+                        rowKey = rowKeys.getOrNull(rowIndex),
+                        rowIndex = rowIndex,
+                        isSelectable = true,
+                        colIndex = colIndex,
+                        columnsInRow = row.size,
+                    )
+                },
+                mediaIdsInRow = { rowKey -> rowKeyToMediaIds[rowKey].orEmpty() },
+                rowKeyAtIndex = { rowIndex -> rowKeys.getOrNull(rowIndex) },
+            )
+        }
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            modifier = modifier,
-            state = rememberLazyGridState(),
+            modifier = modifier.multiSelectSwipeGesture(
+                enabled = selectionMode,
+                hitTestAdapter = hitTestAdapter,
+                selectedIds = selectedEntryIds,
+                onSelectionChange = { selectedEntryIds = it },
+                onAutoScroll = { delta -> mediaGridState.scrollBy(delta) },
+            ),
+            state = mediaGridState,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -112,32 +272,14 @@ fun TrashPageScreen(
                     menuExpanded = showCategoryMenu,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
-                    onRestoreCurrent = {
-                        var successCount = 0
-                        var failureCount = 0
-                        var firstRestoredMediaIds = emptyList<String>()
-                        entries.forEach { entry ->
-                            val targetIds = entry.restoreTargetMediaIds()
-                            val result = FakeTrashRepository.restoreEntry(entry.id)
-                            if (result.success) {
-                                successCount += 1
-                                if (firstRestoredMediaIds.isEmpty()) {
-                                    firstRestoredMediaIds = targetIds
-                                }
-                            } else {
-                                failureCount += 1
-                            }
-                        }
-                        transientMessage = when {
-                            successCount > 0 && failureCount > 0 -> "批量恢复完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
-                            successCount > 0 -> "已恢复当前分类 $successCount 项。"
-                            else -> "批量恢复失败，条目已保留。"
-                        }
-                        if (firstRestoredMediaIds.isNotEmpty()) {
-                            onRestoreTargetMediaIds(firstRestoredMediaIds)
-                        }
+                    selectionMode = selectionMode,
+                    selectedCount = selectedEntries.size,
+                    onCancelSelection = {
+                        selectedEntryIds = emptySet()
+                        selectionMode = false
                     },
-                    onRequestClearCurrent = { showClearConfirm = true },
+                    onRestoreCurrent = { requestRestoreFromTopBar() },
+                    onRequestClearCurrent = { requestDeleteFromTopBar() },
                 )
             }
 
@@ -152,31 +294,46 @@ fun TrashPageScreen(
                     TrashEmptyCard(text = "暂无删除条目")
                 }
             } else {
-                trashMonthGroups(entries).forEach { group ->
-                    item(
-                        key = "trash-month-${group.key}",
-                        span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
+                gridItems(
+                    items = rowItems,
+                    key = { row -> row.firstOrNull()?.id ?: "empty-row" },
+                    span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) },
+                ) { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        TrashGridMonthHeader(title = group.title)
-                    }
-                    gridItems(
-                        items = group.entries,
-                        key = { it.id },
-                    ) { entry ->
-                        TrashMediaGridCell(
-                            entry = entry,
-                            showPostTitle = selectedType == TrashEntryType.MEDIA_REMOVED,
-                            onClick = {
-                                onOpenTrashDetail(
-                                    TrashDetailRoute(
-                                        entryId = entry.id,
-                                        entryType = entry.type,
-                                        sourcePostId = entry.sourcePostId,
-                                        sourceMediaId = entry.sourceMediaId,
-                                    ),
-                                )
-                            },
-                        )
+                        row.forEach { entry ->
+                            TrashMediaGridCell(
+                                entry = entry,
+                                showPostTitle = selectedType == TrashEntryType.MEDIA_REMOVED,
+                                selected = entry.id in selectedEntryIds,
+                                selectionMode = selectionMode,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (selectionMode) {
+                                        toggleSelection(entry)
+                                    } else {
+                                        onOpenTrashDetail(
+                                            TrashDetailRoute(
+                                                entryId = entry.id,
+                                                entryType = entry.type,
+                                                sourcePostId = entry.sourcePostId,
+                                                sourceMediaId = entry.sourceMediaId,
+                                            ),
+                                        )
+                                    }
+                                },
+                                onLongClick = { toggleSelection(entry) },
+                            )
+                        }
+                        repeat(mediaGridColumns - row.size) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f),
+                            )
+                        }
                     }
                 }
             }
@@ -186,41 +343,23 @@ fun TrashPageScreen(
             modifier = modifier,
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-        item {
-            TrashCategoryActionRow(
-                selectedType = selectedType,
-                entryCount = entries.size,
-                menuExpanded = showCategoryMenu,
-                onMenuExpandedChange = { showCategoryMenu = it },
-                onTypeSelected = { onSelectedTypeNameChange(it.name) },
-                onRestoreCurrent = {
-                    var successCount = 0
-                    var failureCount = 0
-                    var firstRestoredMediaIds = emptyList<String>()
-                    entries.forEach { entry ->
-                        val targetIds = entry.restoreTargetMediaIds()
-                        val result = FakeTrashRepository.restoreEntry(entry.id)
-                        if (result.success) {
-                            successCount += 1
-                            if (firstRestoredMediaIds.isEmpty()) {
-                                firstRestoredMediaIds = targetIds
-                            }
-                        } else {
-                            failureCount += 1
-                        }
-                    }
-                    transientMessage = when {
-                        successCount > 0 && failureCount > 0 -> "批量恢复完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
-                        successCount > 0 -> "已恢复当前分类 $successCount 项。"
-                        else -> "批量恢复失败，条目已保留。"
-                    }
-                    if (firstRestoredMediaIds.isNotEmpty()) {
-                        onRestoreTargetMediaIds(firstRestoredMediaIds)
-                    }
-                },
-                onRequestClearCurrent = { showClearConfirm = true },
-            )
-        }
+            item {
+                TrashCategoryActionRow(
+                    selectedType = selectedType,
+                    entryCount = entries.size,
+                    menuExpanded = showCategoryMenu,
+                    onMenuExpandedChange = { showCategoryMenu = it },
+                    onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    selectionMode = selectionMode,
+                    selectedCount = selectedEntries.size,
+                    onCancelSelection = {
+                        selectedEntryIds = emptySet()
+                        selectionMode = false
+                    },
+                    onRestoreCurrent = { requestRestoreFromTopBar() },
+                    onRequestClearCurrent = { requestDeleteFromTopBar() },
+                )
+            }
 
         transientMessage?.let { message ->
             item {
@@ -241,20 +380,26 @@ fun TrashPageScreen(
             ) { entry ->
                 TrashEntryRow(
                     entry = entry,
+                    selected = entry.id in selectedEntryIds,
+                    selectionMode = selectionMode,
                     onClick = {
-                        onOpenTrashDetail(
-                            TrashDetailRoute(
-                                entryId = entry.id,
-                                entryType = entry.type,
-                                sourcePostId = entry.sourcePostId,
-                                sourceMediaId = entry.sourceMediaId,
-                            ),
-                        )
+                        if (selectionMode) {
+                            toggleSelection(entry)
+                        } else {
+                            onOpenTrashDetail(
+                                TrashDetailRoute(
+                                    entryId = entry.id,
+                                    entryType = entry.type,
+                                    sourcePostId = entry.sourcePostId,
+                                    sourceMediaId = entry.sourceMediaId,
+                                ),
+                            )
+                        }
                     },
+                    onLongClick = { toggleSelection(entry) },
                 )
             }
         }
-
     }
     }
 
@@ -272,20 +417,7 @@ fun TrashPageScreen(
                     enabled = entries.isNotEmpty(),
                     onClick = {
                         showClearConfirm = false
-                        var successCount = 0
-                        var failureCount = 0
-                        entries.forEach { entry ->
-                            if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
-                                successCount += 1
-                            } else {
-                                failureCount += 1
-                            }
-                        }
-                        transientMessage = when {
-                            successCount > 0 && failureCount > 0 -> "清空当前分类完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
-                            successCount > 0 -> "已清空当前分类 $successCount 项。"
-                            else -> "清空当前分类失败，条目已保留。"
-                        }
+                        deleteEntries(entries, "已清空当前分类")
                     },
                 ) {
                     Text("清空当前分类")
@@ -293,6 +425,68 @@ fun TrashPageScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = {
+                showRestoreConfirm = false
+                pendingRestoreEntries = emptyList()
+            },
+            title = { Text("确认恢复？") },
+            text = { Text("将恢复 ${pendingRestoreEntries.size} 个回收站条目。恢复后会回到对应照片流或帖子关系。") },
+            confirmButton = {
+                TextButton(
+                    enabled = pendingRestoreEntries.isNotEmpty(),
+                    onClick = {
+                        val restoringEntries = pendingRestoreEntries
+                        showRestoreConfirm = false
+                        pendingRestoreEntries = emptyList()
+                        restoreEntries(restoringEntries)
+                    },
+                ) {
+                    Text("恢复")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreConfirm = false
+                        pendingRestoreEntries = emptyList()
+                    },
+                ) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showDeleteSelectedConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectedConfirm = false },
+            title = { Text("删除选中项？") },
+            text = {
+                Text(
+                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；帖子删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = selectedEntries.isNotEmpty(),
+                    onClick = {
+                        showDeleteSelectedConfirm = false
+                        deleteEntries(selectedEntries, "已删除选中项")
+                    },
+                ) {
+                    Text("删除选中项")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteSelectedConfirm = false }) {
                     Text("取消")
                 }
             },
@@ -307,6 +501,9 @@ private fun TrashCategoryActionRow(
     menuExpanded: Boolean,
     onMenuExpandedChange: (Boolean) -> Unit,
     onTypeSelected: (TrashEntryType) -> Unit,
+    selectionMode: Boolean,
+    selectedCount: Int,
+    onCancelSelection: () -> Unit,
     onRestoreCurrent: () -> Unit,
     onRequestClearCurrent: () -> Unit,
 ) {
@@ -316,76 +513,88 @@ private fun TrashCategoryActionRow(
         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box {
+        if (selectionMode) {
             TrashIconActionButton(
-                text = "☰",
-                onClick = { onMenuExpandedChange(true) },
+                text = "取消",
+                onClick = onCancelSelection,
             )
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { onMenuExpandedChange(false) },
-            ) {
-                TrashCategoryMenuTypes.forEach { type ->
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        if (type == selectedType) {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                                        } else {
-                                            MaterialTheme.colorScheme.surface
-                                        },
-                                        RoundedCornerShape(YingShiThemeTokens.radius.md),
-                                    )
-                                    .padding(horizontal = spacing.xs, vertical = spacing.xxs),
-                                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = type.label,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (type == selectedType) {
-                                            FontWeight.SemiBold
-                                        } else {
-                                            FontWeight.Medium
-                                        },
-                                    ),
-                                    color = if (type == selectedType) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                )
-                                if (type == selectedType) {
+            Text(
+                text = "已选 $selectedCount 项",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            Box {
+                TrashIconActionButton(
+                    text = "☰",
+                    onClick = { onMenuExpandedChange(true) },
+                )
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { onMenuExpandedChange(false) },
+                ) {
+                    TrashCategoryMenuTypes.forEach { type ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (type == selectedType) {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                            } else {
+                                                MaterialTheme.colorScheme.surface
+                                            },
+                                            RoundedCornerShape(YingShiThemeTokens.radius.md),
+                                        )
+                                        .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     Text(
-                                        text = "✓",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary,
+                                        text = type.label,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (type == selectedType) {
+                                                FontWeight.SemiBold
+                                            } else {
+                                                FontWeight.Medium
+                                            },
+                                        ),
+                                        color = if (type == selectedType) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        },
                                     )
+                                    if (type == selectedType) {
+                                        Text(
+                                            text = "✓",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
                                 }
-                            }
-                        },
-                        onClick = {
-                            onMenuExpandedChange(false)
-                            onTypeSelected(type)
-                        },
-                    )
+                            },
+                            onClick = {
+                                onMenuExpandedChange(false)
+                                onTypeSelected(type)
+                            },
+                        )
+                    }
                 }
             }
         }
         Box(modifier = Modifier.weight(1f))
         TextButton(
-            enabled = entryCount > 0,
+            enabled = entryCount > 0 || selectionMode,
             onClick = onRestoreCurrent,
         ) {
             Text("↩")
         }
         TrashIconActionButton(
             text = "🗑",
-            enabled = entryCount > 0,
+            enabled = entryCount > 0 || selectionMode,
             onClick = onRequestClearCurrent,
         )
     }
@@ -454,16 +663,23 @@ private fun TrashGridMonthHeader(title: String) {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun TrashMediaGridCell(
     entry: TrashEntryUiModel,
     showPostTitle: Boolean,
+    selected: Boolean,
+    selectionMode: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val media = entry.primaryPreviewMedia()
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = modifier
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Box(
@@ -509,17 +725,29 @@ private fun TrashMediaGridCell(
                     }
                 }
             }
+            TrashSelectionOverlay(
+                selected = selected,
+                visible = selectionMode,
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
         }
 
         if (showPostTitle) {
-            Text(
-                text = trashGridPostTitle(entry),
+            Surface(
                 modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+            ) {
+                Text(
+                    text = trashGridPostTitle(entry),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -546,9 +774,13 @@ private fun TrashDaysBadge(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun TrashEntryRow(
     entry: TrashEntryUiModel,
+    selected: Boolean,
+    selectionMode: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -556,7 +788,10 @@ private fun TrashEntryRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         shape = RoundedCornerShape(radius.xl),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
@@ -574,6 +809,11 @@ private fun TrashEntryRow(
                 TrashEntryPreview(
                     entry = entry,
                     modifier = Modifier.matchParentSize(),
+                )
+                TrashSelectionOverlay(
+                    selected = selected,
+                    visible = selectionMode,
+                    modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
             Column(
@@ -606,12 +846,33 @@ private fun TrashEntryRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
                 )
             }
-            Text(
-                text = "查看",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.primary,
-            )
+            if (!selectionMode) {
+                Text(
+                    text = "查看",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun TrashSelectionOverlay(
+    selected: Boolean,
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (!visible) return
+    Box(
+        modifier = modifier
+            .size(46.dp),
+        contentAlignment = Alignment.BottomEnd,
+    ) {
+        AppMediaSelectionBadge(
+            selected = selected,
+            modifier = Modifier.padding(end = 2.dp, bottom = 2.dp),
+        )
     }
 }
 

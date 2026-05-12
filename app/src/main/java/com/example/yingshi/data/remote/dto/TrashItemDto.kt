@@ -6,6 +6,7 @@ data class TrashItemDto(
     val state: String? = null,
     val sourcePostId: String? = null,
     val sourceMediaId: String? = null,
+    val commentTargetMediaId: String? = null,
     val title: String,
     val previewInfo: String,
     val deletedAtMillis: Long,

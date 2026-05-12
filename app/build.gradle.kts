@@ -34,6 +34,24 @@ android {
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
+        create("profile") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release", "debug")
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isMinifyEnabled = false
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
+        }
+        create("optimizedDebug") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release", "debug")
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isMinifyEnabled = false
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

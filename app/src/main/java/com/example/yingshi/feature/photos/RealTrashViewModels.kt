@@ -96,6 +96,15 @@ class RealTrashListViewModel(
         }
     }
 
+    fun showSelectionMessage(message: String) {
+        _uiState.update {
+            it.copy(
+                statusMessage = message,
+                errorMessage = null,
+            )
+        }
+    }
+
     fun restoreEntries(
         entries: List<TrashEntryUiModel>,
         selectedType: TrashEntryType?,
@@ -265,9 +274,21 @@ class RealTrashDetailViewModel(
         }
     }
 
+    fun restoreItem(trashItemId: String, onSuccess: (RemoteTrashItem) -> Unit) {
+        mutateTrashItem("已恢复到正常列表。", onSuccess) {
+            trashRepository.restoreTrashItem(trashItemId)
+        }
+    }
+
     fun remove(onSuccess: () -> Unit) {
         mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
             trashRepository.purgeTrashItem(route.entryId)
+        }
+    }
+
+    fun removeItem(trashItemId: String, onSuccess: () -> Unit) {
+        mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
+            trashRepository.purgeTrashItem(trashItemId)
         }
     }
 
