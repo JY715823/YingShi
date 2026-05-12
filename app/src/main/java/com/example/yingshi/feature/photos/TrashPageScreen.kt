@@ -702,25 +702,20 @@ private fun TrashMediaGridCell(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 5.dp, bottom = 5.dp),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = Color.Black.copy(alpha = 0.38f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                        .padding(start = 6.dp, bottom = 6.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = Color.Black.copy(alpha = 0.32f),
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .padding(9.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         VideoGlyph(
                             state = VideoGlyphState.PLAY,
                             tint = Color.White.copy(alpha = 0.94f),
-                            modifier = Modifier.size(9.dp),
-                        )
-                        Text(
-                            text = formatVideoDurationLabel(media.videoDurationMillis) ?: "视频",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White.copy(alpha = 0.94f),
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
@@ -891,7 +886,7 @@ private fun TrashEntryPreview(
             requestSize = 256,
             showLoadingIndicator = true,
             showStatusBadge = true,
-            showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
+            showVideoPlayOverlay = false,
         )
         return
     }

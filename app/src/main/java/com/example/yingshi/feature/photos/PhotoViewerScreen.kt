@@ -2,14 +2,23 @@
 
 import android.app.Activity
 import android.content.ContextWrapper
+import android.os.Build
+import android.view.WindowInsets
+import android.view.WindowInsetsAnimationControlListener
+import android.view.WindowInsetsAnimationController
+import android.view.View
+import android.view.WindowManager
+import android.view.animation.LinearInterpolator
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +62,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -84,6 +94,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.AudioAttributes as Media3AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -126,6 +137,10 @@ private object ViewerLayoutTuning {
     val canvasHorizontalPadding = 0.dp
     val canvasTopPadding = 68.dp
     val canvasBottomPadding = 104.dp
+    val immersiveCanvasTopPadding = 0.dp
+    val immersiveCanvasBottomPadding = 0.dp
+    val immersiveVideoVerticalTapZone = 76.dp
+    val immersiveVideoBottomExitZone = 40.dp
     const val commentPreviewWidthFraction = 0.70f
     val commentPreviewMaxWidth = 288.dp
     val commentPreviewHeight = 172.dp
@@ -238,6 +253,108 @@ private fun Modifier.viewerZoomGesture(
     }
 }
 
+internal fun Modifier.viewerSingleTapGesture(
+    enabled: Boolean = true,
+    onTap: (Offset, IntSize) -> Unit,
+): Modifier {
+    if (!enabled) return this
+    return pointerInput(onTap) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val start = down.position
+            var pointerCountExceeded = false
+            var moved = false
+            var consumed = down.isConsumed
+            while (true) {
+                val event = awaitPointerEvent()
+                val pressed = event.changes.filter { it.pressed }
+                if (pressed.size > 1) pointerCountExceeded = true
+                event.changes.forEach { change ->
+                    if (change.isConsumed) consumed = true
+                    if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
+                        moved = true
+                    }
+                }
+                if (pressed.isEmpty()) {
+                    val up = event.changes.firstOrNull { it.id == down.id }
+                    if (!pointerCountExceeded && !moved && !consumed && up != null) {
+                        onTap(up.position, size)
+                    }
+                    break
+                }
+            }
+        }
+    }
+}
+
+internal fun isViewerVideoImmersiveToggleTap(position: Offset, size: IntSize): Boolean {
+    if (size.height <= 0) return false
+    val topZone = size.height * 0.18f
+    val bottomZone = size.height * 0.18f
+    return position.y <= topZone || position.y >= size.height - bottomZone
+}
+
+internal fun applyViewerStatusBarVisibility(view: View, immersive: Boolean) {
+    val activity = view.context.findActivity()
+    val window = activity?.window ?: return
+    val controller = WindowCompat.getInsetsController(window, view)
+    if (immersive) {
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+        )
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            window.decorView.systemUiVisibility or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        controller.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.systemBarsBehavior =
+                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            window.insetsController?.controlWindowInsetsAnimation(
+                WindowInsets.Type.statusBars(),
+                0L,
+                LinearInterpolator(),
+                null,
+                object : WindowInsetsAnimationControlListener {
+                    override fun onReady(
+                        animationController: WindowInsetsAnimationController,
+                        types: Int,
+                    ) {
+                        animationController.setInsetsAndAlpha(
+                            animationController.hiddenStateInsets,
+                            0f,
+                            1f,
+                        )
+                        animationController.finish(true)
+                    }
+
+                    override fun onFinished(animationController: WindowInsetsAnimationController) = Unit
+
+                    override fun onCancelled(animationController: WindowInsetsAnimationController?) {
+                        @Suppress("DEPRECATION")
+                        window.decorView.systemUiVisibility =
+                            window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    }
+                },
+            )
+        } else {
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+        }
+    } else {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_FULLSCREEN.inv() and
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY.inv()
+        controller.show(WindowInsetsCompat.Type.statusBars())
+    }
+}
+
 private fun List<PointerInputChange>.centroid(usePrevious: Boolean): Offset {
     val total = fold(Offset.Zero) { sum, change ->
         sum + if (usePrevious) change.previousPosition else change.position
@@ -256,7 +373,7 @@ private fun List<PointerInputChange>.averageDistanceTo(
 }
 
 @Composable
-private fun ViewerStatusBarEffect() {
+internal fun ViewerStatusBarEffect(immersive: Boolean = false) {
     val view = LocalView.current
     DisposableEffect(view) {
         val activity = view.context.findActivity()
@@ -265,19 +382,54 @@ private fun ViewerStatusBarEffect() {
         val previousLightStatusBars = window?.let {
             WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars
         }
+        val previousSystemBarsBehavior = window?.let {
+            WindowCompat.getInsetsController(it, view).systemBarsBehavior
+        }
+        val previousWindowFlags = window?.attributes?.flags
+        @Suppress("DEPRECATION")
+        val previousSystemUiVisibility = window?.decorView?.systemUiVisibility
 
         if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, view)
             window.statusBarColor = android.graphics.Color.BLACK
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            controller.isAppearanceLightStatusBars = false
         }
 
         onDispose {
             if (window != null && previousStatusBarColor != null && previousLightStatusBars != null) {
+                val controller = WindowCompat.getInsetsController(window, view)
+                controller.show(WindowInsetsCompat.Type.statusBars())
+                if (previousWindowFlags != null &&
+                    previousWindowFlags and WindowManager.LayoutParams.FLAG_FULLSCREEN != 0
+                ) {
+                    window.setFlags(
+                        WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                        WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    )
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                }
+                if (previousSystemUiVisibility != null) {
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = previousSystemUiVisibility
+                }
                 window.statusBarColor = previousStatusBarColor
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
-                    previousLightStatusBars
+                controller.isAppearanceLightStatusBars = previousLightStatusBars
+                if (previousSystemBarsBehavior != null) {
+                    controller.systemBarsBehavior = previousSystemBarsBehavior
+                }
             }
         }
+    }
+
+    SideEffect {
+        val window = view.context.findActivity()?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, view)
+            window.statusBarColor = android.graphics.Color.BLACK
+            controller.isAppearanceLightStatusBars = false
+        }
+        applyViewerStatusBarVisibility(view, immersive)
     }
 }
 
@@ -307,7 +459,9 @@ fun PhotoViewerScreen(
     }
 
     val context = LocalContext.current
+    val view = LocalView.current
     val spacing = YingShiThemeTokens.spacing
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val sessionVersion = AuthSessionManager.sessionVersion
     val viewerAccessToken = remember(sessionVersion) {
@@ -319,6 +473,7 @@ fun PhotoViewerScreen(
     }
     val initialPage = route.initialIndex.coerceIn(0, viewerItems.lastIndex)
     val zoomState = remember { ViewerZoomState() }
+    var isImmersive by remember { mutableStateOf(false) }
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
@@ -367,6 +522,7 @@ fun PhotoViewerScreen(
     }
     val hideOverlaysWhenZoomed = settingsState.viewerPreferences.hideOverlaysWhenZoomed
     val overlaysVisible = !zoomState.isZoomed || !hideOverlaysWhenZoomed
+    val appOverlaysVisible = overlaysVisible && !isImmersive
     val overlayAlpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
         ViewerLayoutTuning.zoomedOverlayAlpha
     } else {
@@ -465,25 +621,41 @@ fun PhotoViewerScreen(
         videoControlsVisible = true
         videoControlsActivityNonce += 1
     }
-    BackHandler(enabled = zoomState.isZoomed) {
+    fun toggleImmersive() {
+        val nextImmersive = !isImmersive
+        applyViewerStatusBarVisibility(view, nextImmersive)
+        isImmersive = nextImmersive
+        if (nextImmersive) {
+            showCommentPreview = false
+            commentPanelState = null
+            showRelatedPostsSheet = false
+            showTimeEditorSheet = false
+            showAddToExistingPostPicker = false
+            videoControlsVisible = false
+        }
+    }
+    BackHandler(enabled = !isImmersive && zoomState.isZoomed) {
         zoomState.reset()
     }
-    BackHandler(enabled = showCommentPreview) {
+    BackHandler(enabled = !isImmersive && showCommentPreview) {
         showCommentPreview = false
     }
-    BackHandler(enabled = commentPanelState != null) {
+    BackHandler(enabled = !isImmersive && commentPanelState != null) {
         commentPanelState = null
     }
-    BackHandler(enabled = showRelatedPostsSheet) {
+    BackHandler(enabled = !isImmersive && showRelatedPostsSheet) {
         showRelatedPostsSheet = false
     }
-    BackHandler(enabled = showTimeEditorSheet) {
+    BackHandler(enabled = !isImmersive && showTimeEditorSheet) {
         showTimeEditorSheet = false
     }
-    BackHandler(enabled = !zoomState.isZoomed && !showCommentPreview && commentPanelState == null && !showRelatedPostsSheet && !showTimeEditorSheet) {
+    BackHandler(enabled = !isImmersive && !zoomState.isZoomed && !showCommentPreview && commentPanelState == null && !showRelatedPostsSheet && !showTimeEditorSheet) {
         onBack()
     }
-    ViewerStatusBarEffect()
+    BackHandler(enabled = isImmersive) {
+        onBack()
+    }
+    ViewerStatusBarEffect(immersive = isImmersive)
 
     if (showDeleteConfirm) {
         AlertDialog(
@@ -546,7 +718,30 @@ fun PhotoViewerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ViewerNightBottom),
+            .background(ViewerNightBottom)
+            .viewerSingleTapGesture { position, size ->
+                if (currentItem.mediaType == AppMediaType.VIDEO) {
+                    val topTapZonePx = with(density) {
+                        if (isImmersive) {
+                            ViewerLayoutTuning.immersiveCanvasTopPadding.toPx()
+                        } else {
+                            ViewerLayoutTuning.canvasTopPadding.toPx()
+                        }
+                    }
+                    val bottomTapZonePx = with(density) {
+                        if (isImmersive) {
+                            ViewerLayoutTuning.immersiveVideoBottomExitZone.toPx()
+                        } else {
+                            ViewerLayoutTuning.canvasBottomPadding.toPx()
+                        }
+                    }
+                    if (position.y <= topTapZonePx || position.y >= size.height - bottomTapZonePx) {
+                        toggleImmersive()
+                    }
+                } else {
+                    toggleImmersive()
+                }
+            },
     ) {
         HorizontalPager(
             state = pagerState,
@@ -569,6 +764,7 @@ fun PhotoViewerScreen(
                     FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
                 },
                 overlaysVisible = overlaysVisible,
+                immersive = isImmersive,
                 videoControlsVisible = videoControlsVisible,
                 onVideoAreaClick = {
                     if (videoControlsVisible) {
@@ -650,14 +846,16 @@ fun PhotoViewerScreen(
             )
         }
 
-        ViewerTopScrim(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(124.dp),
-        )
+        if (!isImmersive) {
+            ViewerTopScrim(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(124.dp),
+            )
+        }
 
-        if (overlaysVisible) {
+        if (appOverlaysVisible) {
             ViewerBottomScrim(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -666,38 +864,40 @@ fun PhotoViewerScreen(
             )
         }
 
-        PhotoViewerTopBar(
-            onBack = {
-                onBack()
-            },
-            timeLabel = overlayUiModel.timeLabel,
-            onShare = {
-                Toast.makeText(context, "分享功能先保留占位。", Toast.LENGTH_SHORT).show()
-            },
-            onEditTime = { showTimeEditorSheet = true },
-            onDelete = { showDeleteConfirm = true },
-            onOpenRelatedPosts = { showRelatedPostsSheet = true },
-            onCreatePost = {
-                onOpenCreatePost(
-                    CreatePostRoute(
-                        source = "photo-viewer-menu",
-                        initialAppMediaIds = listOf(currentItem.mediaId),
+        if (!isImmersive) {
+            PhotoViewerTopBar(
+                onBack = {
+                    onBack()
+                },
+                timeLabel = overlayUiModel.timeLabel,
+                onShare = {
+                    Toast.makeText(context, "分享功能先保留占位。", Toast.LENGTH_SHORT).show()
+                },
+                onEditTime = { showTimeEditorSheet = true },
+                onDelete = { showDeleteConfirm = true },
+                onOpenRelatedPosts = { showRelatedPostsSheet = true },
+                onCreatePost = {
+                    onOpenCreatePost(
+                        CreatePostRoute(
+                            source = "photo-viewer-menu",
+                            initialAppMediaIds = listOf(currentItem.mediaId),
+                        ),
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(
+                        start = ViewerLayoutTuning.topBarStartInset,
+                        end = ViewerLayoutTuning.topBarEndInset,
+                        top = ViewerLayoutTuning.topBarTopInset,
                     ),
-                )
-            },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(
-                    start = ViewerLayoutTuning.topBarStartInset,
-                    end = ViewerLayoutTuning.topBarEndInset,
-                    top = ViewerLayoutTuning.topBarTopInset,
-                ),
-            overlayAlpha = overlayAlpha,
-        )
+                overlayAlpha = overlayAlpha,
+            )
+        }
 
-        if (overlaysVisible) {
+        if (appOverlaysVisible) {
             if (showCommentPreview) {
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
@@ -789,7 +989,7 @@ fun PhotoViewerScreen(
             )
         }
 
-        if (route.showPostSegments) {
+        if (route.showPostSegments && !isImmersive) {
             ViewerPostSegmentIndicator(
                 currentIndex = currentIndex,
                 total = route.mediaItems.size,
@@ -1223,6 +1423,7 @@ private fun PhotoViewerCanvas(
     videoPlaybackState: ViewerVideoPlaybackState?,
     originalLoadState: OriginalLoadState,
     overlaysVisible: Boolean,
+    immersive: Boolean,
     videoControlsVisible: Boolean,
     onVideoAreaClick: () -> Unit,
     onTogglePlayback: () -> Unit,
@@ -1234,13 +1435,25 @@ private fun PhotoViewerCanvas(
     val spacing = YingShiThemeTokens.spacing
     val density = LocalDensity.current
     val isVideo = media.mediaType == AppMediaType.VIDEO
+    val topPadding by animateDpAsState(
+        targetValue = if (immersive) ViewerLayoutTuning.immersiveCanvasTopPadding else ViewerLayoutTuning.canvasTopPadding,
+        label = "viewerCanvasTopPadding",
+    )
+    val bottomPadding by animateDpAsState(
+        targetValue = if (immersive) {
+            if (isVideo) ViewerLayoutTuning.immersiveVideoBottomExitZone else ViewerLayoutTuning.immersiveCanvasBottomPadding
+        } else {
+            ViewerLayoutTuning.canvasBottomPadding
+        },
+        label = "viewerCanvasBottomPadding",
+    )
 
     BoxWithConstraints(
         modifier = modifier.padding(
             start = ViewerLayoutTuning.canvasHorizontalPadding,
-            top = ViewerLayoutTuning.canvasTopPadding,
+            top = topPadding,
             end = ViewerLayoutTuning.canvasHorizontalPadding,
-            bottom = ViewerLayoutTuning.canvasBottomPadding,
+            bottom = bottomPadding,
         ),
         contentAlignment = Alignment.Center,
     ) {
@@ -1314,7 +1527,7 @@ private fun PhotoViewerCanvas(
                                 ),
                         )
                     }
-                    if (overlaysVisible && videoControlsVisible && videoPlaybackState != null) {
+                    if (videoControlsVisible && videoPlaybackState != null) {
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.Center)
@@ -1337,7 +1550,7 @@ private fun PhotoViewerCanvas(
                             }
                         }
                     }
-                    if (overlaysVisible && videoControlsVisible && videoPlaybackState != null) {
+                    if (videoControlsVisible && videoPlaybackState != null) {
                         val durationMillis = videoPlaybackState.durationMillis
                             ?: media.viewerVideoDurationMillis()
                         ViewerVideoControls(
@@ -1596,7 +1809,7 @@ private fun ViewerVideoPosterFallback(
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
-private fun ViewerVideoCanvas(
+internal fun ViewerVideoCanvas(
     media: PhotoFeedItem,
     playbackState: ViewerVideoPlaybackState?,
     isCurrent: Boolean,
@@ -1914,7 +2127,7 @@ private fun ViewerVideoCanvas(
 }
 
 @Composable
-private fun ViewerVideoControls(
+internal fun ViewerVideoControls(
     playbackState: ViewerVideoPlaybackState,
     durationMillis: Long,
     onTogglePlayback: () -> Unit,
@@ -2016,7 +2229,7 @@ private fun PhotoFeedItem.viewerAspectRatio(): Float {
     return aspectRatio.coerceAtLeast(0.2f)
 }
 
-private fun PhotoFeedItem.viewerVideoDurationMillis(): Long {
+internal fun PhotoFeedItem.viewerVideoDurationMillis(): Long {
     return videoDurationMillis ?: DefaultViewerVideoDurationMillis
 }
 

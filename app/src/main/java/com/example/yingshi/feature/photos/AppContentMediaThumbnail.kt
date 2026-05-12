@@ -102,12 +102,9 @@ internal fun AppContentMediaThumbnail(
     val originalPainter = rememberAsyncImagePainter(model = originalRequest)
     val previewState = previewPainter.state
     val originalState = originalPainter.state
-    val videoPosterUrl = if (mediaType == AppMediaType.VIDEO &&
-        (modelUrl.isNullOrBlank() ||
-            looksLikeVideoSource(thumbnailUrl, mediaSource?.mimeType) ||
-            previewState is AsyncImagePainter.State.Error)
-    ) {
-        mediaSource.viewerVideoUrl(mediaType) ?: thumbnailUrl
+    val videoPosterUrl = if (mediaType == AppMediaType.VIDEO) {
+        mediaSource.viewerVideoUrl(mediaType)
+            ?: thumbnailUrl?.takeIf { looksLikeVideoSource(it, mediaSource?.mimeType) }
     } else {
         null
     }
@@ -222,7 +219,10 @@ internal fun AppContentMediaThumbnail(
                 previewState is AsyncImagePainter.State.Error -> "加载失败"
                 else -> null
             }
-            if (statusLabel != null) {
+            if (statusLabel != null &&
+                (mediaType != AppMediaType.VIDEO ||
+                    (!showVideoPosterImage && modelUrl.isNullOrBlank() && videoPosterState.hasError))
+            ) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.Center)

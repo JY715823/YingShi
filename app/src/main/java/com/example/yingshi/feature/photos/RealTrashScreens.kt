@@ -1,6 +1,7 @@
 ﻿package com.example.yingshi.feature.photos
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -32,6 +34,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -44,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
@@ -57,8 +61,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -842,7 +849,8 @@ private fun RealTrashEntryPreview(
     entry: TrashEntryUiModel,
     modifier: Modifier = Modifier,
 ) {
-    val mediaId = entry.previewMediaIds().firstOrNull()
+    val media = entry.mediaSnapshot
+    val mediaId = media?.mediaId ?: entry.previewMediaIds().firstOrNull()
     if (mediaId == null) {
         Surface(
             modifier = modifier,
@@ -860,13 +868,20 @@ private fun RealTrashEntryPreview(
         return
     }
     AppContentMediaThumbnail(
-        mediaSource = realTrashMediaSource(mediaId),
-        mediaType = AppMediaType.IMAGE,
+        mediaSource = media?.mediaSource ?: realTrashMediaSource(
+            mediaId = mediaId,
+            mediaType = media?.mediaType ?: AppMediaType.IMAGE,
+            width = media?.width,
+            height = media?.height,
+            durationMillis = media?.videoDurationMillis,
+        ),
+        mediaType = media?.mediaType ?: AppMediaType.IMAGE,
         palette = realPaletteFor(mediaId),
         modifier = modifier,
         requestSize = 720,
         showLoadingIndicator = true,
         showStatusBadge = true,
+        showVideoPlayOverlay = false,
     )
 }
 
@@ -922,25 +937,20 @@ private fun RealTrashMediaGridCell(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 5.dp, bottom = 5.dp),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = Color.Black.copy(alpha = 0.38f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                        .padding(start = 6.dp, bottom = 6.dp),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = Color.Black.copy(alpha = 0.32f),
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .padding(9.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         VideoGlyph(
                             state = VideoGlyphState.PLAY,
                             tint = Color.White.copy(alpha = 0.94f),
-                            modifier = Modifier.size(9.dp),
-                        )
-                        Text(
-                            text = formatVideoDurationLabel(media.videoDurationMillis) ?: "视频",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White.copy(alpha = 0.94f),
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
@@ -1435,6 +1445,8 @@ private fun RealTrashMediaViewerDetailPagerContent(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
+    val density = LocalDensity.current
     val accessToken = AuthSessionManager.getAccessToken()
     val initialEntry = detail.item.toTrashEntryUiModel()
     val viewerEntries = remember(entries, initialEntry.id) {
@@ -1465,21 +1477,77 @@ private fun RealTrashMediaViewerDetailPagerContent(
     var showRestoreConfirm by remember(currentEntry.id) {
         mutableStateOf(false)
     }
+    var isImmersive by remember { mutableStateOf(false) }
     var showCommentPreview by remember(currentEntry.id) {
         mutableStateOf(false)
     }
+    var videoPlaybackState by remember {
+        mutableStateOf(ViewerVideoPlaybackState())
+    }
+    var videoControlsVisible by remember { mutableStateOf(true) }
+    var videoControlsActivityNonce by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(currentEntry.id) {
         showCommentPreview = false
+        videoPlaybackState = ViewerVideoPlaybackState(
+            mediaId = currentMedia?.mediaId?.takeIf { currentMedia.mediaType == AppMediaType.VIDEO },
+        )
+        videoControlsVisible = true
+        videoControlsActivityNonce += 1
     }
-    BackHandler(enabled = showCommentPreview) {
+    LaunchedEffect(
+        currentMedia?.mediaId,
+        currentMedia?.mediaType,
+        videoControlsVisible,
+        videoControlsActivityNonce,
+        videoPlaybackState.isPlaying,
+        videoPlaybackState.isLoading,
+        videoPlaybackState.errorMessage,
+        videoPlaybackState.isCompleted,
+    ) {
+        if (currentMedia?.mediaType != AppMediaType.VIDEO || !videoControlsVisible) return@LaunchedEffect
+        if (videoPlaybackState.isLoading || videoPlaybackState.errorMessage != null) return@LaunchedEffect
+        kotlinx.coroutines.delay(2800)
+        videoControlsVisible = false
+    }
+    BackHandler(enabled = !isImmersive && showCommentPreview) {
         showCommentPreview = false
+    }
+    BackHandler(enabled = isImmersive) {
+        onBack()
+    }
+    ViewerStatusBarEffect(immersive = isImmersive)
+
+    fun revealVideoControls() {
+        videoControlsVisible = true
+        videoControlsActivityNonce += 1
+    }
+
+    fun toggleImmersive() {
+        val nextImmersive = !isImmersive
+        applyViewerStatusBarVisibility(view, nextImmersive)
+        isImmersive = nextImmersive
+        if (nextImmersive) {
+            showCommentPreview = false
+            videoControlsVisible = false
+        }
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF050608)),
+            .background(Color(0xFF050608))
+            .viewerSingleTapGesture { position, size ->
+                if (currentMedia?.mediaType == AppMediaType.VIDEO) {
+                    val topTapZonePx = with(density) { if (isImmersive) 0.dp.toPx() else 68.dp.toPx() }
+                    val bottomTapZonePx = with(density) { if (isImmersive) 40.dp.toPx() else 104.dp.toPx() }
+                    if (position.y <= topTapZonePx || position.y >= size.height - bottomTapZonePx) {
+                        toggleImmersive()
+                    }
+                } else {
+                    toggleImmersive()
+                }
+            },
     ) {
         HorizontalPager(
             state = pagerState,
@@ -1504,104 +1572,171 @@ private fun RealTrashMediaViewerDetailPagerContent(
                     media = pageMedia,
                     originalLoadState = RealOriginalLoadRepository.getState(pageTarget),
                     onOriginalLoadStateChange = { state -> RealOriginalLoadRepository.setState(pageTarget, state) },
+                    immersive = isImmersive,
+                    videoPlaybackState = if (page == pagerState.currentPage) videoPlaybackState else null,
+                    videoControlsVisible = page == pagerState.currentPage && videoControlsVisible,
+                    onVideoAreaClick = {
+                        if (videoControlsVisible) {
+                            videoControlsVisible = false
+                            videoControlsActivityNonce += 1
+                        } else {
+                            revealVideoControls()
+                        }
+                    },
+                    onTogglePlayback = {
+                        revealVideoControls()
+                        val durationMillis = videoPlaybackState.durationMillis
+                            ?: pageMedia.viewerVideoDurationMillis()
+                        val shouldRestart = videoPlaybackState.isCompleted ||
+                            (durationMillis > 0L && videoPlaybackState.progressMillis >= durationMillis)
+                        videoPlaybackState = if (videoPlaybackState.errorMessage != null) {
+                            videoPlaybackState.retryState().copy(mediaId = pageMedia.mediaId)
+                        } else if (videoPlaybackState.isPlaying) {
+                            videoPlaybackState.copy(isPlaying = false)
+                        } else {
+                            videoPlaybackState.copy(
+                                mediaId = pageMedia.mediaId,
+                                isPlaying = true,
+                                progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
+                                seekRequestMillis = if (shouldRestart) 0L else videoPlaybackState.seekRequestMillis,
+                                seekRequestNonce = if (shouldRestart) {
+                                    videoPlaybackState.seekRequestNonce + 1
+                                } else {
+                                    videoPlaybackState.seekRequestNonce
+                                },
+                                errorMessage = null,
+                                isCompleted = false,
+                            )
+                        }
+                    },
+                    onSeekPlayback = { progressMillis ->
+                        revealVideoControls()
+                        val durationMillis = videoPlaybackState.durationMillis
+                            ?: pageMedia.viewerVideoDurationMillis()
+                        val targetMillis = progressMillis.coerceIn(0L, durationMillis.coerceAtLeast(0L))
+                        videoPlaybackState = videoPlaybackState.copy(
+                            mediaId = pageMedia.mediaId,
+                            progressMillis = targetMillis,
+                            seekRequestMillis = targetMillis,
+                            seekRequestNonce = videoPlaybackState.seekRequestNonce + 1,
+                            errorMessage = null,
+                            isCompleted = false,
+                        )
+                    },
+                    onVideoPlaybackStateChange = { mediaId, state ->
+                        if (mediaId == currentMedia?.mediaId) {
+                            videoPlaybackState = state
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
         }
 
-        TrashViewerTopScrim(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(124.dp),
-        )
+        if (!isImmersive) {
+            TrashViewerTopScrim(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(124.dp),
+            )
+        }
 
-        TrashViewerBottomScrim(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(188.dp),
-        )
+        if (!isImmersive) {
+            TrashViewerBottomScrim(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(188.dp),
+            )
+        }
 
-        RealTrashViewerTopBar(
-            timeLabel = currentMedia?.displayTimeMillis?.let(::realFormatTrashEntryTime)
-                ?: realFormatTrashEntryTime(currentEntry.deletedAtMillis),
-            isMutating = isMutating,
-            canRestore = detail.canRestore,
-            canRemove = detail.canMoveOutOfTrash,
-            onBack = onBack,
-            onRestore = { showRestoreConfirm = true },
-            onRemove = { showPermanentDeleteConfirm = true },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 4.dp, end = 10.dp, top = 6.dp),
-        )
+        if (!isImmersive) {
+            RealTrashViewerTopBar(
+                timeLabel = currentMedia?.displayTimeMillis?.let(::realFormatTrashEntryTime)
+                    ?: realFormatTrashEntryTime(currentEntry.deletedAtMillis),
+                isMutating = isMutating,
+                canRestore = detail.canRestore,
+                canRemove = detail.canMoveOutOfTrash,
+                onBack = onBack,
+                onRestore = { showRestoreConfirm = true },
+                onRemove = { showPermanentDeleteConfirm = true },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 4.dp, end = 10.dp, top = 6.dp),
+            )
+        }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(
-                    end = YingShiThemeTokens.spacing.lg,
-                    bottom = 0.dp,
-                ),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
-        ) {
-            if (target != null) {
-                RealTrashViewerCapsule(
-                    text = originalLoadState.actionLabel(),
-                    emphasized = originalLoadState == OriginalLoadState.Loaded,
-                    enabled = originalLoadState != OriginalLoadState.Loading,
-                    onClick = {
-                        if (originalLoadState != OriginalLoadState.Loaded &&
-                            originalLoadState != OriginalLoadState.Loading
-                        ) {
-                            RealOriginalLoadRepository.requestOriginal(context, target, accessToken)
-                        }
-                    },
-                )
-            }
-            if (currentEntry.type == TrashEntryType.MEDIA_REMOVED) {
-                RealTrashViewerCapsule(
-                    text = realTrashGridPostTitle(currentEntry),
-                    emphasized = false,
-                    onClick = {},
-                )
-            }
-            statusMessage?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.86f),
-                )
-            }
-            errorMessage?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFFFB4AB),
-                )
+        if (!isImmersive) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(
+                        end = YingShiThemeTokens.spacing.lg,
+                        bottom = 0.dp,
+                    ),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            ) {
+                if (target != null) {
+                    RealTrashViewerCapsule(
+                        text = originalLoadState.actionLabel(),
+                        emphasized = originalLoadState == OriginalLoadState.Loaded,
+                        enabled = originalLoadState != OriginalLoadState.Loading,
+                        onClick = {
+                            if (originalLoadState != OriginalLoadState.Loaded &&
+                                originalLoadState != OriginalLoadState.Loading
+                            ) {
+                                RealOriginalLoadRepository.requestOriginal(context, target, accessToken)
+                            }
+                        },
+                    )
+                }
+                if (currentEntry.type == TrashEntryType.MEDIA_REMOVED) {
+                    RealTrashViewerCapsule(
+                        text = realTrashGridPostTitle(currentEntry),
+                        emphasized = false,
+                        onClick = {},
+                    )
+                }
+                statusMessage?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.86f),
+                    )
+                }
+                errorMessage?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFFB4AB),
+                    )
+                }
             }
         }
-        RealTrashViewerEdgeActions(
-            commentCountLabel = commentBindings?.comments?.size?.toString() ?: "0",
-            previewExpanded = showCommentPreview,
-            onToggleComments = { showCommentPreview = !showCommentPreview },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(
-                    start = YingShiThemeTokens.spacing.lg,
-                    end = YingShiThemeTokens.spacing.lg,
-                    bottom = 0.dp,
-                ),
-        )
 
-        if (showCommentPreview) {
+        if (!isImmersive) {
+            RealTrashViewerEdgeActions(
+                commentCountLabel = commentBindings?.comments?.size?.toString() ?: "0",
+                previewExpanded = showCommentPreview,
+                onToggleComments = { showCommentPreview = !showCommentPreview },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(
+                        start = YingShiThemeTokens.spacing.lg,
+                        end = YingShiThemeTokens.spacing.lg,
+                        bottom = 0.dp,
+                    ),
+            )
+        }
+
+        if (showCommentPreview && !isImmersive) {
             RealTrashViewerCommentPreview(
                 comments = commentBindings?.comments.orEmpty(),
                 isLoading = commentBindings?.isLoading == true,
@@ -1886,10 +2021,30 @@ private fun TrashViewerMediaCanvas(
     media: TrashMediaSnapshot,
     originalLoadState: OriginalLoadState,
     onOriginalLoadStateChange: (OriginalLoadState) -> Unit,
+    immersive: Boolean,
+    videoPlaybackState: ViewerVideoPlaybackState?,
+    videoControlsVisible: Boolean,
+    onVideoAreaClick: () -> Unit,
+    onTogglePlayback: () -> Unit,
+    onSeekPlayback: (Long) -> Unit,
+    onVideoPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val spacing = YingShiThemeTokens.spacing
+    val topPadding by animateDpAsState(
+        targetValue = if (immersive) 0.dp else 68.dp,
+        label = "trashViewerCanvasTopPadding",
+    )
+    val bottomPadding by animateDpAsState(
+        targetValue = if (immersive) {
+            if (media.mediaType == AppMediaType.VIDEO) 40.dp else 0.dp
+        } else {
+            104.dp
+        },
+        label = "trashViewerCanvasBottomPadding",
+    )
     BoxWithConstraints(
-        modifier = modifier.padding(top = 68.dp, bottom = 104.dp),
+        modifier = modifier.padding(top = topPadding, bottom = bottomPadding),
         contentAlignment = Alignment.Center,
     ) {
         val mediaAspectRatio = media.aspectRatio.coerceIn(0.05f, 20f)
@@ -1913,20 +2068,78 @@ private fun TrashViewerMediaCanvas(
                 .background(Color(0xFF050608)),
             contentAlignment = Alignment.Center,
         ) {
-            AppContentMediaThumbnail(
-                mediaSource = media.mediaSource,
-                mediaType = media.mediaType,
-                palette = media.palette,
-                modifier = Modifier.fillMaxSize(),
-                contentDescription = media.mediaId,
-                contentScale = ContentScale.Fit,
-                requestSize = 1080,
-                showLoadingIndicator = true,
-                showStatusBadge = true,
-                showVideoPlayOverlay = media.mediaType == AppMediaType.VIDEO,
-                originalLoadState = originalLoadState,
-                onOriginalLoadStateChange = onOriginalLoadStateChange,
-            )
+            if (media.mediaType == AppMediaType.VIDEO) {
+                val viewerMedia = remember(media) { media.toViewerPhotoFeedItem() }
+                ViewerVideoCanvas(
+                    media = viewerMedia,
+                    playbackState = videoPlaybackState,
+                    isCurrent = videoPlaybackState?.mediaId == media.mediaId,
+                    originalLoadState = originalLoadState,
+                    onPlaybackStateChange = onVideoPlaybackStateChange,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (videoPlaybackState?.errorMessage == null) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable(
+                                interactionSource = remember(media.mediaId) {
+                                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                                },
+                                indication = null,
+                                onClick = onVideoAreaClick,
+                            ),
+                    )
+                }
+                if (videoControlsVisible && videoPlaybackState != null) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clickable(onClick = onTogglePlayback),
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = if (videoPlaybackState.isPlaying) 0.14f else 0.18f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .padding(22.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            VideoGlyph(
+                                state = if (videoPlaybackState.isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
+                                tint = Color.White.copy(alpha = 0.92f),
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
+                    ViewerVideoControls(
+                        playbackState = videoPlaybackState,
+                        durationMillis = videoPlaybackState.durationMillis
+                            ?: media.viewerVideoDurationMillis(),
+                        onTogglePlayback = onTogglePlayback,
+                        onSeekPlayback = onSeekPlayback,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(horizontal = spacing.lg, vertical = spacing.lg),
+                    )
+                }
+            } else {
+                AppContentMediaThumbnail(
+                    mediaSource = media.mediaSource,
+                    mediaType = media.mediaType,
+                    palette = media.palette,
+                    modifier = Modifier.fillMaxSize(),
+                    contentDescription = media.mediaId,
+                    contentScale = ContentScale.Fit,
+                    requestSize = 1080,
+                    showLoadingIndicator = true,
+                    showStatusBadge = true,
+                    showVideoPlayOverlay = false,
+                    originalLoadState = originalLoadState,
+                    onOriginalLoadStateChange = onOriginalLoadStateChange,
+                )
+            }
         }
     }
 }
@@ -2444,6 +2657,7 @@ private fun RealTrashPostMediaViewerOverlay(
     onRequestDeletePost: () -> Unit,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val accessToken = AuthSessionManager.getAccessToken()
     val target = mediaId?.takeIf { it.isNotBlank() }?.let {
         RealOriginalMediaTarget(
@@ -2455,18 +2669,42 @@ private fun RealTrashPostMediaViewerOverlay(
     val originalLoadState = target?.let(RealOriginalLoadRepository::getState)
         ?: OriginalLoadState.NotLoaded
     val commentBindings = mediaId?.takeIf { it.isNotBlank() }?.let { rememberViewerCommentBindings(it) }
+    var isImmersive by remember { mutableStateOf(false) }
     var showCommentPreview by remember(mediaId) {
         mutableStateOf(false)
     }
 
-    BackHandler(enabled = showCommentPreview) {
+    BackHandler(enabled = !isImmersive && showCommentPreview) {
         showCommentPreview = false
     }
+    BackHandler(enabled = isImmersive) {
+        onBack()
+    }
+    ViewerStatusBarEffect(immersive = isImmersive)
+
+    fun toggleImmersive() {
+        val nextImmersive = !isImmersive
+        applyViewerStatusBarVisibility(view, nextImmersive)
+        isImmersive = nextImmersive
+        if (nextImmersive) {
+            showCommentPreview = false
+        }
+    }
+
+    val topPadding by animateDpAsState(
+        targetValue = if (isImmersive) 0.dp else 68.dp,
+        label = "trashPostMediaViewerTopPadding",
+    )
+    val bottomPadding by animateDpAsState(
+        targetValue = if (isImmersive) 0.dp else 104.dp,
+        label = "trashPostMediaViewerBottomPadding",
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF07111F)),
+            .background(Color(0xFF07111F))
+            .viewerSingleTapGesture { _, _ -> toggleImmersive() },
     ) {
         if (target == null) {
             RealTrashDeletedMediaPlaceholder(
@@ -2482,7 +2720,8 @@ private fun RealTrashPostMediaViewerOverlay(
                 palette = realPaletteFor(target.mediaId),
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .fillMaxWidth(),
+                    .fillMaxSize()
+                    .padding(top = topPadding, bottom = bottomPadding),
                 contentScale = ContentScale.Fit,
                 requestSize = 1080,
                 showLoadingIndicator = true,
@@ -2494,78 +2733,85 @@ private fun RealTrashPostMediaViewerOverlay(
             )
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .padding(
-                    horizontal = YingShiThemeTokens.spacing.lg,
-                    vertical = YingShiThemeTokens.spacing.md,
-                ),
-            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RealTrashViewerOverlayButton(text = "<", onClick = onBack)
-            Box(modifier = Modifier.weight(1f))
-            RealTrashViewerOverlayButton(text = if (isMutating) "…" else "↩", onClick = onRestorePost)
-            RealTrashViewerOverlayButton(
-                text = if (isMutating) "…" else "🗑",
-                destructive = true,
-                onClick = onRequestDeletePost,
+        if (!isImmersive) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = YingShiThemeTokens.spacing.lg,
+                        vertical = YingShiThemeTokens.spacing.md,
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RealTrashViewerOverlayButton(text = "<", onClick = onBack)
+                Box(modifier = Modifier.weight(1f))
+                RealTrashViewerOverlayButton(text = if (isMutating) "…" else "↩", onClick = onRestorePost)
+                RealTrashViewerOverlayButton(
+                    text = if (isMutating) "…" else "🗑",
+                    destructive = true,
+                    onClick = onRequestDeletePost,
+                )
+            }
+        }
+
+        if (!isImmersive) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(YingShiThemeTokens.spacing.lg),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            ) {
+                if (target != null) {
+                    RealTrashViewerOverlayButton(
+                        text = originalLoadState.actionLabel(),
+                        onClick = {
+                            if (originalLoadState != OriginalLoadState.Loaded &&
+                                originalLoadState != OriginalLoadState.Loading
+                            ) {
+                                RealOriginalLoadRepository.requestOriginal(context, target, accessToken)
+                            }
+                        },
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = Color.Black.copy(alpha = 0.38f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                ) {
+                    Text(
+                        text = entry.title,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White.copy(alpha = 0.92f),
+                    )
+                }
+            }
+        }
+
+        if (!isImmersive) {
+            RealTrashViewerEdgeActions(
+                commentCountLabel = commentBindings?.comments?.size?.toString() ?: "0",
+                previewExpanded = showCommentPreview,
+                onToggleComments = { showCommentPreview = !showCommentPreview },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(
+                        start = YingShiThemeTokens.spacing.lg,
+                        end = YingShiThemeTokens.spacing.lg,
+                        bottom = 0.dp,
+                    ),
             )
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(YingShiThemeTokens.spacing.lg),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
-        ) {
-            if (target != null) {
-                RealTrashViewerOverlayButton(
-                    text = originalLoadState.actionLabel(),
-                    onClick = {
-                        if (originalLoadState != OriginalLoadState.Loaded &&
-                            originalLoadState != OriginalLoadState.Loading
-                        ) {
-                            RealOriginalLoadRepository.requestOriginal(context, target, accessToken)
-                        }
-                    },
-                )
-            }
-            Surface(
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                color = Color.Black.copy(alpha = 0.38f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-            ) {
-                Text(
-                    text = entry.title,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White.copy(alpha = 0.92f),
-                )
-            }
-        }
-        RealTrashViewerEdgeActions(
-            commentCountLabel = commentBindings?.comments?.size?.toString() ?: "0",
-            previewExpanded = showCommentPreview,
-            onToggleComments = { showCommentPreview = !showCommentPreview },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(
-                    start = YingShiThemeTokens.spacing.lg,
-                    end = YingShiThemeTokens.spacing.lg,
-                    bottom = 0.dp,
-                ),
-        )
-
-        if (showCommentPreview) {
+        if (showCommentPreview && !isImmersive) {
             RealTrashViewerCommentPreview(
                 comments = commentBindings?.comments.orEmpty(),
                 isLoading = commentBindings?.isLoading == true,
@@ -2902,6 +3148,32 @@ private fun realTrashGridPostTitle(entry: TrashEntryUiModel): String {
         ?: entry.title
         ?: entry.sourcePostId
         ?: "来源帖子"
+}
+
+private fun TrashMediaSnapshot.toViewerPhotoFeedItem(): PhotoFeedItem {
+    val date = java.util.Calendar.getInstance(Locale.CHINA).apply {
+        timeInMillis = displayTimeMillis
+    }
+    return PhotoFeedItem(
+        mediaId = mediaId,
+        mediaDisplayTimeMillis = displayTimeMillis,
+        displayYear = date.get(java.util.Calendar.YEAR),
+        displayMonth = date.get(java.util.Calendar.MONTH) + 1,
+        displayDay = date.get(java.util.Calendar.DAY_OF_MONTH),
+        commentCount = 0,
+        postIds = sourcePostId?.let(::listOf).orEmpty(),
+        palette = palette,
+        mediaType = mediaType,
+        aspectRatio = aspectRatio,
+        width = width,
+        height = height,
+        videoDurationMillis = videoDurationMillis,
+        mediaSource = mediaSource,
+    )
+}
+
+private fun TrashMediaSnapshot.viewerVideoDurationMillis(): Long {
+    return videoDurationMillis ?: 18_000L
 }
 
 @Composable
