@@ -90,6 +90,9 @@ fun CreatePostScreen(
     var summary by rememberSaveable(route.source, mediaKey) { mutableStateOf("") }
     var selectedAlbumIds by rememberSaveable(route.source, mediaKey) { mutableStateOf(emptyList<String>()) }
     var selectedCoverSourceMediaId by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
+    var selectedAppCoverMediaId by rememberSaveable(route.source, mediaKey) {
+        mutableStateOf(route.initialAppMediaItems.firstOrNull()?.mediaId ?: route.initialAppMediaIds.firstOrNull())
+    }
     var displayTimeMillis by rememberSaveable(route.source, mediaKey) { mutableStateOf(System.currentTimeMillis()) }
     var localMessage by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
     val spacing = YingShiThemeTokens.spacing
@@ -164,7 +167,8 @@ fun CreatePostScreen(
                             displayTimeMillis = draft.displayTimeMillis,
                             albumIds = draft.albumIds,
                             initialMediaIds = route.initialAppMediaIds,
-                            coverMediaId = route.initialAppMediaIds.firstOrNull(),
+                            coverMediaId = selectedAppCoverMediaId?.takeIf { route.initialAppMediaIds.contains(it) }
+                                ?: route.initialAppMediaIds.firstOrNull(),
                         ),
                     )
                     isSubmitting = false
@@ -345,6 +349,29 @@ fun CreatePostScreen(
                                         item = item,
                                         selected = item.id == selectedCoverSourceMediaId,
                                         onClick = { selectedCoverSourceMediaId = item.id },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (route.initialAppMediaItems.isNotEmpty()) {
+                        CreatePostSection(title = "初始媒体") {
+                            Text(
+                                text = "已选 ${route.initialAppMediaItems.size} 项，点击任一缩略图可设为封面。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                route.initialAppMediaItems.forEach { item ->
+                                    SelectableAppCoverMediaCard(
+                                        item = item,
+                                        selected = item.mediaId == selectedAppCoverMediaId,
+                                        onClick = { selectedAppCoverMediaId = item.mediaId },
                                     )
                                 }
                             }
@@ -537,6 +564,59 @@ private fun SelectableCoverMediaCard(
         }
         Text(
             text = item.displayName.ifBlank { item.id },
+            maxLines = 1,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SelectableAppCoverMediaCard(
+    item: CreatePostAppMediaItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.width(92.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(92.dp)
+                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f))
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.TopEnd,
+        ) {
+            AppContentMediaThumbnail(
+                mediaSource = item.mediaSource,
+                mediaType = item.mediaType,
+                palette = item.palette,
+                modifier = Modifier.fillMaxSize(),
+                contentDescription = item.displayName,
+                requestSize = 320,
+                showLoadingIndicator = false,
+                showVideoPlayOverlay = false,
+            )
+            if (selected) {
+                Surface(
+                    modifier = Modifier.padding(6.dp),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text(
+                        text = "封面",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                    )
+                }
+            }
+        }
+        Text(
+            text = item.displayName.ifBlank { item.mediaId },
             maxLines = 1,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

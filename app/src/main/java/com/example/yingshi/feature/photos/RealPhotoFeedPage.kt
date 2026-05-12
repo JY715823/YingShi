@@ -218,10 +218,15 @@ fun RealPhotoFeedPage(
                                 selectedCount = selectionState.selectedCount,
                                 isDeleting = uiState.isDeleting,
                                 onCreatePost = {
+                                    val selectedIds = selectionState.selectedMediaIds.toList()
+                                    val selectedItems = uiState.feedItems
+                                        .filter { item -> selectedIds.contains(item.mediaId) }
+                                        .map(PhotoFeedItem::toCreatePostAppMediaItem)
                                     onOpenCreatePost(
                                         CreatePostRoute(
                                             source = "real-photo-feed-selection",
-                                            initialAppMediaIds = selectionState.selectedMediaIds.toList(),
+                                            initialAppMediaIds = selectedIds,
+                                            initialAppMediaItems = selectedItems,
                                         ),
                                     )
                                     onSelectionStateChange(selectionState.clear())

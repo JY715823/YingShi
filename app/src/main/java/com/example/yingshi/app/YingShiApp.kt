@@ -30,6 +30,7 @@ import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.me.MyScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
+import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
 import com.example.yingshi.feature.photos.CacheManagementRoute
 import com.example.yingshi.feature.photos.CreatePostRoute
 import com.example.yingshi.feature.photos.CreatePostScreen
@@ -134,7 +135,7 @@ fun YingShiApp() {
     var trashDetailRoute by remember {
         mutableStateOf<TrashDetailRoute?>(null)
     }
-    val operationResults = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.operationResults
+    val operationResults = LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
     val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
@@ -196,10 +197,27 @@ fun YingShiApp() {
         val pendingEvents = operationResults.toList()
         pendingEvents.forEach { event ->
             Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
-            if (event.shouldAutoOpenResult && event.successCount > 0 && event.resultMediaIds.isNotEmpty()) {
+            if (event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
+                event.postRoute != null &&
+                event.successCount > 0
+            ) {
+                photoViewerRoute = null
+                systemMediaViewerRoute = null
+                systemMediaRoute = null
+                createPostRoute = null
+                transferCenterRoute = null
+                selectedDestinationName = RootDestination.PHOTOS.name
+                photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                postDetailRoute = event.postRoute
+            } else if (
+                event.operationType != LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
+                event.shouldAutoOpenResult &&
+                event.successCount > 0 &&
+                event.resultMediaIds.isNotEmpty()
+            ) {
                 requestPhotoFeedRefresh(event.resultMediaIds)
             }
-            com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
+            LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
         }
     }
 

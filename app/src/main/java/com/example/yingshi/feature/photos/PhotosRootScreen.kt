@@ -341,11 +341,15 @@ fun PhotosRootScreen(
                                             selectedCount = photoSelectionState.selectedCount,
                                             onCreatePost = {
                                                 val selectedIds = photoSelectionState.selectedMediaIds.toList()
+                                                val selectedItems = feedItems
+                                                    .filter { item -> selectedIds.contains(item.mediaId) }
+                                                    .map(PhotoFeedItem::toCreatePostAppMediaItem)
                                                 photoSelectionState = photoSelectionState.clear()
                                                 onOpenCreatePost(
                                                     CreatePostRoute(
                                                         source = "photo-feed-selection",
                                                         initialAppMediaIds = selectedIds,
+                                                        initialAppMediaItems = selectedItems,
                                                     ),
                                                 )
                                             },

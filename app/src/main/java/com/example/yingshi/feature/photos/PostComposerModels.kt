@@ -7,6 +7,16 @@ data class CreatePostRoute(
     val source: String,
     val initialMediaItems: List<SystemMediaItem> = emptyList(),
     val initialAppMediaIds: List<String> = emptyList(),
+    val initialAppMediaItems: List<CreatePostAppMediaItem> = emptyList(),
+)
+
+@Immutable
+data class CreatePostAppMediaItem(
+    val mediaId: String,
+    val displayName: String,
+    val mediaType: AppMediaType = AppMediaType.IMAGE,
+    val palette: PhotoThumbnailPalette,
+    val mediaSource: AppContentMediaSource? = null,
 )
 
 @Immutable
@@ -36,6 +46,16 @@ data class CreatePostUiState(
 ) {
     val hasInitialMedia: Boolean
         get() = initialMediaItems.isNotEmpty()
+}
+
+internal fun PhotoFeedItem.toCreatePostAppMediaItem(): CreatePostAppMediaItem {
+    return CreatePostAppMediaItem(
+        mediaId = mediaId,
+        displayName = mediaId,
+        mediaType = mediaType,
+        palette = palette,
+        mediaSource = mediaSource,
+    )
 }
 
 internal fun CreatePostUiState.toDraft(): CreatePostDraft {

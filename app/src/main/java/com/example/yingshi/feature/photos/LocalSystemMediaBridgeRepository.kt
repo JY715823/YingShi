@@ -998,6 +998,11 @@ object LocalSystemMediaBridgeRepository {
                         statusMessage = "Reading local media failed",
                         errorMessage = message,
                     )
+                    finalizeRealOperationIfReady(
+                        operationId = operationId,
+                        sourceItems = sourceItems,
+                        finalizeAction = finalizeAction,
+                    )
                     publishOperationSummaryIfReady(operationId)
                     debugUploadLog("read failed operation=$operationId mediaId=${mediaItem.id}: $message", throwable)
                     return@launch
@@ -1047,10 +1052,15 @@ object LocalSystemMediaBridgeRepository {
                             targetLabel = targetLabel,
                         mediaType = mediaItem.type,
                         previewUri = mediaItem.uri.toString(),
-                            statusMessage = "Create upload token failed",
-                            errorMessage = message,
-                        )
-                        publishOperationSummaryIfReady(operationId)
+                        statusMessage = "Create upload token failed",
+                        errorMessage = message,
+                    )
+                    finalizeRealOperationIfReady(
+                        operationId = operationId,
+                        sourceItems = sourceItems,
+                        finalizeAction = finalizeAction,
+                    )
+                    publishOperationSummaryIfReady(operationId)
                         debugUploadLog("token failed operation=$operationId mediaId=${mediaItem.id}: $message", tokenResult.throwable)
                         return@launch
                     }
@@ -1133,6 +1143,11 @@ object LocalSystemMediaBridgeRepository {
                                 errorMessage = message,
                                 canRetry = true,
                             )
+                            finalizeRealOperationIfReady(
+                                operationId = operationId,
+                                sourceItems = sourceItems,
+                                finalizeAction = finalizeAction,
+                            )
                             publishOperationSummaryIfReady(operationId)
                             debugUploadLog("upload response missing mediaId operation=$operationId uploadId=$uploadId")
                             return@launch
@@ -1184,6 +1199,11 @@ object LocalSystemMediaBridgeRepository {
                             errorMessage = message,
                             canRetry = true,
                         )
+                        finalizeRealOperationIfReady(
+                            operationId = operationId,
+                            sourceItems = sourceItems,
+                            finalizeAction = finalizeAction,
+                        )
                         publishOperationSummaryIfReady(operationId)
                         debugUploadLog("upload failed operation=$operationId uploadId=$uploadId: $message", uploadResult.throwable)
                     }
@@ -1199,6 +1219,11 @@ object LocalSystemMediaBridgeRepository {
                         canRetry = true,
                     )
                 }
+                finalizeRealOperationIfReady(
+                    operationId = operationId,
+                    sourceItems = sourceItems,
+                    finalizeAction = finalizeAction,
+                )
                 publishOperationSummaryIfReady(operationId)
             } catch (throwable: Throwable) {
                 val message = friendlyUploadError(
@@ -1227,6 +1252,11 @@ object LocalSystemMediaBridgeRepository {
                         errorMessage = message,
                     )
                 }
+                finalizeRealOperationIfReady(
+                    operationId = operationId,
+                    sourceItems = sourceItems,
+                    finalizeAction = finalizeAction,
+                )
                 publishOperationSummaryIfReady(operationId)
                 debugUploadLog("upload crashed operation=$operationId task=$activeTaskId", throwable)
             } finally {
@@ -1363,25 +1393,40 @@ object LocalSystemMediaBridgeRepository {
         if (finalizedOperationIds.contains(operationId)) return
         val operationTasks = uploadTasksState.filter { it.operationId == operationId }
         if (operationTasks.isEmpty()) return
-        if (operationTasks.any { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }) return
-        if (!operationTasks.all { it.state == UploadState.SUCCESS }) return
+        val request = operationRequestsById[operationId]
+        val hasFailedTasks = operationTasks.any { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }
+        val allTasksFinished = operationTasks.all { it.isTerminal }
+        val allTasksSucceeded = operationTasks.all { it.state == UploadState.SUCCESS }
+        val canFinalizePartialCreatePost = request?.operationType == OperationType.CREATE_POST &&
+            hasFailedTasks &&
+            allTasksFinished &&
+            operationTasks.any { it.state == UploadState.SUCCESS }
+        if (!allTasksSucceeded && !canFinalizePartialCreatePost) return
 
         val uploadedMap = realUploadedMediaIdsByOperationId[operationId].orEmpty()
         val orderedIds = sourceItems.mapNotNull { uploadedMap[it.id] }
-        if (orderedIds.distinct().size != sourceItems.distinctBy { it.id }.size) return
+        if (allTasksSucceeded && orderedIds.distinct().size != sourceItems.distinctBy { it.id }.size) return
+        if (orderedIds.isEmpty()) return
 
         finalizedOperationIds += operationId
-        val request = operationRequestsById[operationId]
-        updateOperationTasks(
-            operationId = operationId,
-            state = UploadState.UPLOADING,
-            statusMessage = when (request?.operationType) {
-                OperationType.IMPORT_TO_APP -> "Upload finished. Refreshing photo feed"
-                OperationType.ADD_TO_EXISTING_POST -> "Upload finished. Adding to post"
-                OperationType.CREATE_POST,
-                null -> "Upload finished. Creating post"
-            },
-        )
+        if (canFinalizePartialCreatePost) {
+            updateSuccessfulOperationTasks(
+                operationId = operationId,
+                state = UploadState.UPLOADING,
+                statusMessage = "部分上传完成，正在用成功项创建帖子",
+            )
+        } else {
+            updateOperationTasks(
+                operationId = operationId,
+                state = UploadState.UPLOADING,
+                statusMessage = when (request?.operationType) {
+                    OperationType.IMPORT_TO_APP -> "Upload finished. Refreshing photo feed"
+                    OperationType.ADD_TO_EXISTING_POST -> "Upload finished. Adding to post"
+                    OperationType.CREATE_POST,
+                    null -> "Upload finished. Creating post"
+                },
+            )
+        }
 
         when (
             val result = finalizeAction(
@@ -1400,11 +1445,20 @@ object LocalSystemMediaBridgeRepository {
                     postIds = result.data.affectedPostIds,
                     mediaIds = orderedIds.toSet(),
                 )
-                updateOperationTasks(
-                    operationId = operationId,
-                    state = UploadState.SUCCESS,
-                    statusMessage = result.data.successMessage,
-                )
+                if (canFinalizePartialCreatePost) {
+                    updateSuccessfulOperationTasks(
+                        operationId = operationId,
+                        state = UploadState.SUCCESS,
+                        statusMessage = result.data.successMessage,
+                    )
+                    markFailedOperationTasksAfterPartialPost(operationId)
+                } else {
+                    updateOperationTasks(
+                        operationId = operationId,
+                        state = UploadState.SUCCESS,
+                        statusMessage = result.data.successMessage,
+                    )
+                }
                 publishOperationSummaryIfReady(
                     operationId = operationId,
                     operationType = result.data.operationType,
@@ -1413,16 +1467,26 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> {
                 finalizedOperationIds.remove(operationId)
-                updateOperationTasks(
-                    operationId = operationId,
-                    state = UploadState.FAILURE,
-                    statusMessage = when (request?.operationType) {
-                        OperationType.ADD_TO_EXISTING_POST -> "Add to post failed"
-                        else -> "Create post failed"
-                    },
-                    errorMessage = result.message.ifBlank { "Upload finished, but finalizing the operation failed." },
-                    canRetry = true,
-                )
+                if (canFinalizePartialCreatePost) {
+                    updateSuccessfulOperationTasks(
+                        operationId = operationId,
+                        state = UploadState.FAILURE,
+                        statusMessage = "Create post failed",
+                        errorMessage = result.message.ifBlank { "Upload finished, but creating the post failed." },
+                        canRetry = true,
+                    )
+                } else {
+                    updateOperationTasks(
+                        operationId = operationId,
+                        state = UploadState.FAILURE,
+                        statusMessage = when (request?.operationType) {
+                            OperationType.ADD_TO_EXISTING_POST -> "Add to post failed"
+                            else -> "Create post failed"
+                        },
+                        errorMessage = result.message.ifBlank { "Upload finished, but finalizing the operation failed." },
+                        canRetry = true,
+                    )
+                }
                 publishOperationSummaryIfReady(
                     operationId = operationId,
                     operationType = request?.operationType ?: OperationType.CREATE_POST,
@@ -1619,6 +1683,47 @@ object LocalSystemMediaBridgeRepository {
                     statusMessage = statusMessage,
                     errorMessage = errorMessage,
                     canRetry = canRetry,
+                )
+            }
+        }
+    }
+
+    private fun updateSuccessfulOperationTasks(
+        operationId: String,
+        state: UploadState,
+        statusMessage: String,
+        errorMessage: String? = null,
+        canRetry: Boolean = false,
+    ) {
+        uploadTasksState.indices.forEach { index ->
+            val task = uploadTasksState[index]
+            if (task.operationId == operationId && task.resultMediaId?.isNotBlank() == true) {
+                uploadTasksState[index] = task.copy(
+                    state = state,
+                    progressPercent = if (state == UploadState.FAILURE || state == UploadState.CANCELLED) {
+                        task.progressPercent.coerceAtLeast(0)
+                    } else {
+                        task.progressPercent.coerceAtLeast(100)
+                    },
+                    statusMessage = statusMessage,
+                    errorMessage = errorMessage,
+                    canRetry = canRetry,
+                )
+            }
+        }
+    }
+
+    private fun markFailedOperationTasksAfterPartialPost(operationId: String) {
+        uploadTasksState.indices.forEach { index ->
+            val task = uploadTasksState[index]
+            if (
+                task.operationId == operationId &&
+                (task.state == UploadState.FAILURE || task.state == UploadState.CANCELLED)
+            ) {
+                uploadTasksState[index] = task.copy(
+                    statusMessage = "未加入新帖子",
+                    errorMessage = task.errorMessage ?: "该媒体未上传成功，可稍后重试。",
+                    canRetry = true,
                 )
             }
         }
