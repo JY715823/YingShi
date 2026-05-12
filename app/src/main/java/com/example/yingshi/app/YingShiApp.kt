@@ -157,24 +157,36 @@ fun YingShiApp() {
     val quickAddPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
     ) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        if (uris.isEmpty()) {
+            Toast.makeText(context, "已取消导入媒体。", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
         showQuickAddSheet = false
-        val importedCount = com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
-            .enqueueImportPickedMediaToAppUpload(
-                context = context,
-                mediaUris = uris,
-            )
-        if (importedCount > 0) {
-            android.widget.Toast.makeText(
+        runCatching {
+            com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
+                .enqueueImportPickedMediaToAppUpload(
+                    context = context,
+                    mediaUris = uris,
+                )
+        }.onSuccess { importedCount ->
+            if (importedCount > 0) {
+                Toast.makeText(
+                    context,
+                    "已加入导入队列，完成后会出现在照片流。",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } else {
+                Toast.makeText(
+                    context,
+                    "没有找到可导入的图片或视频。",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }.onFailure {
+            Toast.makeText(
                 context,
-                "已开始上传，完成后会出现在照片流。",
-                android.widget.Toast.LENGTH_SHORT,
-            ).show()
-        } else {
-            android.widget.Toast.makeText(
-                context,
-                "未选到可导入的媒体。",
-                android.widget.Toast.LENGTH_SHORT,
+                "导入媒体失败，请稍后重试。",
+                Toast.LENGTH_SHORT,
             ).show()
         }
     }
@@ -626,9 +638,29 @@ fun YingShiApp() {
                 verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
             ) {
                 Text(
-                    text = "新增",
+                    text = "添加内容",
                     style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
                 )
+                TextButton(
+                    onClick = {
+                        showQuickAddSheet = false
+                        runCatching {
+                            quickAddPickerLauncher.launch(
+                                PickVisualMediaRequest(
+                                    mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
+                                ),
+                            )
+                        }.onFailure {
+                            Toast.makeText(
+                                context,
+                                "无法打开系统照片选择器，请稍后重试。",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+                ) {
+                    Text(text = "导入媒体")
+                }
                 TextButton(
                     onClick = {
                         showQuickAddSheet = false
@@ -636,18 +668,6 @@ fun YingShiApp() {
                     },
                 ) {
                     Text(text = "新建帖子")
-                }
-                TextButton(
-                    onClick = {
-                        showQuickAddSheet = false
-                        quickAddPickerLauncher.launch(
-                            PickVisualMediaRequest(
-                                mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
-                            ),
-                        )
-                    },
-                ) {
-                    Text(text = "上传媒体")
                 }
             }
         }

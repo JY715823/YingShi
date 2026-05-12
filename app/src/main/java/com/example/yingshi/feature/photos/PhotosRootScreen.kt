@@ -107,9 +107,6 @@ fun PhotosRootScreen(
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
-    var showQuickAddSheet by rememberSaveable {
-        mutableStateOf(false)
-    }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = FakeAlbumRepository.getAlbums()
     val albumPosts = FakeAlbumRepository.getPosts()
@@ -400,27 +397,6 @@ fun PhotosRootScreen(
         }
     }
 
-    if (showQuickAddSheet) {
-        PhotoQuickAddSheet(
-            onDismiss = { showQuickAddSheet = false },
-            onAddMedia = {
-                showQuickAddSheet = false
-                Toast.makeText(
-                    context,
-                    "添加媒体入口先保留为占位，现有导入流程仍在系统媒体工具区。",
-                    Toast.LENGTH_SHORT,
-                ).show()
-            },
-            onAddPost = {
-                showQuickAddSheet = false
-                Toast.makeText(
-                    context,
-                    "添加帖子入口先保留为占位，后续再接正式新增流程。",
-                    Toast.LENGTH_SHORT,
-                ).show()
-            },
-        )
-    }
 }
 
 @Composable
@@ -514,71 +490,6 @@ private fun PhotoQuickAddEntry(
             text = "+",
             onClick = onClick,
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PhotoQuickAddSheet(
-    onDismiss: () -> Unit,
-    onAddMedia: () -> Unit,
-    onAddPost: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = "添加入口",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "这轮先把结构放对，不展开完整新增流程。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(radius.lg))
-                    .clickable(onClick = onAddMedia),
-                shape = RoundedCornerShape(radius.lg),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
-            ) {
-                Text(
-                    text = "添加媒体",
-                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(radius.lg))
-                    .clickable(onClick = onAddPost),
-                shape = RoundedCornerShape(radius.lg),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
-            ) {
-                Text(
-                    text = "添加帖子",
-                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
     }
 }
 

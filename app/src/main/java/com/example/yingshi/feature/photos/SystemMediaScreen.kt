@@ -899,7 +899,7 @@ fun SystemMediaScreen(
                     selectedIds = emptyList()
                     selectionMode = false
                     if (selectedSnapshot.isEmpty()) {
-                        Toast.makeText(context, "???????????", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "请先选择要发成新帖子的媒体。", Toast.LENGTH_SHORT).show()
                     } else {
                         onOpenCreatePost(
                             CreatePostRoute(
