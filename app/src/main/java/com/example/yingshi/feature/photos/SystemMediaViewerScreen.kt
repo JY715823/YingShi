@@ -199,6 +199,7 @@ fun SystemMediaViewerScreen(
     val zoomState = remember { SystemViewerZoomState() }
     var showMenuSheet by rememberSaveable { mutableStateOf(false) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
+    var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var showSystemTrashConfirm by rememberSaveable { mutableStateOf(false) }
     var pendingTrashIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val destinationUiState by rememberSystemMediaDestinationUiState()
@@ -266,23 +267,29 @@ fun SystemMediaViewerScreen(
             SystemMediaPostDestinationDialog(
                 albums = albums,
                 posts = posts,
-                onDismiss = { showAddToPostDialog = false },
+                isLoading = destinationUiState.isLoading,
+                errorMessage = addToPostError ?: destinationUiState.errorMessage,
+                onDismiss = {
+                    showAddToPostDialog = false
+                    addToPostError = null
+                },
                 onPostSelected = { postId ->
                     val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
                         context = context,
                         postId = postId,
                         mediaItems = listOf(item),
                     )
-                    showAddToPostDialog = false
-                    Toast.makeText(
-                        context,
-                        if (addedCount > 0) {
-                            "已加入已有帖子，并同步刷新相关页面。"
-                        } else {
-                            "该媒体已经在目标帖子里了。"
-                        },
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    if (addedCount > 0) {
+                        showAddToPostDialog = false
+                        addToPostError = null
+                        Toast.makeText(
+                            context,
+                            "已加入上传队列，成功后会进入目标帖子。",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        addToPostError = "该媒体已经在目标帖子里，或没有可添加的媒体。"
+                    }
                 },
             )
         }
@@ -429,6 +436,7 @@ fun SystemMediaViewerScreen(
                 )
             },
             onAddToPost = {
+                addToPostError = null
                 showMenuSheet = false
                 if (destinationUiState.errorMessage != null && posts.isEmpty()) {
                     Toast.makeText(context, destinationUiState.errorMessage, Toast.LENGTH_SHORT).show()

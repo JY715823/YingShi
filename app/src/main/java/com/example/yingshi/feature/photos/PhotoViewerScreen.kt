@@ -70,6 +70,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -478,6 +479,8 @@ fun PhotoViewerScreen(
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
     var showAddToExistingPostPicker by remember { mutableStateOf(false) }
+    var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
+    var addToPostPendingPostId by rememberSaveable { mutableStateOf<String?>(null) }
     var openCommentComposerOnSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showTimeEditorSheet by remember { mutableStateOf(false) }
@@ -1045,92 +1048,71 @@ fun PhotoViewerScreen(
         }
 
         if (showAddToExistingPostPicker) {
-            val mode = RepositoryProvider.currentMode
-            var pickerAlbums by remember { mutableStateOf<List<AlbumSummaryUiModel>>(emptyList()) }
-            var pickerPosts by remember { mutableStateOf<List<AlbumPostCardUiModel>>(emptyList()) }
-            var pickerLoading by remember { mutableStateOf(true) }
-
-            LaunchedEffect(mode) {
-                pickerLoading = true
-                if (mode == RepositoryMode.FAKE) {
-                    pickerAlbums = FakeAlbumRepository.getAlbums()
-                    pickerPosts = FakeAlbumRepository.getPosts()
-                } else {
-                    when (val albumResult = RepositoryProvider.albumRepository.getAlbums()) {
-                        is ApiResult.Success -> {
-                            pickerAlbums = albumResult.data.map { it.toAlbumSummaryUiModel() }
-                            val loadedPosts = mutableListOf<AlbumPostCardUiModel>()
-                            for (album in albumResult.data) {
-                                when (val postResult = RepositoryProvider.albumRepository.getAlbumPosts(album.albumId)) {
-                                    is ApiResult.Success -> {
-                                        postResult.data.forEach { post ->
-                                            loadedPosts.add(
-                                                post.toAlbumPostCardUiModel(
-                                                    selectedAlbumId = album.albumId,
-                                                ),
-                                            )
-                                        }
-                                    }
-                                    else -> { /* skip albums whose posts fail to load */ }
+            val destinationUiState by rememberSystemMediaDestinationUiState()
+            SystemMediaPostDestinationDialog(
+                albums = destinationUiState.albums,
+                posts = destinationUiState.posts,
+                isLoading = destinationUiState.isLoading,
+                isSubmitting = addToPostPendingPostId != null,
+                pendingPostId = addToPostPendingPostId,
+                errorMessage = addToPostError ?: destinationUiState.errorMessage,
+                onDismiss = {
+                    showAddToExistingPostPicker = false
+                    addToPostError = null
+                    addToPostPendingPostId = null
+                },
+                onPostSelected = { postId ->
+                    addToPostError = null
+                    addToPostPendingPostId = postId
+                    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
+                        val mediaItem = currentItem
+                        val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
+                            postId = postId,
+                            mediaItems = listOf(mediaItem),
+                        )
+                        if (addedCount <= 0) {
+                            addToPostPendingPostId = null
+                            addToPostError = "该媒体已在目标帖子中。"
+                            return@SystemMediaPostDestinationDialog
+                        }
+                        showAddToExistingPostPicker = false
+                        addToPostPendingPostId = null
+                        FakeAlbumRepository.getPost(postId)
+                            ?.let(FakeAlbumRepository::toPostDetailRoute)
+                            ?.let(onOpenPostDetail)
+                    } else {
+                        coroutineScope.launch {
+                            when (val result = RepositoryProvider.postRepository.addMediaToPost(
+                                postId = postId,
+                                mediaIds = listOf(currentItem.mediaId),
+                            )) {
+                                is ApiResult.Success -> {
+                                    notifyRealBackendContentChanged(
+                                        postIds = setOf(postId),
+                                        mediaIds = setOf(currentItem.mediaId),
+                                    )
+                                    showAddToExistingPostPicker = false
+                                    addToPostPendingPostId = null
+                                    addToPostError = null
+                                    onOpenPostDetail(
+                                        result.data.toPostDetailPlaceholderRoute(
+                                            selectedAlbumId = result.data.albumIds.firstOrNull()
+                                                ?: destinationUiState.posts.firstOrNull { it.id == postId }?.albumId.orEmpty(),
+                                        ),
+                                    )
+                                }
+                                is ApiResult.Error -> {
+                                    addToPostPendingPostId = null
+                                    addToPostError = result.toBackendUiMessage("加入失败，请重试。")
+                                }
+                                ApiResult.Loading -> {
+                                    addToPostPendingPostId = null
                                 }
                             }
-                            pickerPosts = loadedPosts
-                        }
-                        else -> {
-                            pickerAlbums = emptyList()
-                            pickerPosts = emptyList()
                         }
                     }
-                }
-                pickerLoading = false
-            }
-
-            if (pickerLoading) {
-                BackendLoadingCard(
-                    text = "正在加载相册与帖子…",
-                    fillWidth = true,
-                )
-            } else {
-                SystemMediaPostDestinationDialog(
-                    albums = pickerAlbums,
-                    posts = pickerPosts,
-                    onDismiss = { showAddToExistingPostPicker = false },
-                    onPostSelected = { postId ->
-                        showAddToExistingPostPicker = false
-                        if (mode == RepositoryMode.FAKE) {
-                            val mediaItem = currentItem
-                            val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
-                                postId = postId,
-                                mediaItems = listOf(mediaItem),
-                            )
-                            Toast.makeText(
-                                context,
-                                if (addedCount > 0) "已加入已有帖子。" else "该媒体已在目标帖子中。",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        } else {
-                            coroutineScope.launch {
-                                when (val result = RepositoryProvider.postRepository.addMediaToPost(
-                                    postId = postId,
-                                    mediaIds = listOf(currentItem.mediaId),
-                                )) {
-                                    is ApiResult.Success -> {
-                                        Toast.makeText(context, "已加入已有帖子。", Toast.LENGTH_SHORT).show()
-                                    }
-                                    is ApiResult.Error -> {
-                                        Toast.makeText(
-                                            context,
-                                            result.toBackendUiMessage("加入失败，请稍后重试。"),
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                    }
-                                    ApiResult.Loading -> Unit
-                                }
-                            }
-                        }
-                    },
-                )
-            }
+                },
+            )
         }
 
         if (showTimeEditorSheet) {

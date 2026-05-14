@@ -160,6 +160,7 @@ fun SystemMediaScreen(
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
+    var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingTrashIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
@@ -561,25 +562,31 @@ fun SystemMediaScreen(
         SystemMediaPostDestinationDialog(
             albums = albums,
             posts = posts,
-            onDismiss = { showAddToPostDialog = false },
+            isLoading = destinationUiState.isLoading,
+            errorMessage = addToPostError ?: destinationUiState.errorMessage,
+            onDismiss = {
+                showAddToPostDialog = false
+                addToPostError = null
+            },
             onPostSelected = { postId ->
                 val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
                     context = context,
                     postId = postId,
                     mediaItems = selectedItems,
                 )
-                showAddToPostDialog = false
-                selectedIds = emptyList()
-                selectionMode = false
-                Toast.makeText(
-                    context,
-                    if (addedCount > 0) {
-                        "已加入已有帖子，并同步刷新到照片与相册页。"
-                    } else {
-                        "这些媒体已经在目标帖子里了。"
-                    },
-                    Toast.LENGTH_SHORT,
-                ).show()
+                if (addedCount > 0) {
+                    showAddToPostDialog = false
+                    addToPostError = null
+                    selectedIds = emptyList()
+                    selectionMode = false
+                    Toast.makeText(
+                        context,
+                        "已加入上传队列，成功项会进入目标帖子。",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                } else {
+                    addToPostError = "这些媒体已经在目标帖子里，或没有可添加的媒体。"
+                }
             },
         )
     }
@@ -910,6 +917,7 @@ fun SystemMediaScreen(
                     }
                 },
                 onAddToPost = {
+                    addToPostError = null
                     if (destinationUiState.errorMessage != null && posts.isEmpty()) {
                         Toast.makeText(context, destinationUiState.errorMessage, Toast.LENGTH_SHORT).show()
                     } else {

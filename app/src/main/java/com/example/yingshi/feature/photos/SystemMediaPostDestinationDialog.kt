@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -38,11 +40,16 @@ fun SystemMediaPostDestinationDialog(
     posts: List<AlbumPostCardUiModel>,
     onDismiss: () -> Unit,
     onPostSelected: (String) -> Unit,
+    isLoading: Boolean = false,
+    isSubmitting: Boolean = false,
+    errorMessage: String? = null,
+    pendingPostId: String? = null,
 ) {
     var selectedAlbumId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
     val selectedAlbum = albums.firstOrNull { it.id == selectedAlbumId }
+    val albumTitleById = albums.associate { it.id to it.title }
     val albumCards = albums.map { album ->
         SystemMediaAlbumChoice(
             album = album,
@@ -55,12 +62,12 @@ fun SystemMediaPostDestinationDialog(
     }.orEmpty()
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!isSubmitting) onDismiss()
+        },
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = if (selectedAlbum == null) "选择相册" else "选择帖子",
-                )
+                Text(text = if (selectedAlbum == null) "选择相册" else "选择帖子")
                 Text(
                     text = selectedAlbum?.title ?: "先选择一个相册，再选择目标帖子",
                     style = MaterialTheme.typography.bodySmall,
@@ -75,17 +82,22 @@ fun SystemMediaPostDestinationDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (selectedAlbum == null) {
+                errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                    SystemMediaPickerInlineNotice(text = message)
+                }
+
+                if (isLoading) {
+                    SystemMediaPickerLoadingState()
+                } else if (selectedAlbum == null) {
                     if (albumCards.isEmpty()) {
-                        SystemMediaPickerEmptyState(
-                            text = "当前没有可选相册。",
-                        )
+                        SystemMediaPickerEmptyState(text = "当前没有可选相册。")
                     } else {
                         albumCards.forEach { choice ->
                             Surface(
                                 shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
                                 onClick = { selectedAlbumId = choice.album.id },
+                                enabled = !isSubmitting,
                             ) {
                                 Column(
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -106,72 +118,172 @@ fun SystemMediaPostDestinationDialog(
                         }
                     }
                 } else if (postsInSelectedAlbum.isEmpty()) {
-                    SystemMediaPickerEmptyState(
-                        text = "该相册下还没有帖子。",
-                    )
+                    SystemMediaPickerEmptyState(text = "该相册下还没有帖子。")
                 } else {
                     postsInSelectedAlbum.forEach { post ->
-                        Surface(
-                            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+                        SystemMediaPostChoiceCard(
+                            post = post,
+                            albumTitleById = albumTitleById,
+                            isSubmitting = isSubmitting && pendingPostId == post.id,
+                            enabled = !isSubmitting,
                             onClick = { onPostSelected(post.id) },
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(52.dp)
-                                        .background(
-                                            brush = Brush.linearGradient(
-                                                listOf(post.coverPalette.start, post.coverPalette.end),
-                                            ),
-                                            shape = RoundedCornerShape(14.dp),
-                                        ),
-                                )
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    Text(
-                                        text = post.title,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    )
-                                    Text(
-                                        text = formatSystemMediaPickerTime(post.postDisplayTimeMillis),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = "${post.mediaCount} 项媒体",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
+                        )
                     }
                 }
             }
         },
         confirmButton = {
             if (selectedAlbum != null) {
-                TextButton(onClick = { selectedAlbumId = null }) {
+                TextButton(
+                    enabled = !isSubmitting,
+                    onClick = { selectedAlbumId = null },
+                ) {
                     Text(text = "返回上一级")
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                enabled = !isSubmitting,
+                onClick = onDismiss,
+            ) {
                 Text(text = "取消")
             }
         },
     )
+}
+
+@Composable
+private fun SystemMediaPostChoiceCard(
+    post: AlbumPostCardUiModel,
+    albumTitleById: Map<String, String>,
+    isSubmitting: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val albumLabel = post.albumIds
+        .mapNotNull { albumTitleById[it] }
+        .distinct()
+        .take(2)
+        .joinToString(" / ")
+        .ifBlank { "未归档相册" }
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+        onClick = onClick,
+        enabled = enabled,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(
+                        brush = Brush.linearGradient(
+                            listOf(post.coverPalette.start, post.coverPalette.end),
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                    ),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                Text(
+                    text = if (post.coverMediaType == AppMediaType.VIDEO) "视频" else "封面",
+                    modifier = Modifier
+                        .padding(4.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+                            shape = RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = post.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = post.summary.ifBlank { "还没有简介" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "$albumLabel · ${post.mediaCount} 项媒体 · ${formatSystemMediaPickerTime(post.postDisplayTimeMillis)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (isSubmitting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaPickerLoadingState() {
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(88.dp)
+                .padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(
+                text = "正在加载相册和帖子...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaPickerInlineNotice(
+    text: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.md),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+    }
 }
 
 @Composable

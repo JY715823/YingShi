@@ -597,6 +597,8 @@ object LocalSystemMediaBridgeRepository {
                 targetLabel = request.targetLabel,
                 onOperationSuccess = {
                     val addedCount = addSystemMediaToExistingPost(request.postId, request.mediaItems)
+                    val postRoute = FakeAlbumRepository.getPost(request.postId)
+                        ?.let(FakeAlbumRepository::toPostDetailRoute)
                     OperationResultEvent(
                         eventId = if (addedCount > 0) "$operationId-success" else "$operationId-failure",
                         operationId = operationId,
@@ -607,6 +609,7 @@ object LocalSystemMediaBridgeRepository {
                         } else {
                             "These media items are already in the target post."
                         },
+                        postRoute = postRoute.takeIf { addedCount > 0 },
                     )
                 },
             )
@@ -709,6 +712,8 @@ object LocalSystemMediaBridgeRepository {
                 targetLabel = "加入已有帖子",
                 onOperationSuccess = {
                     val addedCount = addSystemMediaToExistingPost(postId, mediaItems)
+                    val postRoute = FakeAlbumRepository.getPost(postId)
+                        ?.let(FakeAlbumRepository::toPostDetailRoute)
                     OperationResultEvent(
                         eventId = if (addedCount > 0) "$operationId-success" else "$operationId-failure",
                         operationId = operationId,
@@ -719,6 +724,7 @@ object LocalSystemMediaBridgeRepository {
                         } else {
                             "These media items are already in the target post."
                         },
+                        postRoute = postRoute.takeIf { addedCount > 0 },
                     )
                 },
             )
@@ -1423,10 +1429,14 @@ object LocalSystemMediaBridgeRepository {
                     mediaIds = sourceItems.map { it.id },
                     postId = postId,
                 )
+                val postRoute = result.data.toPostDetailPlaceholderRoute(
+                    selectedAlbumId = result.data.albumIds.firstOrNull().orEmpty(),
+                )
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.ADD_TO_EXISTING_POST,
                         successMessage = "Media added to post. Detail and media manager refreshed.",
+                        postRoute = postRoute,
                         affectedPostIds = setOf(postId),
                     ),
                 )
@@ -1456,7 +1466,11 @@ object LocalSystemMediaBridgeRepository {
             hasFailedTasks &&
             allTasksFinished &&
             operationTasks.any { it.state == UploadState.SUCCESS }
-        if (!allTasksSucceeded && !canFinalizePartialCreatePost) return
+        val canFinalizePartialAddToPost = request?.operationType == OperationType.ADD_TO_EXISTING_POST &&
+            hasFailedTasks &&
+            allTasksFinished &&
+            operationTasks.any { it.state == UploadState.SUCCESS }
+        if (!allTasksSucceeded && !canFinalizePartialCreatePost && !canFinalizePartialAddToPost) return
 
         val uploadedMap = realUploadedMediaIdsByOperationId[operationId].orEmpty()
         val orderedIds = sourceItems.mapNotNull { uploadedMap[it.id] }
@@ -1464,7 +1478,7 @@ object LocalSystemMediaBridgeRepository {
         if (orderedIds.isEmpty()) return
 
         finalizedOperationIds += operationId
-        if (canFinalizePartialCreatePost) {
+        if (canFinalizePartialCreatePost || canFinalizePartialAddToPost) {
             updateSuccessfulOperationTasks(
                 operationId = operationId,
                 state = UploadState.UPLOADING,
@@ -1500,7 +1514,7 @@ object LocalSystemMediaBridgeRepository {
                     postIds = result.data.affectedPostIds,
                     mediaIds = orderedIds.toSet(),
                 )
-                if (canFinalizePartialCreatePost) {
+                if (canFinalizePartialCreatePost || canFinalizePartialAddToPost) {
                     updateSuccessfulOperationTasks(
                         operationId = operationId,
                         state = UploadState.SUCCESS,
@@ -1522,12 +1536,18 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> {
                 finalizedOperationIds.remove(operationId)
-                if (canFinalizePartialCreatePost) {
+                if (canFinalizePartialCreatePost || canFinalizePartialAddToPost) {
                     updateSuccessfulOperationTasks(
                         operationId = operationId,
                         state = UploadState.FAILURE,
-                        statusMessage = "Create post failed",
-                        errorMessage = result.message.ifBlank { "Upload finished, but creating the post failed." },
+                        statusMessage = if (canFinalizePartialAddToPost) "Add to post failed" else "Create post failed",
+                        errorMessage = result.message.ifBlank {
+                            if (canFinalizePartialAddToPost) {
+                                "Upload finished, but adding to the post failed."
+                            } else {
+                                "Upload finished, but creating the post failed."
+                            }
+                        },
                         canRetry = true,
                     )
                 } else {

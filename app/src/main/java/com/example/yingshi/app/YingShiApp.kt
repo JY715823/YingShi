@@ -139,6 +139,17 @@ fun YingShiApp() {
     val operationResults = LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
+    val openPostDetailAfterAdd: (PostDetailPlaceholderRoute) -> Unit = { route ->
+        AlbumPageStateStore.pendingSelectedAlbumId = route.albumId
+        photoViewerRoute = null
+        systemMediaViewerRoute = null
+        systemMediaRoute = null
+        createPostRoute = null
+        transferCenterRoute = null
+        selectedDestinationName = RootDestination.PHOTOS.name
+        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+        postDetailRoute = route
+    }
     val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
         val targetMediaId = resultMediaIds.firstOrNull { it.isNotBlank() }
         if (targetMediaId != null) {
@@ -202,15 +213,13 @@ fun YingShiApp() {
                 event.postRoute != null &&
                 event.successCount > 0
             ) {
-                AlbumPageStateStore.pendingSelectedAlbumId = event.postRoute.albumId
-                photoViewerRoute = null
-                systemMediaViewerRoute = null
-                systemMediaRoute = null
-                createPostRoute = null
-                transferCenterRoute = null
-                selectedDestinationName = RootDestination.PHOTOS.name
-                photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                postDetailRoute = event.postRoute
+                openPostDetailAfterAdd(event.postRoute)
+            } else if (
+                event.operationType == LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST &&
+                event.postRoute != null &&
+                event.successCount > 0
+            ) {
+                openPostDetailAfterAdd(event.postRoute)
             } else if (
                 event.operationType != LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
                 event.shouldAutoOpenResult &&
@@ -530,6 +539,7 @@ fun YingShiApp() {
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
                         onOpenTransferCenter = { transferCenterRoute = TransferCenterRoute(source = "photos-top-bar") },
                         onOpenCreatePost = { createPostRoute = it },
+                        onAddedMediaToPost = openPostDetailAfterAdd,
                         onOpenNotifications = {
                             notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
                         },

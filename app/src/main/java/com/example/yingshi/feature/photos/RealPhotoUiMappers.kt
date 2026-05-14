@@ -59,6 +59,28 @@ fun RemotePostSummary.toPostDetailPlaceholderRoute(
     )
 }
 
+fun RemotePostDetail.toPostDetailPlaceholderRoute(
+    selectedAlbumId: String = albumIds.firstOrNull().orEmpty(),
+): PostDetailPlaceholderRoute {
+    val fallbackAlbumId = selectedAlbumId.ifBlank { albumIds.firstOrNull().orEmpty() }
+    val coverMedia = mediaItems.firstOrNull { it.isCover }
+        ?: mediaItems.firstOrNull { it.mediaId == coverMediaId }
+        ?: mediaItems.firstOrNull()
+    val coverType = coverMedia?.toResolvedAppMediaType() ?: AppMediaType.IMAGE
+    return PostDetailPlaceholderRoute(
+        postId = postId,
+        albumId = fallbackAlbumId,
+        albumIds = albumIds.ifEmpty { listOf(fallbackAlbumId) },
+        title = title,
+        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "还没有简介" } },
+        postDisplayTimeMillis = displayTimeMillis,
+        mediaCount = mediaItems.size,
+        coverPalette = realPaletteFor(coverMediaId ?: coverMedia?.mediaId ?: postId),
+        coverMediaType = coverType,
+        coverAspectRatio = coverMedia?.toResolvedAspectRatio(coverType) ?: 1f,
+    )
+}
+
 fun RemotePostDetail.toPostDetailUiModel(
     albumTitleById: Map<String, String>,
 ): PostDetailUiModel {

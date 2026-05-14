@@ -85,6 +85,7 @@ fun PhotosRootScreen(
     onOpenTransferCenter: () -> Unit = { },
     onOpenCreatePost: (CreatePostRoute) -> Unit = { },
     onOpenNotifications: () -> Unit = { },
+    onAddedMediaToPost: (PostDetailPlaceholderRoute) -> Unit = { },
     photoFeedScrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
@@ -261,6 +262,9 @@ fun PhotosRootScreen(
                         },
                         Toast.LENGTH_SHORT,
                     ).show()
+                    FakeAlbumRepository.getPost(postId)
+                        ?.let(FakeAlbumRepository::toPostDetailRoute)
+                        ?.let(onAddedMediaToPost)
                 },
             )
         }
@@ -308,6 +312,7 @@ fun PhotosRootScreen(
                                     onSelectionStateChange = { photoSelectionState = it },
                                     onOpenViewer = onOpenViewer,
                                     onOpenCreatePost = onOpenCreatePost,
+                                    onAddedMediaToPost = onAddedMediaToPost,
                                     scrollTrigger = photoFeedScrollTrigger,
                                     inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                                 )
