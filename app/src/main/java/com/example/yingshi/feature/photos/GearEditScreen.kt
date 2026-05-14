@@ -6,17 +6,24 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -33,6 +40,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -50,8 +59,6 @@ import java.util.Locale
 fun GearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
-    onOpenMediaManagement: (MediaManagementRoute) -> Unit,
-    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     onDeleteCurrentPost: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -59,8 +66,6 @@ fun GearEditScreen(
         RealGearEditScreen(
             route = route,
             onBack = onBack,
-            onOpenMediaManagement = onOpenMediaManagement,
-            onOpenCacheManagement = onOpenCacheManagement,
             modifier = modifier,
         )
         return
@@ -68,14 +73,21 @@ fun GearEditScreen(
 
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
+    val post = remember(route.postId) { FakeAlbumRepository.getPost(route.postId) }
     val initialDraft = remember(route.postId) {
         FakeAlbumRepository.getEditablePostDraft(route.postId)
+    }
+    val initialMediaItems = remember(route.postId) {
+        FakeAlbumRepository.getManagedPostMedia(route.postId).orEmpty()
+    }
+    val initialCoverId = remember(route.postId, initialMediaItems) {
+        initialMediaItems.firstOrNull { it.isCover }?.id ?: initialMediaItems.firstOrNull()?.id
     }
     val systemDeleteImpact = remember(route.postId) {
         FakeAlbumRepository.getPostSystemDeleteImpact(route.postId)
     }
 
-    if (initialDraft == null) {
+    if (initialDraft == null || post == null) {
         GearEditMissingState(
             onBack = onBack,
             modifier = modifier,
@@ -91,12 +103,26 @@ fun GearEditScreen(
             addAll(initialDraft.albumIds)
         }
     }
+    var mediaItems by remember(route.postId) {
+        mutableStateOf(initialMediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem))
+    }
+    var coverMediaId by remember(route.postId) { mutableStateOf(initialCoverId) }
+    var showPostMediaList by remember(route.postId) { mutableStateOf(false) }
+    var localMessage by rememberSaveable(route.postId) { mutableStateOf<String?>(null) }
+    var isSaving by rememberSaveable(route.postId) { mutableStateOf(false) }
     val albums = remember { FakeAlbumRepository.getAlbums() }
     var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
+    val safeCoverMediaId = coverMediaId?.takeIf { id -> mediaItems.any { it.id == id } }
+        ?: mediaItems.firstOrNull()?.id
+    val selectedAlbumTitles = albums
+        .filter { selectedAlbumIds.contains(it.id) }
+        .map { it.title }
     val hasChanges = title != initialDraft.title ||
         summary != initialDraft.summary ||
         displayTimeMillis != initialDraft.postDisplayTimeMillis ||
-        selectedAlbumIds.toList() != initialDraft.albumIds
+        selectedAlbumIds.toList() != initialDraft.albumIds ||
+        mediaItems.map { it.id } != initialMediaItems.map { it.id } ||
+        safeCoverMediaId != initialCoverId
 
     val handleClose = {
         if (hasChanges) {
@@ -106,6 +132,76 @@ fun GearEditScreen(
     }
 
     BackHandler(onBack = handleClose)
+
+    if (showPostMediaList) {
+        PostMediaListScreen(
+            initialItems = mediaItems,
+            initialCoverMediaId = safeCoverMediaId,
+            allowEmpty = false,
+            onCancel = { showPostMediaList = false },
+            onConfirm = { updatedItems, updatedCoverId ->
+                mediaItems = updatedItems
+                coverMediaId = updatedCoverId?.takeIf { id -> updatedItems.any { it.id == id } }
+                    ?: updatedItems.firstOrNull()?.id
+                localMessage = null
+                showPostMediaList = false
+            },
+            modifier = modifier,
+        )
+        return
+    }
+
+    fun saveDraft() {
+        localMessage = null
+        if (selectedAlbumIds.isEmpty()) {
+            localMessage = "请至少选择一个相册后再保存。"
+            return
+        }
+        if (mediaItems.isNotEmpty() && safeCoverMediaId == null) {
+            localMessage = "封面媒体已失效，请重新选择封面。"
+            return
+        }
+        isSaving = true
+        FakeAlbumRepository.updatePostBasicInfo(
+            postId = route.postId,
+            title = title.trim(),
+            summary = summary.trim(),
+            postDisplayTimeMillis = displayTimeMillis,
+            albumIds = selectedAlbumIds.toList(),
+        )
+        val finalIds = mediaItems.map { it.id }
+        val originalIds = initialMediaItems.map { it.id }
+        val removedIds = (originalIds - finalIds.toSet()).toSet()
+        if (removedIds.isNotEmpty()) {
+            val selectedMediaSnapshots = FakeAlbumRepository.snapshotPostMedia(
+                postId = route.postId,
+                mediaIds = removedIds,
+            )
+            FakeAlbumRepository.applyMediaDelete(
+                postId = route.postId,
+                mediaIds = removedIds,
+                semantic = FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY,
+            )
+            FakeTrashRepository.recordRemovedMedia(post, selectedMediaSnapshots)
+        }
+        if (finalIds.isNotEmpty()) {
+            if (!FakeAlbumRepository.updatePostMediaOrder(route.postId, finalIds)) {
+                isSaving = false
+                localMessage = "保存媒体顺序失败，请重试。"
+                return
+            }
+            safeCoverMediaId?.let { coverId ->
+                if (!FakeAlbumRepository.setPostCover(route.postId, coverId)) {
+                    isSaving = false
+                    localMessage = "设置封面失败，请重新选择封面后重试。"
+                    return
+                }
+            }
+        }
+        isSaving = false
+        Toast.makeText(context, "帖子已保存", Toast.LENGTH_SHORT).show()
+        onBack()
+    }
 
     Column(
         modifier = modifier
@@ -118,46 +214,37 @@ fun GearEditScreen(
     ) {
         GearEditTopBar(
             onCancel = handleClose,
-            onSave = {
-                FakeAlbumRepository.updatePostBasicInfo(
-                    postId = route.postId,
-                    title = title,
-                    summary = summary,
-                    postDisplayTimeMillis = displayTimeMillis,
-                    albumIds = selectedAlbumIds.toList(),
-                )
-                Toast.makeText(context, "帖子信息已保存", Toast.LENGTH_SHORT).show()
-                onBack()
-            },
+            onSave = ::saveDraft,
+            saveEnabled = !isSaving,
+        )
+
+        GearEditMemoryHeader(
+            mediaCount = mediaItems.size,
+            albumTitles = selectedAlbumTitles,
+            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
+        )
+
+        localMessage?.let { message ->
+            BackendInlineNotice(text = message, emphasized = true)
+        }
+
+        GearEditMediaPreviewSection(
+            items = mediaItems,
+            coverMediaId = safeCoverMediaId,
+            onOpenAll = { showPostMediaList = true },
+        )
+
+        GearEditTextSection(
+            title = title,
+            summary = summary,
+            enabled = !isSaving,
+            onTitleChange = { title = it },
+            onSummaryChange = { summary = it },
         )
 
         GearEditSection(
-            title = "基础信息",
-            subtitle = "进入 Gear Edit 后默认就是编辑态，本轮先编辑标题和简介。",
-        ) {
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("标题") },
-                placeholder = { Text("可留空") },
-                minLines = 1,
-                maxLines = 2,
-            )
-            OutlinedTextField(
-                value = summary,
-                onValueChange = { summary = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("简介") },
-                placeholder = { Text("可留空") },
-                minLines = 3,
-                maxLines = 5,
-            )
-        }
-
-        GearEditSection(
             title = "时间设置",
-            subtitle = "本轮先做轻量本地调整，后续再接正式日期选择器。",
+            subtitle = "沿用新建帖子流程的发布时间检查，保存后同步到详情。",
         ) {
             Text(
                 text = formatGearEditTime(displayTimeMillis),
@@ -182,14 +269,18 @@ fun GearEditScreen(
         }
 
         GearEditSection(
-            title = "所属相册",
-            subtitle = "本轮支持在 fake albums 里做基础多选，保存后回写帖子信息区。",
+            title = "放进相册",
+            subtitle = if (selectedAlbumIds.isEmpty()) {
+                "至少选择一个相册后才能保存。"
+            } else {
+                "已选择 ${selectedAlbumIds.size} 个相册。"
+            },
         ) {
             if (selectedAlbumIds.isEmpty()) {
                 Text(
-                    text = "当前未归入相册",
+                    text = "请至少选择一个相册后再保存。",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
             AlbumSelectionFlow(
@@ -205,24 +296,23 @@ fun GearEditScreen(
             )
         }
 
+        GearEditPublishSummary(
+            mediaCount = mediaItems.size,
+            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
+            albumTitles = selectedAlbumTitles,
+            displayTimeMillis = displayTimeMillis,
+        )
+
+        GearEditSaveRow(
+            isSaving = isSaving,
+            onCancel = handleClose,
+            onSave = ::saveDraft,
+        )
+
         GearEditSection(
-            title = "后续入口",
-            subtitle = "媒体管理和删除语义本轮先接入本地流程，回收站详情与恢复后续再补。",
+            title = "危险操作",
+            subtitle = "删除帖子会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
         ) {
-            GearEditEntryRow(
-                title = "媒体管理",
-                subtitle = "进入独立媒体管理页，管理当前帖子的媒体。",
-                onClick = {
-                    onOpenMediaManagement(MediaManagementRoute(route.postId))
-                },
-            )
-            GearEditEntryRow(
-                title = "全局缓存管理",
-                subtitle = "查看 app 内容区 fake 缓存总量，并清理预览 / 原图 / 视频缓存占位状态。",
-                onClick = {
-                    onOpenCacheManagement(CacheManagementRoute(source = "gear-edit"))
-                },
-            )
             GearEditEntryRow(
                 title = "删除整个帖子",
                 subtitle = "本轮支持“仅删帖子”以及“删帖子并系统删其中媒体”的本地版本。",
@@ -286,8 +376,6 @@ fun GearEditScreen(
 private fun RealGearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
-    onOpenMediaManagement: (MediaManagementRoute) -> Unit,
-    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -299,6 +387,13 @@ private fun RealGearEditScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
+    var showPostMediaList by remember(route.postId) { mutableStateOf(false) }
+    val mediaItems = uiState.mediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
+    val safeCoverMediaId = uiState.coverMediaId?.takeIf { id -> mediaItems.any { it.id == id } }
+        ?: mediaItems.firstOrNull()?.id
+    val selectedAlbumTitles = uiState.albums
+        .filter { uiState.selectedAlbumIds.contains(it.id) }
+        .map { it.title }
 
     val handleClose = {
         if (uiState.hasChanges) {
@@ -308,6 +403,21 @@ private fun RealGearEditScreen(
     }
 
     BackHandler(onBack = handleClose)
+
+    if (showPostMediaList) {
+        PostMediaListScreen(
+            initialItems = mediaItems,
+            initialCoverMediaId = safeCoverMediaId,
+            allowEmpty = false,
+            onCancel = { showPostMediaList = false },
+            onConfirm = { updatedItems, updatedCoverId ->
+                viewModel.updateMediaDraft(updatedItems, updatedCoverId)
+                showPostMediaList = false
+            },
+            modifier = modifier,
+        )
+        return
+    }
 
     if (uiState.isLoading && !uiState.draftLoaded) {
         Column(
@@ -321,6 +431,7 @@ private fun RealGearEditScreen(
             GearEditTopBar(
                 onCancel = handleClose,
                 onSave = {},
+                saveEnabled = false,
             )
             Text(
                 text = "正在读取后端帖子编辑信息…",
@@ -353,6 +464,7 @@ private fun RealGearEditScreen(
             onSave = {
                 viewModel.save(onSuccess = onBack)
             },
+            saveEnabled = !uiState.isSaving,
         )
 
         uiState.errorMessage?.let { errorMessage ->
@@ -369,33 +481,29 @@ private fun RealGearEditScreen(
             ) {}
         }
 
-        GearEditSection(
-            title = "基础信息",
-            subtitle = "REAL 模式会直接保存到后端帖子详情。",
-        ) {
-            OutlinedTextField(
-                value = uiState.title,
-                onValueChange = viewModel::updateTitle,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("标题") },
-                placeholder = { Text("可留空") },
-                minLines = 1,
-                maxLines = 2,
-            )
-            OutlinedTextField(
-                value = uiState.summary,
-                onValueChange = viewModel::updateSummary,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("简介") },
-                placeholder = { Text("可留空") },
-                minLines = 3,
-                maxLines = 5,
-            )
-        }
+        GearEditMemoryHeader(
+            mediaCount = mediaItems.size,
+            albumTitles = selectedAlbumTitles,
+            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
+        )
+
+        GearEditMediaPreviewSection(
+            items = mediaItems,
+            coverMediaId = safeCoverMediaId,
+            onOpenAll = { showPostMediaList = true },
+        )
+
+        GearEditTextSection(
+            title = uiState.title,
+            summary = uiState.summary,
+            enabled = !uiState.isSaving,
+            onTitleChange = viewModel::updateTitle,
+            onSummaryChange = viewModel::updateSummary,
+        )
 
         GearEditSection(
             title = "时间设置",
-            subtitle = "本轮继续使用轻量时间调整，保存后同步到后端。",
+            subtitle = "沿用新建帖子流程的发布时间检查，保存后同步到后端。",
         ) {
             Text(
                 text = formatGearEditTime(uiState.displayTimeMillis),
@@ -420,8 +528,12 @@ private fun RealGearEditScreen(
         }
 
         GearEditSection(
-            title = "所属相册",
-            subtitle = "后端要求帖子至少归属一个相册。",
+            title = "放进相册",
+            subtitle = if (uiState.selectedAlbumIds.isEmpty()) {
+                "至少选择一个相册后才能保存。"
+            } else {
+                "已选择 ${uiState.selectedAlbumIds.size} 个相册。"
+            },
         ) {
             if (uiState.selectedAlbumIds.isEmpty()) {
                 Text(
@@ -437,22 +549,23 @@ private fun RealGearEditScreen(
             )
         }
 
+        GearEditPublishSummary(
+            mediaCount = mediaItems.size,
+            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
+            albumTitles = selectedAlbumTitles,
+            displayTimeMillis = uiState.displayTimeMillis,
+        )
+
+        GearEditSaveRow(
+            isSaving = uiState.isSaving,
+            onCancel = handleClose,
+            onSave = { viewModel.save(onSuccess = onBack) },
+        )
+
         GearEditSection(
-            title = "后续入口",
-            subtitle = "媒体管理已接 REAL，缓存管理仍保持原有占位入口。",
+            title = "危险操作",
+            subtitle = "删除帖子会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
         ) {
-            GearEditEntryRow(
-                title = "媒体管理",
-                subtitle = "管理当前帖子里的真实媒体，设置封面、排序或删除。",
-                onClick = { onOpenMediaManagement(MediaManagementRoute(route.postId)) },
-            )
-            GearEditEntryRow(
-                title = "缓存管理",
-                subtitle = "继续复用现有缓存管理页，不改主流程。",
-                onClick = {
-                    onOpenCacheManagement(CacheManagementRoute(source = "gear-edit-real"))
-                },
-            )
             GearEditEntryRow(
                 title = "删除整个帖子",
                 subtitle = "REAL 模式下会把帖子移入后端回收站。",
@@ -493,6 +606,7 @@ private fun RealGearEditScreen(
 private fun GearEditTopBar(
     onCancel: () -> Unit,
     onSave: () -> Unit,
+    saveEnabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -507,9 +621,281 @@ private fun GearEditTopBar(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground,
         )
-        TextButton(onClick = onSave) {
+        TextButton(onClick = onSave, enabled = saveEnabled) {
             Text("保存")
         }
+    }
+}
+
+@Composable
+private fun GearEditMemoryHeader(
+    mediaCount: Int,
+    albumTitles: List<String>,
+    coverLabel: String,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "编辑这条记忆",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "标题、简介、相册、封面和媒体顺序会在保存后一起刷新到帖子详情。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GearEditInfoChip(text = "媒体 $mediaCount 项")
+                GearEditInfoChip(text = "封面：$coverLabel")
+            }
+            GearEditInfoChip(
+                text = if (albumTitles.isEmpty()) {
+                    "未选择相册"
+                } else {
+                    "相册：${albumTitles.take(2).joinToString("、")}${if (albumTitles.size > 2) "等" else ""}"
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun GearEditTextSection(
+    title: String,
+    summary: String,
+    enabled: Boolean,
+    onTitleChange: (String) -> Unit,
+    onSummaryChange: (String) -> Unit,
+) {
+    GearEditSection(
+        title = "写下这条记忆",
+        subtitle = "标题用于列表识别，简介可以保留当时的心情或补充说明。",
+    ) {
+        OutlinedTextField(
+            value = title,
+            onValueChange = onTitleChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            enabled = enabled,
+            label = { Text("标题") },
+            placeholder = { Text("给这条记忆起个名字") },
+        )
+        Spacer(modifier = Modifier.size(4.dp))
+        OutlinedTextField(
+            value = summary,
+            onValueChange = onSummaryChange,
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 4,
+            enabled = enabled,
+            label = { Text("简介 / 摘要") },
+            placeholder = { Text("写一点背景、感受或想留给以后看的话") },
+        )
+    }
+}
+
+@Composable
+private fun GearEditMediaPreviewSection(
+    items: List<PostMediaListItem>,
+    coverMediaId: String?,
+    onOpenAll: () -> Unit,
+) {
+    GearEditSection(
+        title = "媒体",
+        subtitle = if (items.isEmpty()) {
+            "当前帖子没有媒体。"
+        } else {
+            "预览前 4 项；排序、封面和移除都在全部列表中管理。"
+        },
+    ) {
+        if (items.isEmpty()) {
+            BackendInlineNotice(text = "当前没有可管理的媒体。")
+            return@GearEditSection
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "已选 ${items.size} 项 · ${gearEditCoverLabel(items, coverMediaId)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onOpenAll) {
+                Text("全部")
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items.take(4).chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    rowItems.forEach { item ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)),
+                        ) {
+                            PostMediaListThumbnail(
+                                item = item,
+                                modifier = Modifier.fillMaxSize(),
+                                requestSize = 640,
+                            )
+                            if (item.id == coverMediaId) {
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(6.dp),
+                                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                ) {
+                                    Text(
+                                        text = "封面",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color.White,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GearEditPublishSummary(
+    mediaCount: Int,
+    coverLabel: String,
+    albumTitles: List<String>,
+    displayTimeMillis: Long,
+) {
+    GearEditSection(title = "保存前检查", subtitle = "确认后会刷新帖子详情和相册卡片。") {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GearEditSummaryRow(label = "媒体", value = if (mediaCount > 0) "$mediaCount 项" else "无媒体")
+                GearEditSummaryRow(label = "封面", value = coverLabel)
+                GearEditSummaryRow(
+                    label = "相册",
+                    value = albumTitles.ifEmpty { listOf("未选择") }.joinToString("、"),
+                )
+                GearEditSummaryRow(label = "时间", value = formatGearEditTime(displayTimeMillis))
+            }
+        }
+    }
+}
+
+@Composable
+private fun GearEditSaveRow(
+    isSaving: Boolean,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(
+            onClick = onCancel,
+            enabled = !isSaving,
+        ) {
+            Text("取消")
+        }
+        Button(
+            onClick = onSave,
+            modifier = Modifier.weight(1f),
+            enabled = !isSaving,
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+            ),
+        ) {
+            Text(if (isSaving) "保存中…" else "保存帖子")
+        }
+    }
+}
+
+@Composable
+private fun GearEditInfoChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun GearEditSummaryRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.width(48.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = value,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun gearEditCoverLabel(
+    items: List<PostMediaListItem>,
+    coverMediaId: String?,
+): String {
+    if (items.isEmpty()) return "无媒体"
+    val index = items.indexOfFirst { it.id == coverMediaId }
+    return if (index >= 0) {
+        "第 ${index + 1} 项"
+    } else {
+        "未设置，保存时使用第 1 项"
     }
 }
 
@@ -728,8 +1114,6 @@ private fun GearEditScreenPreview() {
         GearEditScreen(
             route = GearEditRoute(postId = "post-window-light"),
             onBack = {},
-            onOpenMediaManagement = {},
-            onOpenCacheManagement = {},
             onDeleteCurrentPost = { _, _ -> },
         )
     }

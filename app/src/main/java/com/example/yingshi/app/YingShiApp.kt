@@ -576,8 +576,6 @@ fun YingShiApp() {
                     GearEditScreen(
                         route = route,
                         onBack = { gearEditRoute = null },
-                        onOpenMediaManagement = { mediaManagementRoute = it },
-                        onOpenCacheManagement = { cacheManagementRoute = it },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
                             val postSnapshot = FakeAlbumRepository.snapshotPost(postId)
                             if (postSnapshot == null) {

@@ -28,6 +28,8 @@ data class RealGearEditUiState(
     val summary: String = "",
     val displayTimeMillis: Long = System.currentTimeMillis(),
     val selectedAlbumIds: List<String> = emptyList(),
+    val mediaItems: List<ManagedPostMediaUiModel> = emptyList(),
+    val coverMediaId: String? = null,
     val draftLoaded: Boolean = false,
     val hasChanges: Boolean = false,
 )
@@ -51,6 +53,8 @@ class RealGearEditViewModel(
     val uiState: StateFlow<RealGearEditUiState> = _uiState.asStateFlow()
 
     private var initialDraft: EditablePostDraft? = null
+    private var initialMediaIds: List<String> = emptyList()
+    private var initialCoverMediaId: String? = null
 
     init {
         refresh()
@@ -85,7 +89,12 @@ class RealGearEditViewModel(
             when (detailResult) {
                 is ApiResult.Success -> {
                     val draft = detailResult.data.toEditablePostDraft()
+                    val mediaItems = detailResult.data.toManagedPostMediaUiModels()
+                    val coverMediaId = mediaItems.firstOrNull { it.isCover }?.id
+                        ?: mediaItems.firstOrNull()?.id
                     initialDraft = draft
+                    initialMediaIds = mediaItems.map { it.id }
+                    initialCoverMediaId = coverMediaId
                     _uiState.value = RealGearEditUiState(
                         isLoading = false,
                         albums = albums,
@@ -93,6 +102,8 @@ class RealGearEditViewModel(
                         summary = draft.summary,
                         displayTimeMillis = draft.postDisplayTimeMillis,
                         selectedAlbumIds = draft.albumIds,
+                        mediaItems = mediaItems,
+                        coverMediaId = coverMediaId,
                         draftLoaded = true,
                         hasChanges = false,
                         errorMessage = (albumsResult as? ApiResult.Error)
@@ -113,25 +124,27 @@ class RealGearEditViewModel(
 
     fun updateTitle(value: String) {
         _uiState.update { state ->
-            state.copy(title = value).recalculate(initialDraft)
+            state.copy(title = value).recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
         }
     }
 
     fun updateSummary(value: String) {
         _uiState.update { state ->
-            state.copy(summary = value).recalculate(initialDraft)
+            state.copy(summary = value).recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
         }
     }
 
     fun shiftDisplayTime(deltaMillis: Long) {
         _uiState.update { state ->
-            state.copy(displayTimeMillis = state.displayTimeMillis + deltaMillis).recalculate(initialDraft)
+            state.copy(displayTimeMillis = state.displayTimeMillis + deltaMillis)
+                .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
         }
     }
 
     fun setDisplayTimeNow() {
         _uiState.update { state ->
-            state.copy(displayTimeMillis = System.currentTimeMillis()).recalculate(initialDraft)
+            state.copy(displayTimeMillis = System.currentTimeMillis())
+                .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
         }
     }
 
@@ -142,7 +155,24 @@ class RealGearEditViewModel(
             } else {
                 state.selectedAlbumIds + albumId
             }
-            state.copy(selectedAlbumIds = updatedAlbumIds).recalculate(initialDraft)
+            state.copy(selectedAlbumIds = updatedAlbumIds)
+                .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+        }
+    }
+
+    internal fun updateMediaDraft(
+        items: List<PostMediaListItem>,
+        coverMediaId: String?,
+    ) {
+        val currentById = _uiState.value.mediaItems.associateBy { it.id }
+        val updatedItems = items.mapNotNull { item -> currentById[item.id] }
+        val safeCoverId = coverMediaId?.takeIf { id -> updatedItems.any { it.id == id } }
+            ?: updatedItems.firstOrNull()?.id
+        _uiState.update { state ->
+            state.copy(
+                mediaItems = updatedItems.map { media -> media.copy(isCover = media.id == safeCoverId) },
+                coverMediaId = safeCoverId,
+            ).recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
         }
     }
 
@@ -158,6 +188,15 @@ class RealGearEditViewModel(
         if (snapshot.selectedAlbumIds.isEmpty()) {
             _uiState.update {
                 it.copy(errorMessage = "至少需要选择一个所属相册。")
+            }
+            return
+        }
+        val finalMediaIds = snapshot.mediaItems.map { it.id }
+        val finalCoverId = snapshot.coverMediaId?.takeIf { finalMediaIds.contains(it) }
+            ?: snapshot.mediaItems.firstOrNull()?.id
+        if (snapshot.mediaItems.isNotEmpty() && finalCoverId == null) {
+            _uiState.update {
+                it.copy(errorMessage = "封面媒体已失效，请重新选择封面后再保存。")
             }
             return
         }
@@ -182,13 +221,78 @@ class RealGearEditViewModel(
                 )
             ) {
                 is ApiResult.Success -> {
-                    initialDraft = EditablePostDraft(
+                    val savedDraft = EditablePostDraft(
                         postId = route.postId,
                         title = snapshot.title.trim(),
                         summary = snapshot.summary.trim(),
                         postDisplayTimeMillis = snapshot.displayTimeMillis,
                         albumIds = snapshot.selectedAlbumIds,
                     )
+                    var committedMediaIds = initialMediaIds
+                    var committedCoverMediaId = initialCoverMediaId
+                    var firstFailure: String? = null
+                    var mediaChanged = false
+                    val removedIds = initialMediaIds.filterNot { finalMediaIds.contains(it) }
+                    removedIds.forEach { mediaId ->
+                        when (
+                            val deleteResult = RepositoryProvider.mediaRepository.deleteMediaFromPost(
+                                postId = route.postId,
+                                mediaId = mediaId,
+                                deleteMode = "directory",
+                            )
+                        ) {
+                            is ApiResult.Success -> {
+                                mediaChanged = true
+                                committedMediaIds = committedMediaIds.filterNot { it == mediaId }
+                            }
+                            is ApiResult.Error -> if (firstFailure == null) {
+                                firstFailure = deleteResult.toBackendUiMessage("移除媒体失败。")
+                            }
+                            ApiResult.Loading -> Unit
+                        }
+                    }
+
+                    if (firstFailure == null && finalMediaIds.isNotEmpty()) {
+                        val orderChanged = finalMediaIds != initialMediaIds.filter { finalMediaIds.contains(it) }
+                        if (orderChanged) {
+                            when (val orderResult = postRepository.updatePostMediaOrder(route.postId, finalMediaIds)) {
+                                is ApiResult.Success -> {
+                                    mediaChanged = true
+                                    committedMediaIds = finalMediaIds
+                                }
+                                is ApiResult.Error -> firstFailure = orderResult.toBackendUiMessage("保存媒体顺序失败。")
+                                ApiResult.Loading -> Unit
+                            }
+                        }
+                    }
+
+                    if (firstFailure == null && !finalCoverId.isNullOrBlank() && finalCoverId != initialCoverMediaId) {
+                        when (val coverResult = postRepository.setPostCover(route.postId, finalCoverId)) {
+                            is ApiResult.Success -> {
+                                mediaChanged = true
+                                committedCoverMediaId = finalCoverId
+                            }
+                            is ApiResult.Error -> firstFailure = coverResult.toBackendUiMessage("设置封面失败。")
+                            ApiResult.Loading -> Unit
+                        }
+                    }
+
+                    if (firstFailure != null) {
+                        initialDraft = savedDraft
+                        initialMediaIds = committedMediaIds
+                        initialCoverMediaId = committedCoverMediaId?.takeIf { committedMediaIds.contains(it) }
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                errorMessage = firstFailure,
+                            ).recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+                        }
+                        return@launch
+                    }
+
+                    initialDraft = savedDraft
+                    initialMediaIds = committedMediaIds
+                    initialCoverMediaId = committedCoverMediaId?.takeIf { committedMediaIds.contains(it) }
                     _uiState.update {
                         it.copy(
                             isSaving = false,
@@ -199,6 +303,12 @@ class RealGearEditViewModel(
                     notifyRealBackendPostChanged(
                         postIds = setOf(route.postId),
                     )
+                    if (mediaChanged) {
+                        notifyRealBackendContentChanged(
+                            postIds = setOf(route.postId),
+                            mediaIds = (removedIds + finalMediaIds).toSet(),
+                        )
+                    }
                     onSuccess()
                 }
                 is ApiResult.Error -> {
@@ -504,7 +614,11 @@ class RealMediaManagementViewModel(
     }
 }
 
-private fun RealGearEditUiState.recalculate(initialDraft: EditablePostDraft?): RealGearEditUiState {
+private fun RealGearEditUiState.recalculate(
+    initialDraft: EditablePostDraft?,
+    initialMediaIds: List<String> = mediaItems.map { it.id },
+    initialCoverMediaId: String? = coverMediaId,
+): RealGearEditUiState {
     val currentSnapshot = EditablePostDraft(
         postId = initialDraft?.postId.orEmpty(),
         title = title,
@@ -512,7 +626,11 @@ private fun RealGearEditUiState.recalculate(initialDraft: EditablePostDraft?): R
         postDisplayTimeMillis = displayTimeMillis,
         albumIds = selectedAlbumIds,
     )
+    val currentMediaIds = mediaItems.map { it.id }
     return copy(
-        hasChanges = initialDraft != null && currentSnapshot != initialDraft,
+        hasChanges = initialDraft != null &&
+            (currentSnapshot != initialDraft ||
+                currentMediaIds != initialMediaIds ||
+                coverMediaId != initialCoverMediaId),
     )
 }
