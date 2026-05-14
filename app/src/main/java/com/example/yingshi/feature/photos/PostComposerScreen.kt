@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -117,6 +119,18 @@ fun CreatePostScreen(
         ?: selectedAppMediaIds.firstOrNull()
     val postMediaListItems = selectedSystemMediaItems.map(SystemMediaItem::toPostMediaListItem) +
         selectedAppMediaItems.map(CreatePostAppMediaItem::toPostMediaListItem)
+    val selectedAlbumTitles = seedState.albums
+        .filter { selectedAlbumIds.contains(it.id) }
+        .map { it.title }
+    val coverStatusLabel = createPostCoverLabel(
+        items = postMediaListItems,
+        coverMediaId = resolvedCoverMediaId,
+    )
+    val publishButtonText = when {
+        isSubmitting -> "发布中..."
+        selectedSystemMediaItems.isNotEmpty() -> "上传并发布"
+        else -> "发布记忆"
+    }
 
     if (showPostMediaList) {
         PostMediaListScreen(
@@ -309,11 +323,12 @@ fun CreatePostScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
+                .padding(horizontal = spacing.lg, vertical = spacing.md)
+                .padding(bottom = spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg),
         ) {
             CreatePostTopBar(
-                hasInitialMedia = selectedSystemMediaItems.isNotEmpty() || selectedAppMediaItems.isNotEmpty(),
+                mediaCount = postMediaListItems.size,
                 onBack = onBack,
             )
 
@@ -332,6 +347,12 @@ fun CreatePostScreen(
                     )
                 }
                 else -> {
+                    CreatePostMemoryHeader(
+                        mediaCount = postMediaListItems.size,
+                        albumTitles = selectedAlbumTitles,
+                        coverLabel = coverStatusLabel,
+                    )
+
                     localMessage?.let { message ->
                         BackendInlineNotice(
                             text = message,
@@ -345,29 +366,45 @@ fun CreatePostScreen(
                         )
                     }
 
-                    CreatePostSection(title = "标题") {
+                    CreatePostMediaPreviewSection(
+                        items = postMediaListItems,
+                        coverMediaId = resolvedCoverMediaId,
+                        onOpenAll = { showPostMediaList = true },
+                    )
+
+                    CreatePostSection(
+                        title = "写下这条记忆",
+                        subtitle = "标题用于列表识别，简介可以写下当时的心情或补充说明。",
+                    ) {
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             enabled = !isSubmitting,
-                            placeholder = { Text("输入帖子标题") },
+                            label = { Text("标题") },
+                            placeholder = { Text("给这条记忆起个名字") },
                         )
-                    }
-
-                    CreatePostSection(title = "描述") {
+                        Spacer(modifier = Modifier.size(4.dp))
                         OutlinedTextField(
                             value = summary,
                             onValueChange = { summary = it },
                             modifier = Modifier.fillMaxWidth(),
-                            minLines = 3,
+                            minLines = 4,
                             enabled = !isSubmitting,
-                            placeholder = { Text("补充这条帖子的说明") },
+                            label = { Text("简介 / 摘要") },
+                            placeholder = { Text("写一点背景、感受或想留给以后看的话") },
                         )
                     }
 
-                    CreatePostSection(title = "相册归属") {
+                    CreatePostSection(
+                        title = "放进相册",
+                        subtitle = if (selectedAlbumIds.isEmpty()) {
+                            "至少选择一个相册后才能发布。"
+                        } else {
+                            "已选择 ${selectedAlbumIds.size} 个相册。"
+                        },
+                    ) {
                         if (seedState.albums.isEmpty()) {
                             BackendInlineNotice(text = "当前没有可选相册。")
                         } else {
@@ -386,21 +423,17 @@ fun CreatePostScreen(
                         }
                     }
 
-                    CreatePostSection(title = "时间") {
-                        BackendInlineNotice(
-                            text = formatCreatePostTime(displayTimeMillis),
-                        )
-                    }
-
-                    CreatePostMediaPreviewSection(
-                        items = postMediaListItems,
-                        coverMediaId = resolvedCoverMediaId,
-                        onOpenAll = { showPostMediaList = true },
+                    CreatePostPublishSummary(
+                        mediaCount = postMediaListItems.size,
+                        coverLabel = coverStatusLabel,
+                        albumTitles = selectedAlbumTitles,
+                        displayTimeMillis = displayTimeMillis,
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         TextButton(
                             onClick = onBack,
@@ -408,20 +441,16 @@ fun CreatePostScreen(
                         ) {
                             Text("取消")
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
+                        Button(
                             onClick = ::submitDraft,
+                            modifier = Modifier.weight(1f),
                             enabled = !isSubmitting && !seedState.tokenMissing,
+                            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                            ),
                         ) {
-                            Text(
-                                if (isSubmitting) {
-                                    "提交中…"
-                                } else if (selectedSystemMediaItems.isNotEmpty()) {
-                                    "开始创建"
-                                } else {
-                                    "创建帖子"
-                                },
-                            )
+                            Text(publishButtonText)
                         }
                     }
                 }
@@ -432,7 +461,7 @@ fun CreatePostScreen(
 
 @Composable
 private fun CreatePostTopBar(
-    hasInitialMedia: Boolean,
+    mediaCount: Int,
     onBack: () -> Unit,
 ) {
     Row(
@@ -457,15 +486,15 @@ private fun CreatePostTopBar(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "新增帖子",
+                text = "写一条记忆",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Text(
-                text = if (hasInitialMedia) {
-                    "这次会先上传媒体，再创建新帖子。"
+                text = if (mediaCount > 0) {
+                    "整理 $mediaCount 项媒体，发布成一条帖子。"
                 } else {
-                    "先创建帖子基础信息，后续可再补媒体。"
+                    "先写下内容，发布后仍可继续补媒体。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -475,17 +504,90 @@ private fun CreatePostTopBar(
 }
 
 @Composable
+private fun CreatePostMemoryHeader(
+    mediaCount: Int,
+    albumTitles: List<String>,
+    coverLabel: String,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "准备发布",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "把选中的照片和视频整理成一条正式帖子，发布后会进入帖子详情。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CreatePostInfoChip(text = "媒体 $mediaCount 项")
+                CreatePostInfoChip(text = "封面：$coverLabel")
+                CreatePostInfoChip(
+                    text = if (albumTitles.isEmpty()) {
+                        "未选择相册"
+                    } else {
+                        "相册：${albumTitles.take(2).joinToString("、")}${if (albumTitles.size > 2) "等" else ""}"
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun CreatePostSection(
     title: String,
+    subtitle: String? = null,
     content: @Composable () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         content()
+    }
+}
+
+@Composable
+private fun CreatePostInfoChip(
+    text: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -528,9 +630,16 @@ private fun CreatePostMediaPreviewSection(
     coverMediaId: String?,
     onOpenAll: () -> Unit,
 ) {
-    CreatePostSection(title = "初始媒体") {
+    CreatePostSection(
+        title = "媒体",
+        subtitle = if (items.isEmpty()) {
+            "当前没有预选媒体。"
+        } else {
+            "这里只预览前 4 项；排序、封面和删除在全部列表中管理。"
+        },
+    ) {
         if (items.isEmpty()) {
-            BackendInlineNotice(text = "当前没有预选媒体。")
+            BackendInlineNotice(text = "当前没有媒体，发布后可在帖子设置中继续管理。")
             return@CreatePostSection
         }
         Row(
@@ -539,7 +648,7 @@ private fun CreatePostMediaPreviewSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "已选 ${items.size} 项，前 4 项预览如下。",
+                text = "已选 ${items.size} 项 · ${createPostCoverLabel(items, coverMediaId)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -590,6 +699,74 @@ private fun CreatePostMediaPreviewSection(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CreatePostPublishSummary(
+    mediaCount: Int,
+    coverLabel: String,
+    albumTitles: List<String>,
+    displayTimeMillis: Long,
+) {
+    CreatePostSection(title = "发布前检查") {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CreatePostSummaryRow(label = "媒体", value = if (mediaCount > 0) "$mediaCount 项" else "无媒体")
+                CreatePostSummaryRow(label = "封面", value = coverLabel)
+                CreatePostSummaryRow(
+                    label = "相册",
+                    value = albumTitles.ifEmpty { listOf("未选择") }.joinToString("、"),
+                )
+                CreatePostSummaryRow(label = "时间", value = formatCreatePostTime(displayTimeMillis))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatePostSummaryRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.width(48.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = value,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun createPostCoverLabel(
+    items: List<PostMediaListItem>,
+    coverMediaId: String?,
+): String {
+    if (items.isEmpty()) return "无媒体"
+    val index = items.indexOfFirst { it.id == coverMediaId }
+    return if (index >= 0) {
+        "第 ${index + 1} 项"
+    } else {
+        "未设置，发布时使用第 1 项"
     }
 }
 
