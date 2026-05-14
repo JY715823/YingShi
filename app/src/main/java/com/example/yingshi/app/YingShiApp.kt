@@ -31,6 +31,7 @@ import com.example.yingshi.feature.me.MyScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
+import com.example.yingshi.feature.photos.AlbumPageStateStore
 import com.example.yingshi.feature.photos.CacheManagementRoute
 import com.example.yingshi.feature.photos.CreatePostRoute
 import com.example.yingshi.feature.photos.CreatePostScreen
@@ -201,6 +202,7 @@ fun YingShiApp() {
                 event.postRoute != null &&
                 event.successCount > 0
             ) {
+                AlbumPageStateStore.pendingSelectedAlbumId = event.postRoute.albumId
                 photoViewerRoute = null
                 systemMediaViewerRoute = null
                 systemMediaRoute = null
@@ -470,9 +472,12 @@ fun YingShiApp() {
                             route = route,
                             onBack = { createPostRoute = null },
                             onCreated = { createdRoute ->
+                                AlbumPageStateStore.pendingSelectedAlbumId = createdRoute.albumId
                                 createPostRoute = null
                                 systemMediaViewerRoute = null
                                 systemMediaRoute = null
+                                selectedDestinationName = RootDestination.PHOTOS.name
+                                photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                                 postDetailRoute = createdRoute
                             },
                             onSubmittedToBackground = { createPostRoute = null },
@@ -545,7 +550,10 @@ fun YingShiApp() {
                         route = route,
                         onBack = { createPostRoute = null },
                         onCreated = { createdRoute ->
+                            AlbumPageStateStore.pendingSelectedAlbumId = createdRoute.albumId
                             createPostRoute = null
+                            selectedDestinationName = RootDestination.PHOTOS.name
+                            photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                             postDetailRoute = createdRoute
                         },
                         onSubmittedToBackground = { createPostRoute = null },

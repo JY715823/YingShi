@@ -58,6 +58,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+object AlbumPageStateStore {
+    var pendingSelectedAlbumId by mutableStateOf<String?>(null)
+}
+
 @Composable
 fun AlbumPageScreen(
     albums: List<AlbumSummaryUiModel>,
@@ -80,12 +84,20 @@ fun AlbumPageScreen(
     var selectedAlbumId by rememberSaveable(albums) {
         mutableStateOf(albums.firstOrNull()?.id.orEmpty())
     }
+    val pendingSelectedAlbumId = AlbumPageStateStore.pendingSelectedAlbumId
     var densityName by rememberSaveable {
         mutableStateOf<String?>(null)
     }
     LaunchedEffect(Unit) {
         if (densityName == null) {
             densityName = settingsState.defaultAlbumGridDensity.name
+        }
+    }
+    LaunchedEffect(pendingSelectedAlbumId, albums) {
+        val targetAlbumId = pendingSelectedAlbumId ?: return@LaunchedEffect
+        if (albums.any { it.id == targetAlbumId }) {
+            selectedAlbumId = targetAlbumId
+            AlbumPageStateStore.pendingSelectedAlbumId = null
         }
     }
     val gridDensity = AlbumGridDensity.valueOf(
@@ -174,6 +186,7 @@ private fun RealAlbumPageScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
+    val pendingSelectedAlbumId = AlbumPageStateStore.pendingSelectedAlbumId
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
     var densityName by rememberSaveable {
@@ -187,6 +200,13 @@ private fun RealAlbumPageScreen(
     LaunchedEffect(backendMutationEvent.version) {
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsAlbums()) {
             viewModel.refresh()
+        }
+    }
+    LaunchedEffect(pendingSelectedAlbumId, uiState.albums) {
+        val targetAlbumId = pendingSelectedAlbumId ?: return@LaunchedEffect
+        if (uiState.albums.any { it.id == targetAlbumId }) {
+            viewModel.selectAlbum(targetAlbumId)
+            AlbumPageStateStore.pendingSelectedAlbumId = null
         }
     }
     val gridDensity = AlbumGridDensity.valueOf(
