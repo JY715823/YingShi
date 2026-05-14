@@ -449,6 +449,7 @@ object FakeAlbumRepository {
             albumChips = buildAlbumChips(albumIds),
             mediaItems = mediaItems,
             comments = FakeCommentRepository.getPostComments(route.postId),
+            entryNotice = route.entryNotice,
         )
     }
 

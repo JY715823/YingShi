@@ -148,7 +148,7 @@ fun YingShiApp() {
         transferCenterRoute = null
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-        postDetailRoute = route
+        postDetailRoute = route.copy(entryNotice = route.entryNotice ?: "已加入帖子，媒体区已刷新")
     }
     val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
         val targetMediaId = resultMediaIds.firstOrNull { it.isNotBlank() }
@@ -213,7 +213,7 @@ fun YingShiApp() {
                 event.postRoute != null &&
                 event.successCount > 0
             ) {
-                openPostDetailAfterAdd(event.postRoute)
+                openPostDetailAfterAdd(event.postRoute.copy(entryNotice = "已发布"))
             } else if (
                 event.operationType == LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST &&
                 event.postRoute != null &&
@@ -487,7 +487,7 @@ fun YingShiApp() {
                                 systemMediaRoute = null
                                 selectedDestinationName = RootDestination.PHOTOS.name
                                 photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                                postDetailRoute = createdRoute
+                                postDetailRoute = createdRoute.copy(entryNotice = "已发布")
                             },
                             onSubmittedToBackground = { createPostRoute = null },
                             modifier = Modifier.fillMaxSize(),
@@ -564,7 +564,7 @@ fun YingShiApp() {
                             createPostRoute = null
                             selectedDestinationName = RootDestination.PHOTOS.name
                             photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                            postDetailRoute = createdRoute
+                            postDetailRoute = createdRoute.copy(entryNotice = "已发布")
                         },
                         onSubmittedToBackground = { createPostRoute = null },
                         modifier = Modifier.fillMaxSize(),

@@ -555,6 +555,12 @@ private fun AlbumPostCard(
         AlbumGridDensity.COZY_4 -> spacing.xs
     }
     val summaryMaxLines = if (density == AlbumGridDensity.COZY_2) 2 else 1
+    val summary = post.summary.meaningfulPostSummaryOrNull()
+    val mediaCountLabel = when (post.mediaCount) {
+        0 -> "暂无媒体"
+        1 -> "1 张"
+        else -> "${post.mediaCount} 张"
+    }
     val titleStyle = if (density == AlbumGridDensity.COZY_4) {
         MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
     } else {
@@ -628,7 +634,7 @@ private fun AlbumPostCard(
                     color = Color.Black.copy(alpha = 0.20f),
                 ) {
                     Text(
-                        text = "${post.mediaCount} 张",
+                        text = mediaCountLabel,
                         modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White.copy(alpha = 0.92f),
@@ -647,13 +653,15 @@ private fun AlbumPostCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = post.summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = summaryMaxLines,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (summary != null) {
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = summaryMaxLines,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     text = formatAlbumPostTime(post.postDisplayTimeMillis),
                     style = MaterialTheme.typography.labelSmall,

@@ -88,13 +88,6 @@ fun PostDetailScreen(
     }
 
     val detail = FakeAlbumRepository.getPostDetail(route)
-    if (detail.mediaItems.isEmpty()) {
-        PostDetailMissingState(
-            onBack = onBack,
-            modifier = modifier,
-        )
-        return
-    }
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
@@ -137,6 +130,11 @@ fun PostDetailScreen(
             )
 
             mediaCommentPage?.let { page ->
+                val media = detail.mediaItems.getOrNull(page.coerceAtLeast(0))
+                if (media == null) {
+                    mediaCommentPage = null
+                    return@let
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -144,7 +142,7 @@ fun PostDetailScreen(
                         .clickable { mediaCommentPage = null },
                 )
                 MediaCommentPlaceholderSheet(
-                    media = detail.mediaItems[page.coerceIn(0, detail.mediaItems.lastIndex)],
+                    media = media,
                     onClose = { mediaCommentPage = null },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -172,6 +170,7 @@ private fun RealPostDetailScreen(
         factory = PostDetailRealViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val detailWithEntryNotice = uiState.detail?.copy(entryNotice = route.entryNotice)
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
@@ -180,7 +179,7 @@ private fun RealPostDetailScreen(
         mutableStateOf<Int?>(null)
     }
 
-    val detail = uiState.detail
+    val detail = detailWithEntryNotice
     val detailMediaIds = detail?.mediaItems?.map { it.id }.orEmpty()
     val selectedMedia = mediaCommentPage?.let { page ->
         detail?.mediaItems?.getOrNull(page.coerceAtLeast(0))
@@ -261,7 +260,7 @@ private fun RealPostDetailScreen(
                     )
                 }
 
-                detail == null || detail.mediaItems.isEmpty() -> {
+                detail == null -> {
                     PostDetailMissingState(
                         onBack = onBack,
                         modifier = Modifier.fillMaxSize(),
@@ -328,6 +327,7 @@ private fun RealPostDetailContent(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val hasMedia = detail.mediaItems.isNotEmpty()
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
@@ -335,34 +335,40 @@ private fun RealPostDetailContent(
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
-    val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
-    val currentMedia = detail.mediaItems[currentPage]
-    val currentMediaCommentState = uiState.mediaComments[currentMedia.id]
-    val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia.commentCount
+    val currentPage = if (hasMedia) {
+        pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
+    } else {
+        0
+    }
+    val currentMedia = detail.mediaItems.getOrNull(currentPage)
+    val currentMediaCommentState = currentMedia?.let { uiState.mediaComments[it.id] }
+    val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia?.commentCount ?: 0
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
     val currentOriginalTarget = remember(currentMedia) {
-        currentMedia.toRealOriginalMediaTarget()
+        currentMedia?.toRealOriginalMediaTarget()
     }
-    val currentOriginalState = if (currentMedia.mediaType == AppMediaType.IMAGE) {
+    val currentOriginalState = if (currentMedia?.mediaType == AppMediaType.IMAGE && currentOriginalTarget != null) {
         RealOriginalLoadRepository.getState(currentOriginalTarget)
     } else {
         OriginalLoadState.NotLoaded
     }
-    var lastNotifiedOriginalState by remember(currentMedia.id) {
+    var lastNotifiedOriginalState by remember(currentMedia?.id) {
         mutableStateOf<OriginalLoadState?>(null)
     }
-    LaunchedEffect(currentMedia.id, currentOriginalState) {
-        if (currentMedia.mediaType != AppMediaType.IMAGE) {
+    currentMedia?.let { media ->
+        LaunchedEffect(media.id, currentOriginalState) {
+            if (media.mediaType != AppMediaType.IMAGE) {
+                lastNotifiedOriginalState = currentOriginalState
+                return@LaunchedEffect
+            }
+            val previousState = lastNotifiedOriginalState
+            if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Loaded) {
+                Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+            } else if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Failed) {
+                Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+            }
             lastNotifiedOriginalState = currentOriginalState
-            return@LaunchedEffect
         }
-        val previousState = lastNotifiedOriginalState
-        if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Loaded) {
-            Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
-        } else if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Failed) {
-            Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
-        }
-        lastNotifiedOriginalState = currentOriginalState
     }
     val originalTargets = remember(detail.mediaItems) {
         detail.mediaItems.map { it.toRealOriginalMediaTarget() }
@@ -380,6 +386,9 @@ private fun RealPostDetailContent(
             )
         },
         notice = {
+            detail.entryNotice?.let { message ->
+                PostInlineNotice(text = message)
+            }
             uiState.errorMessage?.let { message ->
                 PostInlineNotice(
                     text = message,
@@ -395,84 +404,92 @@ private fun RealPostDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 onOpenMedia = { onOpenMediaViewer(currentPage) },
             ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(372.dp),
-                    beyondViewportPageCount = 1,
-                    key = { page -> detail.mediaItems[page].id },
-                ) { page ->
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        PostMediaCard(
-                            media = detail.mediaItems[page],
-                            originalLoadState = if (detail.mediaItems[page].mediaType == AppMediaType.IMAGE) {
-                                RealOriginalLoadRepository.getState(detail.mediaItems[page].toRealOriginalMediaTarget())
-                            } else {
-                                OriginalLoadState.NotLoaded
-                            },
-                            onOriginalLoadStateChange = { state ->
-                                val media = detail.mediaItems[page]
-                                val mediaTarget = media.toRealOriginalMediaTarget()
-                                val previousState = RealOriginalLoadRepository.getState(mediaTarget)
-                                if (previousState != state) {
-                                    RealOriginalLoadRepository.setState(mediaTarget, state)
-                                    if (page == currentPage) {
-                                        when (state) {
-                                            OriginalLoadState.Loaded -> {
-                                                Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+                if (hasMedia) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(372.dp),
+                        beyondViewportPageCount = 1,
+                        key = { page -> detail.mediaItems[page].id },
+                    ) { page ->
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PostMediaCard(
+                                media = detail.mediaItems[page],
+                                originalLoadState = if (detail.mediaItems[page].mediaType == AppMediaType.IMAGE) {
+                                    RealOriginalLoadRepository.getState(detail.mediaItems[page].toRealOriginalMediaTarget())
+                                } else {
+                                    OriginalLoadState.NotLoaded
+                                },
+                                onOriginalLoadStateChange = { state ->
+                                    val media = detail.mediaItems[page]
+                                    val mediaTarget = media.toRealOriginalMediaTarget()
+                                    val previousState = RealOriginalLoadRepository.getState(mediaTarget)
+                                    if (previousState != state) {
+                                        RealOriginalLoadRepository.setState(mediaTarget, state)
+                                        if (page == currentPage) {
+                                            when (state) {
+                                                OriginalLoadState.Loaded -> {
+                                                    Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+                                                }
+                                                OriginalLoadState.Failed -> {
+                                                    Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+                                                }
+                                                else -> Unit
                                             }
-                                            OriginalLoadState.Failed -> {
-                                                Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
-                                            }
-                                            else -> Unit
                                         }
                                     }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { onOpenMediaViewer(page) },
-                        )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { onOpenMediaViewer(page) },
+                            )
+                        }
                     }
+                } else {
+                    PostEmptyMediaState(modifier = Modifier.fillMaxWidth())
                 }
             }
         },
         mediaInfo = {
-            PostMediaInfoRow(
-                media = currentMedia,
-                commentCount = currentMediaCommentCount,
-                originalLoadState = currentOriginalState,
-                showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE &&
-                    currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType),
-                onCommentClick = { onOpenMediaComments(currentPage) },
-                onOriginalClick = {
-                    when {
-                        currentMedia.mediaType != AppMediaType.IMAGE ||
-                            !currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType) -> {
-                            Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
-                        }
-
-                        currentOriginalState == OriginalLoadState.Loading -> {
-                            Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
-                        }
-
-                        currentOriginalState == OriginalLoadState.Loaded -> {
-                            Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
-                        }
-
-                        else -> {
-                            if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, accessToken)) {
-                                Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
-                            } else {
+            if (currentMedia != null && currentOriginalTarget != null) {
+                PostMediaInfoRow(
+                    media = currentMedia,
+                    commentCount = currentMediaCommentCount,
+                    originalLoadState = currentOriginalState,
+                    showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE &&
+                        currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType),
+                    onCommentClick = { onOpenMediaComments(currentPage) },
+                    onOriginalClick = {
+                        when {
+                            currentMedia.mediaType != AppMediaType.IMAGE ||
+                                !currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType) -> {
                                 Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
                             }
+
+                            currentOriginalState == OriginalLoadState.Loading -> {
+                                Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
+                            }
+
+                            currentOriginalState == OriginalLoadState.Loaded -> {
+                                Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
+                            }
+
+                            else -> {
+                                if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, accessToken)) {
+                                    Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            } else {
+                PostMediaEmptyInfoRow()
+            }
         },
         postInfo = {
             PostInfoSection(
@@ -498,7 +515,7 @@ private fun RealPostDetailContent(
                 title = "帖子评论",
                 subtitle = "这里展示的是整篇帖子的评论，不和媒体评论混合。",
                 stateKeyPrefix = "real-post-comment-${detail.postId}",
-                emptyText = "当前还没有帖子评论，来发第一条吧。",
+                emptyText = "还没有评论。可以写下第一句，也可以先安静地留着。",
                 state = uiState.postComments,
                 onRetry = onRefresh,
                 onCreateComment = onCreatePostComment,
@@ -929,17 +946,22 @@ private fun PostDetailContent(
     onOpenMediaComments: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
+    val hasMedia = detail.mediaItems.isNotEmpty()
     val pagerState = rememberPagerState(
         pageCount = { detail.mediaItems.size },
     )
-    val currentPage = pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
-    val currentMedia = detail.mediaItems[currentPage]
+    val currentPage = if (hasMedia) {
+        pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
+    } else {
+        0
+    }
+    val currentMedia = detail.mediaItems.getOrNull(currentPage)
     val postMediaIds = remember(detail.mediaItems) {
         detail.mediaItems.map { it.id }
     }
-    val currentOriginalState = FakeOriginalLoadRepository.getState(currentMedia.id)
+    val currentOriginalState = currentMedia?.let { FakeOriginalLoadRepository.getState(it.id) }
+        ?: OriginalLoadState.NotLoaded
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
 
     PostDetailBodyLayout(
@@ -953,6 +975,11 @@ private fun PostDetailContent(
                 onEdit = onOpenGearEdit,
             )
         },
+        notice = {
+            detail.entryNotice?.let { message ->
+                PostInlineNotice(text = message)
+            }
+        },
         mediaArea = {
             PostMediaArea(
                 detail = detail,
@@ -960,57 +987,65 @@ private fun PostDetailContent(
                 modifier = Modifier.fillMaxWidth(),
                 onOpenMedia = { onOpenMediaViewer(currentPage) },
             ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(372.dp),
-                    beyondViewportPageCount = 1,
-                    key = { page -> detail.mediaItems[page].id },
-                ) { page ->
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        PostMediaCard(
-                            media = detail.mediaItems[page],
-                            originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { onOpenMediaViewer(page) },
-                        )
+                if (hasMedia) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(372.dp),
+                        beyondViewportPageCount = 1,
+                        key = { page -> detail.mediaItems[page].id },
+                    ) { page ->
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PostMediaCard(
+                                media = detail.mediaItems[page],
+                                originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { onOpenMediaViewer(page) },
+                            )
+                        }
                     }
+                } else {
+                    PostEmptyMediaState(modifier = Modifier.fillMaxWidth())
                 }
             }
         },
         mediaInfo = {
-            PostMediaInfoRow(
-                media = currentMedia,
-                commentCount = CommentGateway.mediaCommentCount(currentMedia.id),
-                originalLoadState = currentOriginalState,
-                showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE,
-                onCommentClick = { onOpenMediaComments(currentPage) },
-                onOriginalClick = {
-                    when (currentOriginalState) {
-                        OriginalLoadState.NotLoaded -> {
-                            FakeOriginalLoadRepository.loadOriginal(currentMedia.id)
-                            Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                        }
+            if (currentMedia != null) {
+                PostMediaInfoRow(
+                    media = currentMedia,
+                    commentCount = CommentGateway.mediaCommentCount(currentMedia.id),
+                    originalLoadState = currentOriginalState,
+                    showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE,
+                    onCommentClick = { onOpenMediaComments(currentPage) },
+                    onOriginalClick = {
+                        when (currentOriginalState) {
+                            OriginalLoadState.NotLoaded -> {
+                                FakeOriginalLoadRepository.loadOriginal(currentMedia.id)
+                                Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            }
 
-                        OriginalLoadState.Loading -> {
-                            Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
-                        }
+                            OriginalLoadState.Loading -> {
+                                Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
+                            }
 
-                        OriginalLoadState.Loaded -> {
-                            Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                        }
+                            OriginalLoadState.Loaded -> {
+                                Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            }
 
-                        OriginalLoadState.Failed -> {
-                            FakeOriginalLoadRepository.retryOriginal(currentMedia.id)
-                            Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            OriginalLoadState.Failed -> {
+                                FakeOriginalLoadRepository.retryOriginal(currentMedia.id)
+                                Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            } else {
+                PostMediaEmptyInfoRow()
+            }
         },
         postInfo = {
             PostInfoSection(
@@ -1115,17 +1150,47 @@ fun PostMediaArea(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "${currentPage + 1} / ${detail.mediaItems.size}",
+                text = if (detail.mediaItems.isEmpty()) "0 / 0" else "${currentPage + 1} / ${detail.mediaItems.size}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "同帖媒体序列",
+                text = if (detail.mediaItems.isEmpty()) "暂未加入媒体" else "同帖媒体序列",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
             )
             Spacer(modifier = Modifier.weight(1f))
-            PostActionChip(text = "查看媒体", onClick = onOpenMedia)
+            if (detail.mediaItems.isNotEmpty()) {
+                PostActionChip(text = "查看媒体", onClick = onOpenMedia)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PostEmptyMediaState(modifier: Modifier = Modifier) {
+    val spacing = YingShiThemeTokens.spacing
+    Box(
+        modifier = modifier
+            .height(260.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                text = "这个帖子还没有媒体",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "标题、简介和评论会先保留在这里，之后加入照片或视频就会展示在上方。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -1206,6 +1271,18 @@ fun PostMediaInfoRow(
 }
 
 @Composable
+private fun PostMediaEmptyInfoRow() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PostMetaCapsule(text = "暂无媒体")
+        PostMetaCapsule(text = "可继续发表评论")
+    }
+}
+
+@Composable
 fun PostInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
@@ -1236,11 +1313,20 @@ fun PostInfoSection(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = detail.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val summary = detail.summary.meaningfulPostSummaryOrNull()
+            if (summary != null) {
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = "还没有简介，内容可以慢慢补上。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f),
+                )
+            }
             Text(
                 text = formatPostTime(detail.postDisplayTimeMillis),
                 style = MaterialTheme.typography.labelMedium,
@@ -1306,7 +1392,7 @@ private fun PostCommentSection(postId: String) {
             )
             if (visibleComments.isEmpty()) {
                 Text(
-                    text = "当前帖子还没有评论，先写下第一条本地评论。",
+                    text = "还没有评论。可以写下第一句，也可以先安静地留着。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1578,6 +1664,13 @@ private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
         return (actualWidth.toFloat() / actualHeight.toFloat()).coerceIn(0.05f, 20f)
     }
     return aspectRatio.coerceIn(0.05f, 20f)
+}
+
+internal fun String?.meaningfulPostSummaryOrNull(): String? {
+    val normalized = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return normalized.takeUnless {
+        it == "还没有简介" || it == "杩樻病鏈夌畝浠?"
+    }
 }
 
 private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewerRoute {

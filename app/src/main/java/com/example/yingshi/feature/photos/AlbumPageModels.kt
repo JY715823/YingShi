@@ -36,6 +36,7 @@ data class PostDetailUiModel(
     val albumChips: List<String>,
     val mediaItems: List<PostDetailMediaUiModel>,
     val comments: List<CommentUiModel>,
+    val entryNotice: String? = null,
 )
 
 @Immutable
@@ -73,6 +74,7 @@ data class PostDetailPlaceholderRoute(
     val coverPalette: PhotoThumbnailPalette,
     val coverMediaType: AppMediaType = AppMediaType.IMAGE,
     val coverAspectRatio: Float = 1f,
+    val entryNotice: String? = null,
 )
 
 @Immutable

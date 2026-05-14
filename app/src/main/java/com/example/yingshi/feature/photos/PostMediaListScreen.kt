@@ -72,7 +72,7 @@ private const val PostMediaViewerMinScale = 1f
 private const val PostMediaViewerMaxScale = 4f
 private const val PostMediaViewerResetScale = 1.02f
 
-internal data class PostMediaListItem(
+data class PostMediaListItem(
     val id: String,
     val displayName: String,
     val displayTimeMillis: Long,
