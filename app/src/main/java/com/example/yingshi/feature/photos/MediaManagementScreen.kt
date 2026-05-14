@@ -32,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -50,6 +52,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private enum class MediaManagementMode {
     NORMAL,
@@ -66,6 +69,15 @@ fun MediaManagementScreen(
     onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    UnifiedPostMediaManagementScreen(
+        route = route,
+        onBack = onBack,
+        modifier = modifier,
+    )
+    return
+}
+
+/*
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
         RealMediaManagementScreen(
             route = route,
@@ -688,6 +700,207 @@ private fun RealMediaManagementScreen(
                 }
             },
         )
+    }
+}
+
+*/
+
+@Composable
+private fun UnifiedPostMediaManagementScreen(
+    route: MediaManagementRoute,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        UnifiedRealPostMediaManagementScreen(
+            route = route,
+            onBack = onBack,
+            modifier = modifier,
+        )
+    } else {
+        UnifiedFakePostMediaManagementScreen(
+            route = route,
+            onBack = onBack,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun UnifiedFakePostMediaManagementScreen(
+    route: MediaManagementRoute,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val post = FakeAlbumRepository.getPost(route.postId)
+    val mediaItems = FakeAlbumRepository.getManagedPostMedia(route.postId)
+    if (post == null || mediaItems == null) {
+        MediaManagementMissingState(onBack = onBack, modifier = modifier)
+        return
+    }
+
+    val initialItems = remember(route.postId, mediaItems) {
+        mediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
+    }
+    val initialCoverId = remember(route.postId, mediaItems) {
+        mediaItems.firstOrNull { it.isCover }?.id ?: mediaItems.firstOrNull()?.id
+    }
+
+    PostMediaListScreen(
+        initialItems = initialItems,
+        initialCoverMediaId = initialCoverId,
+        allowEmpty = false,
+        onCancel = onBack,
+        onConfirm = { finalItems, finalCoverId ->
+            val finalIds = finalItems.map { it.id }
+            val originalIds = mediaItems.map { it.id }
+            val removedIds = (originalIds - finalIds.toSet()).toSet()
+            if (removedIds.isNotEmpty()) {
+                val selectedMediaSnapshots = FakeAlbumRepository.snapshotPostMedia(
+                    postId = route.postId,
+                    mediaIds = removedIds,
+                )
+                FakeAlbumRepository.applyMediaDelete(
+                    postId = route.postId,
+                    mediaIds = removedIds,
+                    semantic = FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY,
+                )
+                FakeTrashRepository.recordRemovedMedia(post, selectedMediaSnapshots)
+            }
+            if (finalIds.isNotEmpty()) {
+                FakeAlbumRepository.updatePostMediaOrder(
+                    postId = route.postId,
+                    orderedIds = finalIds,
+                )
+                finalCoverId?.let { coverId ->
+                    FakeAlbumRepository.setPostCover(route.postId, coverId)
+                }
+            }
+            Toast.makeText(context, "帖子媒体列表已保存", Toast.LENGTH_SHORT).show()
+            onBack()
+        },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun UnifiedRealPostMediaManagementScreen(
+    route: MediaManagementRoute,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sessionKey = realBackendSessionKey("real-unified-media-management-${route.postId}")
+    val viewModel: RealMediaManagementViewModel = viewModel(
+        key = sessionKey,
+        factory = RealMediaManagementViewModel.factory(route),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    var isSaving by rememberSaveable(route.postId) { mutableStateOf(false) }
+
+    when {
+        uiState.tokenMissing -> {
+            MediaManagementMissingState(onBack = onBack, modifier = modifier)
+        }
+        uiState.isLoading && uiState.mediaItems.isEmpty() -> {
+            Column(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+            ) {
+                MediaManagementTopBar(
+                    mode = MediaManagementMode.NORMAL,
+                    deleteCount = 0,
+                    onBack = onBack,
+                    onDelete = {},
+                    onCancelMode = {},
+                    onFinishMode = {},
+                )
+                Text(
+                    text = "正在读取后端媒体列表…",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        uiState.errorMessage != null && uiState.mediaItems.isEmpty() -> {
+            MediaManagementMissingState(onBack = onBack, modifier = modifier)
+        }
+        else -> {
+            val initialItems = remember(route.postId, uiState.mediaItems) {
+                uiState.mediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
+            }
+            val initialCoverId = remember(route.postId, uiState.mediaItems) {
+                uiState.mediaItems.firstOrNull { it.isCover }?.id ?: uiState.mediaItems.firstOrNull()?.id
+            }
+            PostMediaListScreen(
+                initialItems = initialItems,
+                initialCoverMediaId = initialCoverId,
+                allowEmpty = false,
+                onCancel = onBack,
+                onConfirm = { finalItems, finalCoverId ->
+                    if (isSaving) return@PostMediaListScreen
+                    val finalIds = finalItems.map { it.id }
+                    val originalIds = uiState.mediaItems.map { it.id }
+                    val removedIds = originalIds.filterNot { finalIds.contains(it) }
+                    val orderChanged = finalIds != originalIds.filter { finalIds.contains(it) }
+                    val coverChanged = finalCoverId != initialCoverId && !finalCoverId.isNullOrBlank()
+                    scope.launch {
+                        isSaving = true
+                        var firstFailure: String? = null
+                        var successChanged = false
+                        removedIds.forEach { mediaId ->
+                            when (
+                                val result = RepositoryProvider.mediaRepository.deleteMediaFromPost(
+                                    postId = route.postId,
+                                    mediaId = mediaId,
+                                    deleteMode = "directory",
+                                )
+                            ) {
+                                is ApiResult.Success -> successChanged = true
+                                is ApiResult.Error -> if (firstFailure == null) {
+                                    firstFailure = result.toBackendUiMessage("移除媒体失败。")
+                                }
+                                ApiResult.Loading -> Unit
+                            }
+                        }
+                        if (orderChanged && firstFailure == null) {
+                            when (val result = RepositoryProvider.postRepository.updatePostMediaOrder(route.postId, finalIds)) {
+                                is ApiResult.Success -> successChanged = true
+                                is ApiResult.Error -> firstFailure = result.toBackendUiMessage("保存媒体顺序失败。")
+                                ApiResult.Loading -> Unit
+                            }
+                        }
+                        if (coverChanged && firstFailure == null) {
+                            when (val result = RepositoryProvider.postRepository.setPostCover(route.postId, finalCoverId)) {
+                                is ApiResult.Success -> successChanged = true
+                                is ApiResult.Error -> firstFailure = result.toBackendUiMessage("设置封面失败。")
+                                ApiResult.Loading -> Unit
+                            }
+                        }
+                        isSaving = false
+                        if (firstFailure == null) {
+                            if (successChanged) {
+                                notifyRealBackendContentChanged(
+                                    postIds = setOf(route.postId),
+                                    mediaIds = (removedIds + finalIds).toSet(),
+                                )
+                            }
+                            Toast.makeText(context, "帖子媒体列表已保存", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        } else {
+                            Toast.makeText(context, firstFailure, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                modifier = modifier,
+            )
+        }
     }
 }
 

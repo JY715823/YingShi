@@ -26,7 +26,6 @@ data class CreatePostDraft(
     val displayTimeMillis: Long,
     val albumIds: List<String>,
     val coverSourceMediaId: String? = null,
-    val locationLabel: String? = null,
 )
 
 @Immutable
@@ -65,6 +64,5 @@ internal fun CreatePostUiState.toDraft(): CreatePostDraft {
         displayTimeMillis = displayTimeMillis,
         albumIds = selectedAlbumIds,
         coverSourceMediaId = selectedCoverSourceMediaId,
-        locationLabel = null,
     )
 }

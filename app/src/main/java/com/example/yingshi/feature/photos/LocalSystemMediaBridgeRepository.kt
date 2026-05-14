@@ -108,6 +108,8 @@ object LocalSystemMediaBridgeRepository {
     private data class CreatePostOperationRequest(
         val draft: CreatePostDraft,
         override val mediaItems: List<SystemMediaItem>,
+        val additionalAppMediaIds: List<String> = emptyList(),
+        val additionalAppCoverMediaId: String? = null,
     ) : PendingOperationRequest {
         override val operationType: OperationType = OperationType.CREATE_POST
         override val targetLabel: String = "发成新帖子"
@@ -182,22 +184,43 @@ object LocalSystemMediaBridgeRepository {
     fun createPostFromSystemMediaDraft(
         draft: CreatePostDraft,
         mediaItems: List<SystemMediaItem>,
+        additionalAppMediaItems: List<PhotoFeedItem> = emptyList(),
     ): AlbumPostCardUiModel? {
         val normalizedItems = normalizeSystemMedia(mediaItems)
-        val post = FakeAlbumRepository.createConfiguredLocalPostFromSystemMedia(
-            draft = draft,
-            mediaItems = normalizedItems,
-        ) ?: return null
+        val post = if (additionalAppMediaItems.isEmpty()) {
+            FakeAlbumRepository.createConfiguredLocalPostFromSystemMedia(
+                draft = draft,
+                mediaItems = normalizedItems,
+            )
+        } else {
+            FakeAlbumRepository.createConfiguredLocalPostFromMixedMedia(
+                draft = draft,
+                systemMediaItems = normalizedItems,
+                appMediaItems = additionalAppMediaItems,
+            )
+        } ?: return null
         FakePhotoFeedRepository.importSystemMediaToFeed(
             mediaItems = normalizedItems,
             postId = post.id,
         )
+        if (additionalAppMediaItems.isNotEmpty()) {
+            FakePhotoFeedRepository.importSystemMediaToFeed(
+                mediaItems = additionalAppMediaItems.map { it.toCreatePostSystemMediaItem() },
+                postId = post.id,
+            )
+        }
         linkMediaToPost(
-            mediaIds = normalizedItems.map { it.id },
+            mediaIds = normalizedItems.map { it.id } + additionalAppMediaItems.map { it.mediaId },
             postId = post.id,
         )
         normalizedItems.forEach { item ->
             rememberAppMediaIdForSource(item, item.id)
+        }
+        additionalAppMediaItems.forEach { item ->
+            linkMediaToPost(
+                mediaIds = listOf(item.mediaId),
+                postId = post.id,
+            )
         }
         return post
     }
@@ -206,6 +229,8 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaItems: List<SystemMediaItem>,
         draft: CreatePostDraft = defaultCreatePostDraft(mediaItems),
+        additionalAppMediaIds: List<String> = emptyList(),
+        additionalAppCoverMediaId: String? = null,
     ): Int {
         val normalizedItems = normalizeSystemMedia(mediaItems)
         publishDuplicateNoticeIfNeeded(
@@ -218,11 +243,15 @@ object LocalSystemMediaBridgeRepository {
                 context = context,
                 mediaItems = normalizedItems,
                 draft = draft,
+                additionalAppMediaIds = additionalAppMediaIds,
+                additionalAppCoverMediaId = additionalAppCoverMediaId,
             )
         } else {
             enqueueCreatePostUploadFake(
                 mediaItems = normalizedItems,
                 draft = draft,
+                additionalAppMediaIds = additionalAppMediaIds,
+                additionalAppCoverMediaId = additionalAppCoverMediaId,
             )
         }
     }
@@ -497,6 +526,8 @@ object LocalSystemMediaBridgeRepository {
                         draft = request.draft,
                         sourceItems = request.mediaItems,
                         uploadedMedia = uploadedMedia,
+                        additionalAppMediaIds = request.additionalAppMediaIds,
+                        additionalAppCoverMediaId = request.additionalAppCoverMediaId,
                     )
                 },
             )
@@ -510,6 +541,8 @@ object LocalSystemMediaBridgeRepository {
                     val createdPost = createPostFromSystemMediaDraft(
                         draft = request.draft,
                         mediaItems = request.mediaItems,
+                        additionalAppMediaItems = request.additionalAppMediaIds
+                            .mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem),
                     )
                     if (createdPost == null) {
                         OperationResultEvent(
@@ -613,11 +646,17 @@ object LocalSystemMediaBridgeRepository {
     private fun enqueueCreatePostUploadFake(
         mediaItems: List<SystemMediaItem>,
         draft: CreatePostDraft,
+        additionalAppMediaIds: List<String>,
+        additionalAppCoverMediaId: String?,
     ): Int {
+        val additionalAppItems = additionalAppMediaIds.distinct().mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem)
+        val finalDraft = draft.copy(coverSourceMediaId = draft.coverSourceMediaId ?: additionalAppCoverMediaId)
         val operationId = "create-post-${System.currentTimeMillis()}"
         operationRequestsById[operationId] = CreatePostOperationRequest(
-            draft = draft,
+            draft = finalDraft,
             mediaItems = mediaItems,
+            additionalAppMediaIds = additionalAppMediaIds.distinct(),
+            additionalAppCoverMediaId = additionalAppCoverMediaId,
         )
         mediaItems.forEach { item ->
             enqueueFakeUploadTask(
@@ -626,8 +665,9 @@ object LocalSystemMediaBridgeRepository {
                 targetLabel = "发成新帖子",
                 onOperationSuccess = {
                     val createdPost = createPostFromSystemMediaDraft(
-                        draft = draft,
+                        draft = finalDraft,
                         mediaItems = mediaItems,
+                        additionalAppMediaItems = additionalAppItems,
                     )
                     if (createdPost == null) {
                         OperationResultEvent(
@@ -843,13 +883,19 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaItems: List<SystemMediaItem>,
         draft: CreatePostDraft,
+        additionalAppMediaIds: List<String>,
+        additionalAppCoverMediaId: String?,
     ): Int {
         val operationId = "real-create-post-${System.currentTimeMillis()}"
+        val normalizedAdditionalAppMediaIds = additionalAppMediaIds.distinct()
+        val finalDraft = draft.copy(coverSourceMediaId = draft.coverSourceMediaId ?: additionalAppCoverMediaId)
         val reusableMediaIdsBySourceId = reusableAppMediaIdsBySourceId(mediaItems)
         val uploadItems = mediaItems.filterNot { reusableMediaIdsBySourceId.containsKey(it.id) }
         operationRequestsById[operationId] = CreatePostOperationRequest(
-            draft = draft,
+            draft = finalDraft,
             mediaItems = mediaItems,
+            additionalAppMediaIds = normalizedAdditionalAppMediaIds,
+            additionalAppCoverMediaId = additionalAppCoverMediaId,
         )
         rememberUploadedMediaIds(
             operationId = operationId,
@@ -861,9 +907,11 @@ object LocalSystemMediaBridgeRepository {
                 sourceItems = mediaItems,
                 finalizeAction = { uploadedMedia ->
                     finalizeCreatePostReal(
-                        draft = draft,
+                        draft = finalDraft,
                         sourceItems = mediaItems,
                         uploadedMedia = uploadedMedia,
+                        additionalAppMediaIds = normalizedAdditionalAppMediaIds,
+                        additionalAppCoverMediaId = additionalAppCoverMediaId,
                     )
                 },
             )
@@ -878,9 +926,11 @@ object LocalSystemMediaBridgeRepository {
                 sourceItems = mediaItems,
                 finalizeAction = { uploadedMedia ->
                     finalizeCreatePostReal(
-                        draft = draft,
+                        draft = finalDraft,
                         sourceItems = mediaItems,
                         uploadedMedia = uploadedMedia,
+                        additionalAppMediaIds = normalizedAdditionalAppMediaIds,
+                        additionalAppCoverMediaId = additionalAppCoverMediaId,
                     )
                 },
             )
@@ -1289,6 +1339,8 @@ object LocalSystemMediaBridgeRepository {
         draft: CreatePostDraft,
         sourceItems: List<SystemMediaItem>,
         uploadedMedia: UploadedOperationMedia,
+        additionalAppMediaIds: List<String> = emptyList(),
+        additionalAppCoverMediaId: String? = null,
     ): ApiResult<RealFinalizeResult> {
         val albums = when (val result = RepositoryProvider.albumRepository.getAlbums()) {
             is ApiResult.Success -> result.data
@@ -1312,8 +1364,11 @@ object LocalSystemMediaBridgeRepository {
                 message = "No album is available; cannot create post now.",
             )
         val finalAlbumIds = draft.albumIds.ifEmpty { listOf(defaultAlbumId) }
-        val coverMediaId = draft.coverSourceMediaId
-            ?.let(uploadedMedia.uploadedMediaIdBySourceId::get)
+        val normalizedAdditionalAppMediaIds = additionalAppMediaIds.distinct()
+        val finalMediaIds = (uploadedMedia.orderedUploadedMediaIds + normalizedAdditionalAppMediaIds).distinct()
+        val coverMediaId = draft.coverSourceMediaId?.let { coverId ->
+            uploadedMedia.uploadedMediaIdBySourceId[coverId] ?: coverId.takeIf { normalizedAdditionalAppMediaIds.contains(it) }
+        } ?: additionalAppCoverMediaId?.takeIf { normalizedAdditionalAppMediaIds.contains(it) }
 
         return when (
             val result = RepositoryProvider.postRepository.createPost(
@@ -1322,14 +1377,14 @@ object LocalSystemMediaBridgeRepository {
                     summary = draft.summary.ifBlank { buildRealPostSummary(sourceItems) },
                     displayTimeMillis = draft.displayTimeMillis,
                     albumIds = finalAlbumIds,
-                    initialMediaIds = uploadedMedia.orderedUploadedMediaIds,
-                    coverMediaId = coverMediaId,
+                    initialMediaIds = finalMediaIds,
+                    coverMediaId = coverMediaId?.takeIf { finalMediaIds.contains(it) },
                 ),
             )
         ) {
             is ApiResult.Success -> {
                 linkMediaToPost(
-                    mediaIds = sourceItems.map { it.id },
+                    mediaIds = sourceItems.map { it.id } + normalizedAdditionalAppMediaIds,
                     postId = result.data.postId,
                 )
                 ApiResult.Success(
@@ -1916,7 +1971,6 @@ object LocalSystemMediaBridgeRepository {
                 ?: System.currentTimeMillis(),
             albumIds = firstAlbumId?.let(::listOf).orEmpty(),
             coverSourceMediaId = normalizedItems.firstOrNull()?.id,
-            locationLabel = null,
         )
     }
 
@@ -2006,6 +2060,41 @@ object LocalSystemMediaBridgeRepository {
         return MessageDigest.getInstance("SHA-256")
             .digest(bytes)
             .joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun PhotoFeedItem.toCreatePostSystemMediaItem(): SystemMediaItem {
+        val uriString = mediaSource?.originalUrl
+            ?: mediaSource?.mediaUrl
+            ?: mediaSource?.thumbnailUrl
+            ?: "content://app-feed/$mediaId"
+        val calendar = java.util.Calendar.getInstance(java.util.Locale.CHINA).apply {
+            timeInMillis = mediaDisplayTimeMillis
+        }
+        return SystemMediaItem(
+            id = mediaId,
+            mediaStoreId = mediaId.hashCode().toLong().and(Long.MAX_VALUE),
+            uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: Uri.parse("content://app-feed/$mediaId"),
+            type = when (mediaType) {
+                AppMediaType.IMAGE -> SystemMediaType.IMAGE
+                AppMediaType.VIDEO -> SystemMediaType.VIDEO
+            },
+            mimeType = mediaSource?.mimeType ?: when (mediaType) {
+                AppMediaType.IMAGE -> "image/jpeg"
+                AppMediaType.VIDEO -> "video/mp4"
+            },
+            displayName = mediaId,
+            bucketName = "照片流",
+            displayTimeMillis = mediaDisplayTimeMillis,
+            displayYear = calendar.get(java.util.Calendar.YEAR),
+            displayMonth = calendar.get(java.util.Calendar.MONTH) + 1,
+            displayDay = calendar.get(java.util.Calendar.DAY_OF_MONTH),
+            width = width,
+            height = height,
+            aspectRatio = aspectRatio,
+            palette = palette,
+            linkedPostIds = postIds,
+            videoDurationMillis = videoDurationMillis,
+        )
     }
 
     private fun SystemMediaItem.metadataDeduplicationKey(): String {

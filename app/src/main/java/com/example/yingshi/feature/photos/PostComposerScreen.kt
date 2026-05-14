@@ -2,18 +2,16 @@ package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -32,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -39,13 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.size.Precision
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
@@ -89,21 +84,92 @@ fun CreatePostScreen(
     var title by rememberSaveable(route.source, mediaKey) { mutableStateOf("") }
     var summary by rememberSaveable(route.source, mediaKey) { mutableStateOf("") }
     var selectedAlbumIds by rememberSaveable(route.source, mediaKey) { mutableStateOf(emptyList<String>()) }
-    var selectedCoverSourceMediaId by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
-    var selectedAppCoverMediaId by rememberSaveable(route.source, mediaKey) {
-        mutableStateOf(route.initialAppMediaItems.firstOrNull()?.mediaId ?: route.initialAppMediaIds.firstOrNull())
+    var selectedCoverMediaId by rememberSaveable(route.source, mediaKey) {
+        mutableStateOf(
+            route.initialMediaItems.firstOrNull()?.id
+                ?: route.initialAppMediaItems.firstOrNull()?.mediaId
+                ?: route.initialAppMediaIds.firstOrNull(),
+        )
     }
+    var selectedSystemMediaItems by remember(route.source, mediaKey) {
+        mutableStateOf(route.initialMediaItems.distinctBy { it.id })
+    }
+    var selectedAppMediaItems by remember(route.source, mediaKey) {
+        mutableStateOf(route.initialAppMediaItems.distinctBy { it.mediaId })
+    }
+    var hydratedInitialAppMediaIds by remember(route.source, mediaKey) { mutableStateOf(false) }
+    var showPostMediaList by remember(route.source, mediaKey) { mutableStateOf(false) }
     var displayTimeMillis by rememberSaveable(route.source, mediaKey) { mutableStateOf(System.currentTimeMillis()) }
     var localMessage by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
     val spacing = YingShiThemeTokens.spacing
+    val availableAppMediaItems by produceState(
+        initialValue = emptyList<CreatePostAppMediaItem>(),
+        mode,
+        AuthSessionManager.isLoggedIn,
+    ) {
+        value = loadCreatePostAppMediaItems()
+    }
+    val selectedAppMediaIds = selectedAppMediaItems.map { it.mediaId }
+    val selectedSystemMediaIds = selectedSystemMediaItems.map { it.id }
+    val selectedMediaIds = selectedSystemMediaIds + selectedAppMediaIds
+    val resolvedCoverMediaId = selectedCoverMediaId?.takeIf { selectedMediaIds.contains(it) }
+        ?: selectedSystemMediaIds.firstOrNull()
+        ?: selectedAppMediaIds.firstOrNull()
+    val postMediaListItems = selectedSystemMediaItems.map(SystemMediaItem::toPostMediaListItem) +
+        selectedAppMediaItems.map(CreatePostAppMediaItem::toPostMediaListItem)
+
+    if (showPostMediaList) {
+        PostMediaListScreen(
+            initialItems = postMediaListItems,
+            initialCoverMediaId = resolvedCoverMediaId,
+            allowEmpty = true,
+            onCancel = { showPostMediaList = false },
+            onConfirm = { updatedItems, updatedCoverId ->
+                val updatedIds = updatedItems.map { it.id }
+                val systemById = selectedSystemMediaItems.associateBy { it.id }
+                val appById = selectedAppMediaItems.associateBy { it.mediaId }
+                selectedSystemMediaItems = updatedIds.mapNotNull(systemById::get)
+                selectedAppMediaItems = updatedIds.mapNotNull(appById::get)
+                selectedCoverMediaId = updatedCoverId
+                showPostMediaList = false
+            },
+            modifier = modifier,
+        )
+        return
+    }
+
+    LaunchedEffect(availableAppMediaItems, route.initialAppMediaIds, hydratedInitialAppMediaIds) {
+        if (hydratedInitialAppMediaIds) return@LaunchedEffect
+        if (route.initialAppMediaIds.isEmpty()) {
+            hydratedInitialAppMediaIds = true
+            return@LaunchedEffect
+        }
+        val routeInitialItems = route.initialAppMediaIds
+            .distinct()
+            .mapNotNull { mediaId ->
+                route.initialAppMediaItems.firstOrNull { it.mediaId == mediaId }
+                    ?: availableAppMediaItems.firstOrNull { it.mediaId == mediaId }
+            }
+        if (routeInitialItems.isEmpty() && availableAppMediaItems.isEmpty()) return@LaunchedEffect
+        selectedAppMediaItems = (selectedAppMediaItems + routeInitialItems).distinctBy { it.mediaId }
+        if (selectedCoverMediaId == null) {
+            selectedCoverMediaId = routeInitialItems.firstOrNull()?.mediaId ?: route.initialAppMediaIds.firstOrNull()
+        }
+        hydratedInitialAppMediaIds = true
+    }
 
     LaunchedEffect(seedState) {
         if (initialized || seedState.isLoading) return@LaunchedEffect
         title = seedState.title
         summary = seedState.summary
         selectedAlbumIds = seedState.selectedAlbumIds
-        selectedCoverSourceMediaId = seedState.selectedCoverSourceMediaId
+        if (selectedCoverMediaId == null) {
+            selectedCoverMediaId = seedState.selectedCoverSourceMediaId
+        }
         displayTimeMillis = seedState.displayTimeMillis
+        if (selectedMediaIds.isNotEmpty() && selectedCoverMediaId == null) {
+            selectedCoverMediaId = selectedMediaIds.first()
+        }
         initialized = true
     }
 
@@ -126,15 +192,16 @@ fun CreatePostScreen(
             summary = summary.trim(),
             displayTimeMillis = displayTimeMillis,
             albumIds = selectedAlbumIds,
-            coverSourceMediaId = selectedCoverSourceMediaId,
-            locationLabel = null,
+            coverSourceMediaId = resolvedCoverMediaId,
         )
-        if (route.initialMediaItems.isNotEmpty()) {
+        if (selectedSystemMediaItems.isNotEmpty()) {
             if (mode == RepositoryMode.REAL) {
                 val queuedCount = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
                     context = context,
-                    mediaItems = route.initialMediaItems,
+                    mediaItems = selectedSystemMediaItems,
                     draft = draft,
+                    additionalAppMediaIds = selectedAppMediaIds,
+                    additionalAppCoverMediaId = resolvedCoverMediaId,
                 )
                 if (queuedCount > 0) {
                     Toast.makeText(context, "已加入上传队列，完成后会创建新帖子。", Toast.LENGTH_SHORT).show()
@@ -145,7 +212,8 @@ fun CreatePostScreen(
             } else {
                 val createdPost = LocalSystemMediaBridgeRepository.createPostFromSystemMediaDraft(
                     draft = draft,
-                    mediaItems = route.initialMediaItems,
+                    mediaItems = selectedSystemMediaItems,
+                    additionalAppMediaItems = selectedAppMediaIds.mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem),
                 )
                 if (createdPost == null) {
                     localMessage = "本地新帖子创建失败，请稍后重试。"
@@ -156,7 +224,7 @@ fun CreatePostScreen(
             return
         }
 
-        if (route.initialAppMediaIds.isNotEmpty()) {
+        if (selectedAppMediaItems.isNotEmpty()) {
             if (mode == RepositoryMode.REAL) {
                 scope.launch {
                     isSubmitting = true
@@ -166,9 +234,8 @@ fun CreatePostScreen(
                             summary = draft.summary,
                             displayTimeMillis = draft.displayTimeMillis,
                             albumIds = draft.albumIds,
-                            initialMediaIds = route.initialAppMediaIds,
-                            coverMediaId = selectedAppCoverMediaId?.takeIf { route.initialAppMediaIds.contains(it) }
-                                ?: route.initialAppMediaIds.firstOrNull(),
+                            initialMediaIds = selectedAppMediaIds,
+                            coverMediaId = resolvedCoverMediaId,
                         ),
                     )
                     isSubmitting = false
@@ -188,8 +255,7 @@ fun CreatePostScreen(
                     }
                 }
             } else {
-                val selectedItems = route.initialAppMediaIds
-                    .mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem)
+                val selectedItems = selectedAppMediaIds.mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem)
                 val createdPost = FakeAlbumRepository.createConfiguredLocalPostFromPhotoFeedItems(
                     draft = draft,
                     mediaItems = selectedItems,
@@ -247,7 +313,7 @@ fun CreatePostScreen(
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             CreatePostTopBar(
-                hasInitialMedia = route.initialMediaItems.isNotEmpty(),
+                hasInitialMedia = selectedSystemMediaItems.isNotEmpty() || selectedAppMediaItems.isNotEmpty(),
                 onBack = onBack,
             )
 
@@ -326,57 +392,11 @@ fun CreatePostScreen(
                         )
                     }
 
-                    CreatePostSection(title = "地点") {
-                        BackendInlineNotice(
-                            text = "本轮沿用现有能力，地点暂未接入独立编辑。",
-                        )
-                    }
-
-                    if (route.initialMediaItems.isNotEmpty()) {
-                        CreatePostSection(title = "初始媒体") {
-                            Text(
-                                text = "已选 ${route.initialMediaItems.size} 项，点击任一缩略图可设为封面。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                route.initialMediaItems.forEach { item ->
-                                    SelectableCoverMediaCard(
-                                        item = item,
-                                        selected = item.id == selectedCoverSourceMediaId,
-                                        onClick = { selectedCoverSourceMediaId = item.id },
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (route.initialAppMediaItems.isNotEmpty()) {
-                        CreatePostSection(title = "初始媒体") {
-                            Text(
-                                text = "已选 ${route.initialAppMediaItems.size} 项，点击任一缩略图可设为封面。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                route.initialAppMediaItems.forEach { item ->
-                                    SelectableAppCoverMediaCard(
-                                        item = item,
-                                        selected = item.mediaId == selectedAppCoverMediaId,
-                                        onClick = { selectedAppCoverMediaId = item.mediaId },
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    CreatePostMediaPreviewSection(
+                        items = postMediaListItems,
+                        coverMediaId = resolvedCoverMediaId,
+                        onOpenAll = { showPostMediaList = true },
+                    )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -396,7 +416,7 @@ fun CreatePostScreen(
                             Text(
                                 if (isSubmitting) {
                                     "提交中…"
-                                } else if (route.initialMediaItems.isNotEmpty()) {
+                                } else if (selectedSystemMediaItems.isNotEmpty()) {
                                     "开始创建"
                                 } else {
                                     "创建帖子"
@@ -503,124 +523,73 @@ private fun SelectableAlbumChip(
 }
 
 @Composable
-private fun SelectableCoverMediaCard(
-    item: SystemMediaItem,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun CreatePostMediaPreviewSection(
+    items: List<PostMediaListItem>,
+    coverMediaId: String?,
+    onOpenAll: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val videoThumbnail = if (item.type == SystemMediaType.VIDEO) {
-        rememberSystemVideoThumbnail(context, item.uri)
-    } else {
-        null
-    }
-    Column(
-        modifier = Modifier.width(92.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(92.dp)
-                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f))
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.TopEnd,
-        ) {
-            if (videoThumbnail != null) {
-                Image(
-                    bitmap = videoThumbnail.toComposeBitmap(),
-                    contentDescription = item.displayName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            } else {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(item.uri)
-                        .size(320)
-                        .precision(Precision.INEXACT)
-                        .crossfade(false)
-                        .build(),
-                    contentDescription = item.displayName,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-            if (selected) {
-                Surface(
-                    modifier = Modifier.padding(6.dp),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = MaterialTheme.colorScheme.primary,
-                ) {
-                    Text(
-                        text = "封面",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
-                    )
-                }
-            }
+    CreatePostSection(title = "初始媒体") {
+        if (items.isEmpty()) {
+            BackendInlineNotice(text = "当前没有预选媒体。")
+            return@CreatePostSection
         }
-        Text(
-            text = item.displayName.ifBlank { item.id },
-            maxLines = 1,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun SelectableAppCoverMediaCard(
-    item: CreatePostAppMediaItem,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.width(92.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(92.dp)
-                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f))
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.TopEnd,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AppContentMediaThumbnail(
-                mediaSource = item.mediaSource,
-                mediaType = item.mediaType,
-                palette = item.palette,
-                modifier = Modifier.fillMaxSize(),
-                contentDescription = item.displayName,
-                requestSize = 320,
-                showLoadingIndicator = false,
-                showVideoPlayOverlay = false,
+            Text(
+                text = "已选 ${items.size} 项，前 4 项预览如下。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (selected) {
-                Surface(
-                    modifier = Modifier.padding(6.dp),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = MaterialTheme.colorScheme.primary,
+            TextButton(onClick = onOpenAll) {
+                Text("全部")
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items.take(4).chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(
-                        text = "封面",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
-                    )
+                    rowItems.forEach { item ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)),
+                        ) {
+                            PostMediaListThumbnail(
+                                item = item,
+                                modifier = Modifier.fillMaxSize(),
+                                requestSize = 640,
+                            )
+                            if (item.id == coverMediaId) {
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(6.dp),
+                                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                ) {
+                                    Text(
+                                        text = "封面",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color.White,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
-        Text(
-            text = item.displayName.ifBlank { item.mediaId },
-            maxLines = 1,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -681,6 +650,18 @@ private suspend fun loadCreatePostUiState(
             initialMediaItems = initialItems,
             selectedCoverSourceMediaId = defaultCoverId,
         )
+    }
+}
+
+private suspend fun loadCreatePostAppMediaItems(): List<CreatePostAppMediaItem> {
+    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
+        return FakePhotoFeedRepository.getPhotoFeed().map(PhotoFeedItem::toCreatePostAppMediaItem)
+    }
+    if (!AuthSessionManager.isLoggedIn) return emptyList()
+    return when (val result = RepositoryProvider.mediaRepository.getMediaFeedPage(pageSize = 80)) {
+        is ApiResult.Success -> result.data.items.map { it.toPhotoFeedItem().toCreatePostAppMediaItem() }
+        is ApiResult.Error,
+        ApiResult.Loading -> emptyList()
     }
 }
 

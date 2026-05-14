@@ -679,14 +679,6 @@ fun YingShiApp() {
                 ) {
                     Text(text = "导入媒体")
                 }
-                TextButton(
-                    onClick = {
-                        showQuickAddSheet = false
-                        createPostRoute = CreatePostRoute(source = "bottom-plus")
-                    },
-                ) {
-                    Text(text = "新建帖子")
-                }
             }
         }
     }

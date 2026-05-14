@@ -202,7 +202,6 @@ object FakeAlbumRepository {
     ): AlbumPostCardUiModel? {
         val normalizedMedia = mediaItems
             .distinctBy { it.id }
-            .sortedByDescending { it.displayTimeMillis }
             .map { item ->
                 item.toManagedState(isCover = item.id == draft.coverSourceMediaId)
             }
@@ -246,7 +245,6 @@ object FakeAlbumRepository {
     ): AlbumPostCardUiModel? {
         val normalizedMedia = mediaItems
             .distinctBy { it.mediaId }
-            .sortedByDescending { it.mediaDisplayTimeMillis }
             .map { item ->
                 item.toSyntheticSystemMediaItem()
                     .toManagedState(isCover = item.mediaId == draft.coverSourceMediaId)
@@ -285,6 +283,58 @@ object FakeAlbumRepository {
             mediaItems = mediaItems.map { it.toSyntheticSystemMediaItem() },
             postId = postId,
         )
+        FakePhotoFeedRepository.unhidePostsLocally(listOf(postId))
+        return post
+    }
+
+    fun createConfiguredLocalPostFromMixedMedia(
+        draft: CreatePostDraft,
+        systemMediaItems: List<SystemMediaItem>,
+        appMediaItems: List<PhotoFeedItem>,
+    ): AlbumPostCardUiModel? {
+        val systemMedia = systemMediaItems
+            .distinctBy { it.id }
+            .map { item ->
+                item.toManagedState(isCover = item.id == draft.coverSourceMediaId)
+            }
+        val appMedia = appMediaItems
+            .distinctBy { it.mediaId }
+            .filterNot { appItem -> systemMedia.any { it.id == appItem.mediaId } }
+            .map { item ->
+                item.toSyntheticSystemMediaItem()
+                    .toManagedState(isCover = item.mediaId == draft.coverSourceMediaId)
+            }
+        val normalizedMedia = systemMedia + appMedia
+        if (normalizedMedia.isEmpty()) return null
+
+        val coverMedia = normalizedMedia.firstOrNull { it.isCover } ?: normalizedMedia.first()
+        val finalMedia = normalizedMedia.map { it.copy(isCover = it.id == coverMedia.id) }
+        val primaryAlbumId = draft.albumIds.firstOrNull() ?: albums.first().id
+        val primaryAlbum = albums.firstOrNull { it.id == primaryAlbumId } ?: albums.first()
+        val postTime = draft.displayTimeMillis
+        val postId = "post-mixed-create-$postTime-${posts.size + 1}"
+        val post = AlbumPostCardUiModel(
+            id = postId,
+            albumId = primaryAlbum.id,
+            albumIds = draft.albumIds.ifEmpty { listOf(primaryAlbum.id) },
+            title = draft.title.ifBlank {
+                buildSystemImportTitle(
+                    mediaCount = finalMedia.size,
+                    displayTimeMillis = postTime,
+                )
+            },
+            summary = draft.summary.ifBlank { "从系统媒体和照片流共同选择媒体创建的本地帖子" },
+            postDisplayTimeMillis = postTime,
+            mediaCount = finalMedia.size,
+            coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
+            coverAspectRatio = coverMedia.aspectRatio,
+        )
+        postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
+            addAll(finalMedia)
+        }
+        posts.add(post)
+        posts.sortByDescending { it.postDisplayTimeMillis }
         FakePhotoFeedRepository.unhidePostsLocally(listOf(postId))
         return post
     }
@@ -348,14 +398,9 @@ object FakeAlbumRepository {
         val targetIndex = mediaState.indexOfFirst { it.id == mediaId }
         if (targetIndex < 0) return false
 
-        val target = mediaState[targetIndex].copy(isCover = true)
-        val reordered = buildList {
-            add(target)
-            mediaState.forEachIndexed { index, media ->
-                if (index != targetIndex) {
-                    add(media.copy(isCover = false))
-                }
-            }
+        val target = mediaState[targetIndex]
+        val reordered = mediaState.map { media ->
+            media.copy(isCover = media.id == mediaId)
         }
         replacePostMedia(postId = postId, newItems = reordered)
         syncPostCardCover(

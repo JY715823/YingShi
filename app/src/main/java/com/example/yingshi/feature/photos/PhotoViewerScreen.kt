@@ -881,6 +881,7 @@ fun PhotoViewerScreen(
                         CreatePostRoute(
                             source = "photo-viewer-menu",
                             initialAppMediaIds = listOf(currentItem.mediaId),
+                            initialAppMediaItems = listOf(currentItem.toCreatePostAppMediaItem()),
                         ),
                     )
                 },
