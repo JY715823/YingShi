@@ -24,6 +24,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -174,12 +178,16 @@ private fun TransferOperationCard(
     val successCount = tasks.count { it.state == UploadState.SUCCESS }
     val failureCount = tasks.count { it.state == UploadState.FAILURE }
     val cancelledCount = tasks.count { it.state == UploadState.CANCELLED }
+    val problemTasks = tasks
+        .filter { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED || it.canRetry }
+        .distinctBy { it.taskId }
     val totalCount = primaryTask.operationMediaCount.coerceAtLeast(tasks.size)
     val averageProgress = if (tasks.isEmpty()) {
         0
     } else {
         tasks.map { it.progressPercent.coerceIn(0, 100) }.average().toInt()
     }
+    var showFailureDetails by rememberSaveable(primaryTask.operationId) { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier
@@ -248,6 +256,23 @@ private fun TransferOperationCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (problemTasks.isNotEmpty()) {
+                    TextButton(
+                        onClick = { showFailureDetails = !showFailureDetails },
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(if (showFailureDetails) "收起失败详情" else "查看失败详情")
+                    }
+                }
+                if (showFailureDetails && problemTasks.isNotEmpty()) {
+                    TransferFailureDetails(
+                        tasks = tasks,
+                        problemTasks = problemTasks,
+                        successCount = successCount,
+                        failureCount = failureCount,
+                        cancelledCount = cancelledCount,
+                    )
+                }
             }
 
             Row(
@@ -289,6 +314,81 @@ private fun TransferOperationCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TransferFailureDetails(
+    tasks: List<SystemMediaUploadTaskUiModel>,
+    problemTasks: List<SystemMediaUploadTaskUiModel>,
+    successCount: Int,
+    failureCount: Int,
+    cancelledCount: Int,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val primaryTask = tasks.first()
+    val resultTask = tasks.firstOrNull { it.resultPostRoute != null } ?: primaryTask
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.md),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "失败与重试说明",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = failureRetryExplanation(
+                    task = resultTask,
+                    successCount = successCount,
+                    failureCount = failureCount,
+                    cancelledCount = cancelledCount,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            problemTasks.forEach { task ->
+                TransferFailureDetailLine(task = task)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransferFailureDetailLine(task: SystemMediaUploadTaskUiModel) {
+    val spacing = YingShiThemeTokens.spacing
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+    ) {
+        Text(
+            text = task.fileName,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = "${task.mediaType.transferLabel()} · ${failureCurrentStateLabel(task)}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        Text(
+            text = failureReasonLabel(task),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -419,6 +519,56 @@ private fun LocalSystemMediaBridgeRepository.OperationType.label(): String {
         LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> "导入 App"
         LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "新建帖子"
         LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "加入已有帖子"
+    }
+}
+
+private fun failureRetryExplanation(
+    task: SystemMediaUploadTaskUiModel,
+    successCount: Int,
+    failureCount: Int,
+    cancelledCount: Int,
+): String {
+    val countPrefix = "已成功 $successCount 项，失败 $failureCount 项，取消 $cancelledCount 项。"
+    val actionText = when (task.operationType) {
+        LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> {
+            if (task.resultPostRoute != null) {
+                "结果帖已创建；重试只会把失败媒体补进这个帖子，不会重复创建已成功内容。"
+            } else {
+                "重试会继续处理失败媒体，已成功上传内容不会重复创建。"
+            }
+        }
+        LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
+            "成功项不会重复加入目标帖子；重试会继续补传失败项。"
+        LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
+            "成功项已进入 App；重试只会继续导入失败项。"
+    }
+    return countPrefix + actionText
+}
+
+private fun SystemMediaType.transferLabel(): String {
+    return when (this) {
+        SystemMediaType.IMAGE -> "图片"
+        SystemMediaType.VIDEO -> "视频"
+    }
+}
+
+private fun failureCurrentStateLabel(task: SystemMediaUploadTaskUiModel): String {
+    return when (task.state) {
+        UploadState.WAITING -> "等待重试"
+        UploadState.UPLOADING -> "正在处理 ${task.progressPercent}%"
+        UploadState.SUCCESS -> "已成功"
+        UploadState.FAILURE -> "失败"
+        UploadState.CANCELLED -> "已取消"
+    }
+}
+
+private fun failureReasonLabel(task: SystemMediaUploadTaskUiModel): String {
+    task.errorMessage?.takeIf { it.isNotBlank() }?.let { return it }
+    task.statusMessage?.takeIf { it.isNotBlank() }?.let { return it }
+    return when (task.state) {
+        UploadState.CANCELLED -> "任务已取消，未继续上传。"
+        UploadState.FAILURE -> "上传失败，可重试。"
+        else -> "当前项需要重试。"
     }
 }
 
