@@ -244,6 +244,9 @@ fun RealPhotoFeedPage(
                                 isDeleting = uiState.isDeleting,
                                 onCreatePost = {
                                     val selectedIds = selectionState.selectedMediaIds.toList()
+                                    if (selectedIds.isEmpty()) {
+                                        return@RealFeedSelectionBarV2
+                                    }
                                     val selectedItems = uiState.feedItems
                                         .filter { item -> selectedIds.contains(item.mediaId) }
                                         .map(PhotoFeedItem::toCreatePostAppMediaItem)
@@ -254,7 +257,6 @@ fun RealPhotoFeedPage(
                                             initialAppMediaItems = selectedItems,
                                         ),
                                     )
-                                    onSelectionStateChange(selectionState.clear())
                                 },
                                 onAddToPost = {
                                     addToPostError = null

@@ -88,6 +88,7 @@ fun PhotosRootScreen(
     onOpenNotifications: () -> Unit = { },
     onAddedMediaToPost: (PostDetailPlaceholderRoute) -> Unit = { },
     photoFeedScrollTrigger: Int = 0,
+    photoSelectionClearTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -140,6 +141,12 @@ fun PhotosRootScreen(
     LaunchedEffect(backendSessionKey) {
         photoSelectionState = photoSelectionState.clear()
         showDeleteConfirm = false
+    }
+    LaunchedEffect(photoSelectionClearTrigger) {
+        if (photoSelectionClearTrigger <= 0) return@LaunchedEffect
+        photoSelectionState = photoSelectionState.clear()
+        showDeleteConfirm = false
+        showAddToPostDialog = false
     }
 
     if (isPhotoSelectionMode) {
@@ -352,10 +359,12 @@ fun PhotosRootScreen(
                                             selectedCount = photoSelectionState.selectedCount,
                                             onCreatePost = {
                                                 val selectedIds = photoSelectionState.selectedMediaIds.toList()
+                                                if (selectedIds.isEmpty()) {
+                                                    return@PhotoSelectionActionBarV2
+                                                }
                                                 val selectedItems = feedItems
                                                     .filter { item -> selectedIds.contains(item.mediaId) }
                                                     .map(PhotoFeedItem::toCreatePostAppMediaItem)
-                                                photoSelectionState = photoSelectionState.clear()
                                                 onOpenCreatePost(
                                                     CreatePostRoute(
                                                         source = "photo-feed-selection",

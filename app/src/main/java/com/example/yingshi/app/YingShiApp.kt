@@ -97,6 +97,7 @@ fun YingShiApp() {
         mutableStateOf<PhotoViewerRoute?>(null)
     }
     var photoFeedScrollTrigger by remember { mutableIntStateOf(0) }
+    var photoSelectionClearTrigger by remember { mutableIntStateOf(0) }
     var systemMediaScrollTrigger by remember { mutableIntStateOf(0) }
     var systemMediaRoute by remember {
         mutableStateOf<SystemMediaRoute?>(null)
@@ -534,6 +535,7 @@ fun YingShiApp() {
                                 systemMediaRoute = null
                                 selectedDestinationName = RootDestination.PHOTOS.name
                                 photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                                photoSelectionClearTrigger++
                                 postDetailRoute = createdRoute.copy(entryNotice = "已发布")
                             },
                             onSubmittedToBackground = { createPostRoute = null },
@@ -591,6 +593,7 @@ fun YingShiApp() {
                             notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
                         },
                         photoFeedScrollTrigger = photoFeedScrollTrigger,
+                        photoSelectionClearTrigger = photoSelectionClearTrigger,
                         inlineVideoAutoPlayEnabled = photoViewerRoute == null,
                     )
                     RootDestination.LIFE -> LifeScreen()
@@ -611,6 +614,7 @@ fun YingShiApp() {
                             createPostRoute = null
                             selectedDestinationName = RootDestination.PHOTOS.name
                             photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                            photoSelectionClearTrigger++
                             postDetailRoute = createdRoute.copy(entryNotice = "已发布")
                         },
                         onSubmittedToBackground = { createPostRoute = null },
