@@ -18,12 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,6 +66,7 @@ fun TransferCenterScreen(
         .sortedByDescending { group -> group.maxOf { it.taskId } }
     val completedGroups = operationGroups.count { group -> group.all { it.isTerminal } }
     val runningGroups = operationGroups.size - completedGroups
+    var showClearCompletedDialog by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -96,17 +99,26 @@ fun TransferCenterScreen(
             }
             if (completedGroups > 0) {
                 TransferCenterHeaderButton(
-                    text = "清空",
-                    onClick = {
-                        operationGroups
-                            .filter { group -> group.all { it.isTerminal } }
-                            .flatten()
-                            .forEach { task -> LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId) }
-                    },
+                    text = "清理完成记录",
+                    onClick = { showClearCompletedDialog = true },
                 )
             } else {
                 Box(modifier = Modifier.size(72.dp))
             }
+        }
+        if (showClearCompletedDialog) {
+            TransferClearRecordsDialog(
+                title = "清理已完成的传输记录？",
+                body = "只会从传输中心移除已结束的任务记录，不会删除已导入 App 的媒体、已创建的帖子，或已加入帖子里的媒体。",
+                onDismiss = { showClearCompletedDialog = false },
+                onConfirm = {
+                    showClearCompletedDialog = false
+                    operationGroups
+                        .filter { group -> group.all { it.isTerminal } }
+                        .flatten()
+                        .forEach { task -> LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId) }
+                },
+            )
         }
 
         if (tasks.isEmpty()) {
@@ -188,6 +200,13 @@ private fun TransferOperationCard(
         tasks.map { it.progressPercent.coerceIn(0, 100) }.average().toInt()
     }
     var showFailureDetails by rememberSaveable(primaryTask.operationId) { mutableStateOf(false) }
+    var showClearGroupDialog by rememberSaveable(primaryTask.operationId) { mutableStateOf(false) }
+
+    LaunchedEffect(problemTasks.size, runningTasks.size) {
+        if (showFailureDetails && (problemTasks.isEmpty() || runningTasks.isNotEmpty())) {
+            showFailureDetails = false
+        }
+    }
 
     Surface(
         modifier = Modifier
@@ -278,6 +297,13 @@ private fun TransferOperationCard(
                         cancelledCount = cancelledCount,
                     )
                 }
+                if (allTerminal) {
+                    Text(
+                        text = "清理记录只会移除这条传输记录，不会删除已导入媒体或帖子内容。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Row(
@@ -288,7 +314,10 @@ private fun TransferOperationCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 failedTasks.firstOrNull()?.let { task ->
-                    TextButton(onClick = { onRetryTask(task.taskId) }) {
+                    TextButton(onClick = {
+                        showFailureDetails = false
+                        onRetryTask(task.taskId)
+                    }) {
                         Text(if (failedTasks.size > 1) "重试失败项" else "重试")
                     }
                 }
@@ -307,8 +336,8 @@ private fun TransferOperationCard(
                             })
                         }
                     }
-                    TextButton(onClick = { tasks.forEach { onClearTask(it.taskId) } }) {
-                        Text("清理")
+                    TextButton(onClick = { showClearGroupDialog = true }) {
+                        Text("清理本组记录")
                     }
                 } else if (canOpen) {
                     primaryTask.openTargetTask()?.let { target ->
@@ -320,6 +349,41 @@ private fun TransferOperationCard(
             }
         }
     }
+    if (showClearGroupDialog) {
+        TransferClearRecordsDialog(
+            title = "清理这组传输记录？",
+            body = "只会从传输中心移除本组记录，不会删除已导入 App 的媒体、已创建的帖子，或已加入帖子里的媒体。",
+            onDismiss = { showClearGroupDialog = false },
+            onConfirm = {
+                showClearGroupDialog = false
+                tasks.forEach { onClearTask(it.taskId) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun TransferClearRecordsDialog(
+    title: String,
+    body: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title) },
+        text = { Text(text = body) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("清理记录")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 @Composable
@@ -587,21 +651,30 @@ private fun operationStateLabel(
     val primaryTask = tasks.first()
     val targetLabel = primaryTask.operationTitle ?: primaryTask.targetLabel
     val countText = "成功 $successCount，失败 $failureCount，取消 $cancelledCount"
+    val hasCancelled = cancelledCount > 0
+    val hasFailure = failureCount > 0
+    val hasSuccess = successCount > 0
     return when {
+        tasks.any { it.state == UploadState.UPLOADING } && (hasFailure || hasCancelled) ->
+            "正在重试失败项：已处理 ${terminalCount}/${tasks.size} 项"
         tasks.any { it.state == UploadState.UPLOADING } -> "正在处理 ${terminalCount}/${tasks.size} 项"
+        tasks.any { it.state == UploadState.WAITING } && (hasFailure || hasCancelled) ->
+            "正在重试失败项：等待处理 ${terminalCount}/${tasks.size} 项"
         tasks.any { it.state == UploadState.WAITING } -> "等待处理 ${terminalCount}/${tasks.size} 项"
-        failureCount > 0 || cancelledCount > 0 -> when (primaryTask.operationType) {
+        cancelledCount == tasks.size -> "已取消：未完成项不会继续处理，可清理传输记录。"
+        hasCancelled && hasSuccess && !hasFailure -> "部分完成后取消：$countText。成功项已保留，未完成项已取消。"
+        hasFailure || hasCancelled -> when (primaryTask.operationType) {
             LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
-                "部分导入完成：$countText。成功项已保留，失败项可重试。"
+                "部分导入完成：$countText。成功项已保留，失败或取消项可重试。"
             LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> {
                 if (tasks.any { it.resultPostRoute != null }) {
-                    "帖子已创建：$countText。成功项已保留，失败项可重试。"
+                    "帖子已创建：$countText。成功项已保留，失败或取消项可重试。"
                 } else {
-                    "帖子未完整创建：$countText。失败项可重试。"
+                    "帖子未完整创建：$countText。失败或取消项可重试。"
                 }
             }
             LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
-                "已加入「$targetLabel」：$countText。成功项已保留，失败项可重试。"
+                "已加入「$targetLabel」：$countText。成功项已保留，失败或取消项可重试。"
         }
         successCount == tasks.size -> when (primaryTask.operationType) {
             LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->

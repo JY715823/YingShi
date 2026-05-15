@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.navigation.PhotosTopDestination
@@ -92,7 +93,11 @@ fun PhotosRootScreen(
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val notificationUnreadCount = FakeNotificationRepository.unreadCount()
-    val transferAttentionCount = LocalSystemMediaBridgeRepository.remainingUploadTaskCount()
+    val transferTasks = LocalSystemMediaBridgeRepository.uploadTasks
+    val hasTransferFailure = transferTasks.any { it.canRetry || it.state == UploadState.FAILURE }
+    val runningTransferCount = transferTasks.count {
+        it.state == UploadState.WAITING || it.state == UploadState.UPLOADING
+    }
     var photoSelectionState by remember {
         mutableStateOf(PhotoFeedSelectionState())
     }
@@ -273,7 +278,8 @@ fun PhotosRootScreen(
             PhotoTopBar(
                 selectedSection = selectedSection,
                 notificationUnreadCount = notificationUnreadCount,
-                transferAttentionCount = transferAttentionCount,
+                hasTransferFailure = hasTransferFailure,
+                runningTransferCount = runningTransferCount,
                 selectionState = if (selectedSection == PhotosTopDestination.PHOTOS) {
                     photoSelectionState
                 } else {
@@ -412,7 +418,8 @@ fun PhotosRootScreen(
 private fun PhotoTopBar(
     selectedSection: PhotosTopDestination,
     notificationUnreadCount: Int,
-    transferAttentionCount: Int,
+    hasTransferFailure: Boolean,
+    runningTransferCount: Int,
     selectionState: PhotoFeedSelectionState,
     onCancelSelection: () -> Unit,
     onSelected: (Int) -> Unit,
@@ -474,8 +481,21 @@ private fun PhotoTopBar(
             )
             PhotoIconToolButton(
                 symbol = "\u21C5",
-                contentDescription = "传输中心",
-                badgeCount = transferAttentionCount,
+                contentDescription = when {
+                    hasTransferFailure -> "传输中心，有失败待处理"
+                    runningTransferCount > 0 -> "传输中心，有进行中任务"
+                    else -> "传输中心"
+                },
+                badgeText = when {
+                    hasTransferFailure -> "!"
+                    runningTransferCount > 0 -> if (runningTransferCount > 99) "99+" else runningTransferCount.toString()
+                    else -> null
+                },
+                badgeColor = if (hasTransferFailure) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
                 onClick = onOpenTransferCenter,
             )
             PhotoBellButton(
@@ -535,6 +555,12 @@ private fun PhotoIconToolButton(
     symbol: String,
     contentDescription: String,
     badgeCount: Int = 0,
+    badgeText: String? = if (badgeCount > 0) {
+        if (badgeCount > 99) "99+" else badgeCount.toString()
+    } else {
+        null
+    },
+    badgeColor: Color = MaterialTheme.colorScheme.primary,
     onClick: () -> Unit,
 ) {
     val radius = YingShiThemeTokens.radius
@@ -560,16 +586,16 @@ private fun PhotoIconToolButton(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (badgeCount > 0) {
+            if (!badgeText.isNullOrBlank()) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 0.dp, end = 0.dp),
                     shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = badgeColor,
                 ) {
                     Text(
-                        text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                        text = badgeText,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White,
