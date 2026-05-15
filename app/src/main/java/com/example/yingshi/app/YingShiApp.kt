@@ -158,6 +158,8 @@ fun YingShiApp() {
             PhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
             PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
             PhotoFeedPageStateStore.pendingHighlightNonce += 1
+            PhotoFeedPageStateStore.pendingNewImportedMediaIds = validResultMediaIds.toSet()
+            PhotoFeedPageStateStore.pendingNewImportedNonce += 1
             val extraCount = (validResultMediaIds.size - 1).coerceAtLeast(0)
             PhotoFeedPageStateStore.pendingLocateSuccessMessage = if (extraCount > 0) {
                 "已定位到刚导入媒体，另有 $extraCount 项已导入"

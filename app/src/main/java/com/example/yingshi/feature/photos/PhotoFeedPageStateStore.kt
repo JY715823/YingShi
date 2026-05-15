@@ -6,6 +6,8 @@ object PhotoFeedPageStateStore {
     var pendingHighlightNonce: Int = 0
     var pendingLocateSuccessMessage: String? = null
     var pendingLocateFailureMessage: String? = null
+    var pendingNewImportedMediaIds: Set<String> = emptySet()
+    var pendingNewImportedNonce: Int = 0
     var savedFirstVisibleItemIndex: Int = 0
     var savedFirstVisibleItemScrollOffset: Int = 0
     var savedFirstVisibleMediaId: String? = null

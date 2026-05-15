@@ -83,6 +83,7 @@ import kotlin.math.roundToInt
 
 private const val PhotoFeedLeadingItemCount = 0
 private const val PhotoFeedPendingTargetRefreshGraceMillis = 450L
+private const val PhotoFeedNewImportBadgeMillis = 12_000L
 
 @Composable
 fun PhotoFeedScreen(
@@ -308,6 +309,8 @@ fun PhotoFeedScreen(
     var pendingTargetLoadAttemptBlockCount by remember { mutableIntStateOf(-1) }
     var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
     var restoredSavedAnchorMediaId by remember { mutableStateOf<String?>(null) }
+    var newImportedMediaIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var consumedNewImportedNonce by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size) {
         if (scrollAnchors.size <= 1) {
@@ -323,6 +326,20 @@ fun PhotoFeedScreen(
             if (!scrubberInteracting) {
                 scrubberVisible = false
             }
+        }
+    }
+
+    LaunchedEffect(PhotoFeedPageStateStore.pendingNewImportedNonce) {
+        val nonce = PhotoFeedPageStateStore.pendingNewImportedNonce
+        if (nonce == 0 || nonce == consumedNewImportedNonce) return@LaunchedEffect
+        consumedNewImportedNonce = nonce
+        val ids = PhotoFeedPageStateStore.pendingNewImportedMediaIds
+        if (ids.isEmpty()) return@LaunchedEffect
+        newImportedMediaIds = ids
+        delay(PhotoFeedNewImportBadgeMillis)
+        if (consumedNewImportedNonce == nonce) {
+            newImportedMediaIds = emptySet()
+            PhotoFeedPageStateStore.pendingNewImportedMediaIds = emptySet()
         }
     }
 
@@ -485,6 +502,7 @@ fun PhotoFeedScreen(
                             selectionFlash = selectionFlashByMediaId,
                             highlightedMediaId = highlightedTargetMediaId,
                             highlightNonce = highlightedTargetNonce,
+                            newImportedMediaIds = newImportedMediaIds,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
                             playingInlineVideoId = playingInlineVideoId,
                             activeInlineVideoId = activeInlineVideoId,
@@ -999,6 +1017,7 @@ private fun PhotoFeedGridRowContent(
     selectionFlash: Map<String, SelectionNumberFlash>,
     highlightedMediaId: String?,
     highlightNonce: Int,
+    newImportedMediaIds: Set<String>,
     inlineVideoAutoPlayEnabled: Boolean,
     playingInlineVideoId: String?,
     activeInlineVideoId: String?,
@@ -1026,6 +1045,7 @@ private fun PhotoFeedGridRowContent(
                 selectionFlash = selectionFlash[item.mediaId],
                 isHighlighted = highlightedMediaId == item.mediaId,
                 highlightNonce = highlightNonce,
+                isNewImported = item.mediaId in newImportedMediaIds,
                 inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                 isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
                 isInlineVideoActive = activeInlineVideoId == item.mediaId,
@@ -1057,6 +1077,7 @@ private fun PhotoFeedCard(
     selectionFlash: SelectionNumberFlash?,
     isHighlighted: Boolean,
     highlightNonce: Int,
+    isNewImported: Boolean,
     inlineVideoAutoPlayEnabled: Boolean,
     isInlineVideoPlaying: Boolean,
     isInlineVideoActive: Boolean,
@@ -1139,6 +1160,14 @@ private fun PhotoFeedCard(
             )
         }
 
+        if (isNewImported) {
+            NewImportedBadge(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 6.dp, top = 6.dp),
+            )
+        }
+
         if (isInSelectionMode) {
             if (selectionHotspotOnly) {
                 Box(
@@ -1183,6 +1212,26 @@ private fun PhotoFeedItem.gridVideoBadgeDurationMillis(
     if (totalMillis == null || totalMillis <= 0L) return null
     val positionMillis = progress?.positionMillis ?: 0L
     return (totalMillis - positionMillis).coerceIn(0L, totalMillis)
+}
+
+@Composable
+private fun NewImportedBadge(
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.46f)),
+    ) {
+        Text(
+            text = "新导入",
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+            maxLines = 1,
+        )
+    }
 }
 
 @Composable
