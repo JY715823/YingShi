@@ -511,9 +511,9 @@ object LocalSystemMediaBridgeRepository {
                         operationType = OperationType.IMPORT_TO_APP,
                         succeeded = importedCount > 0,
                         message = if (importedCount > 0) {
-                            "Imported to app photo feed."
+                            "导入完成"
                         } else {
-                            "No media can be imported."
+                            "没有可导入的媒体"
                         },
                     )
                 },
@@ -573,7 +573,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = false,
-                            message = "Create post failed. Please retry.",
+                            message = "帖子创建失败，可重试。",
                         )
                     } else {
                         OperationResultEvent(
@@ -581,7 +581,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = true,
-                            message = "Post created. Photo feed and albums refreshed.",
+                            message = "帖子创建完成",
                             postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
                         )
                     }
@@ -628,9 +628,9 @@ object LocalSystemMediaBridgeRepository {
                         operationType = OperationType.ADD_TO_EXISTING_POST,
                         succeeded = addedCount > 0,
                         message = if (addedCount > 0) {
-                            "Media added to post. Detail and media manager refreshed."
+                            "已加入帖子"
                         } else {
-                            "These media items are already in the target post."
+                            "这些媒体已在目标帖子中"
                         },
                         postRoute = postRoute.takeIf { addedCount > 0 },
                     )
@@ -658,9 +658,9 @@ object LocalSystemMediaBridgeRepository {
                         operationType = OperationType.IMPORT_TO_APP,
                         succeeded = importedCount > 0,
                         message = if (importedCount > 0) {
-                            "Imported to app photo feed."
+                            "导入完成"
                         } else {
-                            "No media can be imported."
+                            "没有可导入的媒体"
                         },
                     )
                 },
@@ -701,7 +701,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = false,
-                            message = "Create post failed. Please retry.",
+                            message = "帖子创建失败，可重试。",
                         )
                     } else {
                         OperationResultEvent(
@@ -709,7 +709,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = true,
-                            message = "Post created. Photo feed and albums refreshed.",
+                            message = "帖子创建完成",
                             postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
                         )
                     }
@@ -745,9 +745,9 @@ object LocalSystemMediaBridgeRepository {
                         operationType = OperationType.ADD_TO_EXISTING_POST,
                         succeeded = addedCount > 0,
                         message = if (addedCount > 0) {
-                            "Media added to post. Detail and media manager refreshed."
+                            "已加入帖子"
                         } else {
-                            "These media items are already in the target post."
+                            "这些媒体已在目标帖子中"
                         },
                         postRoute = postRoute.takeIf { addedCount > 0 },
                     )
@@ -1359,13 +1359,13 @@ object LocalSystemMediaBridgeRepository {
         if (uploadedMedia.orderedUploadedMediaIds.isEmpty()) {
             return ApiResult.Error(
                 code = "IMPORT_EMPTY",
-                message = "Upload finished but no importable media ID was returned.",
+                message = "上传完成，但没有可导入的媒体。",
             )
         }
         return ApiResult.Success(
             RealFinalizeResult(
                 operationType = OperationType.IMPORT_TO_APP,
-                successMessage = "Imported to app photo feed.",
+                successMessage = "导入完成",
                 affectedPostIds = emptySet(),
             ),
         )
@@ -1426,7 +1426,7 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.CREATE_POST,
-                        successMessage = "Post created. Photo feed and albums refreshed.",
+                        successMessage = "帖子创建完成",
                         postRoute = result.data.toPostDetailPlaceholderRoute(
                             selectedAlbumId = result.data.albumIds.firstOrNull() ?: finalAlbumIds.first(),
                         ),
@@ -1436,7 +1436,7 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> ApiResult.Error(
                 code = result.code,
-                message = result.message.ifBlank { "Upload finished, but creating the post failed." },
+                message = result.message.ifBlank { "上传完成，但帖子创建失败，可重试。" },
                 throwable = result.throwable,
             )
             ApiResult.Loading -> ApiResult.Loading
@@ -1465,7 +1465,7 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.ADD_TO_EXISTING_POST,
-                        successMessage = "Media added to post. Detail and media manager refreshed.",
+                        successMessage = "已加入帖子",
                         postRoute = postRoute,
                         affectedPostIds = setOf(postId),
                     ),
@@ -1473,7 +1473,7 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> ApiResult.Error(
                 code = result.code,
-                message = result.message.ifBlank { "Upload finished, but adding to the post failed." },
+                message = result.message.ifBlank { "上传完成，但加入帖子失败，可重试。" },
                 throwable = result.throwable,
             )
             ApiResult.Loading -> ApiResult.Loading
@@ -1519,10 +1519,10 @@ object LocalSystemMediaBridgeRepository {
                 operationId = operationId,
                 state = UploadState.UPLOADING,
                 statusMessage = when (request?.operationType) {
-                    OperationType.IMPORT_TO_APP -> "Upload finished. Refreshing photo feed"
-                    OperationType.ADD_TO_EXISTING_POST -> "Upload finished. Adding to post"
+                    OperationType.IMPORT_TO_APP -> "上传完成，正在刷新照片流"
+                    OperationType.ADD_TO_EXISTING_POST -> "上传完成，正在加入帖子"
                     OperationType.CREATE_POST,
-                    null -> "Upload finished. Creating post"
+                    null -> "上传完成，正在创建帖子"
                 },
             )
         }
@@ -1572,12 +1572,12 @@ object LocalSystemMediaBridgeRepository {
                     updateSuccessfulOperationTasks(
                         operationId = operationId,
                         state = UploadState.FAILURE,
-                        statusMessage = if (canFinalizePartialAddToPost) "Add to post failed" else "Create post failed",
+                        statusMessage = if (canFinalizePartialAddToPost) "加入帖子失败" else "帖子创建失败",
                         errorMessage = result.message.ifBlank {
                             if (canFinalizePartialAddToPost) {
-                                "Upload finished, but adding to the post failed."
+                                "上传完成，但加入帖子失败，可重试。"
                             } else {
-                                "Upload finished, but creating the post failed."
+                                "上传完成，但帖子创建失败，可重试。"
                             }
                         },
                         canRetry = true,
@@ -1587,10 +1587,10 @@ object LocalSystemMediaBridgeRepository {
                         operationId = operationId,
                         state = UploadState.FAILURE,
                         statusMessage = when (request?.operationType) {
-                            OperationType.ADD_TO_EXISTING_POST -> "Add to post failed"
-                            else -> "Create post failed"
+                            OperationType.ADD_TO_EXISTING_POST -> "加入帖子失败"
+                            else -> "帖子创建失败"
                         },
-                        errorMessage = result.message.ifBlank { "Upload finished, but finalizing the operation failed." },
+                        errorMessage = result.message.ifBlank { "上传完成，但收尾处理失败，可重试。" },
                         canRetry = true,
                     )
                 }

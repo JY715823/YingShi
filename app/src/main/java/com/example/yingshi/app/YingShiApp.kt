@@ -148,7 +148,7 @@ fun YingShiApp() {
         transferCenterRoute = null
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-        postDetailRoute = route.copy(entryNotice = route.entryNotice ?: "已加入帖子，媒体区已刷新")
+        postDetailRoute = route.copy(entryNotice = route.entryNotice ?: "已加入帖子")
     }
     val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
         val targetMediaId = resultMediaIds.firstOrNull { it.isNotBlank() }
@@ -208,12 +208,14 @@ fun YingShiApp() {
         if (operationResults.isEmpty()) return@LaunchedEffect
         val pendingEvents = operationResults.toList()
         pendingEvents.forEach { event ->
-            Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+            transferToastMessage(event).takeIf { it.isNotBlank() }?.let { message ->
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
             if (event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
                 event.postRoute != null &&
                 event.successCount > 0
             ) {
-                openPostDetailAfterAdd(event.postRoute.copy(entryNotice = "已发布"))
+                openPostDetailAfterAdd(event.postRoute.copy(entryNotice = "帖子创建完成"))
             } else if (
                 event.operationType == LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST &&
                 event.postRoute != null &&
@@ -221,7 +223,7 @@ fun YingShiApp() {
             ) {
                 openPostDetailAfterAdd(event.postRoute)
             } else if (
-                event.operationType != LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
+                event.operationType == LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP &&
                 event.shouldAutoOpenResult &&
                 event.successCount > 0 &&
                 event.resultMediaIds.isNotEmpty()
@@ -708,6 +710,36 @@ fun YingShiApp() {
     }
 }
 
+}
+
+private fun transferToastMessage(event: LocalSystemMediaBridgeRepository.OperationResultEvent): String {
+    val shouldAutoOpenResult = event.shouldAutoOpenResult
+    val totalCount = event.totalCount
+    val successCount = event.successCount
+    val failureCount = event.failureCount
+    val succeeded = event.succeeded
+    val operationType = event.operationType
+    if (shouldAutoOpenResult && totalCount > successCount) {
+        return ""
+    }
+    val isPartial = successCount > 0 && failureCount > 0
+    return when (operationType) {
+        LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> when {
+            isPartial -> "部分导入完成"
+            succeeded && successCount > 0 -> "导入完成"
+            else -> "导入失败，可重试"
+        }
+        LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> when {
+            isPartial -> "帖子部分创建完成"
+            succeeded && successCount > 0 -> "帖子创建完成"
+            else -> "帖子创建失败，可重试"
+        }
+        LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> when {
+            isPartial -> "部分加入成功"
+            succeeded && successCount > 0 -> "已加入帖子"
+            else -> "加入失败，可重试"
+        }
+    }
 }
 
 @Preview(showBackground = true)

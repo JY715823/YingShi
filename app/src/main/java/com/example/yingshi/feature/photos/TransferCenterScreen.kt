@@ -230,7 +230,12 @@ private fun TransferOperationCard(
                         maxLines = 1,
                     )
                     Text(
-                        text = operationStateLabel(tasks),
+                        text = operationStateLabel(
+                            tasks = tasks,
+                            successCount = successCount,
+                            failureCount = failureCount,
+                            cancelledCount = cancelledCount,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -532,15 +537,15 @@ private fun failureRetryExplanation(
     val actionText = when (task.operationType) {
         LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> {
             if (task.resultPostRoute != null) {
-                "结果帖已创建；重试只会把失败媒体补进这个帖子，不会重复创建已成功内容。"
+                "帖子已创建，成功项已保留；失败项可在传输中心重试，不会重复创建已成功内容。"
             } else {
-                "重试会继续处理失败媒体，已成功上传内容不会重复创建。"
+                "成功项已保留；失败项可在传输中心重试，不会重复创建已成功内容。"
             }
         }
         LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
-            "成功项不会重复加入目标帖子；重试会继续补传失败项。"
+            "目标帖子是「${task.operationTitle ?: task.targetLabel}」。成功项已保留；失败项可在传输中心重试，不会重复加入已成功内容。"
         LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
-            "成功项已进入 App；重试只会继续导入失败项。"
+            "成功项已进入 App；失败项可在传输中心重试，不会重复导入已成功内容。"
     }
     return countPrefix + actionText
 }
@@ -572,16 +577,40 @@ private fun failureReasonLabel(task: SystemMediaUploadTaskUiModel): String {
     }
 }
 
-private fun operationStateLabel(tasks: List<SystemMediaUploadTaskUiModel>): String {
+private fun operationStateLabel(
+    tasks: List<SystemMediaUploadTaskUiModel>,
+    successCount: Int,
+    failureCount: Int,
+    cancelledCount: Int,
+): String {
     val terminalCount = tasks.count { it.isTerminal }
-    val successCount = tasks.count { it.state == UploadState.SUCCESS }
-    val failureCount = tasks.count { it.state == UploadState.FAILURE }
-    val cancelledCount = tasks.count { it.state == UploadState.CANCELLED }
+    val primaryTask = tasks.first()
+    val targetLabel = primaryTask.operationTitle ?: primaryTask.targetLabel
+    val countText = "成功 $successCount，失败 $failureCount，取消 $cancelledCount"
     return when {
         tasks.any { it.state == UploadState.UPLOADING } -> "正在处理 ${terminalCount}/${tasks.size} 项"
         tasks.any { it.state == UploadState.WAITING } -> "等待处理 ${terminalCount}/${tasks.size} 项"
-        failureCount > 0 || cancelledCount > 0 -> "部分完成：成功 $successCount，失败 $failureCount，取消 $cancelledCount。成功结果仍可查看，失败项可重试。"
-        successCount == tasks.size -> "全部完成，可查看结果"
+        failureCount > 0 || cancelledCount > 0 -> when (primaryTask.operationType) {
+            LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
+                "部分导入完成：$countText。成功项已保留，失败项可重试。"
+            LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> {
+                if (tasks.any { it.resultPostRoute != null }) {
+                    "帖子已创建：$countText。成功项已保留，失败项可重试。"
+                } else {
+                    "帖子未完整创建：$countText。失败项可重试。"
+                }
+            }
+            LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
+                "已加入「$targetLabel」：$countText。成功项已保留，失败项可重试。"
+        }
+        successCount == tasks.size -> when (primaryTask.operationType) {
+            LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
+                "导入完成：成功 $successCount 项，可查看照片"
+            LocalSystemMediaBridgeRepository.OperationType.CREATE_POST ->
+                "帖子创建完成：成功 $successCount 项，可查看新帖子"
+            LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
+                "已加入「$targetLabel」：成功 $successCount 项，可查看目标帖子"
+        }
         else -> "任务已更新"
     }
 }
