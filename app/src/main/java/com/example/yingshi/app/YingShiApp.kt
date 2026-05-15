@@ -111,6 +111,12 @@ fun YingShiApp() {
     var postDetailRoute by remember {
         mutableStateOf<PostDetailPlaceholderRoute?>(null)
     }
+    var pendingPostListUpdatedPostId by remember {
+        mutableStateOf<String?>(null)
+    }
+    var pendingPostListUpdatedAlbumId by remember {
+        mutableStateOf<String?>(null)
+    }
     var gearEditRoute by remember {
         mutableStateOf<GearEditRoute?>(null)
     }
@@ -141,9 +147,29 @@ fun YingShiApp() {
     val operationResults = LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
+    val markPostListUpdated: (String, String?) -> Unit = { postId, albumId ->
+        if (postId.isNotBlank()) {
+            AlbumPageStateStore.pendingUpdatedPostId = postId
+            pendingPostListUpdatedPostId = postId
+        }
+        if (!albumId.isNullOrBlank()) {
+            AlbumPageStateStore.pendingSelectedAlbumId = albumId
+            pendingPostListUpdatedAlbumId = albumId
+        }
+    }
+    val closePostDetail: () -> Unit = {
+        postDetailRoute = null
+        pendingPostListUpdatedAlbumId?.let { albumId ->
+            AlbumPageStateStore.pendingSelectedAlbumId = albumId
+        }
+        pendingPostListUpdatedPostId?.let { postId ->
+            AlbumPageStateStore.pendingUpdatedPostId = postId
+        }
+        pendingPostListUpdatedPostId = null
+        pendingPostListUpdatedAlbumId = null
+    }
     val openPostDetailAfterAdd: (PostDetailPlaceholderRoute) -> Unit = { route ->
-        AlbumPageStateStore.pendingSelectedAlbumId = route.albumId
-        AlbumPageStateStore.pendingUpdatedPostId = route.postId
+        markPostListUpdated(route.postId, route.albumId)
         photoViewerRoute = null
         systemMediaViewerRoute = null
         systemMediaRoute = null
@@ -288,7 +314,7 @@ fun YingShiApp() {
     }
     if (postDetailRoute != null) {
         BackHandler(enabled = trashDetailRoute == null && gearEditRoute == null && mediaManagementRoute == null) {
-            postDetailRoute = null
+            closePostDetail()
         }
     }
     if (gearEditRoute != null) {
@@ -530,8 +556,7 @@ fun YingShiApp() {
                             route = route,
                             onBack = { createPostRoute = null },
                             onCreated = { createdRoute ->
-                                AlbumPageStateStore.pendingSelectedAlbumId = createdRoute.albumId
-                                AlbumPageStateStore.pendingUpdatedPostId = createdRoute.postId
+                                markPostListUpdated(createdRoute.postId, createdRoute.albumId)
                                 createPostRoute = null
                                 systemMediaViewerRoute = null
                                 systemMediaRoute = null
@@ -612,8 +637,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { createPostRoute = null },
                         onCreated = { createdRoute ->
-                            AlbumPageStateStore.pendingSelectedAlbumId = createdRoute.albumId
-                            AlbumPageStateStore.pendingUpdatedPostId = createdRoute.postId
+                            markPostListUpdated(createdRoute.postId, createdRoute.albumId)
                             createPostRoute = null
                             selectedDestinationName = RootDestination.PHOTOS.name
                             photosTopDestinationName = PhotosTopDestination.ALBUMS.name
@@ -628,7 +652,7 @@ fun YingShiApp() {
                 postDetailRoute?.let { route ->
                     PostDetailScreen(
                         route = route,
-                        onBack = { postDetailRoute = null },
+                        onBack = closePostDetail,
                         onOpenGearEdit = { gearEditRoute = it },
                         onOpenPostDetail = { postDetailRoute = it },
                         onOpenCacheManagement = { cacheManagementRoute = it },
@@ -640,6 +664,9 @@ fun YingShiApp() {
                     GearEditScreen(
                         route = route,
                         onBack = { gearEditRoute = null },
+                        onPostUpdated = { postId, albumId ->
+                            markPostListUpdated(postId, albumId)
+                        },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
                             val postSnapshot = FakeAlbumRepository.snapshotPost(postId)
                             if (postSnapshot == null) {
@@ -680,6 +707,9 @@ fun YingShiApp() {
                     MediaManagementScreen(
                         route = route,
                         onBack = { mediaManagementRoute = null },
+                        onPostUpdated = { postId ->
+                            markPostListUpdated(postId, postDetailRoute?.albumId)
+                        },
                         onCurrentPostDeleted = {
                             mediaManagementRoute = null
                             gearEditRoute = null

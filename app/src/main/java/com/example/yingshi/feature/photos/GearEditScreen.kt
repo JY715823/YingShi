@@ -59,6 +59,7 @@ import java.util.Locale
 fun GearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
+    onPostUpdated: (postId: String, albumId: String?) -> Unit = { _, _ -> },
     onDeleteCurrentPost: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -66,6 +67,7 @@ fun GearEditScreen(
         RealGearEditScreen(
             route = route,
             onBack = onBack,
+            onPostUpdated = onPostUpdated,
             modifier = modifier,
         )
         return
@@ -199,6 +201,7 @@ fun GearEditScreen(
             }
         }
         isSaving = false
+        onPostUpdated(route.postId, selectedAlbumIds.firstOrNull())
         Toast.makeText(context, "帖子已保存", Toast.LENGTH_SHORT).show()
         onBack()
     }
@@ -376,6 +379,7 @@ fun GearEditScreen(
 private fun RealGearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
+    onPostUpdated: (postId: String, albumId: String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -462,7 +466,12 @@ private fun RealGearEditScreen(
         GearEditTopBar(
             onCancel = handleClose,
             onSave = {
-                viewModel.save(onSuccess = onBack)
+                viewModel.save(
+                    onSuccess = {
+                        onPostUpdated(route.postId, uiState.selectedAlbumIds.firstOrNull())
+                        onBack()
+                    },
+                )
             },
             saveEnabled = !uiState.isSaving,
         )
@@ -559,7 +568,14 @@ private fun RealGearEditScreen(
         GearEditSaveRow(
             isSaving = uiState.isSaving,
             onCancel = handleClose,
-            onSave = { viewModel.save(onSuccess = onBack) },
+            onSave = {
+                viewModel.save(
+                    onSuccess = {
+                        onPostUpdated(route.postId, uiState.selectedAlbumIds.firstOrNull())
+                        onBack()
+                    },
+                )
+            },
         )
 
         GearEditSection(

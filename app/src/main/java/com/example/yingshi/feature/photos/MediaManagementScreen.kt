@@ -66,12 +66,14 @@ private enum class MediaManagementMode {
 fun MediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
+    onPostUpdated: (postId: String) -> Unit = {},
     onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     UnifiedPostMediaManagementScreen(
         route = route,
         onBack = onBack,
+        onPostUpdated = onPostUpdated,
         modifier = modifier,
     )
     return
@@ -709,18 +711,21 @@ private fun RealMediaManagementScreen(
 private fun UnifiedPostMediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
+    onPostUpdated: (postId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
         UnifiedRealPostMediaManagementScreen(
             route = route,
             onBack = onBack,
+            onPostUpdated = onPostUpdated,
             modifier = modifier,
         )
     } else {
         UnifiedFakePostMediaManagementScreen(
             route = route,
             onBack = onBack,
+            onPostUpdated = onPostUpdated,
             modifier = modifier,
         )
     }
@@ -730,6 +735,7 @@ private fun UnifiedPostMediaManagementScreen(
 private fun UnifiedFakePostMediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
+    onPostUpdated: (postId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -777,6 +783,7 @@ private fun UnifiedFakePostMediaManagementScreen(
                     FakeAlbumRepository.setPostCover(route.postId, coverId)
                 }
             }
+            onPostUpdated(route.postId)
             Toast.makeText(context, "帖子媒体列表已保存", Toast.LENGTH_SHORT).show()
             onBack()
         },
@@ -788,6 +795,7 @@ private fun UnifiedFakePostMediaManagementScreen(
 private fun UnifiedRealPostMediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
+    onPostUpdated: (postId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -891,6 +899,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                                     mediaIds = (removedIds + finalIds).toSet(),
                                 )
                             }
+                            onPostUpdated(route.postId)
                             Toast.makeText(context, "帖子媒体列表已保存", Toast.LENGTH_SHORT).show()
                             onBack()
                         } else {
