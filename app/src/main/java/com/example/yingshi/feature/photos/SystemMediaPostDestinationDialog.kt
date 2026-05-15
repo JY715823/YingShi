@@ -19,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +52,15 @@ fun SystemMediaPostDestinationDialog(
     }
     val selectedAlbum = albums.firstOrNull { it.id == selectedAlbumId }
     val albumTitleById = albums.associate { it.id to it.title }
+    val recentPostIds = SystemMediaRecentPostStore.ids
+    val recentPosts = posts
+        .sortedWith(
+            compareByDescending<AlbumPostCardUiModel> { post ->
+                val recentIndex = recentPostIds.indexOf(post.id)
+                if (recentIndex >= 0) recentPostIds.size - recentIndex else 0
+            }.thenByDescending { post -> post.postDisplayTimeMillis },
+        )
+        .take(6)
     val albumCards = albums.map { album ->
         SystemMediaAlbumChoice(
             album = album,
@@ -90,9 +100,24 @@ fun SystemMediaPostDestinationDialog(
                 if (isLoading) {
                     SystemMediaPickerLoadingState()
                 } else if (selectedAlbum == null) {
+                    SystemMediaRecentPostsSection(
+                        posts = recentPosts,
+                        albumTitleById = albumTitleById,
+                        isSubmitting = isSubmitting,
+                        pendingPostId = pendingPostId,
+                        onPostChosen = { post ->
+                            SystemMediaRecentPostStore.markUsed(post.id)
+                            onPostChosen(post)
+                        },
+                    )
                     if (albumCards.isEmpty()) {
                         SystemMediaPickerEmptyState(text = "当前没有可选相册。")
                     } else {
+                        Text(
+                            text = "按相册选择",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
                         albumCards.forEach { choice ->
                             Surface(
                                 shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
@@ -127,7 +152,10 @@ fun SystemMediaPostDestinationDialog(
                             albumTitleById = albumTitleById,
                             isSubmitting = isSubmitting && pendingPostId == post.id,
                             enabled = !isSubmitting,
-                            onClick = { onPostChosen(post) },
+                            onClick = {
+                                SystemMediaRecentPostStore.markUsed(post.id)
+                                onPostChosen(post)
+                            },
                         )
                     }
                 }
@@ -152,6 +180,36 @@ fun SystemMediaPostDestinationDialog(
             }
         },
     )
+}
+
+@Composable
+private fun SystemMediaRecentPostsSection(
+    posts: List<AlbumPostCardUiModel>,
+    albumTitleById: Map<String, String>,
+    isSubmitting: Boolean,
+    pendingPostId: String?,
+    onPostChosen: (AlbumPostCardUiModel) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "最近帖子",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (posts.isEmpty()) {
+            SystemMediaPickerEmptyState(text = "还没有最近帖子，可从下方相册选择。")
+        } else {
+            posts.forEach { post ->
+                SystemMediaPostChoiceCard(
+                    post = post,
+                    albumTitleById = albumTitleById,
+                    isSubmitting = isSubmitting && pendingPostId == post.id,
+                    enabled = !isSubmitting,
+                    onClick = { onPostChosen(post) },
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -315,6 +373,20 @@ private data class SystemMediaAlbumChoice(
     val album: AlbumSummaryUiModel,
     val postCount: Int,
 )
+
+private object SystemMediaRecentPostStore {
+    private const val MaxRecentPosts = 8
+    val ids = mutableStateListOf<String>()
+
+    fun markUsed(postId: String) {
+        if (postId.isBlank()) return
+        ids.remove(postId)
+        ids.add(0, postId)
+        while (ids.size > MaxRecentPosts) {
+            ids.removeAt(ids.lastIndex)
+        }
+    }
+}
 
 private fun formatSystemMediaPickerTime(timeMillis: Long): String {
     return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
