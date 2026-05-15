@@ -54,12 +54,14 @@ import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 object AlbumPageStateStore {
     var pendingSelectedAlbumId by mutableStateOf<String?>(null)
+    var pendingUpdatedPostId by mutableStateOf<String?>(null)
 }
 
 @Composable
@@ -109,6 +111,25 @@ fun AlbumPageScreen(
     }
     val filteredPosts = posts.filter { it.albumIds.contains(selectedAlbumId) }
     val chipRows = remember(albums) { buildAlbumChipRows(albums) }
+    val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
+    var recentlyUpdatedPostId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingUpdatedPostId, filteredPosts) {
+        val targetPostId = pendingUpdatedPostId ?: return@LaunchedEffect
+        val targetIndex = filteredPosts.indexOfFirst { it.id == targetPostId }
+        if (targetIndex >= 0) {
+            recentlyUpdatedPostId = targetPostId
+            AlbumPageStateStore.pendingUpdatedPostId = null
+            gridState.scrollToItem(targetIndex)
+        }
+    }
+    LaunchedEffect(recentlyUpdatedPostId) {
+        val targetPostId = recentlyUpdatedPostId ?: return@LaunchedEffect
+        delay(4500)
+        if (recentlyUpdatedPostId == targetPostId) {
+            recentlyUpdatedPostId = null
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -164,6 +185,7 @@ fun AlbumPageScreen(
                         AlbumPostCard(
                             post = post,
                             density = gridDensity,
+                            isRecentlyUpdated = post.id == recentlyUpdatedPostId,
                             onClick = { onOpenPost(FakeAlbumRepository.toPostDetailRoute(post)) },
                         )
                     }
@@ -187,6 +209,7 @@ private fun RealAlbumPageScreen(
     val uiState by viewModel.uiState.collectAsState()
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val pendingSelectedAlbumId = AlbumPageStateStore.pendingSelectedAlbumId
+    val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
     var densityName by rememberSaveable {
@@ -214,6 +237,24 @@ private fun RealAlbumPageScreen(
     )
     val gridState = rememberLazyGridState()
     val chipRows = remember(uiState.albums) { buildAlbumChipRows(uiState.albums) }
+    var recentlyUpdatedPostId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingUpdatedPostId, uiState.posts) {
+        val targetPostId = pendingUpdatedPostId ?: return@LaunchedEffect
+        val targetIndex = uiState.posts.indexOfFirst { it.id == targetPostId }
+        if (targetIndex >= 0) {
+            recentlyUpdatedPostId = targetPostId
+            AlbumPageStateStore.pendingUpdatedPostId = null
+            gridState.scrollToItem(targetIndex)
+        }
+    }
+    LaunchedEffect(recentlyUpdatedPostId) {
+        val targetPostId = recentlyUpdatedPostId ?: return@LaunchedEffect
+        delay(4500)
+        if (recentlyUpdatedPostId == targetPostId) {
+            recentlyUpdatedPostId = null
+        }
+    }
     Column(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -308,6 +349,7 @@ private fun RealAlbumPageScreen(
                                     AlbumPostCard(
                                         post = post,
                                         density = gridDensity,
+                                        isRecentlyUpdated = post.id == recentlyUpdatedPostId,
                                         onClick = {
                                             val selectedAlbumId = uiState.selectedAlbumId ?: post.albumId
                                             onOpenPost(
@@ -545,6 +587,7 @@ private fun AlbumGridDensitySwitcher(
 private fun AlbumPostCard(
     post: AlbumPostCardUiModel,
     density: AlbumGridDensity,
+    isRecentlyUpdated: Boolean = false,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -580,8 +623,12 @@ private fun AlbumPostCard(
         shape = RoundedCornerShape(radius.lg),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+            width = if (isRecentlyUpdated) 1.5.dp else 1.dp,
+            color = if (isRecentlyUpdated) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+            },
         ),
     ) {
         Column {
@@ -639,6 +686,30 @@ private fun AlbumPostCard(
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White.copy(alpha = 0.92f),
                     )
+                }
+
+                if (isRecentlyUpdated) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(
+                                start = innerPadding,
+                                top = if (post.coverMediaType == AppMediaType.VIDEO) {
+                                    innerPadding + 28.dp
+                                } else {
+                                    innerPadding
+                                },
+                            ),
+                        shape = RoundedCornerShape(radius.capsule),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                    ) {
+                        Text(
+                            text = "刚更新",
+                            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             }
 

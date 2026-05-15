@@ -143,6 +143,7 @@ fun YingShiApp() {
     val context = LocalContext.current
     val openPostDetailAfterAdd: (PostDetailPlaceholderRoute) -> Unit = { route ->
         AlbumPageStateStore.pendingSelectedAlbumId = route.albumId
+        AlbumPageStateStore.pendingUpdatedPostId = route.postId
         photoViewerRoute = null
         systemMediaViewerRoute = null
         systemMediaRoute = null
@@ -530,6 +531,7 @@ fun YingShiApp() {
                             onBack = { createPostRoute = null },
                             onCreated = { createdRoute ->
                                 AlbumPageStateStore.pendingSelectedAlbumId = createdRoute.albumId
+                                AlbumPageStateStore.pendingUpdatedPostId = createdRoute.postId
                                 createPostRoute = null
                                 systemMediaViewerRoute = null
                                 systemMediaRoute = null
@@ -611,6 +613,7 @@ fun YingShiApp() {
                         onBack = { createPostRoute = null },
                         onCreated = { createdRoute ->
                             AlbumPageStateStore.pendingSelectedAlbumId = createdRoute.albumId
+                            AlbumPageStateStore.pendingUpdatedPostId = createdRoute.postId
                             createPostRoute = null
                             selectedDestinationName = RootDestination.PHOTOS.name
                             photosTopDestinationName = PhotosTopDestination.ALBUMS.name
