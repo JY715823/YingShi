@@ -117,6 +117,9 @@ fun YingShiApp() {
     var pendingPostListUpdatedAlbumId by remember {
         mutableStateOf<String?>(null)
     }
+    var postDetailFeedbackNonce by rememberSaveable {
+        mutableIntStateOf(0)
+    }
     var gearEditRoute by remember {
         mutableStateOf<GearEditRoute?>(null)
     }
@@ -168,6 +171,13 @@ fun YingShiApp() {
         pendingPostListUpdatedPostId = null
         pendingPostListUpdatedAlbumId = null
     }
+    val postDetailRouteWithNotice: (PostDetailPlaceholderRoute, String) -> PostDetailPlaceholderRoute = { route, notice ->
+        postDetailFeedbackNonce += 1
+        route.copy(
+            entryNotice = notice,
+            feedbackNonce = postDetailFeedbackNonce,
+        )
+    }
     val openPostDetailAfterAdd: (PostDetailPlaceholderRoute) -> Unit = { route ->
         markPostListUpdated(route.postId, route.albumId)
         photoViewerRoute = null
@@ -177,7 +187,7 @@ fun YingShiApp() {
         transferCenterRoute = null
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-        postDetailRoute = route.copy(entryNotice = route.entryNotice ?: "已加入帖子")
+        postDetailRoute = postDetailRouteWithNotice(route, route.entryNotice ?: "已加入帖子")
     }
     val requestPhotoFeedRefresh: (List<String>, Boolean) -> Unit = { resultMediaIds, hasRetryableItems ->
         val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
@@ -563,7 +573,7 @@ fun YingShiApp() {
                                 selectedDestinationName = RootDestination.PHOTOS.name
                                 photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                                 photoSelectionClearTrigger++
-                                postDetailRoute = createdRoute.copy(entryNotice = "已发布")
+                                postDetailRoute = postDetailRouteWithNotice(createdRoute, "已发布")
                             },
                             onSubmittedToBackground = { createPostRoute = null },
                             modifier = Modifier.fillMaxSize(),
@@ -642,7 +652,7 @@ fun YingShiApp() {
                             selectedDestinationName = RootDestination.PHOTOS.name
                             photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                             photoSelectionClearTrigger++
-                            postDetailRoute = createdRoute.copy(entryNotice = "已发布")
+                            postDetailRoute = postDetailRouteWithNotice(createdRoute, "已发布")
                         },
                         onSubmittedToBackground = { createPostRoute = null },
                         modifier = Modifier.fillMaxSize(),
@@ -666,6 +676,21 @@ fun YingShiApp() {
                         onBack = { gearEditRoute = null },
                         onPostUpdated = { postId, albumId ->
                             markPostListUpdated(postId, albumId)
+                            postDetailRoute = postDetailRoute?.let { currentRoute ->
+                                if (currentRoute.postId == postId) {
+                                    postDetailRouteWithNotice(
+                                        currentRoute.copy(
+                                            albumId = albumId ?: currentRoute.albumId,
+                                            albumIds = albumId?.let { listOf(it) } ?: currentRoute.albumIds,
+                                            highlightMediaIds = emptyList(),
+                                            focusMediaId = null,
+                                        ),
+                                        "帖子已更新",
+                                    )
+                                } else {
+                                    currentRoute
+                                }
+                            }
                         },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
                             val postSnapshot = FakeAlbumRepository.snapshotPost(postId)
@@ -709,6 +734,19 @@ fun YingShiApp() {
                         onBack = { mediaManagementRoute = null },
                         onPostUpdated = { postId ->
                             markPostListUpdated(postId, postDetailRoute?.albumId)
+                            postDetailRoute = postDetailRoute?.let { currentRoute ->
+                                if (currentRoute.postId == postId) {
+                                    postDetailRouteWithNotice(
+                                        currentRoute.copy(
+                                            highlightMediaIds = emptyList(),
+                                            focusMediaId = null,
+                                        ),
+                                        "媒体已更新",
+                                    )
+                                } else {
+                                    currentRoute
+                                }
+                            }
                         },
                         onCurrentPostDeleted = {
                             mediaManagementRoute = null

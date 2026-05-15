@@ -77,6 +77,7 @@ data class PostDetailPlaceholderRoute(
     val entryNotice: String? = null,
     val highlightMediaIds: List<String> = emptyList(),
     val focusMediaId: String? = highlightMediaIds.firstOrNull(),
+    val feedbackNonce: Int = 0,
 )
 
 @Immutable

@@ -398,7 +398,11 @@ object FakeAlbumRepository {
         }
     }
 
-    fun setPostCover(postId: String, mediaId: String): Boolean {
+    fun setPostCover(
+        postId: String,
+        mediaId: String,
+        touchUpdatedTime: Boolean = true,
+    ): Boolean {
         val post = getPost(postId) ?: return false
         val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
         val targetIndex = mediaState.indexOfFirst { it.id == mediaId }
@@ -416,6 +420,9 @@ object FakeAlbumRepository {
             coverAspectRatio = target.aspectRatio,
             coverMediaSource = target.mediaSource,
         )
+        if (touchUpdatedTime) {
+            touchPostAfterListMutation(postId)
+        }
         return true
     }
 
@@ -506,6 +513,7 @@ object FakeAlbumRepository {
     fun updatePostMediaOrder(
         postId: String,
         orderedIds: List<String>,
+        touchUpdatedTime: Boolean = true,
     ): Boolean {
         val post = getPost(postId) ?: return false
         val mediaState = ensurePostMedia(postId = postId, fallbackPost = post)
@@ -529,6 +537,9 @@ object FakeAlbumRepository {
                 coverAspectRatio = cover.aspectRatio,
                 coverMediaSource = cover.mediaSource,
             )
+        }
+        if (touchUpdatedTime) {
+            touchPostAfterListMutation(postId)
         }
         return true
     }
@@ -896,6 +907,15 @@ object FakeAlbumRepository {
             coverAspectRatio = coverAspectRatio,
             coverMediaSource = coverMediaSource,
         )
+    }
+
+    private fun touchPostAfterListMutation(postId: String) {
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index < 0) return
+        posts[index] = posts[index].copy(
+            postDisplayTimeMillis = System.currentTimeMillis(),
+        )
+        posts.sortByDescending { it.postDisplayTimeMillis }
     }
 
     private fun syncPostAfterMediaMutation(

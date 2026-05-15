@@ -125,6 +125,7 @@ fun PostDetailScreen(
                 detail = detail,
                 highlightMediaIds = route.highlightMediaIds,
                 focusMediaId = route.focusMediaId,
+                feedbackNonce = route.feedbackNonce,
                 onBack = onBack,
                 onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
                 onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
@@ -276,6 +277,7 @@ private fun RealPostDetailScreen(
                         uiState = uiState,
                         highlightMediaIds = route.highlightMediaIds,
                         focusMediaId = route.focusMediaId,
+                        feedbackNonce = route.feedbackNonce,
                         onBack = onBack,
                         onRefresh = viewModel::refresh,
                         onOpenGearEdit = onOpenGearEdit,
@@ -322,6 +324,7 @@ private fun RealPostDetailContent(
     uiState: PostDetailRealUiState,
     highlightMediaIds: List<String>,
     focusMediaId: String?,
+    feedbackNonce: Int,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenGearEdit: () -> Unit,
@@ -351,7 +354,13 @@ private fun RealPostDetailContent(
     val currentMediaCommentState = currentMedia?.let { uiState.mediaComments[it.id] }
     val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia?.commentCount ?: 0
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
-    val highlightKey = remember(highlightMediaIds) { highlightMediaIds.distinct().joinToString("|") }
+    val feedbackKey = "${detail.postId}:$feedbackNonce"
+    val highlightKey = remember(highlightMediaIds, feedbackNonce) {
+        "$feedbackNonce:${highlightMediaIds.distinct().joinToString("|")}"
+    }
+    var showEntryNotice by rememberSaveable(feedbackKey, detail.entryNotice) {
+        mutableStateOf(!detail.entryNotice.isNullOrBlank())
+    }
     var showNewAddedState by rememberSaveable(detail.postId, highlightKey) {
         mutableStateOf(highlightMediaIds.isNotEmpty())
     }
@@ -380,6 +389,11 @@ private fun RealPostDetailContent(
         delay(4500L)
         showNewAddedState = false
         resultNotice = null
+    }
+    LaunchedEffect(feedbackKey, detail.entryNotice) {
+        if (detail.entryNotice.isNullOrBlank()) return@LaunchedEffect
+        delay(3200L)
+        showEntryNotice = false
     }
     val currentOriginalTarget = remember(currentMedia) {
         currentMedia?.toRealOriginalMediaTarget()
@@ -423,7 +437,7 @@ private fun RealPostDetailContent(
             )
         },
         notice = {
-            detail.entryNotice?.let { message ->
+            detail.entryNotice?.takeIf { showEntryNotice }?.let { message ->
                 PostInlineNotice(text = message)
             }
             resultNotice?.let { message ->
@@ -983,6 +997,7 @@ private fun PostDetailContent(
     detail: PostDetailUiModel,
     highlightMediaIds: List<String>,
     focusMediaId: String?,
+    feedbackNonce: Int,
     onBack: () -> Unit,
     onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
@@ -1003,7 +1018,13 @@ private fun PostDetailContent(
     val postMediaIds = remember(detail.mediaItems) {
         detail.mediaItems.map { it.id }
     }
-    val highlightKey = remember(highlightMediaIds) { highlightMediaIds.distinct().joinToString("|") }
+    val feedbackKey = "${detail.postId}:$feedbackNonce"
+    val highlightKey = remember(highlightMediaIds, feedbackNonce) {
+        "$feedbackNonce:${highlightMediaIds.distinct().joinToString("|")}"
+    }
+    var showEntryNotice by rememberSaveable(feedbackKey, detail.entryNotice) {
+        mutableStateOf(!detail.entryNotice.isNullOrBlank())
+    }
     var showNewAddedState by rememberSaveable(detail.postId, highlightKey) {
         mutableStateOf(highlightMediaIds.isNotEmpty())
     }
@@ -1033,6 +1054,11 @@ private fun PostDetailContent(
         showNewAddedState = false
         resultNotice = null
     }
+    LaunchedEffect(feedbackKey, detail.entryNotice) {
+        if (detail.entryNotice.isNullOrBlank()) return@LaunchedEffect
+        delay(3200L)
+        showEntryNotice = false
+    }
     val currentOriginalState = currentMedia?.let { FakeOriginalLoadRepository.getState(it.id) }
         ?: OriginalLoadState.NotLoaded
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
@@ -1049,7 +1075,7 @@ private fun PostDetailContent(
             )
         },
         notice = {
-            detail.entryNotice?.let { message ->
+            detail.entryNotice?.takeIf { showEntryNotice }?.let { message ->
                 PostInlineNotice(text = message)
             }
             resultNotice?.let { message ->

@@ -187,13 +187,13 @@ fun GearEditScreen(
             FakeTrashRepository.recordRemovedMedia(post, selectedMediaSnapshots)
         }
         if (finalIds.isNotEmpty()) {
-            if (!FakeAlbumRepository.updatePostMediaOrder(route.postId, finalIds)) {
+            if (!FakeAlbumRepository.updatePostMediaOrder(route.postId, finalIds, touchUpdatedTime = false)) {
                 isSaving = false
                 localMessage = "保存媒体顺序失败，请重试。"
                 return
             }
             safeCoverMediaId?.let { coverId ->
-                if (!FakeAlbumRepository.setPostCover(route.postId, coverId)) {
+                if (!FakeAlbumRepository.setPostCover(route.postId, coverId, touchUpdatedTime = false)) {
                     isSaving = false
                     localMessage = "设置封面失败，请重新选择封面后重试。"
                     return
