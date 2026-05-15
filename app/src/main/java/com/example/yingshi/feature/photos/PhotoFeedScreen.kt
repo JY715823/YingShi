@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.photos
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -138,6 +139,7 @@ fun PhotoFeedScreen(
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
         !selectionState.isInSelectionMode &&
         density.columns <= 4
+    val context = LocalContext.current
     val blocks = remember(feedItems, density) {
         buildPhotoFeedBlocks(
             items = feedItems,
@@ -340,6 +342,11 @@ fun PhotoFeedScreen(
                 }
                 PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
                 PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+                PhotoFeedPageStateStore.pendingLocateFailureMessage?.let { message ->
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
+                PhotoFeedPageStateStore.pendingLocateSuccessMessage = null
+                PhotoFeedPageStateStore.pendingLocateFailureMessage = null
                 pendingTargetMediaIdSnapshot = null
                 pendingTargetLoadAttemptBlockCount = -1
                 return@LaunchedEffect
@@ -363,6 +370,11 @@ fun PhotoFeedScreen(
         PhotoFeedPageStateStore.savedFirstVisibleMediaId = mediaId
         PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
         PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+        PhotoFeedPageStateStore.pendingLocateSuccessMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+        PhotoFeedPageStateStore.pendingLocateSuccessMessage = null
+        PhotoFeedPageStateStore.pendingLocateFailureMessage = null
         pendingTargetMediaIdSnapshot = null
         pendingTargetLoadAttemptBlockCount = -1
     }
@@ -1234,16 +1246,16 @@ private fun TargetMediaHighlightOverlay(
         delay(420)
         alpha.animateTo(
             targetValue = 0f,
-            animationSpec = tween(durationMillis = 520),
+            animationSpec = tween(durationMillis = 760),
         )
     }
 
     if (alpha.value > 0f) {
         Box(
             modifier = modifier
-                .background(highlightColor.copy(alpha = 0.16f * alpha.value))
+                .background(highlightColor.copy(alpha = 0.22f * alpha.value))
                 .border(
-                    width = 3.dp,
+                    width = 4.dp,
                     color = highlightColor.copy(alpha = 0.92f * alpha.value),
                 ),
         )

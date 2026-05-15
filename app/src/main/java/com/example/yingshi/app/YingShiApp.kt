@@ -60,6 +60,7 @@ import com.example.yingshi.feature.photos.TransferCenterRoute
 import com.example.yingshi.feature.photos.TransferCenterScreen
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
 import com.example.yingshi.feature.photos.SystemMediaViewerScreen
+import com.example.yingshi.feature.photos.SystemMediaUploadTaskUiModel
 import com.example.yingshi.feature.photos.TrashDetailRoute
 import com.example.yingshi.feature.photos.TrashDetailScreen
 import com.example.yingshi.feature.photos.TrashEntryType
@@ -151,11 +152,23 @@ fun YingShiApp() {
         postDetailRoute = route.copy(entryNotice = route.entryNotice ?: "已加入帖子")
     }
     val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
-        val targetMediaId = resultMediaIds.firstOrNull { it.isNotBlank() }
+        val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
+        val targetMediaId = validResultMediaIds.firstOrNull()
         if (targetMediaId != null) {
             PhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
             PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
             PhotoFeedPageStateStore.pendingHighlightNonce += 1
+            val extraCount = (validResultMediaIds.size - 1).coerceAtLeast(0)
+            PhotoFeedPageStateStore.pendingLocateSuccessMessage = if (extraCount > 0) {
+                "已定位到刚导入媒体，另有 $extraCount 项已导入"
+            } else {
+                "已定位到刚导入媒体"
+            }
+            PhotoFeedPageStateStore.pendingLocateFailureMessage = if (extraCount > 0) {
+                "已导入 ${validResultMediaIds.size} 项媒体，暂时没有在照片流中定位到目标"
+            } else {
+                "已导入媒体，暂时没有在照片流中定位到目标"
+            }
         }
         photoViewerRoute = null
         systemMediaViewerRoute = null
@@ -439,7 +452,7 @@ fun YingShiApp() {
                                 }
 
                                 !task.resultMediaId.isNullOrBlank() -> {
-                                    requestPhotoFeedRefresh(listOf(task.resultMediaId))
+                                    requestPhotoFeedRefresh(task.successfulResultMediaIdsInOperation())
                                 }
 
                                 else -> {
@@ -740,6 +753,15 @@ private fun transferToastMessage(event: LocalSystemMediaBridgeRepository.Operati
             else -> "加入失败，可重试"
         }
     }
+}
+
+private fun SystemMediaUploadTaskUiModel.successfulResultMediaIdsInOperation(): List<String> {
+    val taskOperationId = operationId
+    val ids = LocalSystemMediaBridgeRepository.uploadTasks
+        .filter { task -> task.operationId == taskOperationId }
+        .mapNotNull { task -> task.resultMediaId?.takeIf { it.isNotBlank() } }
+        .distinct()
+    return ids.ifEmpty { resultMediaId?.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty() }
 }
 
 @Preview(showBackground = true)

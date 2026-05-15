@@ -4,6 +4,8 @@ object PhotoFeedPageStateStore {
     var pendingScrollTargetMediaId: String? = null
     var pendingScrollAnchorOriginalIndex: Int = -1
     var pendingHighlightNonce: Int = 0
+    var pendingLocateSuccessMessage: String? = null
+    var pendingLocateFailureMessage: String? = null
     var savedFirstVisibleItemIndex: Int = 0
     var savedFirstVisibleItemScrollOffset: Int = 0
     var savedFirstVisibleMediaId: String? = null
