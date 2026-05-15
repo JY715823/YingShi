@@ -364,6 +364,7 @@ fun PhotoFeedScreen(
                 }
                 PhotoFeedPageStateStore.pendingLocateSuccessMessage = null
                 PhotoFeedPageStateStore.pendingLocateFailureMessage = null
+                PhotoFeedPageStateStore.pendingImportHasRetryableItems = false
                 pendingTargetMediaIdSnapshot = null
                 pendingTargetLoadAttemptBlockCount = -1
                 return@LaunchedEffect
@@ -392,6 +393,7 @@ fun PhotoFeedScreen(
         }
         PhotoFeedPageStateStore.pendingLocateSuccessMessage = null
         PhotoFeedPageStateStore.pendingLocateFailureMessage = null
+        PhotoFeedPageStateStore.pendingImportHasRetryableItems = false
         pendingTargetMediaIdSnapshot = null
         pendingTargetLoadAttemptBlockCount = -1
     }

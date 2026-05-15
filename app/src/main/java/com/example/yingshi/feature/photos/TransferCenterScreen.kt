@@ -183,7 +183,8 @@ private fun TransferOperationCard(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val primaryTask = tasks.first()
-    val canOpen = primaryTask.openTargetTask() != null
+    val openTargetTask = tasks.openTargetTask()
+    val canOpen = openTargetTask != null
     val failedTasks = tasks.filter { it.canRetry }
     val runningTasks = tasks.filterNot { it.isTerminal }
     val allTerminal = tasks.all { it.isTerminal }
@@ -212,7 +213,7 @@ private fun TransferOperationCard(
         modifier = Modifier
             .fillMaxWidth()
             .let { base ->
-                val target = primaryTask.openTargetTask()
+                val target = openTargetTask
                 if (target != null) base.clickable { onOpen(target) } else base
             },
         shape = RoundedCornerShape(radius.lg),
@@ -327,7 +328,7 @@ private fun TransferOperationCard(
                     }
                 }
                 if (allTerminal) {
-                    primaryTask.openTargetTask()?.let { target ->
+                    openTargetTask?.let { target ->
                         TextButton(onClick = { onOpen(target) }) {
                             Text(when (target.operationType) {
                                 LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "查看新帖子"
@@ -340,7 +341,7 @@ private fun TransferOperationCard(
                         Text("清理本组记录")
                     }
                 } else if (canOpen) {
-                    primaryTask.openTargetTask()?.let { target ->
+                    openTargetTask?.let { target ->
                         TextButton(onClick = { onOpen(target) }) {
                             Text("查看结果")
                         }
@@ -572,13 +573,14 @@ private fun TransferCenterHeaderButton(
     }
 }
 
-private fun SystemMediaUploadTaskUiModel.openTargetTask(): SystemMediaUploadTaskUiModel? {
-    return when (operationType) {
+private fun List<SystemMediaUploadTaskUiModel>.openTargetTask(): SystemMediaUploadTaskUiModel? {
+    val primaryTask = firstOrNull() ?: return null
+    return when (primaryTask.operationType) {
         LocalSystemMediaBridgeRepository.OperationType.CREATE_POST,
         LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST,
-        -> takeIf { resultPostRoute != null }
-        LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> takeIf {
-            state == UploadState.SUCCESS && !resultMediaId.isNullOrBlank()
+        -> firstOrNull { it.resultPostRoute != null }
+        LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> firstOrNull {
+            it.state == UploadState.SUCCESS && !it.resultMediaId.isNullOrBlank()
         }
     }
 }

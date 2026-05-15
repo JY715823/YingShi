@@ -151,7 +151,7 @@ fun YingShiApp() {
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
         postDetailRoute = route.copy(entryNotice = route.entryNotice ?: "已加入帖子")
     }
-    val requestPhotoFeedRefresh: (List<String>) -> Unit = { resultMediaIds ->
+    val requestPhotoFeedRefresh: (List<String>, Boolean) -> Unit = { resultMediaIds, hasRetryableItems ->
         val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
         val targetMediaId = validResultMediaIds.firstOrNull()
         if (targetMediaId != null) {
@@ -160,6 +160,7 @@ fun YingShiApp() {
             PhotoFeedPageStateStore.pendingHighlightNonce += 1
             PhotoFeedPageStateStore.pendingNewImportedMediaIds = validResultMediaIds.toSet()
             PhotoFeedPageStateStore.pendingNewImportedNonce += 1
+            PhotoFeedPageStateStore.pendingImportHasRetryableItems = hasRetryableItems
             val extraCount = (validResultMediaIds.size - 1).coerceAtLeast(0)
             PhotoFeedPageStateStore.pendingLocateSuccessMessage = if (extraCount > 0) {
                 "已定位到刚导入媒体，另有 $extraCount 项已导入"
@@ -170,6 +171,12 @@ fun YingShiApp() {
                 "已导入 ${validResultMediaIds.size} 项媒体，暂时没有在照片流中定位到目标"
             } else {
                 "已导入媒体，暂时没有在照片流中定位到目标"
+            }
+            if (hasRetryableItems) {
+                PhotoFeedPageStateStore.pendingLocateSuccessMessage =
+                    "已定位到刚导入媒体，未完成项可在传输中心查看并重试。"
+                PhotoFeedPageStateStore.pendingLocateFailureMessage =
+                    "成功项已导入，但暂时没有定位到目标；未完成项可在传输中心查看并重试。"
             }
         }
         photoViewerRoute = null
@@ -243,7 +250,10 @@ fun YingShiApp() {
                 event.successCount > 0 &&
                 event.resultMediaIds.isNotEmpty()
             ) {
-                requestPhotoFeedRefresh(event.resultMediaIds)
+                requestPhotoFeedRefresh(
+                    event.resultMediaIds,
+                    event.failureCount > 0 || event.cancelledCount > 0,
+                )
             }
             LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
         }
@@ -454,7 +464,19 @@ fun YingShiApp() {
                                 }
 
                                 !task.resultMediaId.isNullOrBlank() -> {
-                                    requestPhotoFeedRefresh(task.successfulResultMediaIdsInOperation())
+                                    val mediaIds = task.successfulResultMediaIdsInOperation()
+                                    if (mediaIds.isNotEmpty()) {
+                                        requestPhotoFeedRefresh(
+                                            mediaIds,
+                                            task.operationFailureCount > 0 || task.operationCancelledCount > 0,
+                                        )
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            "没有成功导入的媒体，可在传输中心查看失败原因并重试。",
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
                                 }
 
                                 else -> {
@@ -530,7 +552,7 @@ fun YingShiApp() {
                         onEntryRestored = { mediaIds ->
                             trashDetailRoute = null
                             if (mediaIds.isNotEmpty()) {
-                                requestPhotoFeedRefresh(mediaIds)
+                                requestPhotoFeedRefresh(mediaIds, false)
                             } else {
                                 selectedDestinationName = RootDestination.PHOTOS.name
                                 photosTopDestinationName = PhotosTopDestination.PHOTOS.name
@@ -558,7 +580,7 @@ fun YingShiApp() {
                         onOpenTrashDetail = { trashDetailRoute = it },
                         onTrashRestoreTargetMediaIds = { mediaIds ->
                             if (mediaIds.isNotEmpty()) {
-                                requestPhotoFeedRefresh(mediaIds)
+                                requestPhotoFeedRefresh(mediaIds, false)
                             }
                         },
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
@@ -732,26 +754,31 @@ private fun transferToastMessage(event: LocalSystemMediaBridgeRepository.Operati
     val totalCount = event.totalCount
     val successCount = event.successCount
     val failureCount = event.failureCount
+    val cancelledCount = event.cancelledCount
     val succeeded = event.succeeded
     val operationType = event.operationType
     if (shouldAutoOpenResult && totalCount > successCount) {
         return ""
     }
-    val isPartial = successCount > 0 && failureCount > 0
+    val hasUnfinishedItems = failureCount > 0 || cancelledCount > 0
+    val isPartial = successCount > 0 && hasUnfinishedItems
     return when (operationType) {
         LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> when {
             isPartial -> "部分导入完成"
             succeeded && successCount > 0 -> "导入完成"
+            cancelledCount > 0 && failureCount == 0 -> "导入已取消"
             else -> "导入失败，可重试"
         }
         LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> when {
             isPartial -> "帖子部分创建完成"
             succeeded && successCount > 0 -> "帖子创建完成"
+            cancelledCount > 0 && failureCount == 0 -> "帖子创建已取消"
             else -> "帖子创建失败，可重试"
         }
         LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> when {
             isPartial -> "部分加入成功"
             succeeded && successCount > 0 -> "已加入帖子"
+            cancelledCount > 0 && failureCount == 0 -> "加入已取消"
             else -> "加入失败，可重试"
         }
     }

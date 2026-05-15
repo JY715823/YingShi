@@ -8,6 +8,7 @@ object PhotoFeedPageStateStore {
     var pendingLocateFailureMessage: String? = null
     var pendingNewImportedMediaIds: Set<String> = emptySet()
     var pendingNewImportedNonce: Int = 0
+    var pendingImportHasRetryableItems: Boolean = false
     var savedFirstVisibleItemIndex: Int = 0
     var savedFirstVisibleItemScrollOffset: Int = 0
     var savedFirstVisibleMediaId: String? = null

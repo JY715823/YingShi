@@ -70,6 +70,7 @@ object LocalSystemMediaBridgeRepository {
         val resultMediaIds: List<String> = emptyList(),
         val successCount: Int = 0,
         val failureCount: Int = 0,
+        val cancelledCount: Int = 0,
         val totalCount: Int = 0,
         val shouldAutoOpenResult: Boolean = false,
     )
@@ -2524,7 +2525,8 @@ object LocalSystemMediaBridgeRepository {
         if (!operationTasks.all { it.isTerminal }) return
 
         val successCount = operationTasks.count { it.state == UploadState.SUCCESS }
-        val failureCount = operationTasks.count { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }
+        val failureCount = operationTasks.count { it.state == UploadState.FAILURE }
+        val cancelledCount = operationTasks.count { it.state == UploadState.CANCELLED }
         val resultMediaIds = operationTasks
             .filter { it.state == UploadState.SUCCESS }
             .mapNotNull { it.resultMediaId?.takeIf { mediaId -> mediaId.isNotBlank() } }
@@ -2537,12 +2539,13 @@ object LocalSystemMediaBridgeRepository {
                 eventId = "$operationId-summary-${System.currentTimeMillis()}",
                 operationId = operationId,
                 operationType = resolvedOperationType,
-                succeeded = failureCount == 0,
-                message = uploadSummaryMessage(successCount = successCount, failureCount = failureCount),
+                succeeded = failureCount == 0 && cancelledCount == 0,
+                message = uploadSummaryMessage(successCount = successCount, failureCount = failureCount + cancelledCount),
                 postRoute = postRoute,
                 resultMediaIds = resultMediaIds,
                 successCount = successCount,
                 failureCount = failureCount,
+                cancelledCount = cancelledCount,
                 totalCount = operationTasks.size,
             ),
         )
