@@ -31,7 +31,7 @@ android {
     }
     buildTypes {
         debug {
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         create("profile") {
@@ -40,7 +40,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         create("optimizedDebug") {
@@ -49,7 +49,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         release {
@@ -58,7 +58,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://api-placeholder.yingshi.local/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
     }
