@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -52,8 +53,13 @@ fun TransferCenterScreen(
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     val tasks = LocalSystemMediaBridgeRepository.uploadTasks
-    val orderedTasks = tasks.asReversed()
-    val completedTasks = orderedTasks.count { it.isTerminal }
+    val operationGroups = tasks
+        .groupBy { it.operationId }
+        .values
+        .map { it.sortedByDescending(SystemMediaUploadTaskUiModel::taskId) }
+        .sortedByDescending { group -> group.maxOf { it.taskId } }
+    val completedGroups = operationGroups.count { group -> group.all { it.isTerminal } }
+    val runningGroups = operationGroups.size - completedGroups
 
     Column(
         modifier = modifier
@@ -67,10 +73,7 @@ fun TransferCenterScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TransferCenterHeaderButton(
-                text = "返回",
-                onClick = onBack,
-            )
+            TransferCenterHeaderButton(text = "返回", onClick = onBack)
             Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = "传输中心",
@@ -78,19 +81,23 @@ fun TransferCenterScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
                 Text(
-                    text = if (tasks.isEmpty()) "暂无传输任务" else "进行中 ${tasks.count { !it.isTerminal }} · 已完成 $completedTasks",
+                    text = if (tasks.isEmpty()) {
+                        "暂无传输任务"
+                    } else {
+                        "进行中 $runningGroups · 已完成 $completedGroups"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val hasCompletedTasks = completedTasks > 0
-            if (hasCompletedTasks) {
+            if (completedGroups > 0) {
                 TransferCenterHeaderButton(
                     text = "清空",
                     onClick = {
-                        orderedTasks.filter { it.isTerminal }.forEach { task ->
-                            LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId)
-                        }
+                        operationGroups
+                            .filter { group -> group.all { it.isTerminal } }
+                            .flatten()
+                            .forEach { task -> LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId) }
                     },
                 )
             } else {
@@ -99,43 +106,22 @@ fun TransferCenterScreen(
         }
 
         if (tasks.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    Text(
-                        text = "没有传输任务",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "上传、导入、发帖和加入帖子后的任务会显示在这里。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            TransferEmptyState()
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 items(
-                    items = orderedTasks,
-                    key = SystemMediaUploadTaskUiModel::taskId,
-                ) { task ->
-                    TransferTaskCard(
-                        task = task,
-                        onRetry = { LocalSystemMediaBridgeRepository.retryUploadTask(context, task.taskId) },
-                        onCancel = { LocalSystemMediaBridgeRepository.cancelUploadTask(task.taskId) },
-                        onClear = { LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId) },
-                        onOpen = { onOpenTaskMedia(task) },
+                    items = operationGroups,
+                    key = { group -> group.first().operationId },
+                ) { group ->
+                    TransferOperationCard(
+                        tasks = group,
+                        onRetryTask = { taskId -> LocalSystemMediaBridgeRepository.retryUploadTask(context, taskId) },
+                        onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
+                        onClearTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
+                        onOpen = { onOpenTaskMedia(it) },
                     )
                 }
             }
@@ -144,66 +130,122 @@ fun TransferCenterScreen(
 }
 
 @Composable
-private fun TransferTaskCard(
-    task: SystemMediaUploadTaskUiModel,
-    onRetry: () -> Unit,
-    onCancel: () -> Unit,
-    onClear: () -> Unit,
-    onOpen: () -> Unit,
+private fun TransferEmptyState() {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                text = "没有传输任务",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "导入 App、新建帖子、加入已有帖子后的进度和结果会显示在这里。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TransferOperationCard(
+    tasks: List<SystemMediaUploadTaskUiModel>,
+    onRetryTask: (String) -> Unit,
+    onCancelTask: (String) -> Unit,
+    onClearTask: (String) -> Unit,
+    onOpen: (SystemMediaUploadTaskUiModel) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val canOpen = task.state == UploadState.SUCCESS && !task.resultMediaId.isNullOrBlank()
+    val primaryTask = tasks.first()
+    val canOpen = primaryTask.openTargetTask() != null
+    val failedTasks = tasks.filter { it.canRetry }
+    val runningTasks = tasks.filterNot { it.isTerminal }
+    val allTerminal = tasks.all { it.isTerminal }
+    val successCount = tasks.count { it.state == UploadState.SUCCESS }
+    val failureCount = tasks.count { it.state == UploadState.FAILURE }
+    val cancelledCount = tasks.count { it.state == UploadState.CANCELLED }
+    val totalCount = primaryTask.operationMediaCount.coerceAtLeast(tasks.size)
+    val averageProgress = if (tasks.isEmpty()) {
+        0
+    } else {
+        tasks.map { it.progressPercent.coerceIn(0, 100) }.average().toInt()
+    }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .let { base ->
-                if (canOpen) {
-                    base.clickable(onClick = onOpen)
-                } else {
-                    base
-                }
+                val target = primaryTask.openTargetTask()
+                if (target != null) base.clickable { onOpen(target) } else base
             },
         shape = RoundedCornerShape(radius.lg),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
     ) {
-        Column {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
             Row(
                 modifier = Modifier.padding(spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TransferTaskThumbnail(task = task)
-
+                TransferTaskThumbnail(task = primaryTask)
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = task.fileName,
+                        text = primaryTask.operationType.label(),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = primaryTask.operationTitle ?: primaryTask.targetLabel,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "${task.targetLabel} · ${taskStateLabel(task)}",
+                        text = "媒体 $totalCount 项 · 成功 $successCount · 失败 $failureCount · 取消 $cancelledCount",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = operationStateLabel(tasks),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                     )
-                    if (task.resultMediaId != null) {
-                        Text(
-                            text = "媒体 ID：${task.resultMediaId}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
                     LinearProgressIndicator(
-                        progress = { (task.progressPercent.coerceIn(0, 100)) / 100f },
+                        progress = { averageProgress / 100f },
                         modifier = Modifier.fillMaxWidth().height(4.dp),
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(horizontal = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                tasks.take(3).forEach { task ->
+                    TransferTaskLine(task = task)
+                }
+                if (tasks.size > 3) {
+                    Text(
+                        text = "还有 ${tasks.size - 3} 项媒体任务",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -215,27 +257,62 @@ private fun TransferTaskCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (task.canRetry) {
-                    TextButton(onClick = onRetry) {
-                        Text("重试")
+                failedTasks.firstOrNull()?.let { task ->
+                    TextButton(onClick = { onRetryTask(task.taskId) }) {
+                        Text(if (failedTasks.size > 1) "重试失败项" else "重试")
                     }
                 }
-                if (!task.isTerminal) {
-                    TextButton(onClick = onCancel) {
-                        Text("取消")
+                runningTasks.firstOrNull()?.let { task ->
+                    TextButton(onClick = { onCancelTask(task.taskId) }) {
+                        Text(if (runningTasks.size > 1) "取消当前项" else "取消")
                     }
-                } else {
-                    if (canOpen) {
-                        TextButton(onClick = onOpen) {
-                            Text("查看")
+                }
+                if (allTerminal) {
+                    primaryTask.openTargetTask()?.let { target ->
+                        TextButton(onClick = { onOpen(target) }) {
+                            Text(when (target.operationType) {
+                                LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "查看新帖子"
+                                LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "查看目标帖子"
+                                LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> "查看照片"
+                            })
                         }
                     }
-                    TextButton(onClick = onClear) {
+                    TextButton(onClick = { tasks.forEach { onClearTask(it.taskId) } }) {
                         Text("清理")
+                    }
+                } else if (canOpen) {
+                    primaryTask.openTargetTask()?.let { target ->
+                        TextButton(onClick = { onOpen(target) }) {
+                            Text("查看结果")
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TransferTaskLine(task: SystemMediaUploadTaskUiModel) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = task.fileName,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = taskStateLabel(task),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 
@@ -257,7 +334,7 @@ private fun TransferTaskThumbnail(task: SystemMediaUploadTaskUiModel) {
             .background(backgroundColor),
         contentAlignment = Alignment.Center,
     ) {
-        if (previewUri != null && task.mediaType == SystemMediaType.IMAGE) {
+        if (previewUri != null) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(previewUri)
@@ -268,24 +345,11 @@ private fun TransferTaskThumbnail(task: SystemMediaUploadTaskUiModel) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-        } else if (previewUri != null && task.mediaType == SystemMediaType.VIDEO) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(previewUri)
-                    .precision(Precision.EXACT)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = task.fileName,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            VideoBadge()
+            if (task.mediaType == SystemMediaType.VIDEO) {
+                VideoBadge()
+            }
         } else {
             PlaceholderBadge(task = task)
-        }
-
-        if (task.mediaType == SystemMediaType.VIDEO && previewUri == null) {
-            VideoBadge()
         }
     }
 }
@@ -308,7 +372,7 @@ private fun VideoBadge() {
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
-                text = "▶",
+                text = ">",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
                 color = Color.White,
             )
@@ -339,13 +403,46 @@ private fun TransferCenterHeaderButton(
     }
 }
 
+private fun SystemMediaUploadTaskUiModel.openTargetTask(): SystemMediaUploadTaskUiModel? {
+    return when (operationType) {
+        LocalSystemMediaBridgeRepository.OperationType.CREATE_POST,
+        LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST,
+        -> takeIf { resultPostRoute != null }
+        LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> takeIf {
+            state == UploadState.SUCCESS && !resultMediaId.isNullOrBlank()
+        }
+    }
+}
+
+private fun LocalSystemMediaBridgeRepository.OperationType.label(): String {
+    return when (this) {
+        LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> "导入 App"
+        LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "新建帖子"
+        LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "加入已有帖子"
+    }
+}
+
+private fun operationStateLabel(tasks: List<SystemMediaUploadTaskUiModel>): String {
+    val terminalCount = tasks.count { it.isTerminal }
+    val successCount = tasks.count { it.state == UploadState.SUCCESS }
+    val failureCount = tasks.count { it.state == UploadState.FAILURE }
+    val cancelledCount = tasks.count { it.state == UploadState.CANCELLED }
+    return when {
+        tasks.any { it.state == UploadState.UPLOADING } -> "正在处理 ${terminalCount}/${tasks.size} 项"
+        tasks.any { it.state == UploadState.WAITING } -> "等待处理 ${terminalCount}/${tasks.size} 项"
+        failureCount > 0 || cancelledCount > 0 -> "部分完成：成功 $successCount，失败 $failureCount，取消 $cancelledCount。成功结果仍可查看，失败项可重试。"
+        successCount == tasks.size -> "全部完成，可查看结果"
+        else -> "任务已更新"
+    }
+}
+
 private fun taskStateLabel(task: SystemMediaUploadTaskUiModel): String {
     if (!task.statusMessage.isNullOrBlank()) return task.statusMessage
     return when (task.state) {
-        UploadState.WAITING -> "等待上传"
-        UploadState.UPLOADING -> "正在上传 ${task.progressPercent}%"
-        UploadState.SUCCESS -> "上传成功"
-        UploadState.FAILURE -> task.errorMessage ?: "上传失败"
+        UploadState.WAITING -> "等待"
+        UploadState.UPLOADING -> "${task.progressPercent}%"
+        UploadState.SUCCESS -> "成功"
+        UploadState.FAILURE -> task.errorMessage ?: "失败"
         UploadState.CANCELLED -> "已取消"
     }
 }

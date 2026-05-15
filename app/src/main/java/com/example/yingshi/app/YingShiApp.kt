@@ -430,15 +430,23 @@ fun YingShiApp() {
                         route = route,
                         onBack = { transferCenterRoute = null },
                         onOpenTaskMedia = { task ->
-                            val mediaId = task.resultMediaId?.takeIf { it.isNotBlank() }
-                            if (mediaId != null) {
-                                requestPhotoFeedRefresh(listOf(mediaId))
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "该任务没有可定位的目标媒体。",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
+                            when {
+                                task.resultPostRoute != null -> {
+                                    transferCenterRoute = null
+                                    openPostDetailAfterAdd(task.resultPostRoute)
+                                }
+
+                                !task.resultMediaId.isNullOrBlank() -> {
+                                    requestPhotoFeedRefresh(listOf(task.resultMediaId))
+                                }
+
+                                else -> {
+                                    Toast.makeText(
+                                        context,
+                                        "这个任务还没有可查看的结果。",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
                             }
                         },
                     )

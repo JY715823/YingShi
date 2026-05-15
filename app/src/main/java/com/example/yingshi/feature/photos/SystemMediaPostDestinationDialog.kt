@@ -40,6 +40,7 @@ fun SystemMediaPostDestinationDialog(
     posts: List<AlbumPostCardUiModel>,
     onDismiss: () -> Unit,
     onPostSelected: (String) -> Unit,
+    onPostChosen: (AlbumPostCardUiModel) -> Unit = { post -> onPostSelected(post.id) },
     isLoading: Boolean = false,
     isSubmitting: Boolean = false,
     errorMessage: String? = null,
@@ -126,7 +127,7 @@ fun SystemMediaPostDestinationDialog(
                             albumTitleById = albumTitleById,
                             isSubmitting = isSubmitting && pendingPostId == post.id,
                             enabled = !isSubmitting,
-                            onClick = { onPostSelected(post.id) },
+                            onClick = { onPostChosen(post) },
                         )
                     }
                 }

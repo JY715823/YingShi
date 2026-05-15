@@ -588,6 +588,27 @@ fun SystemMediaScreen(
                     addToPostError = "这些媒体已经在目标帖子里，或没有可添加的媒体。"
                 }
             },
+            onPostChosen = { post ->
+                val addedCount = LocalSystemMediaBridgeRepository.enqueueAddToExistingPostUpload(
+                    context = context,
+                    postId = post.id,
+                    mediaItems = selectedItems,
+                    postTitle = post.title,
+                )
+                if (addedCount > 0) {
+                    showAddToPostDialog = false
+                    addToPostError = null
+                    selectedIds = emptyList()
+                    selectionMode = false
+                    Toast.makeText(
+                        context,
+                        "已加入上传队列，成功项会进入目标帖子。",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                } else {
+                    addToPostError = "这些媒体已经在目标帖子里，或没有可添加的媒体。"
+                }
+            },
         )
     }
 

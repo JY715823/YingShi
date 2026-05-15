@@ -18,6 +18,13 @@ data class SystemMediaUploadTaskUiModel(
     val statusMessage: String? = null,
     val errorMessage: String? = null,
     val canRetry: Boolean = false,
+    val operationType: LocalSystemMediaBridgeRepository.OperationType = LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP,
+    val operationTitle: String? = null,
+    val operationMediaCount: Int = 1,
+    val operationSuccessCount: Int = 0,
+    val operationFailureCount: Int = 0,
+    val operationCancelledCount: Int = 0,
+    val resultPostRoute: PostDetailPlaceholderRoute? = null,
 ) {
     val isTerminal: Boolean
         get() = state == UploadState.SUCCESS || state == UploadState.FAILURE || state == UploadState.CANCELLED
