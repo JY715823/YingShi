@@ -157,6 +157,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
             addAll(normalizedMedia)
@@ -192,6 +193,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         return appendedMedia.size
     }
@@ -229,6 +231,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
             addAll(finalMedia)
@@ -273,6 +276,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
             addAll(finalMedia)
@@ -329,6 +333,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         postMediaByPostId[postId] = mutableStateListOf<ManagedPostMediaState>().apply {
             addAll(finalMedia)
@@ -364,6 +369,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         FakePhotoFeedRepository.importSystemMediaToFeed(
             mediaItems = mediaItems.map { it.toSyntheticSystemMediaItem() },
@@ -408,6 +414,7 @@ object FakeAlbumRepository {
             coverPalette = target.palette,
             coverMediaType = target.mediaType,
             coverAspectRatio = target.aspectRatio,
+            coverMediaSource = target.mediaSource,
         )
         return true
     }
@@ -520,6 +527,7 @@ object FakeAlbumRepository {
                 coverPalette = cover.palette,
                 coverMediaType = cover.mediaType,
                 coverAspectRatio = cover.aspectRatio,
+                coverMediaSource = cover.mediaSource,
             )
         }
         return true
@@ -594,6 +602,9 @@ object FakeAlbumRepository {
         if (mediaIds.isEmpty()) return MediaDeleteOutcome()
         val preview = previewGlobalMediaDelete(mediaIds)
         FakePhotoFeedRepository.hideMediaGlobally(mediaIds)
+        preview.affectedPostIds.forEach { postId ->
+            removeMediaFromPost(postId = postId, mediaIds = mediaIds)
+        }
         return preview
     }
 
@@ -690,6 +701,7 @@ object FakeAlbumRepository {
             coverPalette = coverMedia.palette,
             coverMediaType = coverMedia.mediaType,
             coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         val existingIndex = posts.indexOfFirst { it.id == normalizedPost.id }
         if (existingIndex >= 0) {
@@ -713,12 +725,14 @@ object FakeAlbumRepository {
         mediaState.add(mediaSnapshot.toManagedState())
         val normalized = normalizeCover(mediaState.toList())
         replacePostMedia(postId = postId, newItems = normalized)
+        val coverMedia = normalized.firstOrNull { it.isCover } ?: normalized.first()
         syncPostAfterMediaMutation(
             postId = postId,
             mediaCount = normalized.size,
-            coverPalette = normalized.first().palette,
-            coverMediaType = normalized.first().mediaType,
-            coverAspectRatio = normalized.first().aspectRatio,
+            coverPalette = coverMedia.palette,
+            coverMediaType = coverMedia.mediaType,
+            coverAspectRatio = coverMedia.aspectRatio,
+            coverMediaSource = coverMedia.mediaSource,
         )
         return true
     }
@@ -853,6 +867,7 @@ object FakeAlbumRepository {
             coverPalette = normalized.first().palette,
             coverMediaType = normalized.first().mediaType,
             coverAspectRatio = normalized.first().aspectRatio,
+            coverMediaSource = normalized.first().mediaSource,
         )
     }
 
@@ -871,6 +886,7 @@ object FakeAlbumRepository {
         coverPalette: PhotoThumbnailPalette,
         coverMediaType: AppMediaType,
         coverAspectRatio: Float,
+        coverMediaSource: AppContentMediaSource? = null,
     ) {
         val index = posts.indexOfFirst { it.id == postId }
         if (index < 0) return
@@ -878,6 +894,7 @@ object FakeAlbumRepository {
             coverPalette = coverPalette,
             coverMediaType = coverMediaType,
             coverAspectRatio = coverAspectRatio,
+            coverMediaSource = coverMediaSource,
         )
     }
 
@@ -887,6 +904,7 @@ object FakeAlbumRepository {
         coverPalette: PhotoThumbnailPalette,
         coverMediaType: AppMediaType,
         coverAspectRatio: Float,
+        coverMediaSource: AppContentMediaSource? = null,
     ) {
         val index = posts.indexOfFirst { it.id == postId }
         if (index < 0) return
@@ -895,6 +913,7 @@ object FakeAlbumRepository {
             coverPalette = coverPalette,
             coverMediaType = coverMediaType,
             coverAspectRatio = coverAspectRatio,
+            coverMediaSource = coverMediaSource,
         )
     }
 
