@@ -142,6 +142,10 @@ fun RealPhotoFeedPage(
                                 result.data.toPostDetailPlaceholderRoute(
                                     selectedAlbumId = result.data.albumIds.firstOrNull()
                                         ?: posts.firstOrNull { it.id == postId }?.albumId.orEmpty(),
+                                ).copy(
+                                    entryNotice = "已加入帖子",
+                                    highlightMediaIds = selectedItems.map { it.mediaId }.distinct(),
+                                    focusMediaId = selectedItems.firstOrNull()?.mediaId,
                                 ),
                             )
                         }

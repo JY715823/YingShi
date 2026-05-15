@@ -75,6 +75,8 @@ data class PostDetailPlaceholderRoute(
     val coverMediaType: AppMediaType = AppMediaType.IMAGE,
     val coverAspectRatio: Float = 1f,
     val entryNotice: String? = null,
+    val highlightMediaIds: List<String> = emptyList(),
+    val focusMediaId: String? = highlightMediaIds.firstOrNull(),
 )
 
 @Immutable

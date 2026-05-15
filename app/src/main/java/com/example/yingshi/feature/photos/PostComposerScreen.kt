@@ -259,6 +259,9 @@ fun CreatePostScreen(
                             onCreated(
                                 result.data.toPostDetailPlaceholderRoute(
                                     selectedAlbumId = selectedAlbumIds.first(),
+                                ).copy(
+                                    highlightMediaIds = selectedAppMediaIds.distinct(),
+                                    focusMediaId = selectedAppMediaIds.firstOrNull(),
                                 ),
                             )
                         }
@@ -277,7 +280,12 @@ fun CreatePostScreen(
                 if (createdPost == null) {
                     localMessage = "本地新帖子创建失败，请稍后重试。"
                 } else {
-                    onCreated(FakeAlbumRepository.toPostDetailRoute(createdPost))
+                    onCreated(
+                        FakeAlbumRepository.toPostDetailRoute(createdPost).copy(
+                            highlightMediaIds = selectedAppMediaIds.distinct(),
+                            focusMediaId = selectedAppMediaIds.firstOrNull(),
+                        ),
+                    )
                 }
             }
             return

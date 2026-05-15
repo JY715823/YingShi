@@ -64,6 +64,7 @@ import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -122,6 +123,8 @@ fun PostDetailScreen(
         } else {
             PostDetailContent(
                 detail = detail,
+                highlightMediaIds = route.highlightMediaIds,
+                focusMediaId = route.focusMediaId,
                 onBack = onBack,
                 onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
                 onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
@@ -271,6 +274,8 @@ private fun RealPostDetailScreen(
                     RealPostDetailContent(
                         detail = detail,
                         uiState = uiState,
+                        highlightMediaIds = route.highlightMediaIds,
+                        focusMediaId = route.focusMediaId,
                         onBack = onBack,
                         onRefresh = viewModel::refresh,
                         onOpenGearEdit = onOpenGearEdit,
@@ -315,6 +320,8 @@ private fun RealPostDetailScreen(
 private fun RealPostDetailContent(
     detail: PostDetailUiModel,
     uiState: PostDetailRealUiState,
+    highlightMediaIds: List<String>,
+    focusMediaId: String?,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenGearEdit: () -> Unit,
@@ -344,6 +351,36 @@ private fun RealPostDetailContent(
     val currentMediaCommentState = currentMedia?.let { uiState.mediaComments[it.id] }
     val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia?.commentCount ?: 0
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
+    val highlightKey = remember(highlightMediaIds) { highlightMediaIds.distinct().joinToString("|") }
+    var showNewAddedState by rememberSaveable(detail.postId, highlightKey) {
+        mutableStateOf(highlightMediaIds.isNotEmpty())
+    }
+    var resultNotice by rememberSaveable(detail.postId, highlightKey, focusMediaId) {
+        mutableStateOf<String?>(null)
+    }
+    val visibleHighlightMediaIds = if (showNewAddedState) highlightMediaIds.toSet() else emptySet()
+    LaunchedEffect(detail.postId, postMediaIds, focusMediaId, highlightKey) {
+        val targetId = focusMediaId ?: highlightMediaIds.firstOrNull()
+        if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
+        val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
+        if (targetIndex >= 0) {
+            pagerState.scrollToPage(targetIndex)
+            val otherCount = highlightMediaIds.distinct().size - 1
+            resultNotice = if (otherCount > 0) {
+                "已定位到刚加入媒体，另有 $otherCount 项新加入"
+            } else {
+                "已定位到刚加入媒体"
+            }
+        } else {
+            resultNotice = "暂未在详情里找到刚处理的媒体，可稍后刷新再查看。"
+        }
+    }
+    LaunchedEffect(detail.postId, highlightKey) {
+        if (highlightMediaIds.isEmpty()) return@LaunchedEffect
+        delay(4500L)
+        showNewAddedState = false
+        resultNotice = null
+    }
     val currentOriginalTarget = remember(currentMedia) {
         currentMedia?.toRealOriginalMediaTarget()
     }
@@ -389,6 +426,9 @@ private fun RealPostDetailContent(
             detail.entryNotice?.let { message ->
                 PostInlineNotice(text = message)
             }
+            resultNotice?.let { message ->
+                PostInlineNotice(text = message)
+            }
             uiState.errorMessage?.let { message ->
                 PostInlineNotice(
                     text = message,
@@ -419,6 +459,7 @@ private fun RealPostDetailContent(
                         ) {
                             PostMediaCard(
                                 media = detail.mediaItems[page],
+                                isNewlyAdded = visibleHighlightMediaIds.contains(detail.mediaItems[page].id),
                                 originalLoadState = if (detail.mediaItems[page].mediaType == AppMediaType.IMAGE) {
                                     RealOriginalLoadRepository.getState(detail.mediaItems[page].toRealOriginalMediaTarget())
                                 } else {
@@ -940,6 +981,8 @@ private fun PostDetailMissingState(
 @Composable
 private fun PostDetailContent(
     detail: PostDetailUiModel,
+    highlightMediaIds: List<String>,
+    focusMediaId: String?,
     onBack: () -> Unit,
     onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
@@ -960,6 +1003,36 @@ private fun PostDetailContent(
     val postMediaIds = remember(detail.mediaItems) {
         detail.mediaItems.map { it.id }
     }
+    val highlightKey = remember(highlightMediaIds) { highlightMediaIds.distinct().joinToString("|") }
+    var showNewAddedState by rememberSaveable(detail.postId, highlightKey) {
+        mutableStateOf(highlightMediaIds.isNotEmpty())
+    }
+    var resultNotice by rememberSaveable(detail.postId, highlightKey, focusMediaId) {
+        mutableStateOf<String?>(null)
+    }
+    val visibleHighlightMediaIds = if (showNewAddedState) highlightMediaIds.toSet() else emptySet()
+    LaunchedEffect(detail.postId, postMediaIds, focusMediaId, highlightKey) {
+        val targetId = focusMediaId ?: highlightMediaIds.firstOrNull()
+        if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
+        val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
+        if (targetIndex >= 0) {
+            pagerState.scrollToPage(targetIndex)
+            val otherCount = highlightMediaIds.distinct().size - 1
+            resultNotice = if (otherCount > 0) {
+                "已定位到刚加入媒体，另有 $otherCount 项新加入"
+            } else {
+                "已定位到刚加入媒体"
+            }
+        } else {
+            resultNotice = "暂未在详情里找到刚处理的媒体，可稍后刷新再查看。"
+        }
+    }
+    LaunchedEffect(detail.postId, highlightKey) {
+        if (highlightMediaIds.isEmpty()) return@LaunchedEffect
+        delay(4500L)
+        showNewAddedState = false
+        resultNotice = null
+    }
     val currentOriginalState = currentMedia?.let { FakeOriginalLoadRepository.getState(it.id) }
         ?: OriginalLoadState.NotLoaded
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
@@ -977,6 +1050,9 @@ private fun PostDetailContent(
         },
         notice = {
             detail.entryNotice?.let { message ->
+                PostInlineNotice(text = message)
+            }
+            resultNotice?.let { message ->
                 PostInlineNotice(text = message)
             }
         },
@@ -1002,6 +1078,7 @@ private fun PostDetailContent(
                         ) {
                             PostMediaCard(
                                 media = detail.mediaItems[page],
+                                isNewlyAdded = visibleHighlightMediaIds.contains(detail.mediaItems[page].id),
                                 originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
                                 modifier = Modifier.fillMaxWidth(),
                                 onClick = { onOpenMediaViewer(page) },
@@ -1198,6 +1275,7 @@ private fun PostEmptyMediaState(modifier: Modifier = Modifier) {
 @Composable
 fun PostMediaCard(
     media: PostDetailMediaUiModel,
+    isNewlyAdded: Boolean = false,
     originalLoadState: OriginalLoadState = OriginalLoadState.NotLoaded,
     onOriginalLoadStateChange: (OriginalLoadState) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -1238,6 +1316,35 @@ fun PostMediaCard(
             originalLoadState = originalLoadState,
             onOriginalLoadStateChange = onOriginalLoadStateChange,
         )
+        if (isNewlyAdded) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .width(fittedWidth)
+                    .height(fittedHeight)
+                    .background(Color.Transparent)
+                    .padding(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Transparent),
+                )
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                ) {
+                    Text(
+                        text = "新加入",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+            }
+        }
     }
 }
 

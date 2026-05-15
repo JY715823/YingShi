@@ -260,6 +260,7 @@ fun PhotosRootScreen(
             val selectedItems = feedItems.filter { item ->
                 photoSelectionState.selectedMediaIds.contains(item.mediaId)
             }
+            val selectedItemIds = selectedItems.map { it.mediaId }
             SystemMediaPostDestinationDialog(
                 albums = albumSummaries,
                 posts = albumPosts,
@@ -273,6 +274,9 @@ fun PhotosRootScreen(
                         addToPostDialogMessage = "没有找到可加入的媒体，请重新选择。"
                         return@SystemMediaPostDestinationDialog
                     }
+                    val existingMediaIds = FakeAlbumRepository.getManagedPostMedia(postId)
+                        ?.mapTo(mutableSetOf()) { it.id }
+                        .orEmpty()
                     val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
                         postId = postId,
                         mediaItems = selectedItems,
@@ -289,9 +293,16 @@ fun PhotosRootScreen(
                         "已加入帖子",
                         Toast.LENGTH_SHORT,
                     ).show()
+                    val addedMediaIds = selectedItemIds
+                        .distinct()
+                        .filterNot { existingMediaIds.contains(it) }
                     FakeAlbumRepository.getPost(postId)
                         ?.let(FakeAlbumRepository::toPostDetailRoute)
-                        ?.copy(entryNotice = "已加入帖子")
+                        ?.copy(
+                            entryNotice = "已加入帖子",
+                            highlightMediaIds = addedMediaIds,
+                            focusMediaId = addedMediaIds.firstOrNull(),
+                        )
                         ?.let(onAddedMediaToPost)
                 },
             )
