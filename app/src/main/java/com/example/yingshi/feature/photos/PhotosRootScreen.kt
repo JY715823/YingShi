@@ -114,6 +114,9 @@ fun PhotosRootScreen(
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
+    var addToPostDialogMessage by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = FakeAlbumRepository.getAlbums()
     val albumPosts = FakeAlbumRepository.getPosts()
@@ -141,12 +144,15 @@ fun PhotosRootScreen(
     LaunchedEffect(backendSessionKey) {
         photoSelectionState = photoSelectionState.clear()
         showDeleteConfirm = false
+        showAddToPostDialog = false
+        addToPostDialogMessage = null
     }
     LaunchedEffect(photoSelectionClearTrigger) {
         if (photoSelectionClearTrigger <= 0) return@LaunchedEffect
         photoSelectionState = photoSelectionState.clear()
         showDeleteConfirm = false
         showAddToPostDialog = false
+        addToPostDialogMessage = null
     }
 
     if (isPhotoSelectionMode) {
@@ -257,25 +263,35 @@ fun PhotosRootScreen(
             SystemMediaPostDestinationDialog(
                 albums = albumSummaries,
                 posts = albumPosts,
-                onDismiss = { showAddToPostDialog = false },
+                errorMessage = addToPostDialogMessage,
+                onDismiss = {
+                    showAddToPostDialog = false
+                    addToPostDialogMessage = null
+                },
                 onPostSelected = { postId ->
+                    if (selectedItems.isEmpty()) {
+                        addToPostDialogMessage = "没有找到可加入的媒体，请重新选择。"
+                        return@SystemMediaPostDestinationDialog
+                    }
                     val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
                         postId = postId,
                         mediaItems = selectedItems,
                     )
+                    if (addedCount <= 0) {
+                        addToPostDialogMessage = "这些媒体已经在目标帖子里了，可换一个帖子或取消。"
+                        return@SystemMediaPostDestinationDialog
+                    }
                     showAddToPostDialog = false
+                    addToPostDialogMessage = null
                     photoSelectionState = photoSelectionState.clear()
                     Toast.makeText(
                         context,
-                        if (addedCount > 0) {
-                            "已加入已有帖子，并同步刷新到照片与相册页。"
-                        } else {
-                            "这些媒体已经在目标帖子里了。"
-                        },
+                        "已加入帖子",
                         Toast.LENGTH_SHORT,
                     ).show()
                     FakeAlbumRepository.getPost(postId)
                         ?.let(FakeAlbumRepository::toPostDetailRoute)
+                        ?.copy(entryNotice = "已加入帖子")
                         ?.let(onAddedMediaToPost)
                 },
             )
@@ -374,6 +390,10 @@ fun PhotosRootScreen(
                                                 )
                                             },
                                             onAddToPost = {
+                                                if (photoSelectionState.selectedMediaIds.isEmpty()) {
+                                                    return@PhotoSelectionActionBarV2
+                                                }
+                                                addToPostDialogMessage = null
                                                 showAddToPostDialog = true
                                             },
                                             onDelete = {
@@ -756,87 +776,6 @@ private fun PhotoSelectionActionBarV2(
                     onClick = {
                         showActions = false
                         onAddToPost()
-                    },
-                )
-                SelectionActionRow(
-                    text = "移入回收站",
-                    destructive = true,
-                    onClick = {
-                        showActions = false
-                        onDelete()
-                    },
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PhotoSelectionActionBar(
-    selectedCount: Int,
-    onDelete: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val context = LocalContext.current
-    var showActions by rememberSaveable { mutableStateOf(false) }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius.md),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.20f),
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.sm, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            SelectionActionChip(text = "操作", onClick = { showActions = true })
-        }
-    }
-
-    if (showActions) {
-        ModalBottomSheet(
-            onDismissRequest = { showActions = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.lg, vertical = spacing.md),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Text(
-                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                SelectionActionRow(
-                    text = "发成新帖子",
-                    onClick = {
-                        showActions = false
-                        Toast.makeText(context, "app 照片流发成新帖子链路下一轮接入。", Toast.LENGTH_SHORT).show()
-                    },
-                )
-                SelectionActionRow(
-                    text = "加入已有帖子",
-                    onClick = {
-                        showActions = false
-                        Toast.makeText(context, "app 照片流加入帖子链路下一轮接入。", Toast.LENGTH_SHORT).show()
                     },
                 )
                 SelectionActionRow(

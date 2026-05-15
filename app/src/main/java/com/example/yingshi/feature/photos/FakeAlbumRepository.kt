@@ -914,7 +914,9 @@ object FakeAlbumRepository {
             coverMediaType = coverMediaType,
             coverAspectRatio = coverAspectRatio,
             coverMediaSource = coverMediaSource,
+            postDisplayTimeMillis = System.currentTimeMillis(),
         )
+        posts.sortByDescending { it.postDisplayTimeMillis }
     }
 
     private fun ManagedPostMediaState.toUiModel(): ManagedPostMediaUiModel {

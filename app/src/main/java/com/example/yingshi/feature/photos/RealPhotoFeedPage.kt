@@ -133,6 +133,7 @@ fun RealPhotoFeedPage(
                                 postIds = setOf(postId),
                                 mediaIds = selectedItems.map { it.mediaId }.toSet(),
                             )
+                            viewModel.refresh()
                             onSelectionStateChange(selectionState.clear())
                             showAddToPostDialog = false
                             addToPostPendingPostId = null
@@ -259,6 +260,9 @@ fun RealPhotoFeedPage(
                                     )
                                 },
                                 onAddToPost = {
+                                    if (selectionState.selectedMediaIds.isEmpty()) {
+                                        return@RealFeedSelectionBarV2
+                                    }
                                     addToPostError = null
                                     showAddToPostDialog = true
                                 },
