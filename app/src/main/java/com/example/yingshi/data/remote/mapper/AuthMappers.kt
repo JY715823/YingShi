@@ -10,8 +10,10 @@ import com.example.yingshi.data.remote.dto.RefreshTokenResponseDto
 fun LoginResponseDto.toRemoteModel(): RemoteLoginSession {
     return RemoteLoginSession(
         userId = userId,
+        account = account,
         displayName = displayName,
         libraryId = libraryId,
+        libraryDisplayName = libraryDisplayName,
         tokens = AuthTokens(
             accessToken = accessToken,
             refreshToken = refreshToken,
@@ -33,6 +35,7 @@ fun RefreshTokenResponseDto.toRemoteModel(): AuthTokens {
 fun CurrentUserDto.toRemoteModel(): RemoteCurrentUser {
     return RemoteCurrentUser(
         userId = userId,
+        account = account,
         displayName = displayName,
         avatarUrl = avatarUrl,
         libraryId = libraryId,

@@ -826,8 +826,10 @@ class RealAuthRepository(
             AuthSessionManager.saveTokens(tokens)
             RemoteLoginSession(
                 userId = response.userId,
+                account = response.account,
                 displayName = response.displayName,
                 libraryId = response.libraryId,
+                libraryDisplayName = response.libraryDisplayName,
                 tokens = tokens,
             )
         }.fold(
@@ -877,6 +879,7 @@ class RealAuthRepository(
             val response = authApi.getCurrentUser().data
             RemoteCurrentUser(
                 userId = response.userId,
+                account = response.account,
                 displayName = response.displayName,
                 avatarUrl = response.avatarUrl,
                 libraryId = response.libraryId,

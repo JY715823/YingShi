@@ -44,6 +44,19 @@ object BackendAutoLoginManager {
         force: Boolean = false,
         reason: String = "app_start",
     ): BackendAutoLoginOutcome {
+        if (reason.startsWith("real_")) {
+            val message = "REAL mode requires login first."
+            state.value = state.value.copy(
+                phase = BackendAutoLoginPhase.Failed,
+                message = message,
+                lastReason = reason,
+                lastAttemptAtMillis = System.currentTimeMillis(),
+            )
+            return BackendAutoLoginOutcome(
+                success = false,
+                message = message,
+            )
+        }
         return loginWithCredentials(
             account = DEFAULT_DEMO_ACCOUNT,
             password = DEFAULT_DEMO_PASSWORD,

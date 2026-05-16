@@ -537,8 +537,10 @@ class FakeAuthRepositoryShell : AuthRepository {
     ): ApiResult<RemoteLoginSession> {
         val session = RemoteLoginSession(
             userId = "fake-user-001",
+            account = request.account.ifBlank { "fake@yingshi.local" },
             displayName = "本地占位账号",
             libraryId = "fake-library-001",
+            libraryDisplayName = "映世本地占位空间",
             tokens = AuthTokens(
                 accessToken = "fake-access-token",
                 refreshToken = "fake-refresh-token",
@@ -572,6 +574,7 @@ class FakeAuthRepositoryShell : AuthRepository {
         return ApiResult.Success(
             RemoteCurrentUser(
                 userId = "fake-user-001",
+                account = "fake@yingshi.local",
                 displayName = if (AuthSessionManager.isLoggedIn) {
                     "本地占位账号"
                 } else {

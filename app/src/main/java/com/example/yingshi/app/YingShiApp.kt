@@ -11,20 +11,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import android.widget.Toast
+import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.config.BackendDebugConfig
+import com.example.yingshi.data.remote.config.RemoteServiceFactory
+import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.auth.LoginScreen
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.me.MyScreen
@@ -74,6 +84,7 @@ import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
 import com.example.yingshi.ui.theme.YingShiTheme
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,6 +161,54 @@ fun YingShiApp() {
     val operationResults = LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val authSessionVersion = AuthSessionManager.sessionVersion
+    val backendSettings = BackendDebugConfig.settings
+    var currentUser by remember { mutableStateOf<RemoteCurrentUser?>(null) }
+    var isCheckingAuth by remember { mutableStateOf(true) }
+    var isLoggingOut by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl, currentUser?.userId) {
+        if (currentUser != null && AuthSessionManager.isLoggedIn) {
+            isCheckingAuth = false
+            return@LaunchedEffect
+        }
+        if (!AuthSessionManager.isLoggedIn) {
+            currentUser = null
+            isCheckingAuth = false
+            return@LaunchedEffect
+        }
+        isCheckingAuth = true
+        when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
+            is ApiResult.Success -> {
+                currentUser = result.data
+                isCheckingAuth = false
+            }
+            is ApiResult.Error -> {
+                AuthSessionManager.clearTokens()
+                currentUser = null
+                isCheckingAuth = false
+            }
+            ApiResult.Loading -> Unit
+        }
+    }
+
+    if (isCheckingAuth) {
+        AuthCheckingScreen()
+        return
+    }
+
+    if (currentUser == null) {
+        LoginScreen(
+            onLoginSuccess = { user ->
+                currentUser = user
+                isCheckingAuth = false
+                selectedDestinationName = RootDestination.PHOTOS.name
+            },
+        )
+        return
+    }
+
     val markPostListUpdated: (String, String?) -> Unit = { postId, albumId ->
         if (postId.isNotBlank()) {
             AlbumPageStateStore.pendingUpdatedPostId = postId
@@ -635,6 +694,34 @@ fun YingShiApp() {
                     )
                     RootDestination.LIFE -> LifeScreen()
                     RootDestination.ME -> MyScreen(
+                        currentUser = currentUser,
+                        repositoryMode = backendSettings.repositoryMode,
+                        baseUrl = RemoteServiceFactory.currentBaseUrl(),
+                        isLoggingOut = isLoggingOut,
+                        onLogout = {
+                            scope.launch {
+                                isLoggingOut = true
+                                runCatching {
+                                    RepositoryProvider.authRepository.logout()
+                                }
+                                AuthSessionManager.clearTokens()
+                                currentUser = null
+                                photoViewerRoute = null
+                                systemMediaRoute = null
+                                systemMediaViewerRoute = null
+                                createPostRoute = null
+                                postDetailRoute = null
+                                gearEditRoute = null
+                                mediaManagementRoute = null
+                                notificationCenterRoute = null
+                                transferCenterRoute = null
+                                notificationDetailRoute = null
+                                settingsRoute = null
+                                backendDiagnosticsRoute = null
+                                cacheManagementRoute = null
+                                isLoggingOut = false
+                            }
+                        },
                         onOpenSettings = { settingsRoute = SettingsRoute(source = "my-page") },
                         onOpenCacheManagement = {
                             cacheManagementRoute = CacheManagementRoute(source = "my-page")
@@ -822,6 +909,29 @@ fun YingShiApp() {
     }
 }
 
+}
+
+@Composable
+private fun AuthCheckingScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(YingShiThemeTokens.spacing.lg),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+        ) {
+            CircularProgressIndicator()
+            Text(
+                text = "正在校验登录状态...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 private fun transferToastMessage(event: LocalSystemMediaBridgeRepository.OperationResultEvent): String {
