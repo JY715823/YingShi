@@ -31,7 +31,7 @@ android {
     }
     buildTypes {
         debug {
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://192.168.90.3:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         create("profile") {
@@ -40,7 +40,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://192.168.90.3:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         create("optimizedDebug") {
@@ -49,7 +49,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://192.168.90.3:8080/\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         release {

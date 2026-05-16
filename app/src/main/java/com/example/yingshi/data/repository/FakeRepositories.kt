@@ -1,4 +1,4 @@
-package com.example.yingshi.data.repository
+﻿package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
@@ -25,6 +25,7 @@ import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.feature.photos.AppMediaType
 import com.example.yingshi.feature.photos.AlbumPostCardUiModel
@@ -535,19 +536,8 @@ class FakeAuthRepositoryShell : AuthRepository {
     override suspend fun login(
         request: LoginRequestDto,
     ): ApiResult<RemoteLoginSession> {
-        val session = RemoteLoginSession(
-            userId = "fake-user-001",
-            account = request.account.ifBlank { "fake@yingshi.local" },
-            displayName = "本地占位账号",
-            libraryId = "fake-library-001",
-            libraryDisplayName = "映世本地占位空间",
-            tokens = AuthTokens(
-                accessToken = "fake-access-token",
-                refreshToken = "fake-refresh-token",
-                accessTokenExpireAtMillis = System.currentTimeMillis() + 60 * 60 * 1000L,
-                refreshTokenExpireAtMillis = System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000L,
-            ),
-        )
+        val profile = fakeAuthLoginProfile(request.account.ifBlank { "fake@yingshi.local" })
+        val session = profile.toFakeLoginSession()
         AuthSessionManager.saveTokens(session.tokens)
         return ApiResult.Success(session)
     }
@@ -567,24 +557,22 @@ class FakeAuthRepositoryShell : AuthRepository {
 
     override suspend fun logout(): ApiResult<Unit> {
         AuthSessionManager.clearTokens()
+        fakeAuthLogout()
         return ApiResult.Success(Unit)
     }
 
     override suspend fun getCurrentUser(): ApiResult<RemoteCurrentUser> {
-        return ApiResult.Success(
-            RemoteCurrentUser(
-                userId = "fake-user-001",
-                account = "fake@yingshi.local",
-                displayName = if (AuthSessionManager.isLoggedIn) {
-                    "本地占位账号"
-                } else {
-                    "未接真实账号"
-                },
-                avatarUrl = null,
-                libraryId = "fake-library-001",
-                libraryDisplayName = "映世本地占位空间",
-            ),
-        )
+        val profile = fakeAuthCurrentProfile()
+            ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
+        return ApiResult.Success(profile)
+    }
+
+    override suspend fun updateCurrentUserProfile(
+        request: UpdateProfileRequestDto,
+    ): ApiResult<RemoteCurrentUser> {
+        val updatedProfile = fakeAuthUpdateProfile(request.displayName, request.bio)
+            ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
+        return ApiResult.Success(updatedProfile)
     }
 }
 
@@ -700,3 +688,4 @@ private fun com.example.yingshi.feature.photos.TrashPendingCleanupUiModel.toRemo
 }
 
 private val fakeUploadTasks = mutableMapOf<String, RemoteUploadTask>()
+

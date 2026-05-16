@@ -12,8 +12,12 @@ fun LoginResponseDto.toRemoteModel(): RemoteLoginSession {
         userId = userId,
         account = account,
         displayName = displayName,
+        avatarUrl = avatarUrl,
+        bio = bio,
         libraryId = libraryId,
         libraryDisplayName = libraryDisplayName,
+        createdAtMillis = createdAtMillis,
+        updatedAtMillis = updatedAtMillis,
         tokens = AuthTokens(
             accessToken = accessToken,
             refreshToken = refreshToken,
@@ -38,7 +42,10 @@ fun CurrentUserDto.toRemoteModel(): RemoteCurrentUser {
         account = account,
         displayName = displayName,
         avatarUrl = avatarUrl,
+        bio = bio,
         libraryId = libraryId,
         libraryDisplayName = libraryDisplayName,
+        createdAtMillis = createdAtMillis,
+        updatedAtMillis = updatedAtMillis,
     )
 }

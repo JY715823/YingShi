@@ -7,9 +7,11 @@ import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.LoginResponseDto
 import com.example.yingshi.data.remote.dto.LogoutRequestDto
 import com.example.yingshi.data.remote.dto.LogoutResponseDto
+import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 
 interface AuthApi {
@@ -26,4 +28,9 @@ interface AuthApi {
 
     @GET("api/auth/me")
     suspend fun getCurrentUser(): ApiEnvelopeDto<CurrentUserDto>
+
+    @PATCH("api/auth/me/profile")
+    suspend fun updateCurrentUserProfile(
+        @Body request: UpdateProfileRequestDto,
+    ): ApiEnvelopeDto<CurrentUserDto>
 }

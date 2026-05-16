@@ -44,7 +44,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 fun AppShellScaffold(
     selectedDestination: RootDestination,
     onDestinationSelected: (RootDestination) -> Unit,
-    onCenterAction: () -> Unit = { },
+    onCenterAction: () -> Unit = {},
     showBottomBar: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
@@ -76,6 +76,7 @@ fun AppShellScaffold(
 fun ShellPage(
     title: String,
     summary: String,
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     headerContent: @Composable (() -> Unit)? = null,
     content: @Composable (ColumnScope.() -> Unit)? = null,
@@ -89,6 +90,15 @@ fun ShellPage(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
+        onBack?.let { handleBack ->
+            TextButton(
+                onClick = handleBack,
+                modifier = Modifier.align(Alignment.Start),
+            ) {
+                Text(text = "\u8fd4\u56de")
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
             Text(
                 text = title,
@@ -222,7 +232,7 @@ private fun FloatingBottomBar(
                 },
                 label = {
                     Text(
-                        text = "添加",
+                        text = "\u6dfb\u52a0",
                         style = MaterialTheme.typography.labelMedium,
                     )
                 },
@@ -276,9 +286,9 @@ private fun TitleTabsPreview() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             TitleTabs(
-                tabs = listOf("照片", "相册", "回收站"),
+                tabs = listOf("\u7167\u7247", "\u76f8\u518c", "\u56de\u6536\u7ad9"),
                 selectedIndex = 0,
-                onSelected = { },
+                onSelected = {},
             )
         }
     }

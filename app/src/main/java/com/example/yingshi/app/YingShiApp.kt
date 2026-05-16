@@ -37,7 +37,11 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.auth.LoginScreen
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
+import com.example.yingshi.feature.me.EditProfileRoute
+import com.example.yingshi.feature.me.EditProfileScreen
 import com.example.yingshi.feature.me.MyScreen
+import com.example.yingshi.feature.me.PersonalProfileRoute
+import com.example.yingshi.feature.me.PersonalProfileScreen
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
@@ -155,6 +159,12 @@ fun YingShiApp() {
     var backendDiagnosticsRoute by remember {
         mutableStateOf<BackendDiagnosticsRoute?>(null)
     }
+    var personalProfileRoute by remember {
+        mutableStateOf<PersonalProfileRoute?>(null)
+    }
+    var editProfileRoute by remember {
+        mutableStateOf<EditProfileRoute?>(null)
+    }
     var trashDetailRoute by remember {
         mutableStateOf<TrashDetailRoute?>(null)
     }
@@ -208,6 +218,14 @@ fun YingShiApp() {
         )
         return
     }
+
+    if (editProfileRoute != null) {
+        BackHandler { editProfileRoute = null }
+    } else if (personalProfileRoute != null) {
+        BackHandler { personalProfileRoute = null }
+    }
+
+    val isProfileFlowActive = personalProfileRoute != null || editProfileRoute != null
 
     val markPostListUpdated: (String, String?) -> Unit = { postId, albumId ->
         if (postId.isNotBlank()) {
@@ -451,7 +469,8 @@ fun YingShiApp() {
                 notificationDetailRoute == null &&
                 settingsRoute == null &&
                 backendDiagnosticsRoute == null &&
-                cacheManagementRoute == null,
+                cacheManagementRoute == null &&
+                !isProfileFlowActive,
         ) {
             when {
             backendDiagnosticsRoute != null -> {
@@ -693,40 +712,70 @@ fun YingShiApp() {
                         inlineVideoAutoPlayEnabled = photoViewerRoute == null,
                     )
                     RootDestination.LIFE -> LifeScreen()
-                    RootDestination.ME -> MyScreen(
-                        currentUser = currentUser,
-                        repositoryMode = backendSettings.repositoryMode,
-                        baseUrl = RemoteServiceFactory.currentBaseUrl(),
-                        isLoggingOut = isLoggingOut,
-                        onLogout = {
-                            scope.launch {
-                                isLoggingOut = true
-                                runCatching {
-                                    RepositoryProvider.authRepository.logout()
+                    RootDestination.ME -> run {
+                        val user = requireNotNull(currentUser)
+                        when {
+                        editProfileRoute != null -> EditProfileScreen(
+                            currentUser = user,
+                            onBack = { editProfileRoute = null },
+                            onProfileSaved = { updatedUser ->
+                                currentUser = updatedUser
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+
+                        personalProfileRoute != null -> PersonalProfileScreen(
+                            currentUser = user,
+                            repositoryMode = backendSettings.repositoryMode,
+                            baseUrl = RemoteServiceFactory.currentBaseUrl(),
+                            onBack = { personalProfileRoute = null },
+                            onOpenEditProfile = {
+                                editProfileRoute = EditProfileRoute(source = "personal-profile")
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+
+                        else -> MyScreen(
+                            currentUser = user,
+                            repositoryMode = backendSettings.repositoryMode,
+                            baseUrl = RemoteServiceFactory.currentBaseUrl(),
+                            isLoggingOut = isLoggingOut,
+                            onOpenProfile = {
+                                personalProfileRoute = PersonalProfileRoute(source = "my-page")
+                            },
+                            onLogout = {
+                                scope.launch {
+                                    isLoggingOut = true
+                                    runCatching {
+                                        RepositoryProvider.authRepository.logout()
+                                    }
+                                    AuthSessionManager.clearTokens()
+                                    currentUser = null
+                                    photoViewerRoute = null
+                                    systemMediaRoute = null
+                                    systemMediaViewerRoute = null
+                                    createPostRoute = null
+                                    postDetailRoute = null
+                                    gearEditRoute = null
+                                    mediaManagementRoute = null
+                                    notificationCenterRoute = null
+                                    transferCenterRoute = null
+                                    notificationDetailRoute = null
+                                    settingsRoute = null
+                                    backendDiagnosticsRoute = null
+                                    cacheManagementRoute = null
+                                    personalProfileRoute = null
+                                    editProfileRoute = null
+                                    isLoggingOut = false
                                 }
-                                AuthSessionManager.clearTokens()
-                                currentUser = null
-                                photoViewerRoute = null
-                                systemMediaRoute = null
-                                systemMediaViewerRoute = null
-                                createPostRoute = null
-                                postDetailRoute = null
-                                gearEditRoute = null
-                                mediaManagementRoute = null
-                                notificationCenterRoute = null
-                                transferCenterRoute = null
-                                notificationDetailRoute = null
-                                settingsRoute = null
-                                backendDiagnosticsRoute = null
-                                cacheManagementRoute = null
-                                isLoggingOut = false
-                            }
-                        },
-                        onOpenSettings = { settingsRoute = SettingsRoute(source = "my-page") },
-                        onOpenCacheManagement = {
-                            cacheManagementRoute = CacheManagementRoute(source = "my-page")
-                        },
-                    )
+                            },
+                            onOpenSettings = { settingsRoute = SettingsRoute(source = "my-page") },
+                            onOpenCacheManagement = {
+                                cacheManagementRoute = CacheManagementRoute(source = "my-page")
+                            },
+                        )
+                        }
+                    }
                 }
 
                 createPostRoute?.let { route ->

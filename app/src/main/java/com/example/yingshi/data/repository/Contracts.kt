@@ -23,6 +23,7 @@ import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import java.io.InputStream
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 
 interface MediaRepository {
@@ -174,4 +175,8 @@ interface AuthRepository {
     suspend fun logout(): ApiResult<Unit>
 
     suspend fun getCurrentUser(): ApiResult<RemoteCurrentUser>
+
+    suspend fun updateCurrentUserProfile(
+        request: UpdateProfileRequestDto,
+    ): ApiResult<RemoteCurrentUser>
 }

@@ -18,6 +18,7 @@ object BackendDebugConfig {
     private const val PREFS_NAME = "backend_debug_settings"
     private const val KEY_BASE_URL = "base_url"
     private const val KEY_REPOSITORY_MODE = "repository_mode"
+    private const val LEGACY_CLOUDFLARE_HOST = "trycloudflare.com"
 
     private var appContext: Context? = null
     var sessionVersion by mutableIntStateOf(0)
@@ -37,10 +38,17 @@ object BackendDebugConfig {
         }
         appContext = context.applicationContext
         val preferences = preferences()
+        val storedBaseUrl = preferences.getString(KEY_BASE_URL, defaultBaseUrl()) ?: defaultBaseUrl()
+        val normalizedBaseUrl = normalizeBaseUrl(storedBaseUrl)
+        val resolvedBaseUrl = if (shouldReplaceLegacyTunnelUrl(normalizedBaseUrl)) {
+            val fallbackBaseUrl = defaultBaseUrl()
+            preferences.edit().putString(KEY_BASE_URL, fallbackBaseUrl).apply()
+            fallbackBaseUrl
+        } else {
+            normalizedBaseUrl
+        }
         settings = BackendDebugSettings(
-            baseUrl = normalizeBaseUrl(
-                preferences.getString(KEY_BASE_URL, defaultBaseUrl()) ?: defaultBaseUrl(),
-            ),
+            baseUrl = resolvedBaseUrl,
             repositoryMode = parseRepositoryMode(
                 preferences.getString(KEY_REPOSITORY_MODE, defaultRepositoryMode().name),
             ),
@@ -91,6 +99,10 @@ object BackendDebugConfig {
     private fun normalizeBaseUrl(rawValue: String): String {
         val trimmed = rawValue.trim().ifBlank { defaultBaseUrl() }
         return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
+    }
+
+    private fun shouldReplaceLegacyTunnelUrl(baseUrl: String): Boolean {
+        return baseUrl.contains(LEGACY_CLOUDFLARE_HOST, ignoreCase = true)
     }
 
     private fun defaultBaseUrl(): String = BuildConfig.DEFAULT_API_BASE_URL

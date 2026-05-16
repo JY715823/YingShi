@@ -47,6 +47,18 @@ import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
 
+private const val APP_NAME = "\u6620\u4e16"
+private const val LOGIN_SUBTITLE = "\u767b\u5f55\u540e\u8fdb\u5165\u4e24\u4e2a\u4eba\u7684\u76f8\u518c\u7a7a\u95f4\u3002"
+private const val LABEL_EMAIL = "\u90ae\u7bb1"
+private const val LABEL_PASSWORD = "\u5bc6\u7801"
+private const val ACTION_LOGIN = "\u767b\u5f55"
+private const val ACTION_FILL_DEMO = "\u586b\u5165 demo"
+private const val ERROR_LOGIN_FAILED = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002"
+private const val LABEL_CURRENT_MODE = "\u5f53\u524d\u6a21\u5f0f\uff1a"
+private const val TIP_REAL_PREFIX = "REAL \u6a21\u5f0f\u8bf7\u786e\u8ba4 baseUrl \u6307\u5411\u5f53\u524d\u540e\u7aef\uff1a"
+private const val TIP_FAKE =
+    "FAKE \u6a21\u5f0f\u4f1a\u4f7f\u7528\u672c\u5730\u5360\u4f4d\u8d26\u53f7\uff0c\u4e0d\u8bbf\u95ee\u540e\u7aef\u3002"
+
 @Composable
 fun LoginScreen(
     onLoginSuccess: (RemoteCurrentUser) -> Unit,
@@ -75,12 +87,12 @@ fun LoginScreen(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
                 Text(
-                    text = "映世",
+                    text = APP_NAME,
                     style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "登录后进入两个人的相册空间",
+                    text = LOGIN_SUBTITLE,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -99,7 +111,7 @@ fun LoginScreen(
                         value = account,
                         onValueChange = { account = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("邮箱") },
+                        label = { Text(LABEL_EMAIL) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         enabled = !isLoading,
@@ -108,7 +120,7 @@ fun LoginScreen(
                         value = password,
                         onValueChange = { password = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("密码") },
+                        label = { Text(LABEL_PASSWORD) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -144,17 +156,22 @@ fun LoginScreen(
                                                     userId = session.userId,
                                                     account = session.account,
                                                     displayName = session.displayName,
-                                                    avatarUrl = null,
+                                                    avatarUrl = session.avatarUrl,
                                                     libraryId = session.libraryId,
                                                     libraryDisplayName = session.libraryDisplayName,
+                                                    bio = session.bio,
+                                                    createdAtMillis = session.createdAtMillis,
+                                                    updatedAtMillis = session.updatedAtMillis,
                                                 ),
                                             )
                                         }
-                                        is ApiResult.Error -> errorMessage = loginResult.message
+                                        is ApiResult.Error -> {
+                                            errorMessage = loginResult.message
+                                        }
                                         ApiResult.Loading -> Unit
                                     }
                                 } catch (throwable: Throwable) {
-                                    errorMessage = throwable.message ?: "登录失败，请重试。"
+                                    errorMessage = throwable.message ?: ERROR_LOGIN_FAILED
                                 } finally {
                                     isLoading = false
                                 }
@@ -170,7 +187,7 @@ fun LoginScreen(
                                 color = MaterialTheme.colorScheme.onPrimary,
                             )
                         } else {
-                            Text("登录")
+                            Text(ACTION_LOGIN)
                         }
                     }
 
@@ -187,7 +204,7 @@ fun LoginScreen(
                             enabled = !isLoading,
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("填入 demo")
+                            Text(ACTION_FILL_DEMO)
                         }
                     }
                 }
@@ -218,15 +235,15 @@ fun LoginScreen(
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                         Text(
-                            text = "当前模式：${settings.repositoryMode.name}",
+                            text = LABEL_CURRENT_MODE + settings.repositoryMode.name,
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             text = if (settings.repositoryMode == RepositoryMode.REAL) {
-                                "REAL 模式请确认 baseUrl 指向当前后端：${RemoteServiceFactory.currentBaseUrl()}"
+                                TIP_REAL_PREFIX + RemoteServiceFactory.currentBaseUrl()
                             } else {
-                                "FAKE 模式会使用本地占位账号，不访问后端。"
+                                TIP_FAKE
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

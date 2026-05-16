@@ -33,6 +33,7 @@ import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
@@ -816,28 +817,15 @@ class RealAuthRepository(
         request: LoginRequestDto,
     ): ApiResult<RemoteLoginSession> {
         return runCatching {
-            val response = authApi.login(request).data
-            val tokens = AuthTokens(
-                accessToken = response.accessToken,
-                refreshToken = response.refreshToken,
-                accessTokenExpireAtMillis = response.accessTokenExpireAtMillis,
-                refreshTokenExpireAtMillis = response.refreshTokenExpireAtMillis,
-            )
-            AuthSessionManager.saveTokens(tokens)
-            RemoteLoginSession(
-                userId = response.userId,
-                account = response.account,
-                displayName = response.displayName,
-                libraryId = response.libraryId,
-                libraryDisplayName = response.libraryDisplayName,
-                tokens = tokens,
-            )
+            authApi.login(request).data.toRemoteModel().also {
+                AuthSessionManager.saveTokens(it.tokens)
+            }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
                 ApiResult.Error(
                     code = "AUTH_LOGIN_REQUEST_FAILED",
-                    message = "Stage 11.2 real login request failed before backend is ready",
+                    message = "登录失败，请检查当前 baseUrl、局域网连通性和后端服务是否已启动",
                     throwable = it,
                 )
             },
@@ -867,7 +855,7 @@ class RealAuthRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "AUTH_LOGOUT_REQUEST_FAILED",
-                    message = "Stage 11.2 real logout request failed before backend is ready",
+                    message = "退出登录失败，请稍后重试",
                     throwable = it,
                 )
             },
@@ -876,21 +864,30 @@ class RealAuthRepository(
 
     override suspend fun getCurrentUser(): ApiResult<RemoteCurrentUser> {
         return runCatching {
-            val response = authApi.getCurrentUser().data
-            RemoteCurrentUser(
-                userId = response.userId,
-                account = response.account,
-                displayName = response.displayName,
-                avatarUrl = response.avatarUrl,
-                libraryId = response.libraryId,
-                libraryDisplayName = response.libraryDisplayName,
-            )
+            authApi.getCurrentUser().data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
                 ApiResult.Error(
                     code = "AUTH_ME_REQUEST_FAILED",
-                    message = "Stage 11.2 real current-user request failed before backend is ready",
+                    message = "获取当前登录信息失败，请检查登录状态和后端连接",
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun updateCurrentUserProfile(
+        request: UpdateProfileRequestDto,
+    ): ApiResult<RemoteCurrentUser> {
+        return runCatching {
+            authApi.updateCurrentUserProfile(request).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_PROFILE_UPDATE_REQUEST_FAILED",
+                    message = "保存资料失败，请稍后重试",
                     throwable = it,
                 )
             },

@@ -9,8 +9,12 @@ data class LoginResponseDto(
     val userId: String,
     val account: String,
     val displayName: String,
+    val avatarUrl: String? = null,
+    val bio: String? = null,
     val libraryId: String,
     val libraryDisplayName: String? = null,
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L,
     val accessToken: String,
     val refreshToken: String,
     val accessTokenExpireAtMillis: Long,
@@ -41,8 +45,16 @@ data class CurrentUserDto(
     val account: String,
     val displayName: String,
     val avatarUrl: String? = null,
+    val bio: String? = null,
     val libraryId: String,
     val libraryDisplayName: String? = null,
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L,
+)
+
+data class UpdateProfileRequestDto(
+    val displayName: String,
+    val bio: String? = null,
 )
 
 data class AuthErrorDto(
