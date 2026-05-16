@@ -158,7 +158,7 @@ fun SettingsScreen(
             )
             SettingsEntryRow(
                 title = "后端联调诊断",
-                subtitle = "查看或修改 baseUrl，切换 fake / real，并直接测试 health、login、albums、media、comments、trash。",
+                subtitle = "查看或修改 baseUrl，切换离线 / 真实模式，处理自动登录，并做最小 health 检查。",
                 onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
             )
         }

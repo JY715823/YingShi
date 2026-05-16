@@ -8,6 +8,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.toCommentListState
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.AlbumRepository
 import com.example.yingshi.data.repository.AuthRepository
@@ -72,15 +73,23 @@ class AlbumPageRealViewModel(
     }
 
     fun refresh() {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = AlbumPageRealUiState(
-                tokenMissing = true,
-                errorMessage = "请先到后端联调诊断页登录，再打开 REAL 相册页。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_album_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = AlbumPageRealUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "请先到后端联调页检查后端地址，再打开 REAL 相册页。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = true,
@@ -242,15 +251,23 @@ class PostDetailRealViewModel(
     }
 
     fun refresh() {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = PostDetailRealUiState(
-                tokenMissing = true,
-                errorMessage = "请先到后端联调诊断页登录，再打开 REAL 帖子详情。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_post_detail_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = PostDetailRealUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "请先到后端联调页检查后端地址，再打开 REAL 帖子详情。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = true,

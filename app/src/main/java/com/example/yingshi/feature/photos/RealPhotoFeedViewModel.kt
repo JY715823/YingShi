@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.MediaRepository
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -40,15 +41,23 @@ class RealPhotoFeedViewModel(
     }
 
     fun refresh() {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = RealPhotoFeedUiState(
-                tokenMissing = true,
-                errorMessage = "REAL 模式需要先登录，请到后端联调诊断页完成登录。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_photo_feed_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = RealPhotoFeedUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             val minLoadedItemCount = _uiState.value.feedItems.size.coerceAtLeast(pageSize)
             nextCursor = null
             loadMoreInFlight = false

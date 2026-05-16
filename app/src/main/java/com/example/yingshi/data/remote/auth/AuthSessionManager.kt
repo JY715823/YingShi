@@ -31,11 +31,19 @@ class InMemoryTokenStore : TokenStore {
 }
 
 object AuthSessionManager : TokenProvider {
+    private const val ACCESS_TOKEN_EXPIRY_SKEW_MILLIS = 30_000L
+
     private val tokenStore: TokenStore = InMemoryTokenStore()
     var sessionVersion by mutableIntStateOf(0)
         private set
 
-    override fun getAccessToken(): String? = tokenStore.getTokens()?.accessToken
+    override fun getAccessToken(): String? {
+        val tokens = tokenStore.getTokens() ?: return null
+        return tokens.accessToken.takeIf {
+            it.isNotBlank() &&
+                tokens.accessTokenExpireAtMillis > System.currentTimeMillis() + ACCESS_TOKEN_EXPIRY_SKEW_MILLIS
+        }
+    }
 
     fun getRefreshToken(): String? = tokenStore.getTokens()?.refreshToken
 
@@ -50,5 +58,5 @@ object AuthSessionManager : TokenProvider {
     }
 
     override val isLoggedIn: Boolean
-        get() = !getAccessToken().isNullOrBlank()
+        get() = getAccessToken() != null
 }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.data.repository.TrashRepository
@@ -42,15 +43,23 @@ class RealTrashListViewModel(
     val uiState: StateFlow<RealTrashListUiState> = _uiState.asStateFlow()
 
     fun refresh(selectedType: TrashEntryType?) {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = RealTrashListUiState(
-                tokenMissing = true,
-                errorMessage = "REAL 模式需要先登录，请到后端联调诊断页完成登录。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_trash_list_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = RealTrashListUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = true,
@@ -234,15 +243,23 @@ class RealTrashDetailViewModel(
     }
 
     fun refresh() {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = RealTrashDetailUiState(
-                tokenMissing = true,
-                errorMessage = "REAL 模式需要先登录，请到后端联调诊断页完成登录。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_trash_detail_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = RealTrashDetailUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = true,

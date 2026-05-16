@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.AlbumRepository
 import com.example.yingshi.data.repository.MediaRepository
@@ -61,15 +62,23 @@ class RealGearEditViewModel(
     }
 
     fun refresh() {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = RealGearEditUiState(
-                tokenMissing = true,
-                errorMessage = "REAL 模式需要先登录，才能编辑后端帖子。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_gear_edit_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = RealGearEditUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = true,
@@ -391,15 +400,23 @@ class RealMediaManagementViewModel(
     }
 
     fun refresh() {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.value = RealMediaManagementUiState(
-                tokenMissing = true,
-                errorMessage = "REAL 模式需要先登录，才能管理后端帖子媒体。",
-            )
-            return
-        }
-
         viewModelScope.launch {
+            if (!AuthSessionManager.isLoggedIn) {
+                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                    force = false,
+                    reason = "real_media_management_refresh",
+                )
+                if (!loginOutcome.success) {
+                    _uiState.value = RealMediaManagementUiState(
+                        tokenMissing = true,
+                        errorMessage = loginOutcome.message.ifBlank {
+                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                        },
+                    )
+                    return@launch
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = true,
