@@ -825,7 +825,10 @@ class RealAuthRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "AUTH_LOGIN_REQUEST_FAILED",
-                    message = "登录失败，请检查当前 baseUrl、局域网连通性和后端服务是否已启动",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5 baseUrl\u3001\u5c40\u57df\u7f51\u8fde\u901a\u6027\u548c\u540e\u7aef\u670d\u52a1\u72b6\u6001\u3002",
+                    ),
                     throwable = it,
                 )
             },
@@ -855,7 +858,10 @@ class RealAuthRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "AUTH_LOGOUT_REQUEST_FAILED",
-                    message = "退出登录失败，请稍后重试",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u9000\u51fa\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
                     throwable = it,
                 )
             },
@@ -868,9 +874,13 @@ class RealAuthRepository(
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
+                val httpCode = (it as? HttpException)?.code()
                 ApiResult.Error(
-                    code = "AUTH_ME_REQUEST_FAILED",
-                    message = "获取当前登录信息失败，请检查登录状态和后端连接",
+                    code = if (httpCode == 401) "AUTH_UNAUTHORIZED" else "AUTH_ME_REQUEST_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u83b7\u53d6\u5f53\u524d\u767b\u5f55\u4fe1\u606f\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u540e\u7aef\u8fde\u63a5\u72b6\u6001\u3002",
+                    ),
                     throwable = it,
                 )
             },
@@ -885,12 +895,45 @@ class RealAuthRepository(
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
+                val httpCode = (it as? HttpException)?.code()
                 ApiResult.Error(
-                    code = "AUTH_PROFILE_UPDATE_REQUEST_FAILED",
-                    message = "保存资料失败，请稍后重试",
+                    code = if (httpCode == 401) "AUTH_UNAUTHORIZED" else "AUTH_PROFILE_UPDATE_REQUEST_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u4fdd\u5b58\u8d44\u6599\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
                     throwable = it,
                 )
             },
         )
     }
+}
+
+private fun authRequestErrorMessage(
+    throwable: Throwable,
+    fallback: String,
+): String {
+    val httpException = throwable as? HttpException
+    if (httpException != null) {
+        return when (httpException.code()) {
+            400 -> "\u8bf7\u6c42\u53c2\u6570\u4e0d\u5b8c\u6574\uff0c\u8bf7\u68c0\u67e5\u540e\u91cd\u8bd5\u3002"
+            401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
+            404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d26\u53f7\u63a5\u53e3\u3002"
+            in 500..599 -> "\u540e\u7aef\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+            else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
+        }
+    }
+    val message = throwable.message?.trim().orEmpty()
+    if (message.contains("Unable to resolve host", ignoreCase = true)) {
+        return "\u65e0\u6cd5\u8fde\u63a5\u5230\u5f53\u524d\u540e\u7aef\uff0c\u8bf7\u68c0\u67e5 baseUrl \u548c\u5c40\u57df\u7f51\u7f51\u7edc\u3002"
+    }
+    if (
+        message.contains("Failed to connect", ignoreCase = true) ||
+        message.contains("Connection refused", ignoreCase = true) ||
+        message.contains("timeout", ignoreCase = true)
+    ) {
+        return "\u767b\u5f55\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u5c40\u57df\u7f51\u8fde\u63a5\u3001baseUrl \u548c\u540e\u7aef\u670d\u52a1\u72b6\u6001\u3002"
+    }
+    return message.takeIf { it.isNotBlank() } ?: fallback
 }

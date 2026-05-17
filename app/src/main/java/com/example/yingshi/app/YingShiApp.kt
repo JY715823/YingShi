@@ -32,6 +32,7 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.remote.result.isUnauthorized
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.auth.LoginScreen
@@ -177,6 +178,43 @@ fun YingShiApp() {
     var currentUser by remember { mutableStateOf<RemoteCurrentUser?>(null) }
     var isCheckingAuth by remember { mutableStateOf(true) }
     var isLoggingOut by remember { mutableStateOf(false) }
+    var authNoticeMessage by remember { mutableStateOf<String?>(null) }
+    var profileRefreshMessage by remember { mutableStateOf<String?>(null) }
+    var isRefreshingProfile by remember { mutableStateOf(false) }
+
+    fun resetAccountRoutes() {
+        personalProfileRoute = null
+        editProfileRoute = null
+    }
+
+    fun clearProtectedUiRoutes() {
+        photoViewerRoute = null
+        systemMediaRoute = null
+        systemMediaViewerRoute = null
+        createPostRoute = null
+        postDetailRoute = null
+        gearEditRoute = null
+        mediaManagementRoute = null
+        notificationCenterRoute = null
+        transferCenterRoute = null
+        notificationDetailRoute = null
+        settingsRoute = null
+        backendDiagnosticsRoute = null
+        cacheManagementRoute = null
+        resetAccountRoutes()
+    }
+
+    fun handleUnauthorized(message: String?) {
+        AuthSessionManager.clearTokens()
+        currentUser = null
+        isCheckingAuth = false
+        isRefreshingProfile = false
+        isLoggingOut = false
+        profileRefreshMessage = null
+        authNoticeMessage = message ?: "登录状态已失效，请重新登录。"
+        clearProtectedUiRoutes()
+        selectedDestinationName = RootDestination.PHOTOS.name
+    }
 
     LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl, currentUser?.userId) {
         if (currentUser != null && AuthSessionManager.isLoggedIn) {
@@ -186,21 +224,52 @@ fun YingShiApp() {
         if (!AuthSessionManager.isLoggedIn) {
             currentUser = null
             isCheckingAuth = false
+            isRefreshingProfile = false
+            profileRefreshMessage = null
             return@LaunchedEffect
         }
         isCheckingAuth = true
         when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
             is ApiResult.Success -> {
                 currentUser = result.data
+                authNoticeMessage = null
                 isCheckingAuth = false
             }
             is ApiResult.Error -> {
-                AuthSessionManager.clearTokens()
-                currentUser = null
+                if (result.isUnauthorized()) {
+                    handleUnauthorized(result.message)
+                } else {
+                    authNoticeMessage = result.message
+                    currentUser = null
+                }
                 isCheckingAuth = false
             }
             ApiResult.Loading -> Unit
         }
+    }
+
+    LaunchedEffect(personalProfileRoute?.source, currentUser?.userId, backendSettings.repositoryMode, backendSettings.baseUrl) {
+        if (personalProfileRoute == null || currentUser == null) {
+            isRefreshingProfile = false
+            profileRefreshMessage = null
+            return@LaunchedEffect
+        }
+        isRefreshingProfile = true
+        profileRefreshMessage = null
+        when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
+            is ApiResult.Success -> {
+                currentUser = result.data
+            }
+            is ApiResult.Error -> {
+                if (result.isUnauthorized()) {
+                    handleUnauthorized(result.message)
+                    return@LaunchedEffect
+                }
+                profileRefreshMessage = result.message
+            }
+            ApiResult.Loading -> Unit
+        }
+        isRefreshingProfile = false
     }
 
     if (isCheckingAuth) {
@@ -210,8 +279,11 @@ fun YingShiApp() {
 
     if (currentUser == null) {
         LoginScreen(
+            sessionMessage = authNoticeMessage,
             onLoginSuccess = { user ->
                 currentUser = user
+                authNoticeMessage = null
+                profileRefreshMessage = null
                 isCheckingAuth = false
                 selectedDestinationName = RootDestination.PHOTOS.name
             },
@@ -720,7 +792,9 @@ fun YingShiApp() {
                             onBack = { editProfileRoute = null },
                             onProfileSaved = { updatedUser ->
                                 currentUser = updatedUser
+                                profileRefreshMessage = null
                             },
+                            onSessionExpired = { message -> handleUnauthorized(message) },
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -728,6 +802,8 @@ fun YingShiApp() {
                             currentUser = user,
                             repositoryMode = backendSettings.repositoryMode,
                             baseUrl = RemoteServiceFactory.currentBaseUrl(),
+                            isRefreshing = isRefreshingProfile,
+                            refreshErrorMessage = profileRefreshMessage,
                             onBack = { personalProfileRoute = null },
                             onOpenEditProfile = {
                                 editProfileRoute = EditProfileRoute(source = "personal-profile")
@@ -751,21 +827,11 @@ fun YingShiApp() {
                                     }
                                     AuthSessionManager.clearTokens()
                                     currentUser = null
-                                    photoViewerRoute = null
-                                    systemMediaRoute = null
-                                    systemMediaViewerRoute = null
-                                    createPostRoute = null
-                                    postDetailRoute = null
-                                    gearEditRoute = null
-                                    mediaManagementRoute = null
-                                    notificationCenterRoute = null
-                                    transferCenterRoute = null
-                                    notificationDetailRoute = null
-                                    settingsRoute = null
-                                    backendDiagnosticsRoute = null
-                                    cacheManagementRoute = null
-                                    personalProfileRoute = null
-                                    editProfileRoute = null
+                                    authNoticeMessage = null
+                                    profileRefreshMessage = null
+                                    isRefreshingProfile = false
+                                    clearProtectedUiRoutes()
+                                    selectedDestinationName = RootDestination.PHOTOS.name
                                     isLoggingOut = false
                                 }
                             },

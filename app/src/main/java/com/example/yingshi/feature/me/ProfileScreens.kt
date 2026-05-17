@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.remote.result.isUnauthorized
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.ShellPage
@@ -75,6 +76,8 @@ fun PersonalProfileScreen(
     currentUser: RemoteCurrentUser,
     repositoryMode: RepositoryMode,
     baseUrl: String,
+    isRefreshing: Boolean,
+    refreshErrorMessage: String?,
     onBack: () -> Unit,
     onOpenEditProfile: () -> Unit,
     modifier: Modifier = Modifier,
@@ -125,6 +128,19 @@ fun PersonalProfileScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
+                        if (isRefreshing) {
+                            Text(
+                                text = "正在同步最新资料...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else if (!refreshErrorMessage.isNullOrBlank()) {
+                            Text(
+                                text = refreshErrorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
 
@@ -161,6 +177,7 @@ fun EditProfileScreen(
     currentUser: RemoteCurrentUser,
     onBack: () -> Unit,
     onProfileSaved: (RemoteCurrentUser) -> Unit,
+    onSessionExpired: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -234,7 +251,11 @@ fun EditProfileScreen(
                                         onBack()
                                     }
                                     is ApiResult.Error -> {
-                                        errorMessage = result.message
+                                        if (result.isUnauthorized()) {
+                                            onSessionExpired(result.message)
+                                        } else {
+                                            errorMessage = result.message
+                                        }
                                     }
                                     ApiResult.Loading -> Unit
                                 }
@@ -317,6 +338,8 @@ private fun PersonalProfileScreenPreview() {
             ),
             repositoryMode = RepositoryMode.REAL,
             baseUrl = "http://10.0.2.2:8080/",
+            isRefreshing = false,
+            refreshErrorMessage = null,
             onBack = {},
             onOpenEditProfile = {},
         )
@@ -341,6 +364,7 @@ private fun EditProfileScreenPreview() {
             ),
             onBack = {},
             onProfileSaved = {},
+            onSessionExpired = {},
         )
     }
 }

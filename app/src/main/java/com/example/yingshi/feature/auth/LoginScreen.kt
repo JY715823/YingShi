@@ -53,14 +53,17 @@ private const val LABEL_EMAIL = "\u90ae\u7bb1"
 private const val LABEL_PASSWORD = "\u5bc6\u7801"
 private const val ACTION_LOGIN = "\u767b\u5f55"
 private const val ACTION_FILL_DEMO = "\u586b\u5165 demo"
+private const val ACTION_SAVE_BASE_URL = "\u4fdd\u5b58 baseUrl"
 private const val ERROR_LOGIN_FAILED = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002"
 private const val LABEL_CURRENT_MODE = "\u5f53\u524d\u6a21\u5f0f\uff1a"
+private const val LABEL_BASE_URL = "baseUrl"
 private const val TIP_REAL_PREFIX = "REAL \u6a21\u5f0f\u8bf7\u786e\u8ba4 baseUrl \u6307\u5411\u5f53\u524d\u540e\u7aef\uff1a"
 private const val TIP_FAKE =
     "FAKE \u6a21\u5f0f\u4f1a\u4f7f\u7528\u672c\u5730\u5360\u4f4d\u8d26\u53f7\uff0c\u4e0d\u8bbf\u95ee\u540e\u7aef\u3002"
 
 @Composable
 fun LoginScreen(
+    sessionMessage: String? = null,
     onLoginSuccess: (RemoteCurrentUser) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -70,6 +73,7 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
     var account by rememberSaveable { mutableStateOf(BackendAutoLoginManager.DEFAULT_DEMO_ACCOUNT) }
     var password by rememberSaveable { mutableStateOf(BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD) }
+    var baseUrlInput by rememberSaveable(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -117,6 +121,14 @@ fun LoginScreen(
                         enabled = !isLoading,
                     )
                     OutlinedTextField(
+                        value = baseUrlInput,
+                        onValueChange = { baseUrlInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(LABEL_BASE_URL) },
+                        singleLine = true,
+                        enabled = !isLoading && settings.repositoryMode == RepositoryMode.REAL,
+                    )
+                    OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
                         modifier = Modifier.fillMaxWidth(),
@@ -127,11 +139,15 @@ fun LoginScreen(
                         enabled = !isLoading,
                     )
 
-                    errorMessage?.let { message ->
+                    (errorMessage ?: sessionMessage)?.let { message ->
                         Text(
                             text = message,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = if (errorMessage != null) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
                         )
                     }
 
@@ -197,8 +213,20 @@ fun LoginScreen(
                     ) {
                         OutlinedButton(
                             onClick = {
+                                BackendDebugConfig.updateBaseUrl(baseUrlInput)
+                                baseUrlInput = BackendDebugConfig.currentBaseUrl()
+                                errorMessage = null
+                            },
+                            enabled = !isLoading && settings.repositoryMode == RepositoryMode.REAL,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(ACTION_SAVE_BASE_URL)
+                        }
+                        OutlinedButton(
+                            onClick = {
                                 account = BackendAutoLoginManager.DEFAULT_DEMO_ACCOUNT
                                 password = BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD
+                                baseUrlInput = BackendDebugConfig.currentBaseUrl()
                                 errorMessage = null
                             },
                             enabled = !isLoading,

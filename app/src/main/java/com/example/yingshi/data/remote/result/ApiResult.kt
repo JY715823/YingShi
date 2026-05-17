@@ -1,5 +1,7 @@
 package com.example.yingshi.data.remote.result
 
+import retrofit2.HttpException
+
 sealed interface ApiResult<out T> {
     data object Loading : ApiResult<Nothing>
 
@@ -15,3 +17,9 @@ sealed interface ApiResult<out T> {
 }
 
 typealias NetworkResult<T> = ApiResult<T>
+
+fun ApiResult.Error.httpStatusCode(): Int? = (throwable as? HttpException)?.code()
+
+fun ApiResult.Error.isUnauthorized(): Boolean {
+    return code == "AUTH_UNAUTHORIZED" || httpStatusCode() == 401
+}

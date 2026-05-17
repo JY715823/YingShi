@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,7 +33,11 @@ private const val TEXT_EMAIL_PENDING = "\u672a\u83b7\u53d6\u90ae\u7bb1"
 private const val TEXT_BIO_HINT = "\u8fdb\u5165\u4e2a\u4eba\u4e3b\u9875\u540e\u53ef\u4ee5\u7f16\u8f91\u6635\u79f0\u548c\u7b80\u4ecb\u3002"
 private const val LABEL_BIO = "\u7b80\u4ecb"
 private const val TEXT_OPEN_PROFILE = "\u70b9\u51fb\u67e5\u770b\u4e2a\u4eba\u4e3b\u9875"
-private const val LABEL_ENV = "\u5f53\u524d\u73af\u5883"
+private const val LABEL_STATUS = "\u8d26\u53f7\u72b6\u6001"
+private const val LABEL_MODE = "\u8fd0\u884c\u6a21\u5f0f"
+private const val LABEL_ACCOUNT = "\u5f53\u524d\u8d26\u53f7"
+private const val LABEL_BACKEND = "\u5f53\u524d\u540e\u7aef"
+private const val VALUE_LOGGED_IN = "\u5df2\u767b\u5f55"
 private const val ACTION_LOGOUT = "\u9000\u51fa\u767b\u5f55"
 private const val ACTION_LOGOUT_LOADING = "\u9000\u51fa\u4e2d..."
 private const val ENTRY_SETTINGS = "\u8bbe\u7f6e"
@@ -65,7 +69,8 @@ fun MyScreen(
                     currentUser = currentUser,
                     onClick = onOpenProfile,
                 )
-                EnvironmentCard(
+                AccountStatusCard(
+                    currentUser = currentUser,
                     repositoryMode = repositoryMode,
                     baseUrl = baseUrl,
                     isLoggingOut = isLoggingOut,
@@ -152,7 +157,8 @@ private fun ProfileCard(
 }
 
 @Composable
-private fun EnvironmentCard(
+private fun AccountStatusCard(
+    currentUser: RemoteCurrentUser?,
     repositoryMode: RepositoryMode,
     baseUrl: String,
     isLoggingOut: Boolean,
@@ -171,10 +177,15 @@ private fun EnvironmentCard(
             modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            InfoLine(label = LABEL_ENV, value = repositoryMode.name)
-            InfoLine(label = "baseUrl", value = baseUrl)
+            InfoLine(label = LABEL_STATUS, value = VALUE_LOGGED_IN)
+            InfoLine(label = LABEL_MODE, value = repositoryMode.name)
+            InfoLine(
+                label = LABEL_ACCOUNT,
+                value = currentUser?.account?.takeIf { it.isNotBlank() } ?: TEXT_EMAIL_PENDING,
+            )
+            InfoLine(label = LABEL_BACKEND, value = baseUrl)
 
-            Button(
+            OutlinedButton(
                 onClick = onLogout,
                 enabled = !isLoggingOut,
                 modifier = Modifier.fillMaxWidth(),

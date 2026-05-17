@@ -3,6 +3,8 @@ package com.example.yingshi.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -82,6 +85,7 @@ fun ShellPage(
     content: @Composable (ColumnScope.() -> Unit)? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
@@ -117,7 +121,10 @@ fun ShellPage(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .verticalScroll(scrollState)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
             ) {
                 content()
             }
