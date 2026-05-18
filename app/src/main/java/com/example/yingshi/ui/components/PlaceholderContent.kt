@@ -2,11 +2,8 @@ package com.example.yingshi.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -34,22 +31,19 @@ fun PlaceholderPage(
 ) {
     val spacing = YingShiThemeTokens.spacing
 
-    LazyColumn(
+    Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.md),
-        contentPadding = PaddingValues(bottom = spacing.xxl),
     ) {
         if (showHero) {
-            item { PlaceholderHero(title = title, summary = summary) }
+            PlaceholderHero(title = title, summary = summary)
         }
 
         if (headerContent != null) {
-            item {
-                headerContent()
-            }
+            headerContent()
         }
 
-        items(blocks) { block ->
+        blocks.forEach { block ->
             PlaceholderCard(block = block)
         }
     }

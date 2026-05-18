@@ -3,14 +3,15 @@ package com.example.yingshi.data.repository
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
+import com.example.yingshi.data.model.RemotePartnerProfile
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 
 private const val DEFAULT_FAKE_ACCOUNT = "fake@yingshi.local"
 private const val DEMO_A_ACCOUNT = "demo.a@yingshi.local"
 private const val DEMO_B_ACCOUNT = "demo.b@yingshi.local"
 private const val FAKE_LIBRARY_ID = "fake-library-001"
-private const val FAKE_LIBRARY_NAME = "\u6620\u4e16\u672c\u5730\u5360\u4f4d\u7a7a\u95f4"
-private const val FAKE_BIO_DEFAULT = "\u672c\u5730\u6f14\u793a\u7b80\u4ecb\uff0c\u53ef\u7f16\u8f91\u5e76\u5728\u5f53\u524d\u4f1a\u8bdd\u5185\u4fdd\u7559\u3002"
+private const val FAKE_LIBRARY_NAME = "\u6211\u4eec\u7684\u5c0f\u7a7a\u95f4"
+private const val FAKE_BIO_DEFAULT = "\u672c\u5730\u6f14\u793a\u8d44\u6599\uff0c\u4e24\u4e2a\u4eba\u9ed8\u8ba4\u5171\u7528\u540c\u4e00\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002"
 private const val FAKE_DISPLAY_NAME_DEFAULT = "\u672c\u5730\u5360\u4f4d\u8d26\u53f7"
 private const val FAKE_DYNAMIC_BIO = "FAKE \u6a21\u5f0f\u4e2a\u4eba\u8d44\u6599\u5360\u4f4d\u5185\u5bb9\u3002"
 
@@ -18,22 +19,36 @@ private val profilesByAccount: MutableMap<String, RemoteCurrentUser> = linkedMap
     DEMO_A_ACCOUNT to RemoteCurrentUser(
         userId = "fake-user-001",
         account = DEMO_A_ACCOUNT,
-        displayName = "Demo A",
+        displayName = "\u6620\u4e16\u5c0f\u5c4b",
         avatarUrl = null,
         libraryId = FAKE_LIBRARY_ID,
         libraryDisplayName = FAKE_LIBRARY_NAME,
-        bio = FAKE_BIO_DEFAULT,
+        bio = "\u4e00\u8d77\u628a\u5e73\u5e38\u65e5\u5b50\u6162\u6162\u6536\u8fdb\u8fd9\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002",
+        partner = RemotePartnerProfile(
+            userId = "fake-user-002",
+            account = DEMO_B_ACCOUNT,
+            displayName = "\u53e6\u4e00\u534a",
+            avatarUrl = null,
+            bio = "\u628a\u751f\u6d3b\u91cc\u7684\u95ea\u5149\u7247\u6bb5\uff0c\u4e5f\u628a\u5b89\u9759\u548c\u60f3\u5ff5\u4e00\u8d77\u7559\u4e0b\u6765\u3002",
+        ),
         createdAtMillis = 1760000000000L,
         updatedAtMillis = 1760000000000L,
     ),
     DEMO_B_ACCOUNT to RemoteCurrentUser(
         userId = "fake-user-002",
         account = DEMO_B_ACCOUNT,
-        displayName = "Demo B",
+        displayName = "\u53e6\u4e00\u534a",
         avatarUrl = null,
         libraryId = FAKE_LIBRARY_ID,
         libraryDisplayName = FAKE_LIBRARY_NAME,
-        bio = FAKE_BIO_DEFAULT,
+        bio = "\u628a\u751f\u6d3b\u91cc\u7684\u95ea\u5149\u7247\u6bb5\uff0c\u4e5f\u628a\u5b89\u9759\u548c\u60f3\u5ff5\u4e00\u8d77\u7559\u4e0b\u6765\u3002",
+        partner = RemotePartnerProfile(
+            userId = "fake-user-001",
+            account = DEMO_A_ACCOUNT,
+            displayName = "\u6620\u4e16\u5c0f\u5c4b",
+            avatarUrl = null,
+            bio = "\u4e00\u8d77\u628a\u5e73\u5e38\u65e5\u5b50\u6162\u6162\u6536\u8fdb\u8fd9\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002",
+        ),
         createdAtMillis = 1760000000000L,
         updatedAtMillis = 1760000000000L,
     ),
@@ -93,6 +108,7 @@ fun RemoteCurrentUser.toFakeLoginSession(): RemoteLoginSession {
         bio = bio,
         libraryId = libraryId,
         libraryDisplayName = libraryDisplayName,
+        partner = partner,
         createdAtMillis = createdAtMillis,
         updatedAtMillis = updatedAtMillis,
         tokens = AuthTokens(
@@ -119,6 +135,7 @@ private fun createProfile(
         libraryId = FAKE_LIBRARY_ID,
         libraryDisplayName = FAKE_LIBRARY_NAME,
         bio = bio,
+        partner = null,
         createdAtMillis = now - 86_400_000L,
         updatedAtMillis = now,
     )

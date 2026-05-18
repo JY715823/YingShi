@@ -13,6 +13,7 @@ data class LoginResponseDto(
     val bio: String? = null,
     val libraryId: String,
     val libraryDisplayName: String? = null,
+    val partner: PartnerProfileDto? = null,
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
     val accessToken: String,
@@ -48,8 +49,17 @@ data class CurrentUserDto(
     val bio: String? = null,
     val libraryId: String,
     val libraryDisplayName: String? = null,
+    val partner: PartnerProfileDto? = null,
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
+)
+
+data class PartnerProfileDto(
+    val userId: String,
+    val account: String,
+    val displayName: String,
+    val avatarUrl: String? = null,
+    val bio: String? = null,
 )
 
 data class UpdateProfileRequestDto(

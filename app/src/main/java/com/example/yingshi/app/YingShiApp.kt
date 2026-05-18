@@ -38,6 +38,7 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.auth.LoginScreen
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
+import com.example.yingshi.feature.ledger.LedgerScreen
 import com.example.yingshi.feature.me.EditProfileRoute
 import com.example.yingshi.feature.me.EditProfileScreen
 import com.example.yingshi.feature.me.MyScreen
@@ -108,6 +109,12 @@ fun YingShiApp() {
     }
     var showQuickAddSheet by rememberSaveable {
         mutableStateOf(false)
+    }
+    var ledgerRouteActive by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var ledgerOpenAddNonce by rememberSaveable {
+        mutableIntStateOf(0)
     }
     var photoViewerRoute by remember {
         mutableStateOf<PhotoViewerRoute?>(null)
@@ -188,6 +195,7 @@ fun YingShiApp() {
     }
 
     fun clearProtectedUiRoutes() {
+        ledgerRouteActive = false
         photoViewerRoute = null
         systemMediaRoute = null
         systemMediaViewerRoute = null
@@ -542,7 +550,8 @@ fun YingShiApp() {
                 settingsRoute == null &&
                 backendDiagnosticsRoute == null &&
                 cacheManagementRoute == null &&
-                !isProfileFlowActive,
+                !isProfileFlowActive &&
+                !ledgerRouteActive,
         ) {
             when {
             backendDiagnosticsRoute != null -> {
@@ -783,7 +792,21 @@ fun YingShiApp() {
                         photoSelectionClearTrigger = photoSelectionClearTrigger,
                         inlineVideoAutoPlayEnabled = photoViewerRoute == null,
                     )
-                    RootDestination.LIFE -> LifeScreen()
+                    RootDestination.LIFE -> {
+                        if (ledgerRouteActive) {
+                            LedgerScreen(
+                                openAddNonce = ledgerOpenAddNonce,
+                                onCloseLedger = { ledgerRouteActive = false },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            LifeScreen(
+                                onOpenLedger = {
+                                    ledgerRouteActive = true
+                                },
+                            )
+                        }
+                    }
                     RootDestination.ME -> run {
                         val user = requireNotNull(currentUser)
                         when {
@@ -993,31 +1016,49 @@ fun YingShiApp() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
-                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
             ) {
-                Text(
-                    text = "添加内容",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                )
-                TextButton(
-                    onClick = {
-                        showQuickAddSheet = false
-                        runCatching {
-                            quickAddPickerLauncher.launch(
-                                PickVisualMediaRequest(
-                                    mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
-                                ),
-                            )
-                        }.onFailure {
-                            Toast.makeText(
-                                context,
-                                "无法打开系统照片选择器，请稍后重试。",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    },
-                ) {
-                    Text(text = "导入媒体")
+                Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
+                    Text(
+                        text = "照片",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    )
+                    TextButton(
+                        onClick = {
+                            showQuickAddSheet = false
+                            runCatching {
+                                quickAddPickerLauncher.launch(
+                                    PickVisualMediaRequest(
+                                        mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
+                                    ),
+                                )
+                            }.onFailure {
+                                Toast.makeText(
+                                    context,
+                                    "无法打开系统照片选择器，请稍后重试。",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        },
+                    ) {
+                        Text(text = "导入媒体")
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
+                    Text(
+                        text = "记账",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    )
+                    TextButton(
+                        onClick = {
+                            showQuickAddSheet = false
+                            selectedDestinationName = RootDestination.LIFE.name
+                            ledgerRouteActive = true
+                            ledgerOpenAddNonce += 1
+                        },
+                    ) {
+                        Text(text = "记一笔")
+                    }
                 }
             }
         }

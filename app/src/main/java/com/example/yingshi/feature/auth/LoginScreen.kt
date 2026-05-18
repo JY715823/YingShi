@@ -176,6 +176,7 @@ fun LoginScreen(
                                                     libraryId = session.libraryId,
                                                     libraryDisplayName = session.libraryDisplayName,
                                                     bio = session.bio,
+                                                    partner = session.partner,
                                                     createdAtMillis = session.createdAtMillis,
                                                     updatedAtMillis = session.updatedAtMillis,
                                                 ),
