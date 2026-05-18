@@ -1,44 +1,79 @@
 package com.example.yingshi.feature.life
 
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.yingshi.ui.components.PlaceholderBlock
-import com.example.yingshi.ui.components.PlaceholderPage
 import com.example.yingshi.ui.components.ShellPage
 import com.example.yingshi.ui.theme.YingShiTheme
-
-private val lifeEntries = listOf(
-    PlaceholderBlock(
-        title = "纪念日",
-        summary = "保留为后续生活模块入口，占位即可。",
-    ),
-    PlaceholderBlock(
-        title = "记账",
-        summary = "当前不实现真实功能，只预留信息架构位置。",
-    ),
-    PlaceholderBlock(
-        title = "聊天记录查看器",
-        summary = "是否保留以及如何呈现，留到后续阶段再定。",
-    ),
-)
+import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
-fun LifeScreen(modifier: Modifier = Modifier) {
+fun LifeScreen(
+    modifier: Modifier = Modifier,
+    onOpenLedger: () -> Unit = {},
+) {
     ShellPage(
         title = "生活",
-        summary = "生活模块在当前阶段更适合作为温和、克制的入口页，而不是复杂功能页。",
-        modifier = modifier.fillMaxSize(),
+        summary = "日常工具从记账开始，先把收支、预算和资产做成真正可用的生活入口。",
+        modifier = modifier,
         content = {
-            PlaceholderPage(
-                title = "生活入口占位",
-                summary = "保留纪念日、记账、聊天记录查看器三类入口，不接真实能力。",
-                blocks = lifeEntries,
-                showHero = false,
+            LifeEntryCard(
+                title = "记账",
+                summary = "时光序式月账本、快速记一笔、资产、预算、统计和回收站。",
+                onClick = onOpenLedger,
+            )
+            LifeEntryCard(
+                title = "纪念日",
+                summary = "后续生活模块入口，当前先保留轻量位置。",
+                onClick = {},
+            )
+            LifeEntryCard(
+                title = "聊天记录查看器",
+                summary = "是否保留以及如何呈现，留到后续阶段再定。",
+                onClick = {},
             )
         },
     )
+}
+
+@Composable
+private fun LifeEntryCard(
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Preview(showBackground = true)

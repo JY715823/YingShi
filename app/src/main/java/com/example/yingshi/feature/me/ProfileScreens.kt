@@ -1,4 +1,4 @@
-package com.example.yingshi.feature.me
+﻿package com.example.yingshi.feature.me
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemotePartnerProfile
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.result.isUnauthorized
@@ -50,9 +51,14 @@ private const val TITLE_EDIT = "\u7f16\u8f91\u8d44\u6599"
 private const val SUMMARY_EDIT =
     "\u8fd9\u91cc\u53ea\u4fee\u6539\u6635\u79f0\u548c\u7b80\u4ecb\uff0c\u5934\u50cf\u7ee7\u7eed\u4f7f\u7528\u9ed8\u8ba4\u5360\u4f4d\u3002"
 private const val TEXT_BIO_EMPTY = "\u6682\u672a\u8bbe\u7f6e\u7b80\u4ecb\u3002"
+private const val TITLE_PARTNER = "\u53e6\u4e00\u534a"
+private const val SUMMARY_PARTNER = "\u4e00\u8d77\u8bb0\u5f55\u3001\u4e00\u8d77\u56de\u770b\uff0c\u8fd9\u91cc\u662f\u4f60\u4eec\u5171\u540c\u7a7a\u95f4\u91cc\u7684\u53e6\u4e00\u4f4d\u3002"
+private const val TITLE_SHARED_SPACE = "\u6211\u4eec\u7684\u5c0f\u7a7a\u95f4"
+private const val SUMMARY_SHARED_SPACE = "\u76ee\u524d\u770b\u5230\u7684\u7167\u7247\u3001\u76f8\u518c\u3001\u5e16\u5b50\u548c\u8bc4\u8bba\uff0c\u90fd\u9ed8\u8ba4\u5c5e\u4e8e\u4f60\u4eec\u4e24\u4e2a\u4eba\u7684\u5171\u540c\u7a7a\u95f4\u3002"
 private const val LABEL_ACCOUNT = "\u8d26\u53f7"
 private const val LABEL_JOINED_AT = "\u52a0\u5165\u65f6\u95f4"
 private const val LABEL_ENV = "\u5f53\u524d\u73af\u5883"
+private const val LABEL_PARTNER_ACCOUNT = "\u5bf9\u65b9\u8d26\u53f7"
 private const val LABEL_DISPLAY_NAME = "\u6635\u79f0"
 private const val LABEL_BIO = "\u7b80\u4ecb"
 private const val ACTION_EDIT = "\u7f16\u8f91\u8d44\u6599"
@@ -130,7 +136,7 @@ fun PersonalProfileScreen(
                         )
                         if (isRefreshing) {
                             Text(
-                                text = "正在同步最新资料...",
+                                text = "姝ｅ湪鍚屾鏈€鏂拌祫鏂?..",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -161,6 +167,33 @@ fun PersonalProfileScreen(
                     }
                 }
 
+                PartnerSection(
+                    partner = currentUser.partner,
+                )
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                    ) {
+                        Text(
+                            text = currentUser.libraryDisplayName?.takeIf { it.isNotBlank() } ?: TITLE_SHARED_SPACE,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = SUMMARY_SHARED_SPACE,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
                 Button(
                     onClick = onOpenEditProfile,
                     modifier = Modifier.fillMaxWidth(),
@@ -170,6 +203,58 @@ fun PersonalProfileScreen(
             }
         },
     )
+}
+
+@Composable
+private fun PartnerSection(
+    partner: RemotePartnerProfile?,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val displayName = partner?.displayName?.takeIf { it.isNotBlank() } ?: TITLE_PARTNER
+    val account = partner?.account?.takeIf { it.isNotBlank() } ?: TEXT_UNFILLED
+    val bio = partner?.bio?.takeIf { it.isNotBlank() } ?: SUMMARY_PARTNER
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ProfileAvatar(name = displayName)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                ) {
+                    Text(
+                        text = TITLE_PARTNER,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = displayName,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = account,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            ProfileInfoRow(label = LABEL_PARTNER_ACCOUNT, value = account)
+            ProfileInfoRow(label = LABEL_BIO, value = bio)
+        }
+    }
 }
 
 @Composable
@@ -328,11 +413,18 @@ private fun PersonalProfileScreenPreview() {
             currentUser = RemoteCurrentUser(
                 userId = "user_demo_a",
                 account = "demo.a@yingshi.local",
-                displayName = "Demo A",
+                displayName = "映世小屋",
                 avatarUrl = null,
                 libraryId = "library_shared",
-                libraryDisplayName = "YingShi Shared Library",
-                bio = "\u6e29\u67d4\u8bb0\u5f55\u65e5\u5e38\uff0c\u548c\u53e6\u4e00\u534a\u5171\u4eab\u8fd9\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002",
+                libraryDisplayName = "我们的小空间",
+                bio = "一起把平常日子慢慢收进这座小小相册。",
+                partner = RemotePartnerProfile(
+                    userId = "user_demo_b",
+                    account = "demo.b@yingshi.local",
+                    displayName = "另一半",
+                    avatarUrl = null,
+                    bio = "把生活里的闪光片段，也把安静和想念一起留下来。",
+                ),
                 createdAtMillis = 1760000000000L,
                 updatedAtMillis = 1760000000000L,
             ),
@@ -354,11 +446,18 @@ private fun EditProfileScreenPreview() {
             currentUser = RemoteCurrentUser(
                 userId = "user_demo_a",
                 account = "demo.a@yingshi.local",
-                displayName = "Demo A",
+                displayName = "映世小屋",
                 avatarUrl = null,
                 libraryId = "library_shared",
-                libraryDisplayName = "YingShi Shared Library",
-                bio = "\u6e29\u67d4\u8bb0\u5f55\u65e5\u5e38\uff0c\u548c\u53e6\u4e00\u534a\u5171\u4eab\u8fd9\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002",
+                libraryDisplayName = "我们的小空间",
+                bio = "一起把平常日子慢慢收进这座小小相册。",
+                partner = RemotePartnerProfile(
+                    userId = "user_demo_b",
+                    account = "demo.b@yingshi.local",
+                    displayName = "另一半",
+                    avatarUrl = null,
+                    bio = "把生活里的闪光片段，也把安静和想念一起留下来。",
+                ),
                 createdAtMillis = 1760000000000L,
                 updatedAtMillis = 1760000000000L,
             ),

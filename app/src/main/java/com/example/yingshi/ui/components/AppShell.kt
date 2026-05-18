@@ -103,16 +103,22 @@ fun ShellPage(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineLarge,
-            )
-            Text(
-                text = summary,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        if (title.isNotBlank() || summary.isNotBlank()) {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                if (title.isNotBlank()) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineLarge,
+                    )
+                }
+                if (summary.isNotBlank()) {
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         headerContent?.invoke()
