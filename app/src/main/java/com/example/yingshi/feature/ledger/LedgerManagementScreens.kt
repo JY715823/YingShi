@@ -72,6 +72,7 @@ import com.example.yingshi.feature.ledger.data.LedgerCategoryStat
 import com.example.yingshi.feature.ledger.data.LedgerCategoryType
 import com.example.yingshi.feature.ledger.data.LedgerDailyStat
 import com.example.yingshi.feature.ledger.data.LedgerSearchTransactionType
+import com.example.yingshi.feature.ledger.data.LedgerTransferAccountSide
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
 import java.time.Instant
@@ -96,6 +97,7 @@ fun LedgerAssetsScreen(
         String,
     ) -> Unit,
     onToggleAccountHidden: (String, Boolean) -> Unit,
+    onReorderAccounts: (List<String>) -> Unit,
 ) {
     var showAccountDetail by remember { mutableStateOf<LedgerAccount?>(null) }
     var editingAccount by remember { mutableStateOf<LedgerAccount?>(null) }
@@ -115,34 +117,38 @@ fun LedgerAssetsScreen(
             )
         },
     ) {
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Surface(
-                    color = LedgerHeaderGreen,
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth(),
+            Surface(
+                color = LedgerHeaderGreen,
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("净资产", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            formatAmountValue(uiState.netAssetCents),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                    Text("净资产", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        formatAmountValue(uiState.netAssetCents),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
-            items(uiState.allAccounts, key = { it.id }) { account ->
+            LedgerLongPressReorderList(
+                items = uiState.allAccounts,
+                keyOf = { it.id },
+                modifier = Modifier.weight(1f),
+                onOrderCommitted = onReorderAccounts,
+                itemHeight = 72.dp,
+            ) { account, _ ->
                 AccountRow(
                     account = account,
                     onClick = { showAccountDetail = account },
@@ -353,6 +359,7 @@ fun LedgerStatsScreen(
         LedgerBookPickerSheet(
             books = uiState.books,
             selectedBookId = uiState.currentBookId,
+            defaultBookId = uiState.defaultBookId,
             onDismiss = { showBookSheet = false },
             onSelectBook = {
                 onSelectBook(it)
@@ -1095,6 +1102,7 @@ fun LedgerBudgetScreen(
         LedgerBookPickerSheet(
             books = uiState.books,
             selectedBookId = uiState.currentBookId,
+            defaultBookId = uiState.defaultBookId,
             onDismiss = { showBookSheet = false },
             onSelectBook = {
                 onSelectBook(it)
@@ -1209,6 +1217,7 @@ fun LedgerSearchScreen(
     onDeleteSelected: () -> Unit,
     onBatchUpdateCategory: (String) -> Unit,
     onBatchUpdateAccount: (String) -> Unit,
+    onBatchUpdateTransferAccount: (LedgerTransferAccountSide, String) -> Unit,
 ) {
     var showTypeSheet by rememberSaveable { mutableStateOf(false) }
     var showCategorySheet by rememberSaveable { mutableStateOf(false) }
@@ -1217,13 +1226,19 @@ fun LedgerSearchScreen(
     var showAmountRangeDialog by rememberSaveable { mutableStateOf(false) }
     var showBatchCategorySheet by rememberSaveable { mutableStateOf(false) }
     var showBatchAccountSheet by rememberSaveable { mutableStateOf(false) }
+    var showBatchTransferSideSheet by rememberSaveable { mutableStateOf(false) }
+    var batchTransferSide by rememberSaveable { mutableStateOf<LedgerTransferAccountSide?>(null) }
 
     val selectedTransactions = remember(uiState.searchResults, uiState.selectedSearchTransactionIds) {
         uiState.searchResults.filter { it.id in uiState.selectedSearchTransactionIds }
     }
     val selectedTypes = remember(selectedTransactions) { selectedTransactions.map { it.type }.distinct() }
     val canBatchChangeCategory = selectedTransactions.isNotEmpty() && selectedTypes.size == 1 && selectedTypes.first() != LedgerTransactionType.TRANSFER
-    val canBatchChangeAccount = selectedTransactions.isNotEmpty() && selectedTransactions.none { it.type == LedgerTransactionType.TRANSFER }
+    val canBatchChangeAccount = selectedTransactions.isNotEmpty() && (
+        selectedTransactions.none { it.type == LedgerTransactionType.TRANSFER } ||
+            selectedTransactions.all { it.type == LedgerTransactionType.TRANSFER }
+        )
+    val isTransferOnly = selectedTransactions.isNotEmpty() && selectedTypes.singleOrNull() == LedgerTransactionType.TRANSFER
     val batchCategoryType = when (selectedTypes.singleOrNull()) {
         LedgerTransactionType.EXPENSE -> LedgerCategoryType.EXPENSE
         LedgerTransactionType.INCOME -> LedgerCategoryType.INCOME
@@ -1341,7 +1356,18 @@ fun LedgerSearchScreen(
                         TextButton(onClick = { showBatchCategorySheet = true }, enabled = canBatchChangeCategory) {
                             Text("改分类")
                         }
-                        TextButton(onClick = { showBatchAccountSheet = true }, enabled = canBatchChangeAccount) {
+                        TextButton(
+                            onClick = {
+                                if (isTransferOnly) {
+                                    batchTransferSide = null
+                                    showBatchAccountSheet = false
+                                    showBatchTransferSideSheet = true
+                                } else {
+                                    showBatchAccountSheet = true
+                                }
+                            },
+                            enabled = canBatchChangeAccount,
+                        ) {
                             Text("改账户")
                         }
                     }
@@ -1419,14 +1445,45 @@ fun LedgerSearchScreen(
             },
         )
     }
+    if (showBatchTransferSideSheet) {
+        LedgerActionSheet(
+            title = "改转账账户",
+            onDismiss = { showBatchTransferSideSheet = false },
+            actions = listOf(
+                LedgerSheetAction("改转出账户") {
+                    batchTransferSide = LedgerTransferAccountSide.FROM
+                    showBatchTransferSideSheet = false
+                    showBatchAccountSheet = true
+                },
+                LedgerSheetAction("改转入账户") {
+                    batchTransferSide = LedgerTransferAccountSide.TO
+                    showBatchTransferSideSheet = false
+                    showBatchAccountSheet = true
+                },
+            ),
+        )
+    }
     if (showBatchAccountSheet) {
         LedgerAccountChoiceSheet(
-            title = "批量改账户",
+            title = when (batchTransferSide) {
+                LedgerTransferAccountSide.FROM -> "批量改转出账户"
+                LedgerTransferAccountSide.TO -> "批量改转入账户"
+                null -> "批量改账户"
+            },
             accounts = uiState.accounts,
-            onDismiss = { showBatchAccountSheet = false },
-            onSelect = {
-                if (it != null) onBatchUpdateAccount(it)
+            onDismiss = {
                 showBatchAccountSheet = false
+                batchTransferSide = null
+            },
+            onSelect = {
+                if (it != null) {
+                    when (batchTransferSide) {
+                        null -> onBatchUpdateAccount(it)
+                        else -> onBatchUpdateTransferAccount(batchTransferSide!!, it)
+                    }
+                }
+                showBatchAccountSheet = false
+                batchTransferSide = null
             },
         )
     }
@@ -1483,6 +1540,7 @@ fun LedgerCategoriesScreen(
     onBack: () -> Unit,
     onSaveCategory: (String?, String, String, Long, LedgerCategoryType) -> Unit,
     onToggleCategoryHidden: (String, Boolean) -> Unit,
+    onReorderCategories: (LedgerCategoryType, List<String>) -> Unit,
 ) {
     var selectedType by rememberSaveable { mutableStateOf(LedgerCategoryType.EXPENSE.name) }
     var editingCategory by remember { mutableStateOf<LedgerCategory?>(null) }
@@ -1522,49 +1580,47 @@ fun LedgerCategoriesScreen(
                 selectedType = LedgerCategoryType.INCOME.name
             }
         }
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            items(categories, key = { it.id }) { category ->
-                Row(
+        LedgerLongPressReorderList(
+            items = categories,
+            keyOf = { it.id },
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
+            onOrderCommitted = { onReorderCategories(type, it) },
+            itemHeight = 66.dp,
+        ) { category, isDragging ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (category.hidden) 0.62f else if (isDragging) 0.92f else 1f)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(if (category.hidden) 0.62f else 1f)
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(ledgerColor(category.color)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(ledgerColor(category.color)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(category.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                        if (category.hidden) {
-                            LedgerHiddenBadge()
-                        }
-                    }
-                    Icon(
-                        Icons.Default.MoreHoriz,
-                        contentDescription = "更多",
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clickable { actionCategory = category },
-                    )
+                    Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(category.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    if (category.hidden) {
+                        LedgerHiddenBadge()
+                    }
+                }
+                Icon(
+                    Icons.Default.MoreHoriz,
+                    contentDescription = "更多",
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable { actionCategory = category },
+                )
             }
         }
         Surface(

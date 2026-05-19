@@ -69,6 +69,7 @@ fun LedgerAddTransactionScreen(
     onSelectBook: (String) -> Unit,
     onSaveCategory: (String?, String, String, Long, LedgerCategoryType) -> Unit,
     onToggleCategoryHidden: (String, Boolean) -> Unit,
+    onReorderCategories: (LedgerCategoryType, List<String>) -> Unit,
     onSave: (
         String?,
         LedgerTransactionType,
@@ -109,14 +110,22 @@ fun LedgerAddTransactionScreen(
                 ?.let(::add)
         }.distinctBy { it.id }
     }
+    val newDraftPrimaryAccountId = remember(uiState.defaultAccountIdForCurrentBook, visibleAccounts) {
+        uiState.defaultAccountIdForCurrentBook
+            ?.takeIf { defaultId -> visibleAccounts.any { it.id == defaultId } }
+            ?: visibleAccounts.firstOrNull()?.id.orEmpty()
+    }
+    val newDraftTransferInAccountId = remember(newDraftPrimaryAccountId, visibleAccounts) {
+        visibleAccounts.firstOrNull { it.id != newDraftPrimaryAccountId }?.id
+    }
     var selectedCategoryId by rememberSaveable(initialTransaction?.id, categoryOptions.firstOrNull()?.id) {
         mutableStateOf(initialTransaction?.category?.id ?: categoryOptions.firstOrNull()?.id)
     }
-    var selectedAccountId by rememberSaveable(initialTransaction?.id, accountOptions.firstOrNull()?.id) {
-        mutableStateOf(initialTransaction?.account?.id ?: accountOptions.firstOrNull()?.id.orEmpty())
+    var selectedAccountId by rememberSaveable(initialTransaction?.id, uiState.currentBookId, newDraftPrimaryAccountId) {
+        mutableStateOf(initialTransaction?.account?.id ?: newDraftPrimaryAccountId)
     }
-    var selectedToAccountId by rememberSaveable(initialTransaction?.id, accountOptions.getOrNull(1)?.id) {
-        mutableStateOf(initialTransaction?.toAccount?.id ?: accountOptions.getOrNull(1)?.id)
+    var selectedToAccountId by rememberSaveable(initialTransaction?.id, uiState.currentBookId, newDraftTransferInAccountId) {
+        mutableStateOf(initialTransaction?.toAccount?.id ?: newDraftTransferInAccountId)
     }
     var accountPickerTarget by rememberSaveable(initialTransaction?.id) {
         mutableStateOf(LedgerAccountPickerTarget.PRIMARY.name)
@@ -131,11 +140,31 @@ fun LedgerAddTransactionScreen(
     val evaluatedExpression = LedgerCalculator.evaluate(expression)
     val amountCents = evaluatedExpression?.toCentsOrNull() ?: expression.toCentsOrNull() ?: 0L
     val amountDisplayText = evaluatedExpression?.let { formatAmountValue(it.toCentsOrNull() ?: 0L) } ?: expression
+    var lastBookId by rememberSaveable(initialTransaction?.id) { mutableStateOf(uiState.currentBookId) }
+
+    LaunchedEffect(uiState.currentBookId, initialTransaction?.id, newDraftPrimaryAccountId, newDraftTransferInAccountId, categoryOptions, type) {
+        if (initialTransaction == null && lastBookId != uiState.currentBookId) {
+            selectedAccountId = newDraftPrimaryAccountId
+            selectedToAccountId = newDraftTransferInAccountId
+            if (type != LedgerTransactionType.TRANSFER) {
+                selectedCategoryId = categoryOptions.firstOrNull()?.id
+            }
+            lastBookId = uiState.currentBookId
+        }
+    }
 
     LaunchedEffect(uiState.currentBookId, type, accountOptions, categoryOptions, initialTransaction?.id) {
         val accountIds = accountOptions.map { it.id }
-        val primaryAccountId = accountOptions.firstOrNull()?.id.orEmpty()
-        val secondaryAccountId = accountOptions.getOrNull(1)?.id ?: primaryAccountId
+        val primaryAccountId = if (initialTransaction == null) {
+            newDraftPrimaryAccountId
+        } else {
+            accountOptions.firstOrNull()?.id.orEmpty()
+        }
+        val secondaryAccountId = if (initialTransaction == null) {
+            newDraftTransferInAccountId ?: accountOptions.firstOrNull { it.id != primaryAccountId }?.id ?: primaryAccountId
+        } else {
+            accountOptions.getOrNull(1)?.id ?: primaryAccountId
+        }
         if (selectedAccountId !in accountIds) {
             selectedAccountId = primaryAccountId
         }
@@ -272,6 +301,7 @@ fun LedgerAddTransactionScreen(
         LedgerBookPickerSheet(
             books = uiState.books,
             selectedBookId = uiState.currentBookId,
+            defaultBookId = uiState.defaultBookId,
             onDismiss = { showBookSheet = false },
             onSelectBook = {
                 onSelectBook(it)
@@ -314,6 +344,7 @@ fun LedgerAddTransactionScreen(
             onBack = { showCategoryManager = false },
             onSaveCategory = onSaveCategory,
             onToggleCategoryHidden = onToggleCategoryHidden,
+            onReorderCategories = onReorderCategories,
         )
     }
 }

@@ -74,9 +74,11 @@ import java.util.Locale
 enum class LedgerRoute {
     HOME,
     ADD,
+    BOOKS,
     ASSETS,
     STATS,
     BUDGET,
+    RECURRING,
     IMPORT,
     CALENDAR,
     SEARCH,
@@ -103,6 +105,9 @@ fun LedgerScreen(
     var editingTransactionId by rememberSaveable { mutableStateOf<String?>(null) }
     var lastOpenAddNonce by rememberSaveable { mutableStateOf(openAddNonce) }
 
+    LaunchedEffect(Unit) {
+        viewModel.handleLedgerEntry()
+    }
     LaunchedEffect(openAddNonce) {
         if (openAddNonce != lastOpenAddNonce) {
             lastOpenAddNonce = openAddNonce
@@ -163,6 +168,15 @@ fun LedgerScreen(
                     },
                 )
 
+                LedgerRoute.BOOKS -> LedgerBooksScreen(
+                    uiState = uiState,
+                    onBack = { route = LedgerRoute.HOME.name },
+                    onSaveBook = viewModel::saveBook,
+                    onSetDefaultBook = viewModel::setDefaultBook,
+                    onArchiveBook = { viewModel.setBookArchived(it, true) },
+                    onRestoreBook = { viewModel.setBookArchived(it, false) },
+                )
+
                 LedgerRoute.ADD -> LedgerAddTransactionScreen(
                     uiState = uiState,
                     initialTransaction = (uiState.allTransactions + uiState.transactions + uiState.stats.transactions)
@@ -172,6 +186,7 @@ fun LedgerScreen(
                     onSelectBook = viewModel::selectBook,
                     onSaveCategory = viewModel::saveCategory,
                     onToggleCategoryHidden = viewModel::setCategoryHidden,
+                    onReorderCategories = viewModel::reorderCategories,
                     onSave = { transactionId, type, amount, categoryId, accountId, toAccountId, occurredAt, remark, keepOpen ->
                         viewModel.saveTransaction(
                             transactionId = transactionId,
@@ -200,6 +215,7 @@ fun LedgerScreen(
                     },
                     onSaveAccount = viewModel::saveAccount,
                     onToggleAccountHidden = viewModel::setAccountHidden,
+                    onReorderAccounts = viewModel::reorderAccounts,
                 )
                 LedgerRoute.STATS -> LedgerStatsScreen(
                     uiState = uiState,
@@ -223,6 +239,17 @@ fun LedgerScreen(
                     onSetCategoryBudget = viewModel::setCategoryBudget,
                     onClearBudget = viewModel::clearBudget,
                     onClearCategoryBudget = viewModel::clearCategoryBudget,
+                )
+
+                LedgerRoute.RECURRING -> LedgerRecurringScreen(
+                    uiState = uiState,
+                    onBack = { route = LedgerRoute.HOME.name },
+                    onSelectBook = viewModel::selectBook,
+                    onOpenBooks = { route = LedgerRoute.BOOKS.name },
+                    onSaveRule = viewModel::saveRecurringRule,
+                    onToggleRuleEnabled = viewModel::setRecurringRuleEnabled,
+                    onDeleteRule = viewModel::deleteRecurringRule,
+                    onRefresh = viewModel::refreshRecurringRules,
                 )
 
                 LedgerRoute.IMPORT -> LedgerStaticScreen(
@@ -258,6 +285,7 @@ fun LedgerScreen(
                     onDeleteSelected = viewModel::deleteSelectedTransactions,
                     onBatchUpdateCategory = viewModel::updateSelectedTransactionsCategory,
                     onBatchUpdateAccount = viewModel::updateSelectedTransactionsAccount,
+                    onBatchUpdateTransferAccount = viewModel::updateSelectedTransferTransactionsAccount,
                 )
 
                 LedgerRoute.CATEGORIES -> LedgerCategoriesScreen(
@@ -265,11 +293,16 @@ fun LedgerScreen(
                     onBack = { route = LedgerRoute.HOME.name },
                     onSaveCategory = viewModel::saveCategory,
                     onToggleCategoryHidden = viewModel::setCategoryHidden,
+                    onReorderCategories = viewModel::reorderCategories,
                 )
-                LedgerRoute.SETTINGS -> LedgerStaticScreen(
-                    title = "记账设置",
-                    summary = "默认账户、周期记账、自定义背景和小组件后续再接。",
+
+                LedgerRoute.SETTINGS -> LedgerSettingsScreen(
+                    uiState = uiState,
                     onBack = { route = LedgerRoute.HOME.name },
+                    onOpenBooks = { route = LedgerRoute.BOOKS.name },
+                    onOpenRecurring = { route = LedgerRoute.RECURRING.name },
+                    onSetDefaultBook = viewModel::setDefaultBook,
+                    onSetDefaultAccountForBook = viewModel::setDefaultAccountForBook,
                 )
 
                 LedgerRoute.TRASH -> LedgerTrashScreen(
@@ -360,11 +393,13 @@ private fun LedgerHomeScreen(
         LedgerBookPickerSheet(
             books = uiState.books,
             selectedBookId = uiState.currentBookId,
+            defaultBookId = uiState.defaultBookId,
             onDismiss = { showBookSheet = false },
             onSelectBook = {
                 onSelectBook(it)
                 showBookSheet = false
             },
+            onManageBooks = { onNavigate(LedgerRoute.BOOKS) },
         )
     }
     if (showMonthSheet) {
@@ -761,9 +796,11 @@ private fun LedgerDrawer(
             drawerItem("搜索", "search", LedgerRoute.SEARCH, onNavigate)
             drawerItem("统计", "stats", LedgerRoute.STATS, onNavigate)
             drawerSection("管理")
+            drawerItem("账本管理", "wallet", LedgerRoute.BOOKS, onNavigate)
             drawerItem("资产管理", "asset", LedgerRoute.ASSETS, onNavigate)
             drawerItem("分类管理", "category", LedgerRoute.CATEGORIES, onNavigate)
             drawerItem("预算管理", "budget", LedgerRoute.BUDGET, onNavigate)
+            drawerItem("周期记账", "timelapse", LedgerRoute.RECURRING, onNavigate)
             drawerItem("记账导入", "import", LedgerRoute.IMPORT, onNavigate)
             drawerItem("记账设置", "settings", LedgerRoute.SETTINGS, onNavigate)
             drawerItem("回收站", "trash", LedgerRoute.TRASH, onNavigate)

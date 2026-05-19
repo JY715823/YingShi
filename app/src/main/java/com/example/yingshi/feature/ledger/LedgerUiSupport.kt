@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Timelapse
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Wallet
@@ -84,6 +85,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.yingshi.feature.ledger.data.LedgerAccount
 import com.example.yingshi.feature.ledger.data.LedgerAccountType
 import com.example.yingshi.feature.ledger.data.LedgerBook
+import com.example.yingshi.feature.ledger.data.ledgerBookTemplateLabel
 import java.time.YearMonth
 
 val LedgerHeaderGreen = Color(0xFF47B972)
@@ -120,6 +122,7 @@ fun ledgerIcon(key: String): ImageVector = when (key) {
     "asset" -> Icons.Default.AccountBalance
     "import" -> Icons.Default.ImportExport
     "calendar" -> Icons.Default.CalendarMonth
+    "timelapse" -> Icons.Default.Timelapse
     "search" -> Icons.Default.Search
     "category" -> Icons.Default.Category
     "settings" -> Icons.Default.Settings
@@ -193,8 +196,10 @@ fun LedgerBottomSheetDialog(
 fun LedgerBookPickerSheet(
     books: List<LedgerBook>,
     selectedBookId: String,
+    defaultBookId: String? = null,
     onDismiss: () -> Unit,
     onSelectBook: (String) -> Unit,
+    onManageBooks: (() -> Unit)? = null,
 ) {
     LedgerBottomSheetDialog(onDismiss = onDismiss) {
         Column(
@@ -225,23 +230,68 @@ fun LedgerBookPickerSheet(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(LedgerHeaderGreen.copy(alpha = if (book.id == selectedBookId) 0.18f else 0.12f)),
+                                .background(ledgerColor(book.coverColor).copy(alpha = if (book.id == selectedBookId) 0.18f else 0.12f)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(ledgerIcon("wallet"), contentDescription = null, tint = LedgerHeaderGreen)
+                            Icon(ledgerIcon("wallet"), contentDescription = null, tint = ledgerColor(book.coverColor))
                         }
-                        Text(
-                            text = book.name,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = book.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                if (book.id == defaultBookId) {
+                                    Surface(
+                                        shape = RoundedCornerShape(999.dp),
+                                        color = LedgerGreenSoft,
+                                    ) {
+                                        Text(
+                                            text = "默认",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            color = LedgerHeaderGreen,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = ledgerBookTemplateLabel(book.template),
+                                color = LedgerMuted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         Icon(
                             if (book.id == selectedBookId) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
                             contentDescription = null,
                             tint = if (book.id == selectedBookId) LedgerHeaderGreen else LedgerMuted,
                         )
                     }
+                }
+            }
+            onManageBooks?.let { manageBooks ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable {
+                            onDismiss()
+                            manageBooks()
+                        },
+                    color = Color(0xFFF8F8F9),
+                ) {
+                    Text(
+                        text = "账本管理",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LedgerHeaderGreen,
+                    )
                 }
             }
         }
@@ -328,7 +378,8 @@ fun LedgerDateTimePickerSheet(
 @Composable
 fun LedgerAccountPickerSheet(
     accounts: List<LedgerAccount>,
-    selectedAccountId: String,
+    selectedAccountId: String?,
+    title: String = "账户",
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
@@ -344,7 +395,7 @@ fun LedgerAccountPickerSheet(
                     Text("取消", color = LedgerMuted, style = MaterialTheme.typography.bodyLarge)
                 }
                 Text(
-                    text = "账户",
+                    text = title,
                     modifier = Modifier.weight(1f),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     style = MaterialTheme.typography.titleLarge,

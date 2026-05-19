@@ -236,6 +236,59 @@ object LedgerSeedData {
             ),
         )
     }
+
+    fun defaultCoverColor(template: String): Long = when (template) {
+        LedgerBookTemplateDaily -> 0xFF47B972
+        LedgerBookTemplateTravel -> 0xFF3CB4A5
+        LedgerBookTemplateShared -> 0xFF58B16B
+        else -> 0xFF47B972
+    }
+
+    fun seedCategoriesForTemplate(
+        bookId: String,
+        template: String,
+        nowMillis: Long,
+    ): List<LedgerCategoryEntity> {
+        val sourceBookId = sourceBookIdForTemplate(template)
+        return defaultCategories(nowMillis)
+            .filter { it.bookId == sourceBookId }
+            .map { source ->
+                source.copy(
+                    id = "$bookId-${source.id}",
+                    bookId = bookId,
+                    createdAtMillis = nowMillis,
+                    updatedAtMillis = nowMillis,
+                )
+            }
+    }
+
+    fun seedAccountsForTemplate(
+        bookId: String,
+        template: String,
+        nowMillis: Long,
+    ): List<LedgerAccountEntity> {
+        val sourceBookId = sourceBookIdForTemplate(template)
+        return defaultAccounts(nowMillis)
+            .filter { it.bookId == sourceBookId }
+            .mapIndexed { index, source ->
+                source.copy(
+                    id = "$bookId-${source.id}",
+                    bookId = bookId,
+                    initialBalanceCents = 0L,
+                    balanceCents = 0L,
+                    sortOrder = index,
+                    createdAtMillis = nowMillis,
+                    updatedAtMillis = nowMillis,
+                )
+            }
+    }
+
+    private fun sourceBookIdForTemplate(template: String): String = when (template) {
+        LedgerBookTemplateDaily -> DefaultBookId
+        LedgerBookTemplateTravel -> TravelBookId
+        LedgerBookTemplateShared -> SharedBookId
+        else -> DefaultBookId
+    }
 }
 
 private data class CategorySeed(
