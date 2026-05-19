@@ -16,6 +16,12 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger_books WHERE isDeleted = 0 ORDER BY sortOrder ASC")
     fun observeBooks(): Flow<List<LedgerBookEntity>>
 
+    @Query("SELECT * FROM ledger_books WHERE isDeleted = 1 ORDER BY sortOrder ASC")
+    fun observeArchivedBooks(): Flow<List<LedgerBookEntity>>
+
+    @Query("SELECT * FROM ledger_books ORDER BY isDeleted ASC, sortOrder ASC")
+    fun observeAllBooks(): Flow<List<LedgerBookEntity>>
+
     @Query("SELECT * FROM ledger_books WHERE isDeleted = 0 ORDER BY sortOrder ASC LIMIT 1")
     fun observePrimaryBook(): Flow<LedgerBookEntity?>
 
@@ -24,6 +30,9 @@ interface LedgerDao {
 
     @Query("SELECT * FROM ledger_books WHERE id = :bookId LIMIT 1")
     suspend fun getBook(bookId: String): LedgerBookEntity?
+
+    @Query("SELECT * FROM ledger_books WHERE isDeleted = 0 AND lower(trim(name)) = lower(trim(:name)) LIMIT 1")
+    suspend fun findBookByName(name: String): LedgerBookEntity?
 
     @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId AND hidden = 0 ORDER BY type ASC, sortOrder ASC")
     fun observeVisibleCategories(bookId: String): Flow<List<LedgerCategoryEntity>>
@@ -43,6 +52,17 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger_accounts WHERE bookId = :bookId AND hidden = 0 ORDER BY sortOrder ASC")
     fun observeVisibleAccounts(bookId: String): Flow<List<LedgerAccountEntity>>
 
+    @Query(
+        """
+        SELECT a.*
+        FROM ledger_accounts a
+        INNER JOIN ledger_books b ON b.id = a.bookId
+        WHERE b.isDeleted = 0 AND a.hidden = 0
+        ORDER BY a.bookId ASC, a.sortOrder ASC
+        """,
+    )
+    fun observeVisibleAccountsAcrossBooks(): Flow<List<LedgerAccountEntity>>
+
     @Query("SELECT * FROM ledger_accounts WHERE bookId = :bookId ORDER BY sortOrder ASC")
     fun observeAllAccounts(bookId: String): Flow<List<LedgerAccountEntity>>
 
@@ -51,6 +71,50 @@ interface LedgerDao {
 
     @Query("SELECT * FROM ledger_accounts WHERE bookId = :bookId AND name = :name LIMIT 1")
     suspend fun findAccountByName(bookId: String, name: String): LedgerAccountEntity?
+
+    @Query(
+        """
+        SELECT * FROM ledger_recurring_rules
+        WHERE bookId = :bookId
+        ORDER BY enabled DESC, nextOccurrenceAtMillis ASC, createdAtMillis ASC
+        """,
+    )
+    fun observeRecurringRules(bookId: String): Flow<List<LedgerRecurringRuleEntity>>
+
+    @Query("SELECT * FROM ledger_recurring_rules WHERE id = :ruleId LIMIT 1")
+    suspend fun getRecurringRule(ruleId: String): LedgerRecurringRuleEntity?
+
+    @Query(
+        """
+        SELECT r.*
+        FROM ledger_recurring_rules r
+        INNER JOIN ledger_books b ON b.id = r.bookId
+        WHERE b.isDeleted = 0
+        AND r.enabled = 1
+        AND r.nextOccurrenceAtMillis <= :nowMillis
+        AND (r.endAtMillis IS NULL OR r.nextOccurrenceAtMillis <= r.endAtMillis)
+        ORDER BY r.nextOccurrenceAtMillis ASC
+        """,
+    )
+    suspend fun getDueRecurringRules(nowMillis: Long): List<LedgerRecurringRuleEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRecurringRule(rule: LedgerRecurringRuleEntity)
+
+    @Update
+    suspend fun updateRecurringRule(rule: LedgerRecurringRuleEntity)
+
+    @Query("DELETE FROM ledger_recurring_rules WHERE id = :ruleId")
+    suspend fun deleteRecurringRule(ruleId: String)
+
+    @Query("DELETE FROM ledger_recurring_occurrences WHERE ruleId = :ruleId")
+    suspend fun deleteRecurringOccurrencesByRuleId(ruleId: String)
+
+    @Query("SELECT * FROM ledger_recurring_occurrences WHERE ruleId = :ruleId AND occurrenceAtMillis = :occurrenceAtMillis LIMIT 1")
+    suspend fun getRecurringOccurrence(ruleId: String, occurrenceAtMillis: Long): LedgerRecurringOccurrenceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRecurringOccurrence(occurrence: LedgerRecurringOccurrenceEntity): Long
 
     @Query("SELECT * FROM ledger_transactions WHERE bookId = :bookId AND deletedAtMillis IS NULL ORDER BY occurredAtMillis DESC")
     fun observeTransactions(bookId: String): Flow<List<LedgerTransactionEntity>>
@@ -170,6 +234,9 @@ interface LedgerDao {
     suspend fun insertDeletedItem(deletedItem: LedgerDeletedItemEntity)
 
     @Update
+    suspend fun updateBook(book: LedgerBookEntity)
+
+    @Update
     suspend fun updateCategory(category: LedgerCategoryEntity)
 
     @Update
@@ -207,6 +274,9 @@ interface LedgerDao {
 
     @Query("UPDATE ledger_accounts SET hidden = :hidden, updatedAtMillis = :updatedAtMillis WHERE id = :accountId")
     suspend fun setAccountHidden(accountId: String, hidden: Boolean, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_books SET isDeleted = :archived, updatedAtMillis = :updatedAtMillis WHERE id = :bookId")
+    suspend fun setBookArchived(bookId: String, archived: Boolean, updatedAtMillis: Long)
 
     @Query("SELECT * FROM ledger_transactions WHERE id IN (:transactionIds)")
     suspend fun getTransactions(transactionIds: List<String>): List<LedgerTransactionEntity>

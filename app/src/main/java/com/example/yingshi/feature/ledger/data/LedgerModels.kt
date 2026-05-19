@@ -7,11 +7,17 @@ import java.time.ZoneId
 data class LedgerBook(
     val id: String,
     val name: String,
+    val template: String,
+    val currencyCode: String,
     val currencySymbol: String,
+    val coverColor: Long,
+    val sortOrder: Int,
+    val isDeleted: Boolean = false,
 )
 
 data class LedgerCategory(
     val id: String,
+    val bookId: String,
     val name: String,
     val iconKey: String,
     val color: Long,
@@ -21,6 +27,7 @@ data class LedgerCategory(
 
 data class LedgerAccount(
     val id: String,
+    val bookId: String,
     val name: String,
     val type: LedgerAccountType,
     val iconKey: String,
@@ -124,6 +131,62 @@ data class LedgerAccountDraft(
     val note: String,
 )
 
+data class LedgerBookDraft(
+    val id: String? = null,
+    val name: String,
+    val template: String,
+    val coverColor: Long,
+)
+
+data class LedgerRecurringRule(
+    val id: String,
+    val bookId: String,
+    val type: LedgerTransactionType,
+    val category: LedgerCategory?,
+    val account: LedgerAccount?,
+    val toAccount: LedgerAccount?,
+    val amountCents: Long,
+    val remark: String,
+    val frequency: LedgerRecurringFrequency,
+    val startAtMillis: Long,
+    val endAtMillis: Long?,
+    val nextOccurrenceAtMillis: Long,
+    val enabled: Boolean,
+)
+
+data class LedgerRecurringRuleDraft(
+    val id: String? = null,
+    val bookId: String,
+    val type: LedgerTransactionType,
+    val categoryId: String? = null,
+    val accountId: String,
+    val toAccountId: String? = null,
+    val amountCents: Long,
+    val remark: String,
+    val frequency: LedgerRecurringFrequency,
+    val startAtMillis: Long,
+    val endAtMillis: Long? = null,
+    val enabled: Boolean = true,
+)
+
+data class LedgerRecurringOccurrence(
+    val id: String,
+    val ruleId: String,
+    val transactionId: String,
+    val occurrenceAtMillis: Long,
+    val createdAtMillis: Long,
+)
+
+const val LedgerBookTemplateDaily = "daily"
+const val LedgerBookTemplateTravel = "travel"
+const val LedgerBookTemplateShared = "shared"
+
+val LedgerBookTemplates = listOf(
+    LedgerBookTemplateDaily,
+    LedgerBookTemplateTravel,
+    LedgerBookTemplateShared,
+)
+
 enum class LedgerSearchTransactionType {
     ALL,
     EXPENSE,
@@ -186,6 +249,18 @@ data class LedgerSearchFilter(
     }
 }
 
+enum class LedgerRecurringFrequency {
+    DAILY,
+    WEEKLY,
+    MONTHLY,
+    YEARLY,
+}
+
+enum class LedgerTransferAccountSide {
+    FROM,
+    TO,
+}
+
 fun defaultAccountIconKey(type: LedgerAccountType): String = when (type) {
     LedgerAccountType.CASH -> "wallet"
     LedgerAccountType.DEBIT_CARD -> "asset"
@@ -208,14 +283,34 @@ fun defaultAccountColor(type: LedgerAccountType): Long = when (type) {
     LedgerAccountType.OTHER -> 0xFF8D99A6
 }
 
+fun ledgerBookTemplateLabel(template: String): String = when (template) {
+    LedgerBookTemplateDaily -> "日常"
+    LedgerBookTemplateTravel -> "旅行"
+    LedgerBookTemplateShared -> "家庭"
+    else -> "账本"
+}
+
+fun recurringFrequencyLabel(frequency: LedgerRecurringFrequency): String = when (frequency) {
+    LedgerRecurringFrequency.DAILY -> "每天"
+    LedgerRecurringFrequency.WEEKLY -> "每周"
+    LedgerRecurringFrequency.MONTHLY -> "每月"
+    LedgerRecurringFrequency.YEARLY -> "每年"
+}
+
 fun LedgerBookEntity.toDomain() = LedgerBook(
     id = id,
     name = name,
+    template = template,
+    currencyCode = currencyCode,
     currencySymbol = currencySymbol,
+    coverColor = coverColor,
+    sortOrder = sortOrder,
+    isDeleted = isDeleted,
 )
 
 fun LedgerCategoryEntity.toDomain() = LedgerCategory(
     id = id,
+    bookId = bookId,
     name = name,
     iconKey = iconKey,
     color = color,
@@ -225,6 +320,7 @@ fun LedgerCategoryEntity.toDomain() = LedgerCategory(
 
 fun LedgerAccountEntity.toDomain() = LedgerAccount(
     id = id,
+    bookId = bookId,
     name = name,
     type = type,
     iconKey = iconKey,
@@ -234,4 +330,31 @@ fun LedgerAccountEntity.toDomain() = LedgerAccount(
     includeInTotal = includeInTotal,
     hidden = hidden,
     note = note,
+)
+
+fun LedgerRecurringRuleEntity.toDomain(
+    categoriesById: Map<String, LedgerCategory>,
+    accountsById: Map<String, LedgerAccount>,
+) = LedgerRecurringRule(
+    id = id,
+    bookId = bookId,
+    type = type,
+    category = categoryId?.let(categoriesById::get),
+    account = accountsById[accountId],
+    toAccount = toAccountId?.let(accountsById::get),
+    amountCents = amountCents,
+    remark = remark,
+    frequency = frequency,
+    startAtMillis = startAtMillis,
+    endAtMillis = endAtMillis,
+    nextOccurrenceAtMillis = nextOccurrenceAtMillis,
+    enabled = enabled,
+)
+
+fun LedgerRecurringOccurrenceEntity.toDomain() = LedgerRecurringOccurrence(
+    id = id,
+    ruleId = ruleId,
+    transactionId = transactionId,
+    occurrenceAtMillis = occurrenceAtMillis,
+    createdAtMillis = createdAtMillis,
 )

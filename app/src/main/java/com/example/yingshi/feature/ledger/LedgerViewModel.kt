@@ -10,6 +10,7 @@ import com.example.yingshi.feature.ledger.data.LedgerAccountDraft
 import com.example.yingshi.feature.ledger.data.LedgerBudget
 import com.example.yingshi.feature.ledger.data.LedgerBudgetPeriod
 import com.example.yingshi.feature.ledger.data.LedgerBook
+import com.example.yingshi.feature.ledger.data.LedgerBookDraft
 import com.example.yingshi.feature.ledger.data.LedgerCategory
 import com.example.yingshi.feature.ledger.data.LedgerCategoryBudget
 import com.example.yingshi.feature.ledger.data.LedgerCategoryDraft
@@ -17,10 +18,15 @@ import com.example.yingshi.feature.ledger.data.LedgerCategoryType
 import com.example.yingshi.feature.ledger.data.LedgerDatabase
 import com.example.yingshi.feature.ledger.data.LedgerDateUtils
 import com.example.yingshi.feature.ledger.data.LedgerDeletedItem
+import com.example.yingshi.feature.ledger.data.LedgerRecurringFrequency
+import com.example.yingshi.feature.ledger.data.LedgerRecurringRule
+import com.example.yingshi.feature.ledger.data.LedgerRecurringRuleDraft
 import com.example.yingshi.feature.ledger.data.LedgerPeriodStats
+import com.example.yingshi.feature.ledger.data.LedgerPreferencesStore
 import com.example.yingshi.feature.ledger.data.LedgerRepository
 import com.example.yingshi.feature.ledger.data.LedgerSearchFilter
 import com.example.yingshi.feature.ledger.data.LedgerSearchTransactionType
+import com.example.yingshi.feature.ledger.data.LedgerTransferAccountSide
 import com.example.yingshi.feature.ledger.data.LedgerSeedData
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionDraft
@@ -48,7 +54,12 @@ enum class LedgerStatsMode {
 data class LedgerUiState(
     val isLoading: Boolean = true,
     val books: List<LedgerBook> = emptyList(),
+    val archivedBooks: List<LedgerBook> = emptyList(),
+    val defaultBookId: String? = null,
     val currentBookId: String = LedgerSeedData.DefaultBookId,
+    val defaultAccountIdForCurrentBook: String? = null,
+    val defaultAccountIdsByBook: Map<String, String?> = emptyMap(),
+    val visibleAccountsByBook: Map<String, List<LedgerAccount>> = emptyMap(),
     val bookName: String = "日常账本",
     val currencySymbol: String = "¥",
     val selectedMonth: YearMonth = YearMonth.now(),
@@ -63,6 +74,7 @@ data class LedgerUiState(
     val allAccounts: List<LedgerAccount> = emptyList(),
     val allTransactions: List<LedgerTransaction> = emptyList(),
     val transactions: List<LedgerTransaction> = emptyList(),
+    val recurringRules: List<LedgerRecurringRule> = emptyList(),
     val stats: LedgerPeriodStats = LedgerPeriodStats(0, 0, 0, emptyList(), emptyList(), emptyList()),
     val budget: LedgerBudget? = null,
     val categoryBudgets: List<LedgerCategoryBudget> = emptyList(),
@@ -88,10 +100,12 @@ class LedgerViewModel(
     private val repository: LedgerRepository = LedgerRepository(
         LedgerDatabase.getInstance(application).ledgerDao(),
     ),
+    private val preferencesStore: LedgerPreferencesStore = LedgerPreferencesStore(application),
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(LedgerUiState())
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
 
+    private var catalogJob: Job? = null
     private var observeJob: Job? = null
     private var searchJob: Job? = null
 
@@ -99,21 +113,7 @@ class LedgerViewModel(
         viewModelScope.launch {
             repository.ensureSeedData()
             repository.ensureDemoData()
-            repository.observeBooks().collectLatest { books ->
-                val fallbackId = books.firstOrNull()?.id ?: LedgerSeedData.DefaultBookId
-                _uiState.update { state ->
-                    val selectedBookId = if (books.any { it.id == state.currentBookId }) {
-                        state.currentBookId
-                    } else {
-                        fallbackId
-                    }
-                    state.copy(
-                        books = books,
-                        currentBookId = selectedBookId,
-                    )
-                }
-                observe()
-            }
+            observeCatalog()
         }
     }
 
@@ -153,6 +153,185 @@ class LedgerViewModel(
             )
         }
         observe()
+    }
+
+    fun setBookArchived(bookId: String, archived: Boolean) {
+        val activeBooks = _uiState.value.books
+        val targetBook = activeBooks.firstOrNull { it.id == bookId } ?: _uiState.value.archivedBooks.firstOrNull { it.id == bookId }
+        if (targetBook == null) {
+            _uiState.update { it.copy(message = "该账本不可用") }
+            return
+        }
+        if (archived && targetBook.id == _uiState.value.defaultBookId) {
+            _uiState.update { it.copy(message = "默认账本不能归档") }
+            return
+        }
+        if (archived && activeBooks.size <= 1) {
+            _uiState.update { it.copy(message = "至少保留一个可见账本") }
+            return
+        }
+        viewModelScope.launch {
+            repository.setBookArchived(bookId, archived)
+            _uiState.update {
+                it.copy(message = if (archived) "账本已归档" else "账本已恢复")
+            }
+        }
+    }
+
+    fun handleLedgerEntry() {
+        viewModelScope.launch {
+            repository.materializeDueRecurringTransactions()
+            val targetBookId = LedgerPreferencesStore.resolveDefaultBookId(
+                storedBookId = _uiState.value.defaultBookId,
+                visibleBookIds = _uiState.value.books.map { it.id },
+            ) ?: return@launch
+            if (targetBookId != _uiState.value.currentBookId) {
+                _uiState.update {
+                    it.copy(
+                        currentBookId = targetBookId,
+                        defaultAccountIdForCurrentBook = it.defaultAccountIdsByBook[targetBookId],
+                        searchFilter = it.searchFilter.copy(categoryId = null, accountId = null),
+                        selectedSearchTransactionIds = emptySet(),
+                        isSearchSelectionMode = false,
+                    )
+                }
+            }
+            observe()
+        }
+    }
+
+    fun saveBook(
+        bookId: String? = null,
+        name: String,
+        template: String,
+        coverColor: Long,
+        onSaved: () -> Unit = {},
+    ) {
+        val normalizedName = name.trim()
+        if (normalizedName.isBlank()) {
+            _uiState.update { it.copy(message = "请输入账本名称") }
+            return
+        }
+        val duplicate = _uiState.value.books.any {
+            it.id != bookId && it.name.trim().equals(normalizedName, ignoreCase = true)
+        }
+        if (duplicate) {
+            _uiState.update { it.copy(message = "账本名称已存在") }
+            return
+        }
+        viewModelScope.launch {
+            val savedBookId = repository.saveBook(
+                LedgerBookDraft(
+                    id = bookId,
+                    name = normalizedName,
+                    template = template,
+                    coverColor = coverColor,
+                ),
+            )
+            _uiState.update {
+                it.copy(message = if (bookId == null) "账本已新增" else "账本已更新")
+            }
+            if (savedBookId != _uiState.value.currentBookId) {
+                _uiState.update {
+                    it.copy(
+                        currentBookId = savedBookId,
+                        defaultAccountIdForCurrentBook = it.defaultAccountIdsByBook[savedBookId],
+                        searchFilter = it.searchFilter.copy(categoryId = null, accountId = null),
+                        selectedSearchTransactionIds = emptySet(),
+                        isSearchSelectionMode = false,
+                    )
+                }
+                observe()
+            }
+            onSaved()
+        }
+    }
+
+    fun setDefaultBook(bookId: String) {
+        if (_uiState.value.books.none { it.id == bookId }) {
+            _uiState.update { it.copy(message = "该账本不可用") }
+            return
+        }
+        preferencesStore.setDefaultBookId(bookId)
+        _uiState.update {
+            it.copy(
+                defaultBookId = bookId,
+                currentBookId = bookId,
+                defaultAccountIdForCurrentBook = it.defaultAccountIdsByBook[bookId],
+                searchFilter = it.searchFilter.copy(categoryId = null, accountId = null),
+                selectedSearchTransactionIds = emptySet(),
+                isSearchSelectionMode = false,
+                message = "默认账本已更新",
+            )
+        }
+        observe()
+    }
+
+    fun setDefaultAccountForBook(bookId: String, accountId: String?) {
+        val visibleAccounts = _uiState.value.visibleAccountsByBook[bookId].orEmpty()
+        val resolvedAccountId = LedgerPreferencesStore.resolveDefaultAccountId(
+            storedAccountId = accountId,
+            visibleAccountIds = visibleAccounts.map { it.id },
+        )
+        preferencesStore.setDefaultAccountId(bookId, resolvedAccountId)
+        _uiState.update {
+            val nextDefaults = it.defaultAccountIdsByBook.toMutableMap().apply {
+                put(bookId, resolvedAccountId)
+            }
+            it.copy(
+                defaultAccountIdsByBook = nextDefaults,
+                defaultAccountIdForCurrentBook = nextDefaults[it.currentBookId],
+                message = "默认账户已更新",
+            )
+        }
+    }
+
+    fun refreshRecurringRules() {
+        viewModelScope.launch {
+            repository.materializeDueRecurringTransactions()
+            observe()
+        }
+    }
+
+    fun saveRecurringRule(
+        draft: LedgerRecurringRuleDraft,
+        onSaved: () -> Unit = {},
+    ) {
+        val validationMessage = validateRecurringDraft(draft)
+        if (validationMessage != null) {
+            _uiState.update { it.copy(message = validationMessage) }
+            return
+        }
+        viewModelScope.launch {
+            repository.saveRecurringRule(draft.copy(bookId = _uiState.value.currentBookId))
+            repository.materializeDueRecurringTransactions()
+            _uiState.update {
+                it.copy(message = if (draft.id == null) "周期规则已新增" else "周期规则已更新")
+            }
+            observe()
+            onSaved()
+        }
+    }
+
+    fun setRecurringRuleEnabled(ruleId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setRecurringRuleEnabled(ruleId, enabled)
+            if (enabled) {
+                repository.materializeDueRecurringTransactions()
+            }
+            _uiState.update {
+                it.copy(message = if (enabled) "规则已恢复" else "规则已暂停")
+            }
+            observe()
+        }
+    }
+
+    fun deleteRecurringRule(ruleId: String) {
+        viewModelScope.launch {
+            repository.deleteRecurringRule(ruleId)
+            _uiState.update { it.copy(message = "规则已删除") }
+            observe()
+        }
     }
 
     fun selectMonth(month: YearMonth) {
@@ -357,6 +536,14 @@ class LedgerViewModel(
         }
     }
 
+    fun reorderCategories(type: LedgerCategoryType, orderedIds: List<String>) {
+        viewModelScope.launch {
+            repository.reorderCategories(_uiState.value.currentBookId, type, orderedIds)
+            _uiState.update { it.copy(message = "分类顺序已更新") }
+            observe()
+        }
+    }
+
     fun setCategoryHidden(categoryId: String, hidden: Boolean) {
         viewModelScope.launch {
             repository.setCategoryHidden(categoryId, hidden)
@@ -400,6 +587,14 @@ class LedgerViewModel(
             )
             _uiState.update { it.copy(message = if (accountId == null) "账户已新增" else "账户已更新") }
             onSaved()
+        }
+    }
+
+    fun reorderAccounts(orderedIds: List<String>) {
+        viewModelScope.launch {
+            repository.reorderAccounts(_uiState.value.currentBookId, orderedIds)
+            _uiState.update { it.copy(message = "账户顺序已更新") }
+            observe()
         }
     }
 
@@ -461,6 +656,35 @@ class LedgerViewModel(
         }
         viewModelScope.launch {
             repository.batchUpdateAccount(selectedTransactions.map { it.id }, accountId)
+            _uiState.update {
+                it.copy(
+                    selectedSearchTransactionIds = emptySet(),
+                    isSearchSelectionMode = false,
+                    message = "批量改账户已完成",
+                )
+            }
+        }
+    }
+
+    fun updateSelectedTransferTransactionsAccount(side: LedgerTransferAccountSide, accountId: String) {
+        val selectedTransactions = _uiState.value.searchResults.filter { it.id in _uiState.value.selectedSearchTransactionIds }
+        if (selectedTransactions.isEmpty()) return
+        if (selectedTransactions.any { it.type != LedgerTransactionType.TRANSFER }) {
+            _uiState.update { it.copy(message = "仅转账账单可批量改转账账户") }
+            return
+        }
+        val invalid = selectedTransactions.any { transaction ->
+            when (side) {
+                LedgerTransferAccountSide.FROM -> transaction.toAccount?.id == accountId
+                LedgerTransferAccountSide.TO -> transaction.account?.id == accountId
+            }
+        }
+        if (invalid) {
+            _uiState.update { it.copy(message = "转出和转入账户不能相同") }
+            return
+        }
+        viewModelScope.launch {
+            repository.batchUpdateTransferAccount(selectedTransactions.map { it.id }, side, accountId)
             _uiState.update {
                 it.copy(
                     selectedSearchTransactionIds = emptySet(),
@@ -550,6 +774,65 @@ class LedgerViewModel(
         _uiState.update { it.copy(message = null) }
     }
 
+    private fun observeCatalog() {
+        catalogJob?.cancel()
+        catalogJob = viewModelScope.launch {
+            combine(
+                repository.observeBooks(),
+                repository.observeArchivedBooks(),
+                repository.observeAllVisibleAccounts(),
+            ) { books, archivedBooks, visibleAccounts ->
+                Triple(books, archivedBooks, visibleAccounts)
+            }.collectLatest { (books, archivedBooks, visibleAccounts) ->
+                val visibleBookIds = books.map { it.id }
+                val resolvedDefaultBookId = LedgerPreferencesStore.resolveDefaultBookId(
+                    storedBookId = preferencesStore.getDefaultBookId(),
+                    visibleBookIds = visibleBookIds,
+                )
+                if (resolvedDefaultBookId != preferencesStore.getDefaultBookId()) {
+                    preferencesStore.setDefaultBookId(resolvedDefaultBookId)
+                }
+
+                val visibleAccountsByBook = visibleAccounts.groupBy { it.bookId }
+                val resolvedDefaultAccountIdsByBook = books.associate { book ->
+                    val visibleAccountIds = visibleAccountsByBook[book.id].orEmpty().map { it.id }
+                    val resolvedDefaultAccountId = LedgerPreferencesStore.resolveDefaultAccountId(
+                        storedAccountId = preferencesStore.getDefaultAccountId(book.id),
+                        visibleAccountIds = visibleAccountIds,
+                    )
+                    if (resolvedDefaultAccountId != preferencesStore.getDefaultAccountId(book.id)) {
+                        preferencesStore.setDefaultAccountId(book.id, resolvedDefaultAccountId)
+                    }
+                    book.id to resolvedDefaultAccountId
+                }
+
+                val previous = _uiState.value
+                val nextCurrentBookId = when {
+                    visibleBookIds.contains(previous.currentBookId) -> previous.currentBookId
+                    resolvedDefaultBookId != null -> resolvedDefaultBookId
+                    else -> visibleBookIds.firstOrNull() ?: LedgerSeedData.DefaultBookId
+                }
+                val currentBook = books.firstOrNull { it.id == nextCurrentBookId }
+                _uiState.update {
+                    it.copy(
+                        books = books,
+                        archivedBooks = archivedBooks,
+                        defaultBookId = resolvedDefaultBookId,
+                        currentBookId = nextCurrentBookId,
+                        defaultAccountIdForCurrentBook = resolvedDefaultAccountIdsByBook[nextCurrentBookId],
+                        defaultAccountIdsByBook = resolvedDefaultAccountIdsByBook,
+                        visibleAccountsByBook = visibleAccountsByBook,
+                        bookName = currentBook?.name ?: it.bookName,
+                        currencySymbol = currentBook?.currencySymbol ?: it.currencySymbol,
+                    )
+                }
+                if (observeJob == null || nextCurrentBookId != previous.currentBookId) {
+                    observe()
+                }
+            }
+        }
+    }
+
     private fun observe() {
         observeJob?.cancel()
         val bookId = _uiState.value.currentBookId
@@ -576,7 +859,6 @@ class LedgerViewModel(
         val budgetPeriod = _uiState.value.selectedBudgetPeriod
         observeJob = viewModelScope.launch {
             combine(
-                repository.observeBooks(),
                 repository.observeBook(bookId),
                 repository.observeVisibleCategories(bookId),
                 repository.observeAllCategories(bookId),
@@ -584,26 +866,27 @@ class LedgerViewModel(
                 repository.observeAllAccounts(bookId),
                 repository.observeTransactions(bookId),
                 repository.observeTransactionsInRange(bookId, monthRange.startMillis, monthRange.endMillis),
+                repository.observeRecurringRules(bookId),
                 repository.observePeriodStats(bookId, statsRange.startMillis, statsRange.endMillis),
                 repository.observeBudgetBundle(bookId, budgetPeriod, budgetDate),
                 repository.observeDeletedItems(bookId),
             ) { values ->
                 @Suppress("UNCHECKED_CAST")
-                val books = values[0] as List<LedgerBook>
+                val book = values[0] as LedgerBook?
                 @Suppress("UNCHECKED_CAST")
-                val book = values[1] as LedgerBook?
+                val categories = values[1] as List<LedgerCategory>
                 @Suppress("UNCHECKED_CAST")
-                val categories = values[2] as List<LedgerCategory>
+                val allCategories = values[2] as List<LedgerCategory>
                 @Suppress("UNCHECKED_CAST")
-                val allCategories = values[3] as List<LedgerCategory>
+                val accounts = values[3] as List<LedgerAccount>
                 @Suppress("UNCHECKED_CAST")
-                val accounts = values[4] as List<LedgerAccount>
+                val allAccounts = values[4] as List<LedgerAccount>
                 @Suppress("UNCHECKED_CAST")
-                val allAccounts = values[5] as List<LedgerAccount>
+                val allTransactions = values[5] as List<LedgerTransaction>
                 @Suppress("UNCHECKED_CAST")
-                val allTransactions = values[6] as List<LedgerTransaction>
+                val transactions = values[6] as List<LedgerTransaction>
                 @Suppress("UNCHECKED_CAST")
-                val transactions = values[7] as List<LedgerTransaction>
+                val recurringRules = values[7] as List<LedgerRecurringRule>
                 val stats = values[8] as LedgerPeriodStats
                 @Suppress("UNCHECKED_CAST")
                 val budgetBundle = values[9] as Pair<LedgerBudget?, List<LedgerCategoryBudget>>
@@ -612,8 +895,13 @@ class LedgerViewModel(
                 val previous = _uiState.value
                 LedgerUiState(
                     isLoading = false,
-                    books = books,
+                    books = previous.books,
+                    archivedBooks = previous.archivedBooks,
+                    defaultBookId = previous.defaultBookId,
                     currentBookId = book?.id ?: bookId,
+                    defaultAccountIdForCurrentBook = previous.defaultAccountIdsByBook[book?.id ?: bookId],
+                    defaultAccountIdsByBook = previous.defaultAccountIdsByBook,
+                    visibleAccountsByBook = previous.visibleAccountsByBook,
                     bookName = book?.name ?: "日常账本",
                     currencySymbol = book?.currencySymbol ?: "¥",
                     selectedMonth = previous.selectedMonth,
@@ -628,6 +916,7 @@ class LedgerViewModel(
                     allAccounts = allAccounts,
                     allTransactions = allTransactions,
                     transactions = transactions,
+                    recurringRules = recurringRules,
                     stats = stats,
                     budget = budgetBundle.first,
                     categoryBudgets = budgetBundle.second,
@@ -686,6 +975,18 @@ class LedgerViewModel(
             if (toAccountId.isNullOrBlank()) return "请选择转入账户"
             if (accountId == toAccountId) return "转出和转入账户不能相同"
         }
+        return null
+    }
+
+    private fun validateRecurringDraft(draft: LedgerRecurringRuleDraft): String? {
+        if (draft.amountCents <= 0) return "请输入大于 0 的金额"
+        if (draft.accountId.isBlank()) return "请选择账户"
+        if (draft.type != LedgerTransactionType.TRANSFER && draft.categoryId.isNullOrBlank()) return "请选择分类"
+        if (draft.type == LedgerTransactionType.TRANSFER) {
+            if (draft.toAccountId.isNullOrBlank()) return "请选择转入账户"
+            if (draft.accountId == draft.toAccountId) return "转出和转入账户不能相同"
+        }
+        if (draft.endAtMillis != null && draft.endAtMillis < draft.startAtMillis) return "结束时间不能早于首次执行时间"
         return null
     }
 

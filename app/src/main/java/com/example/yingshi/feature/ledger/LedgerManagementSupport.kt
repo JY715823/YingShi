@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as lazyColumnItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -39,9 +42,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableFloatStateOf
 import com.example.yingshi.feature.ledger.data.LedgerAccount
 import com.example.yingshi.feature.ledger.data.LedgerAccountType
 import com.example.yingshi.feature.ledger.data.LedgerCategory
@@ -691,4 +698,89 @@ private fun ColorChoiceChip(
             .then(if (selected) Modifier.border(2.dp, LedgerHeaderGreen, CircleShape) else Modifier)
             .clickable(onClick = onClick),
     )
+}
+
+@Composable
+fun <T> LedgerLongPressReorderList(
+    items: List<T>,
+    keyOf: (T) -> String,
+    modifier: Modifier = Modifier,
+    itemSpacing: androidx.compose.ui.unit.Dp = 8.dp,
+    itemHeight: androidx.compose.ui.unit.Dp = 72.dp,
+    onOrderCommitted: (List<String>) -> Unit,
+    itemContent: @Composable (item: T, isDragging: Boolean) -> Unit,
+) {
+    if (items.isEmpty()) return
+    val density = LocalDensity.current
+    val itemDistancePx = with(density) { (itemHeight + itemSpacing).toPx() }
+    val originalIds = remember(items) { items.map(keyOf) }
+    var orderedIds by remember(items, keyOf) { mutableStateOf(originalIds) }
+    val itemsById = remember(items) { items.associateBy(keyOf) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    fun swap(fromIndex: Int, toIndex: Int) {
+        val mutable = orderedIds.toMutableList()
+        val temp = mutable[fromIndex]
+        mutable[fromIndex] = mutable[toIndex]
+        mutable[toIndex] = temp
+        orderedIds = mutable
+    }
+
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(itemSpacing),
+    ) {
+        lazyColumnItems(orderedIds, key = { itemId -> itemId }) { id ->
+            val item = itemsById[id]
+            if (item != null) {
+                val isDragging = draggedId == id
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            translationY = if (isDragging) dragOffsetPx else 0f
+                            alpha = if (draggedId != null && !isDragging) 0.94f else 1f
+                        }
+                        .pointerInput(id) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggedId = id
+                                    dragOffsetPx = 0f
+                                },
+                                onDragEnd = {
+                                    val reordered = orderedIds != originalIds
+                                    draggedId = null
+                                    dragOffsetPx = 0f
+                                    if (reordered) onOrderCommitted(orderedIds)
+                                },
+                                onDragCancel = {
+                                    draggedId = null
+                                    dragOffsetPx = 0f
+                                    orderedIds = originalIds
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val activeId = draggedId ?: return@detectDragGesturesAfterLongPress
+                                    dragOffsetPx += dragAmount.y
+                                    var index = orderedIds.indexOf(activeId)
+                                    while (dragOffsetPx > itemDistancePx && index < orderedIds.lastIndex) {
+                                        swap(index, index + 1)
+                                        dragOffsetPx -= itemDistancePx
+                                        index++
+                                    }
+                                    while (dragOffsetPx < -itemDistancePx && index > 0) {
+                                        swap(index, index - 1)
+                                        dragOffsetPx += itemDistancePx
+                                        index--
+                                    }
+                                },
+                            )
+                        },
+                ) {
+                    itemContent(item, isDragging)
+                }
+            }
+        }
+    }
 }

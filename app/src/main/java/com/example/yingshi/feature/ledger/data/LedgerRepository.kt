@@ -40,6 +40,14 @@ class LedgerRepository(
         rows.map { it.toDomain() }
     }
 
+    fun observeArchivedBooks(): Flow<List<LedgerBook>> = dao.observeArchivedBooks().map { rows ->
+        rows.map { it.toDomain() }
+    }
+
+    fun observeAllBooks(): Flow<List<LedgerBook>> = dao.observeAllBooks().map { rows ->
+        rows.map { it.toDomain() }
+    }
+
     fun observePrimaryBook(): Flow<LedgerBook?> = dao.observePrimaryBook().map { it?.toDomain() }
 
     fun observeBook(bookId: String): Flow<LedgerBook?> = dao.observeBook(bookId).map { it?.toDomain() }
@@ -56,8 +64,13 @@ class LedgerRepository(
     fun observeVisibleAccounts(bookId: String): Flow<List<LedgerAccount>> =
         dao.observeVisibleAccounts(bookId).map { rows -> rows.map { it.toDomain() } }
 
+    fun observeAllVisibleAccounts(): Flow<List<LedgerAccount>> =
+        dao.observeVisibleAccountsAcrossBooks().map { rows -> rows.map { it.toDomain() } }
+
     fun observeAllAccounts(bookId: String): Flow<List<LedgerAccount>> =
         dao.observeAllAccounts(bookId).map { rows -> rows.map { it.toDomain() } }
+
+    fun observeAccounts(bookId: String): Flow<List<LedgerAccount>> = observeVisibleAccounts(bookId)
 
     fun observeTransactions(bookId: String): Flow<List<LedgerTransaction>> = combine(
         dao.observeTransactions(bookId),
@@ -153,6 +166,206 @@ class LedgerRepository(
                 )
             }
         }
+
+    fun observeRecurringRules(bookId: String): Flow<List<LedgerRecurringRule>> = combine(
+        dao.observeRecurringRules(bookId),
+        dao.observeAllCategories(bookId),
+        dao.observeAllAccounts(bookId),
+    ) { rules, categories, accounts ->
+        val categoriesById = categories.associateBy({ it.id }, { it.toDomain() })
+        val accountsById = accounts.associateBy({ it.id }, { it.toDomain() })
+        rules.map { it.toDomain(categoriesById, accountsById) }
+    }
+
+    suspend fun findBookByName(name: String): LedgerBook? = dao.findBookByName(name)?.toDomain()
+
+    suspend fun saveBook(draft: LedgerBookDraft): String {
+        val now = System.currentTimeMillis()
+        val existing = draft.id?.let { dao.getBook(it) }
+        val normalizedName = draft.name.trim()
+        return if (existing == null) {
+            val bookId = UUID.randomUUID().toString()
+            val nextSortOrder = dao.observeAllBooks().first().maxOfOrNull { it.sortOrder }?.plus(1) ?: 0
+            val template = draft.template.ifBlank { LedgerBookTemplateDaily }
+            dao.insertBook(
+                LedgerBookEntity(
+                    id = bookId,
+                    name = normalizedName,
+                    template = template,
+                    currencyCode = "CNY",
+                    currencySymbol = "¥",
+                    coverColor = draft.coverColor,
+                    sortOrder = nextSortOrder,
+                    createdAtMillis = now,
+                    updatedAtMillis = now,
+                ),
+            )
+            dao.insertCategories(LedgerSeedData.seedCategoriesForTemplate(bookId, template, now))
+            dao.insertAccounts(LedgerSeedData.seedAccountsForTemplate(bookId, template, now))
+            bookId
+        } else {
+            dao.updateBook(
+                existing.copy(
+                    name = normalizedName,
+                    coverColor = draft.coverColor,
+                    updatedAtMillis = now,
+                ),
+            )
+            existing.id
+        }
+    }
+
+    suspend fun setBookArchived(bookId: String, archived: Boolean) {
+        dao.setBookArchived(bookId, archived, System.currentTimeMillis())
+    }
+
+    suspend fun reorderCategories(bookId: String, type: LedgerCategoryType, orderedIds: List<String>) {
+        val now = System.currentTimeMillis()
+        val categories = dao.observeAllCategories(bookId).first()
+            .filter { it.type == type }
+            .associateBy { it.id }
+        orderedIds.distinct().forEachIndexed { index, categoryId ->
+            val category = categories[categoryId] ?: return@forEachIndexed
+            if (category.sortOrder != index) {
+                dao.updateCategory(
+                    category.copy(
+                        sortOrder = index,
+                        updatedAtMillis = now,
+                    ),
+                )
+            }
+        }
+    }
+
+    suspend fun reorderAccounts(bookId: String, orderedIds: List<String>) {
+        val now = System.currentTimeMillis()
+        val accounts = dao.observeAllAccounts(bookId).first()
+            .associateBy { it.id }
+        orderedIds.distinct().forEachIndexed { index, accountId ->
+            val account = accounts[accountId] ?: return@forEachIndexed
+            if (account.sortOrder != index) {
+                dao.updateAccount(
+                    account.copy(
+                        sortOrder = index,
+                        updatedAtMillis = now,
+                    ),
+                )
+            }
+        }
+    }
+
+    suspend fun saveRecurringRule(draft: LedgerRecurringRuleDraft): String {
+        val now = System.currentTimeMillis()
+        val existing = draft.id?.let { dao.getRecurringRule(it) }
+        val nextOccurrenceAtMillis = if (existing == null) {
+            LedgerRecurringScheduler.firstOccurrenceAtOrAfter(
+                referenceMillis = draft.startAtMillis,
+                startAtMillis = draft.startAtMillis,
+                frequency = draft.frequency,
+            )
+        } else {
+            LedgerRecurringScheduler.firstOccurrenceAtOrAfter(
+                referenceMillis = maxOf(existing.nextOccurrenceAtMillis, draft.startAtMillis),
+                startAtMillis = draft.startAtMillis,
+                frequency = draft.frequency,
+            )
+        }
+        val entity = LedgerRecurringRuleEntity(
+            id = existing?.id ?: UUID.randomUUID().toString(),
+            bookId = draft.bookId,
+            type = draft.type,
+            categoryId = draft.categoryId,
+            accountId = draft.accountId,
+            toAccountId = draft.toAccountId,
+            amountCents = draft.amountCents,
+            remark = draft.remark.trim(),
+            frequency = draft.frequency,
+            startAtMillis = draft.startAtMillis,
+            endAtMillis = draft.endAtMillis,
+            nextOccurrenceAtMillis = nextOccurrenceAtMillis,
+            enabled = draft.enabled,
+            createdAtMillis = existing?.createdAtMillis ?: now,
+            updatedAtMillis = now,
+        )
+        if (existing == null) {
+            dao.insertRecurringRule(entity)
+        } else {
+            dao.updateRecurringRule(entity)
+        }
+        return entity.id
+    }
+
+    suspend fun setRecurringRuleEnabled(ruleId: String, enabled: Boolean) {
+        val rule = dao.getRecurringRule(ruleId) ?: return
+        dao.updateRecurringRule(
+            rule.copy(
+                enabled = enabled,
+                updatedAtMillis = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    suspend fun deleteRecurringRule(ruleId: String) {
+        dao.deleteRecurringOccurrencesByRuleId(ruleId)
+        dao.deleteRecurringRule(ruleId)
+    }
+
+    suspend fun materializeDueRecurringTransactions(nowMillis: Long = System.currentTimeMillis()) {
+        val dueRules = dao.getDueRecurringRules(nowMillis)
+        dueRules.forEach { rule ->
+            var cursor = rule
+            while (cursor.enabled &&
+                cursor.nextOccurrenceAtMillis <= nowMillis &&
+                (cursor.endAtMillis == null || cursor.nextOccurrenceAtMillis <= cursor.endAtMillis)
+            ) {
+                val occurrenceAtMillis = cursor.nextOccurrenceAtMillis
+                val occurrenceId = recurringOccurrenceId(cursor.id, occurrenceAtMillis)
+                val transactionId = recurringTransactionId(cursor.id, occurrenceAtMillis)
+                val occurrence = LedgerRecurringOccurrenceEntity(
+                    id = occurrenceId,
+                    ruleId = cursor.id,
+                    transactionId = transactionId,
+                    occurrenceAtMillis = occurrenceAtMillis,
+                    createdAtMillis = nowMillis,
+                )
+                val occurrenceExists = dao.getRecurringOccurrence(cursor.id, occurrenceAtMillis) != null
+                if (!occurrenceExists) {
+                    dao.insertRecurringOccurrence(occurrence)
+                }
+                val transactionExists = dao.getTransaction(transactionId) != null
+                if (!transactionExists) {
+                    dao.insertTransaction(
+                        LedgerTransactionEntity(
+                            id = transactionId,
+                            bookId = cursor.bookId,
+                            categoryId = cursor.categoryId,
+                            accountId = cursor.accountId,
+                            toAccountId = cursor.toAccountId,
+                            amountCents = cursor.amountCents,
+                            type = cursor.type,
+                            occurredAtMillis = occurrenceAtMillis,
+                            remark = cursor.remark,
+                            method = "recurring",
+                            createdAtMillis = nowMillis,
+                            updatedAtMillis = nowMillis,
+                        ),
+                    )
+                }
+                val next = LedgerRecurringScheduler.nextOccurrenceAfter(
+                    occurrenceMillis = occurrenceAtMillis,
+                    startAtMillis = cursor.startAtMillis,
+                    frequency = cursor.frequency,
+                )
+                cursor = cursor.copy(
+                    nextOccurrenceAtMillis = next,
+                    updatedAtMillis = nowMillis,
+                )
+            }
+            if (cursor.nextOccurrenceAtMillis != rule.nextOccurrenceAtMillis) {
+                dao.updateRecurringRule(cursor)
+            }
+        }
+    }
 
     suspend fun saveTransaction(draft: LedgerTransactionDraft) {
         val now = System.currentTimeMillis()
@@ -369,6 +582,24 @@ class LedgerRepository(
         }
     }
 
+    suspend fun batchUpdateTransferAccount(
+        transactionIds: List<String>,
+        side: LedgerTransferAccountSide,
+        accountId: String,
+    ) {
+        val now = System.currentTimeMillis()
+        dao.getTransactions(transactionIds.distinct()).forEach { transaction ->
+            if (transaction.type != LedgerTransactionType.TRANSFER) return@forEach
+            dao.updateTransaction(
+                transaction.copy(
+                    accountId = if (side == LedgerTransferAccountSide.FROM) accountId else transaction.accountId,
+                    toAccountId = if (side == LedgerTransferAccountSide.TO) accountId else transaction.toAccountId,
+                    updatedAtMillis = now,
+                ),
+            )
+        }
+    }
+
     suspend fun upsertBudget(
         bookId: String,
         period: LedgerBudgetPeriod,
@@ -448,6 +679,12 @@ class LedgerRepository(
     suspend fun clearCategoryBudget(budgetId: String, categoryId: String) {
         dao.deleteCategoryBudgetByCategory(budgetId, categoryId)
     }
+
+    private fun recurringOccurrenceId(ruleId: String, occurrenceAtMillis: Long): String =
+        "recurring-occurrence-$ruleId-$occurrenceAtMillis"
+
+    private fun recurringTransactionId(ruleId: String, occurrenceAtMillis: Long): String =
+        "recurring-transaction-$ruleId-$occurrenceAtMillis"
 
     private fun mapTransactions(
         transactions: List<LedgerTransactionEntity>,

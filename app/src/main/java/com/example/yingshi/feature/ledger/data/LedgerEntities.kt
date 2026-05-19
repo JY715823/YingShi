@@ -171,3 +171,43 @@ data class LedgerDeletedItemEntity(
     val deletedAtMillis: Long,
     val expiresAtMillis: Long,
 )
+
+@Entity(
+    tableName = "ledger_recurring_rules",
+    indices = [
+        Index(value = ["bookId", "enabled", "nextOccurrenceAtMillis"]),
+        Index(value = ["bookId", "type"]),
+    ],
+)
+data class LedgerRecurringRuleEntity(
+    @PrimaryKey val id: String,
+    val bookId: String,
+    val type: LedgerTransactionType,
+    val categoryId: String?,
+    val accountId: String,
+    val toAccountId: String?,
+    val amountCents: Long,
+    val remark: String,
+    val frequency: LedgerRecurringFrequency,
+    val startAtMillis: Long,
+    val endAtMillis: Long?,
+    val nextOccurrenceAtMillis: Long,
+    val enabled: Boolean,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long,
+)
+
+@Entity(
+    tableName = "ledger_recurring_occurrences",
+    indices = [
+        Index(value = ["ruleId", "occurrenceAtMillis"], unique = true),
+        Index(value = ["transactionId"], unique = true),
+    ],
+)
+data class LedgerRecurringOccurrenceEntity(
+    @PrimaryKey val id: String,
+    val ruleId: String,
+    val transactionId: String,
+    val occurrenceAtMillis: Long,
+    val createdAtMillis: Long,
+)
