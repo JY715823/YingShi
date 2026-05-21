@@ -20,6 +20,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 fun LifeScreen(
     modifier: Modifier = Modifier,
     onOpenLedger: () -> Unit = {},
+    onOpenChatViewer: () -> Unit = {},
 ) {
     ShellPage(
         title = "生活",
@@ -38,8 +39,8 @@ fun LifeScreen(
             )
             LifeEntryCard(
                 title = "聊天记录查看器",
-                summary = "是否保留以及如何呈现，留到后续阶段再定。",
-                onClick = {},
+                summary = "导入 QCE ZIP，合并多会话，本地离线浏览 QQ 风格聊天记录。",
+                onClick = onOpenChatViewer,
             )
         },
     )

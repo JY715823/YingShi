@@ -47,6 +47,24 @@ captures/
 .externalNativeBuild/
 .cxx/
 
+# Chat import runtime / local test payloads
+chat-imports/
+chat-imports-temp/
+app/chat-imports/
+app/chat-imports-temp/
+app/src/main/assets/chat-imports/
+app/src/main/assets/chat-imports-temp/
+app/src/debug/assets/chat-imports/
+app/src/debug/assets/chat-imports-temp/
+app/src/androidTest/assets/chat-imports/
+app/src/androidTest/assets/chat-imports-temp/
+_research/chat_shower/
+_research/**/*.zip
+_research/**/*.jsonl
+_research/**/chunks/
+_research/**/resources/
+_research/**/avatars.json
+
 # Kotlin / Java crash or temp
 hs_err_pid*
 replay_pid*

@@ -36,6 +36,7 @@ import com.example.yingshi.data.remote.result.isUnauthorized
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.auth.LoginScreen
+import com.example.yingshi.feature.chat.ImportedChatScreen
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.ledger.LedgerScreen
@@ -111,6 +112,9 @@ fun YingShiApp() {
         mutableStateOf(false)
     }
     var ledgerRouteActive by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var chatViewerRouteActive by rememberSaveable {
         mutableStateOf(false)
     }
     var ledgerOpenAddNonce by rememberSaveable {
@@ -196,6 +200,7 @@ fun YingShiApp() {
 
     fun clearProtectedUiRoutes() {
         ledgerRouteActive = false
+        chatViewerRouteActive = false
         photoViewerRoute = null
         systemMediaRoute = null
         systemMediaViewerRoute = null
@@ -551,7 +556,8 @@ fun YingShiApp() {
                 backendDiagnosticsRoute == null &&
                 cacheManagementRoute == null &&
                 !isProfileFlowActive &&
-                !ledgerRouteActive,
+                !ledgerRouteActive &&
+                !chatViewerRouteActive,
         ) {
             when {
             backendDiagnosticsRoute != null -> {
@@ -799,10 +805,20 @@ fun YingShiApp() {
                                 onCloseLedger = { ledgerRouteActive = false },
                                 modifier = Modifier.fillMaxSize(),
                             )
+                        } else if (chatViewerRouteActive) {
+                            ImportedChatScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                onBack = { chatViewerRouteActive = false },
+                            )
                         } else {
                             LifeScreen(
                                 onOpenLedger = {
+                                    chatViewerRouteActive = false
                                     ledgerRouteActive = true
+                                },
+                                onOpenChatViewer = {
+                                    ledgerRouteActive = false
+                                    chatViewerRouteActive = true
                                 },
                             )
                         }
