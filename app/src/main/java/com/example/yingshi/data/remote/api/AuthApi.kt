@@ -7,6 +7,8 @@ import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.LoginResponseDto
 import com.example.yingshi.data.remote.dto.LogoutRequestDto
 import com.example.yingshi.data.remote.dto.LogoutResponseDto
+import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.RefreshTokenResponseDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -20,6 +22,12 @@ interface AuthApi {
     suspend fun login(
         @Body request: LoginRequestDto,
     ): ApiEnvelopeDto<LoginResponseDto>
+
+    @Headers("${RemoteConfig.NO_AUTH_HEADER}: true")
+    @POST("api/auth/refresh-token")
+    suspend fun refreshToken(
+        @Body request: RefreshTokenRequestDto,
+    ): ApiEnvelopeDto<RefreshTokenResponseDto>
 
     @POST("api/auth/logout")
     suspend fun logout(

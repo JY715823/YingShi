@@ -1,71 +1,91 @@
 # YingShi Android
 
-映时 Android 客户端。当前项目已经从早期壳层推进到“照片核心链路可用、真实后端可切换、系统媒体导入与回收站闭环可联调”的阶段。
+映时 Android 客户端。当前代码已经从早期壳层推进到“认证可用、照片主链路可用、系统媒体导入可用、回收站闭环可联调、我的/生活模块已有真实功能”的阶段。
 
 ## 当前状态
 
-- 默认仓库模式：`REAL`
-- 默认后端地址：`http://10.106.3.193:8080/`
-- UI 技术栈：Kotlin、Jetpack Compose、Material 3
-- 媒体能力：Coil 图片/视频缩略图、Android Photo Picker、MediaStore 查询与系统回收站请求
-- 网络能力：Retrofit + Gson、JWT 会话、FAKE / REAL Repository 切换
+- `debug` / `profile` / `optimizedDebug` 默认仓库模式都是 `REAL`
+- `debug` 默认后端地址是 `http://10.106.3.193:8080/`
+- 运行时仍支持在 `我的 -> 设置 -> 后端联调诊断` 中切换 `FAKE / REAL`
+- 登录会话会持久化到 `SharedPreferences`，应用启动会自动校验 `/api/auth/me`
+- 保留 `FAKE` 数据链路，便于离线调 UI、回归交互和隔离后端问题
 
-项目仍保留 FAKE 数据链路，用于离线调试、交互验证和避免后端不可用时阻塞 UI 精修。
+## 最新进度概览
 
-## 已实现功能
+- App 壳层已经稳定为四个一级入口：`首页 / 照片 / 生活 / 我的`
+- 照片模块已经覆盖 `照片 / 相册 / 回收站` 三个二级入口，以及 Viewer、帖子详情、帖子编辑、评论、删除与恢复链路
+- 系统媒体链路已经接入 `MediaStore`、系统回收站请求、导入 App、发新帖、加入已有帖子和传输中心
+- 认证链路已经接入真实后端：登录、refresh-token、登出、当前用户、编辑个人资料、共享空间/搭子信息展示
+- `我的` 页面、设置、缓存管理、后端联调诊断都已经可用
+- `生活` 当前保留记账模块和聊天记录查看器，`纪念日` 入口已经移除
+- REAL Repository 已对齐后端新增接口：`GET /api/posts`、`POST /api/auth/refresh-token`、上传任务 `status / confirm / cancel`
 
-完整清单见 [已实现功能清单](docs/implementation/implemented-features.md)。
+完整清单见 [已实现功能清单](E:/Study/App/YingShi/docs/implementation/implemented-features.md)。
 
-摘要如下：
+## 当前前后端对齐情况
 
-- 全局 App 壳层：主页、照片、生活、我的四个一级入口，中央新增按钮，全屏业务页自动隐藏底部栏。
-- 照片模块：照片流、相册/帖子目录、回收站三个二级入口。
-- 照片流：全局媒体去重、按时间分区、密度切换、时间滑条、多选、发成新帖子、加入已有帖子、移入回收站。
-- Viewer：图片/视频查看、左右切换、缩放、长图适配、原图加载、评论入口、打开所属帖子、删除/回收站链路。
-- 相册与帖子：相册列表、帖子列表、帖子详情、帖子评论、帖子编辑、媒体管理、封面与排序。
-- 新建帖子：从底部新增、照片流选择、系统媒体选择、系统媒体 Viewer 进入，支持标题、摘要、相册、封面和后台上传。
-- 系统媒体：MediaStore 图片/视频列表、筛选、时间分区、时间滑条、多选、导入 App、发新帖、加入已有帖、移入系统回收站。
-- 传输中心：上传任务列表、剩余任务 badge、状态汇总、失败清理/重试入口、任务结果打开媒体。
-- 回收站：帖子删除、帖子内媒体移除、媒体系统删三类记录，支持详情、恢复、移出、24h 可撤销分类。
-- 通知与设置：通知中心、通知详情、通知目标跳转、设置页、缓存管理、后端联调诊断。
-- 后端接入：auth、album、post、media、comment、trash、upload、health 契约与真实 Repository。
+已经对齐的真实能力：
+
+- `auth`：`login / refresh-token / me / logout / me/profile`
+- `albums`：相册列表、相册帖子列表
+- `posts`：列表、详情、创建、更新、封面、排序、加媒体、删除
+- `media`：照片流、媒体文件、系统删除、帖子内移除
+- `comments`：帖子评论和媒体评论的增删改查
+- `trash`：列表、详情、恢复、移出、永久删除、撤销移出、待清理列表
+- `upload`：上传 token、multipart 文件上传、上传任务状态、confirm、cancel
+
+后端已提供、但 Android UI 还没有完全消费的能力：
+
+- 头像上传 / 头像读取：`POST /api/auth/me/avatar`、`GET /api/auth/avatar/{userId}`
+- 通知接口：`GET /api/notifications`、详情、已读、全部已读
+
+当前仍有明确缺口：
+
+- 通知中心当前仍以本地 fake 数据为主，尚未接真实服务端通知源
+- 头像上传与真实头像图片展示的 Android UI 仍未接入
+- refresh-token 虽已在 `RealAuthRepository` 接通，但全局自动续期与失败请求重放策略仍未完整接好
+- 远程内容离线同步仍未完成
 
 ## 文档入口
 
 建议按下面顺序阅读：
 
-1. [已实现功能清单](docs/implementation/implemented-features.md)
-2. [当前任务](docs/implementation/current-task.md)
-3. [路线图](docs/implementation/roadmap.md)
-4. [产品 PRD](docs/product/album-prd-v2.md)
-5. [UI 设计说明](docs/design/ui-design-v2.md)
-6. [前后端联调指南](docs/integration/frontend-backend-testing-guide.md)
-7. [API 契约总览](docs/contracts/api-overview.md)
-8. [协作说明](AGENTS.md)
+1. [已实现功能清单](E:/Study/App/YingShi/docs/implementation/implemented-features.md)
+2. [当前任务](E:/Study/App/YingShi/docs/implementation/current-task.md)
+3. [路线图](E:/Study/App/YingShi/docs/implementation/roadmap.md)
+4. [前后端联调指南](E:/Study/App/YingShi/docs/integration/frontend-backend-testing-guide.md)
+5. [API 契约总览](E:/Study/App/YingShi/docs/contracts/api-overview.md)
+6. [Auth 契约](E:/Study/App/YingShi/docs/contracts/auth-api.md)
+7. [Upload 契约](E:/Study/App/YingShi/docs/contracts/upload-api.md)
+8. [Notification 契约](E:/Study/App/YingShi/docs/contracts/notification-api.md)
+9. [Trash 契约](E:/Study/App/YingShi/docs/contracts/trash-api.md)
+10. [协作说明](E:/Study/App/YingShi/AGENTS.md)
 
 ## 仓库结构
 
 - `app/src/main/java/com/example/yingshi/app`
-  应用状态、全局路由、全屏覆盖页与底部导航控制。
+  应用状态、全局路由、全屏覆盖页、启动鉴权和壳层控制。
 - `app/src/main/java/com/example/yingshi/navigation`
-  一级导航和照片模块二级导航定义。
+  一级导航与照片模块二级导航定义。
 - `app/src/main/java/com/example/yingshi/feature/photos`
-  照片、相册、帖子、Viewer、系统媒体、上传、回收站、通知、设置等核心功能。
+  照片流、相册、帖子、Viewer、系统媒体、上传、回收站、设置、诊断等核心功能。
+- `app/src/main/java/com/example/yingshi/feature/me`
+  我的、个人主页、编辑资料、共享空间与搭子展示。
+- `app/src/main/java/com/example/yingshi/feature/life`
+  生活入口、记账模块、聊天记录查看器。
 - `app/src/main/java/com/example/yingshi/data/remote`
-  Retrofit API、DTO、Mapper、后端配置和认证拦截。
+  Retrofit API、DTO、Mapper、后端配置、鉴权拦截和会话管理。
 - `app/src/main/java/com/example/yingshi/data/repository`
-  FAKE / REAL Repository 契约与实现。
-- `app/src/main/java/com/example/yingshi/ui`
-  全局主题、设计 token、壳层组件。
+  `FAKE / REAL` Repository 契约与实现。
 - `docs`
-  产品、设计、实现、契约和联调文档。
+  产品、设计、实现进度、契约和联调文档。
 
 ## 运行
 
 Windows:
 
 ```powershell
-cd E:\Study\Android\YingShiApp\YingShi
+cd E:\Study\App\YingShi
 .\gradlew.bat assembleDebug
 ```
 
@@ -75,13 +95,16 @@ cd E:\Study\Android\YingShiApp\YingShi
 .\gradlew.bat :app:compileDebugKotlin
 ```
 
-也可以直接用 Android Studio 打开 `YingShi` 并运行 `app`。
+也可以直接用 Android Studio 打开 `E:\Study\App\YingShi` 并运行 `app`。
 
 ## 后端联调
 
-1. 启动 `YingShi-Server`。
-2. 在 App 中进入 `我的 -> 设置 -> 后端联调诊断`。
-3. 确认 `baseUrl`、FAKE / REAL 模式、登录状态。
-4. 依次执行 health、login、albums、media、comments、trash、upload 等 smoke check。
+1. 启动 `E:\Study\App\YingShi-Server`
+2. 在 App 中进入 `我的 -> 设置 -> 后端联调诊断`
+3. 确认 `Base URL` 指向当前后端
+4. 点击 `保存并重登`，确认默认 demo 账号自动登录成功
+5. 点击 `检查健康`
+6. 将模式切到 `REAL`，再重新打开需要验证的页面
+7. 在真实页面里验证照片流、相册、帖子详情、回收站、上传和“我的”资料链路
 
 如果后端不可用，可以在诊断页切回 `FAKE` 模式继续调 UI。

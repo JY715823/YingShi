@@ -1,94 +1,148 @@
-# API Overview Draft
+# API 契约总览
 
-## Status
-- Stage 11.1 draft only
-- no live backend required
-- no final auth or pagination behavior locked yet
+更新时间：2026-05-25
 
-## Purpose
-This document defines the first client-side API boundary for future backend integration.
-The goal is to keep UI models separate from transport models while preserving the current fake-first app flow.
+## 状态
 
-## Stage 12.5 Viewer Notes
-- Viewer 原图入口由客户端根据 `thumbnailUrl / mediaUrl / originalUrl` 优先级和差异性决定，不等于“只要 DTO 带了 `originalUrl` 字段就一定显示按钮”。
-- `postIds` 继续是 Viewer “所属帖子”跳转的最小契约；即使没有帖子标题，客户端也会用 `postId` 构造稳定跳转 route。
-- 系统媒体 Viewer 不消费帖子专属字段；评论、所属帖子、原图按钮只属于 app 内容 Viewer。
+- 本文档描述当前 Android `REAL` 模式与 `YingShi-Server` 的联调基线
+- 照片主链路、回收站、上传主链路已经可以稳定联调
+- 仍有少量“后端已提供但 Android UI 尚未消费”的能力，见“当前缺口”
 
-## Base URL
-- placeholder only: `https://api-placeholder.yingshi.local/`
-- must be configurable
-- must not hardcode a production server
+## 通用规则
 
-## Auth
-- bearer token placeholder
-- request header draft:
-  - `Authorization: Bearer <token>`
-- auth contract details now live in `auth-api.md`
-- token acquisition and refresh remain placeholder-only in Stage 11.2
+- 当前服务端统一使用：
+  - 成功响应：`{ requestId, data, page? }`
+  - 失败响应：`{ requestId, error }`
+- JSON 字段使用 `camelCase`
+- 资源标识统一使用字符串 ID，如 `mediaId`、`postId`、`commentId`
+- 时间字段统一使用毫秒时间戳
+- 受保护接口统一使用：
 
-## Envelope Draft
-
-Successful response draft:
-
-```json
-{
-  "requestId": "req_123",
-  "data": {},
-  "page": {
-    "page": 1,
-    "pageSize": 20,
-    "nextCursor": null,
-    "hasMore": false
-  }
-}
+```http
+Authorization: Bearer <accessToken>
 ```
 
-Error response draft:
+## 当前已实现接口范围
 
-```json
-{
-  "requestId": "req_123",
-  "error": {
-    "code": "NOT_IMPLEMENTED",
-    "message": "Placeholder error",
-    "details": null
-  }
-}
-```
+### 认证
 
-## Naming Rules
-- JSON fields use `camelCase`
-- IDs use string form such as `mediaId`, `postId`, `commentId`
-- timestamps use UTC milliseconds or ISO-8601 string
-- booleans use explicit names such as `isDeleted`, `isRead`, `hasMore`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh-token`
+- `GET /api/auth/me`
+- `PATCH /api/auth/me/profile`
+- `POST /api/auth/logout`
 
-## Pagination Draft
-- page-number and cursor styles are both reserved
-- list endpoints in Stage 11.1 expose placeholder params:
-  - `page`
-  - `pageSize`
-  - `cursor`
-- final backend can choose one style later, but the contract docs should mention the placeholder path now
+### 健康检查
 
-## Error Code Placeholders
-- `UNAUTHORIZED`
-- `FORBIDDEN`
-- `NOT_FOUND`
+- `GET /api/health`
+
+### 相册 / 帖子 / 媒体
+
+- `GET /api/albums`
+- `GET /api/albums/{albumId}/posts`
+- `GET /api/posts`
+- `GET /api/posts/{postId}`
+- `POST /api/posts`
+- `PATCH /api/posts/{postId}`
+- `PATCH /api/posts/{postId}/cover`
+- `PATCH /api/posts/{postId}/media-order`
+- `POST /api/posts/{postId}/media`
+- `DELETE /api/posts/{postId}`
+- `DELETE /api/posts/{postId}/media/{mediaId}?deleteMode=directory|system`
+- `GET /api/media/feed`
+- `GET /api/media/files/{mediaId}?variant=original|preview|cover`
+- `DELETE /api/media/{mediaId}`
+
+### 评论
+
+- `GET /api/posts/{postId}/comments`
+- `GET /api/media/{mediaId}/comments`
+- `POST /api/posts/{postId}/comments`
+- `POST /api/media/{mediaId}/comments`
+- `PATCH /api/comments/{commentId}`
+- `DELETE /api/comments/{commentId}`
+
+### 回收站
+
+- `GET /api/trash/items`
+- `GET /api/trash/items/{trashItemId}`
+- `POST /api/trash/items/{trashItemId}/restore`
+- `POST /api/trash/items/{trashItemId}/remove`
+- `POST /api/trash/items/{trashItemId}/purge`
+- `POST /api/trash/items/{trashItemId}/undo-remove`
+- `GET /api/trash/pending-cleanup`
+
+### 上传
+
+- `POST /api/uploads/token`
+- `POST /api/uploads/{uploadId}/file`
+- `GET /api/uploads/{uploadId}`
+- `POST /api/uploads/{uploadId}/confirm`
+- `POST /api/uploads/{uploadId}/cancel`
+
+### 后端已提供、Android UI 尚未接入的附加接口
+
+- `POST /api/auth/me/avatar`
+- `GET /api/auth/avatar/{userId}`
+- `GET /api/notifications`
+- `GET /api/notifications/{notificationId}`
+- `POST /api/notifications/{notificationId}/read`
+- `POST /api/notifications/read-all`
+
+## Android 侧当前已打通的 REAL Repository
+
+- `AuthRepository`
+- `AlbumRepository`
+- `MediaRepository`
+- `PostRepository`
+- `CommentRepository`
+- `TrashRepository`
+- `UploadRepository`
+
+## 当前缺口
+
+- 通知中心当前仍使用本地 fake 数据，尚未切到真实通知接口
+- 头像上传与头像图片展示的 Android UI 尚未接入
+- refresh-token 接口已可用，但全局自动续期与失败请求重放策略尚未完整接好
+- 对象存储直连、转码 / CDN、远程内容离线同步不在当前阶段
+
+## 关键联调约定
+
+- Android 默认可以在 `FAKE / REAL` 两种模式间切换
+- 切换 `Base URL` 会清空旧 token 并立即重建 Retrofit
+- 照片流只消费已经进入 App 内容主链路的媒体
+- Viewer 图片预览优先级为：
+  - `thumbnailUrl`
+  - `mediaUrl`
+  - `originalUrl`
+- 系统媒体 Viewer 不消费帖子专属字段
+- 上传返回的媒体即使暂时没有挂帖，也允许进入真实媒体流
+- `confirmUpload` 是上传任务收尾 / 状态确认接口，不会再次创建媒体
+
+## 分页说明
+
+- `GET /api/media/feed` 当前同时兼容：
+  - 不带参数时直接返回列表
+  - 带 `cursor / pageSize` 时返回 `page.nextCursor / page.hasMore`
+- `GET /api/trash/items` 当前使用页码分页：`page / size`
+- 评论列表当前也使用页码分页
+- `GET /api/notifications` 当前使用 `limit`
+
+## 常见错误码
+
+- `AUTH_INVALID_CREDENTIALS`
+- `AUTH_TOKEN_EXPIRED`
+- `AUTH_UNAUTHORIZED`
+- `AUTH_SESSION_INVALID`
+- `ALBUM_NOT_FOUND`
+- `POST_NOT_FOUND`
+- `MEDIA_NOT_FOUND`
+- `COMMENT_NOT_FOUND`
+- `DELETE_CONFLICT`
+- `RESTORE_CONFLICT`
+- `REMOVE_FROM_TRASH_CONFLICT`
+- `UNDO_REMOVE_EXPIRED`
+- `UPLOAD_ALREADY_COMPLETED`
+- `UPLOAD_NOT_FOUND`
 - `VALIDATION_ERROR`
-- `RATE_LIMITED`
 - `SERVER_ERROR`
-- `NOT_IMPLEMENTED`
-
-## Stage 11.1 Draft-Only APIs
-- upload token issue and upload completion
-- delete / restore mutations
-- comment create / update / delete
-- notification APIs are not part of this contract pass yet
-
-## Stage 12.4 Client Cleanup Note
-- Android Stage 12.4 does not change the server API shape, but it assumes transport DTOs continue to be mapped into client UI models through dedicated mappers and shared media helper entrypoints instead of being used directly in Compose UI.
-
-## Stage 12.7 Client Note
-- No new server endpoint is required for the Transfer Center or scrubber changes.
-- Upload/import task history is a client-side presentation of existing upload state.
-- The server contract remains unchanged for this hotfix.

@@ -38,3 +38,8 @@ data class UploadTaskDto(
     val progressPercent: Int = 0,
     val errorMessage: String? = null,
 )
+
+data class ConfirmUploadRequestDto(
+    val etag: String,
+    val objectKey: String,
+)

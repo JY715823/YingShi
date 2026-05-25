@@ -141,9 +141,17 @@ class RealPostRepository(
     private val postApi: PostApi,
 ) : PostRepository {
     override suspend fun getPosts(): ApiResult<List<RemotePostSummary>> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "Current backend does not provide GET /api/posts list yet",
+        return runCatching {
+            postApi.getPosts().data.map { it.toRemoteSummary() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_LIST_REQUEST_FAILED",
+                    message = "REAL post list request failed",
+                    throwable = it,
+                )
+            },
         )
     }
 
@@ -155,7 +163,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_DETAIL_REQUEST_FAILED",
-                    message = "Stage 11.4 real post detail request failed before backend is ready",
+                    message = "REAL post detail request failed",
                     throwable = it,
                 )
             },
@@ -183,7 +191,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_CREATE_REQUEST_FAILED",
-                    message = "Stage 11.4 real post create failed before backend is ready",
+                    message = "REAL post create request failed",
                     throwable = it,
                 )
             },
@@ -238,7 +246,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_UPDATE_REQUEST_FAILED",
-                    message = "Stage 11.4 real post basic-info update failed before backend is ready",
+                    message = "REAL post basic-info update request failed",
                     throwable = it,
                 )
             },
@@ -259,7 +267,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_COVER_REQUEST_FAILED",
-                    message = "Stage 11.4 real post cover update failed before backend is ready",
+                    message = "REAL post cover update request failed",
                     throwable = it,
                 )
             },
@@ -280,7 +288,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_MEDIA_ORDER_REQUEST_FAILED",
-                    message = "Stage 11.4 real post media-order update failed before backend is ready",
+                    message = "REAL post media-order update request failed",
                     throwable = it,
                 )
             },
@@ -314,7 +322,7 @@ class RealAlbumRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "ALBUM_LIST_REQUEST_FAILED",
-                    message = "Stage 11.4 real album list request failed before backend is ready",
+                    message = "REAL album list request failed",
                     throwable = it,
                 )
             },
@@ -329,7 +337,7 @@ class RealAlbumRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "ALBUM_POSTS_REQUEST_FAILED",
-                    message = "Stage 11.4 real album-posts request failed before backend is ready",
+                    message = "REAL album-posts request failed",
                     throwable = it,
                 )
             },
@@ -362,7 +370,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_LIST_REQUEST_FAILED",
-                    message = "Stage 11.3 real post comment request failed before backend is ready",
+                    message = "REAL post comment list request failed",
                     throwable = it,
                 )
             },
@@ -381,7 +389,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_LIST_REQUEST_FAILED",
-                    message = "Stage 11.3 real media comment request failed before backend is ready",
+                    message = "REAL media comment list request failed",
                     throwable = it,
                 )
             },
@@ -402,7 +410,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_CREATE_REQUEST_FAILED",
-                    message = "Stage 11.3 real post comment create failed before backend is ready",
+                    message = "REAL post comment create request failed",
                     throwable = it,
                 )
             },
@@ -423,7 +431,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_CREATE_REQUEST_FAILED",
-                    message = "Stage 11.3 real media comment create failed before backend is ready",
+                    message = "REAL media comment create request failed",
                     throwable = it,
                 )
             },
@@ -444,7 +452,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_UPDATE_REQUEST_FAILED",
-                    message = "Stage 11.3 real comment update failed before backend is ready",
+                    message = "REAL comment update request failed",
                     throwable = it,
                 )
             },
@@ -460,7 +468,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_DELETE_REQUEST_FAILED",
-                    message = "Stage 11.3 real comment delete failed before backend is ready",
+                    message = "REAL comment delete request failed",
                     throwable = it,
                 )
             },
@@ -479,7 +487,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_LIST_REQUEST_FAILED",
-                    message = "Stage 11.6 real trash list request failed before backend is ready",
+                    message = "REAL trash list request failed",
                     throwable = it,
                 )
             },
@@ -494,7 +502,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_DETAIL_REQUEST_FAILED",
-                    message = "Stage 11.6 real trash detail request failed before backend is ready",
+                    message = "REAL trash detail request failed",
                     throwable = it,
                 )
             },
@@ -509,7 +517,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_RESTORE_REQUEST_FAILED",
-                    message = "Stage 11.6 real trash restore request failed before backend is ready",
+                    message = "REAL trash restore request failed",
                     throwable = it,
                 )
             },
@@ -524,7 +532,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_REMOVE_REQUEST_FAILED",
-                    message = "Stage 11.6 real remove-from-trash request failed before backend is ready",
+                    message = "REAL remove-from-trash request failed",
                     throwable = it,
                 )
             },
@@ -539,7 +547,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_PURGE_REQUEST_FAILED",
-                    message = "Stage 11.6 real permanent trash delete request failed before backend is ready",
+                    message = "REAL permanent trash delete request failed",
                     throwable = it,
                 )
             },
@@ -554,7 +562,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_UNDO_REMOVE_REQUEST_FAILED",
-                    message = "Stage 11.6 real undo-remove request failed before backend is ready",
+                    message = "REAL undo-remove request failed",
                     throwable = it,
                 )
             },
@@ -569,7 +577,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_PENDING_REQUEST_FAILED",
-                    message = "Stage 11.6 real pending-cleanup request failed before backend is ready",
+                    message = "REAL pending-cleanup request failed",
                     throwable = it,
                 )
             },
@@ -684,23 +692,53 @@ class RealUploadRepository(
         uploadId: String,
         payload: ConfirmUploadPayload,
     ): ApiResult<RemoteUploadTask> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "Current backend uses multipart POST /api/uploads/{uploadId}/file instead of confirm-upload",
+        return runCatching {
+            uploadApi.confirmUpload(
+                uploadId = uploadId,
+                request = com.example.yingshi.data.remote.dto.ConfirmUploadRequestDto(
+                    etag = payload.etag,
+                    objectKey = payload.objectKey,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_CONFIRM_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "Confirm upload failed. Please retry."),
+                    throwable = it,
+                )
+            },
         )
     }
 
     override suspend fun cancelUpload(uploadId: String): ApiResult<RemoteUploadTask> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "Current backend has no upload cancel endpoint",
+        return runCatching {
+            uploadApi.cancelUpload(uploadId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_CANCEL_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "Cancel upload failed. Please retry."),
+                    throwable = it,
+                )
+            },
         )
     }
 
     override suspend fun getUploadTask(uploadId: String): ApiResult<RemoteUploadTask> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "Current backend has no upload status endpoint",
+        return runCatching {
+            uploadApi.getUploadTask(uploadId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_TASK_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "Load upload task failed. Please retry."),
+                    throwable = it,
+                )
+            },
         )
     }
 }
@@ -838,9 +876,23 @@ class RealAuthRepository(
     override suspend fun refreshToken(
         request: RefreshTokenRequestDto,
     ): ApiResult<AuthTokens> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "Current backend does not provide POST /api/auth/refresh-token",
+        return runCatching {
+            authApi.refreshToken(request).data.toRemoteModel().also {
+                AuthSessionManager.saveTokens(it)
+            }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                val httpCode = (it as? HttpException)?.code()
+                ApiResult.Error(
+                    code = if (httpCode == 401) "AUTH_UNAUTHORIZED" else "AUTH_REFRESH_REQUEST_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "刷新登录状态失败，请重新登录。",
+                    ),
+                    throwable = it,
+                )
+            },
         )
     }
 

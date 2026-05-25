@@ -1,80 +1,88 @@
 # Trash API Contract
 
-## Status
-- unified with current `yingshi-server` code
-- local-dev usable
+更新时间：2026-05-25
 
-## Base Rules
-- base path: `/api/trash`
-- bearer auth required for all endpoints
-- list pagination defaults to `page=1`, `size=10`
-- list sort order is newest `deletedAtMillis` first
-- current backend has no direct purge endpoint
+## 状态
+
+- 已按当前 `YingShi-Server` 代码同步
+- Android `REAL` 模式已接入全部现有 trash 接口
+
+## 基础规则
+
+- 基础路径：`/api/trash`
+- 所有接口都要求 bearer auth
+- 列表默认分页：`page=1`、`size=10`
+- 排序规则：按 `deletedAtMillis` 倒序
+- 当前后端已经支持直接永久删除 `purge`
 
 ## Trash Item DTO
 
 ```json
 {
   "trashItemId": "trash_001",
-  "itemType": "postDeleted",
+  "itemType": "mediaSystemDeleted",
   "state": "inTrash",
-  "sourcePostId": "post_001",
-  "sourceMediaId": null,
-  "title": "春日散步",
-  "previewInfo": "帖子已移入回收站",
+  "sourcePostId": null,
+  "sourceMediaId": "media_001",
+  "commentTargetMediaId": "media_001",
+  "title": "海边散步",
+  "previewInfo": "媒体已移入回收站",
   "deletedAtMillis": 1777412800000,
-  "relatedPostIds": ["post_001"],
-  "relatedMediaIds": ["media_001", "media_002"]
+  "relatedPostIds": [],
+  "relatedMediaIds": ["media_001"],
+  "sourceMediaType": "image",
+  "sourceMediaWidth": 1440,
+  "sourceMediaHeight": 1920,
+  "sourceMediaAspectRatio": 0.75,
+  "sourceMediaDurationMillis": null,
+  "sourceMediaMimeType": "image/jpeg"
 }
 ```
 
-Item types:
-- `postDeleted`
-- `mediaRemoved`
-- `mediaSystemDeleted`
+字段说明：
 
-State values:
-- `inTrash`
-- `pendingCleanup`
-- `restored`
+- `itemType`
+  - `postDeleted`
+  - `mediaRemoved`
+  - `mediaSystemDeleted`
+- `state`
+  - `inTrash`
+  - `pendingCleanup`
+  - `restored`
+- `sourcePostId`
+  - 删除帖子或从帖子移除媒体时可用于定位原帖子
+- `sourceMediaId`
+  - 全局删除媒体时可用于渲染已删媒体详情
+- `commentTargetMediaId`
+  - 已删媒体评论仍需要指向哪个媒体目标
+- `relatedPostIds / relatedMediaIds`
+  - Android 用来决定详情页和恢复后的刷新范围
+- `sourceMedia*`
+  - Android 用来在真实回收站详情页渲染图片 / 视频基础信息
 
-## Endpoints
+## 1. `GET /api/trash/items`
 
-### `GET /api/trash/items`
+查询参数：
 
-Query:
-- `itemType` optional
+- `itemType`：可选
 - `page`
 - `size`
 
-Response data:
+响应 `data`：
 
 ```json
 {
-  "items": [
-    {
-      "trashItemId": "trash_001",
-      "itemType": "postDeleted",
-      "state": "inTrash",
-      "sourcePostId": "post_001",
-      "sourceMediaId": null,
-      "title": "春日散步",
-      "previewInfo": "帖子已移入回收站",
-      "deletedAtMillis": 1777412800000,
-      "relatedPostIds": ["post_001"],
-      "relatedMediaIds": ["media_001", "media_002"]
-    }
-  ],
+  "items": [],
   "page": 1,
   "size": 10,
-  "totalElements": 1,
+  "totalElements": 0,
   "hasMore": false
 }
 ```
 
-### `GET /api/trash/items/{trashItemId}`
+## 2. `GET /api/trash/items/{trashItemId}`
 
-Response data:
+响应 `data`：
 
 ```json
 {
@@ -84,6 +92,7 @@ Response data:
     "state": "inTrash",
     "sourcePostId": "post_001",
     "sourceMediaId": null,
+    "commentTargetMediaId": null,
     "title": "春日散步",
     "previewInfo": "帖子已移入回收站",
     "deletedAtMillis": 1777412800000,
@@ -96,17 +105,23 @@ Response data:
 }
 ```
 
-### `POST /api/trash/items/{trashItemId}/restore`
+## 3. `POST /api/trash/items/{trashItemId}/restore`
 
-Request:
-- no request body
+- 请求体：无
+- 响应：返回一个 `TrashItemDto`
 
-Response:
-- returns one `TrashItemDto`
+语义：
 
-### `POST /api/trash/items/{trashItemId}/remove`
+- `postDeleted`：恢复帖子、帖子评论和帖子媒体关系
+- `mediaRemoved`：恢复帖子与媒体之间的关系，不恢复全局媒体删除
+- `mediaSystemDeleted`：恢复媒体本体及相关关系
 
-Response data:
+## 4. `POST /api/trash/items/{trashItemId}/remove`
+
+- 请求体：无
+- 响应：返回 `PendingCleanupDto`
+
+示例：
 
 ```json
 {
@@ -119,6 +134,7 @@ Response data:
     "state": "pendingCleanup",
     "sourcePostId": "post_001",
     "sourceMediaId": null,
+    "commentTargetMediaId": null,
     "title": "春日散步",
     "previewInfo": "帖子待彻底移出回收站",
     "deletedAtMillis": 1777412800000,
@@ -128,37 +144,65 @@ Response data:
 }
 ```
 
-Notes:
-- Android REAL mode maps `postDeleted` / `mediaRemoved` / `mediaSystemDeleted` directly from backend
-- `remove` means move to `pendingCleanup`, and `undo-remove` is the 24h撤销入口
-- Post-12.7 targeted fix: Android places the `24h 可撤销` entry in the trash category row and renders deleted-state detail media from `sourceMediaId` / `relatedMediaIds` through the media file endpoint.
+说明：
 
-### `POST /api/trash/items/{trashItemId}/undo-remove`
+- `remove` 的语义是“移出回收站并进入 24 小时待清理窗口”
+- Android 当前会把这部分内容展示为 `24h 可撤销`
 
-Request:
-- no request body
+## 5. `POST /api/trash/items/{trashItemId}/purge`
 
-Response:
-- returns one `TrashItemDto`
+- 请求体：无
+- 响应：返回被永久删除前的 `TrashItemDto`
 
-### `GET /api/trash/pending-cleanup`
+当前后端行为：
 
-Response:
-- returns `List<PendingCleanupDto>`
+- `postDeleted`
+  - 删除 trash item
+  - 删除已删除帖子记录、帖子评论和帖子关系
+  - 清理该帖子关联的 `mediaRemoved` trash 记录
+  - 不直接删除全局媒体文件
+- `mediaRemoved`
+  - 仅最终确认“帖子和媒体的关系删除”
+  - 不删除媒体本体和物理文件
+- `mediaSystemDeleted`
+  - 删除 trash item
+  - 删除媒体记录和媒体评论
+  - 删除媒体拥有的本地原图 / 预览 / 封面文件
 
-## Stage 12.2 Refresh Notes
-- `restore` 成功后，Android 需要把恢复结果同步回照片流、相册页、帖子详情入口和回收站列表。
-- `remove` 或 `undo-remove` 成功后，Android 需要刷新回收站列表本身，并同步刷新仍受该条目影响的帖子 / 媒体列表。
-- 回收站接口没有额外下发“推荐刷新哪些页面”的字段；当前约定由 Android 依据 `itemType`、`sourcePostId`、`sourceMediaId` 和 `related*Ids` 决定刷新范围。
+## 6. `POST /api/trash/items/{trashItemId}/undo-remove`
 
-## Error Codes
+- 请求体：无
+- 响应：返回一个 `TrashItemDto`
+
+语义：
+
+- 把 `pendingCleanup` 中的条目撤回到 `inTrash`
+- 超过 `undoDeadlineMillis` 后会失败
+
+## 7. `GET /api/trash/pending-cleanup`
+
+- 响应：返回 `List<PendingCleanupDto>`
+
+## Android 当前对接说明
+
+- `RealTrashRepository` 已接入：
+  - 列表
+  - 详情
+  - 恢复
+  - 移出
+  - 永久删除
+  - 撤销移出
+  - 待清理列表
+- 回收站详情页当前会基于 `sourceMediaId / relatedMediaIds` 去请求媒体文件接口，渲染真实删除内容
+- 删除后的页面刷新范围由 Android 根据 `itemType` 和 `related*Ids` 决定，不依赖额外后端提示字段
+
+## 错误码
+
 - `TRASH_ITEM_NOT_FOUND`
 - `RESTORE_CONFLICT`
 - `REMOVE_FROM_TRASH_CONFLICT`
 - `UNDO_REMOVE_EXPIRED`
+- `DELETE_CONFLICT`
+- `MEDIA_NOT_FOUND`
 - `AUTH_UNAUTHORIZED`
-## Stage 12.3 约定补充
-
-- 系统删进入 `MEDIA_SYSTEM_DELETED`，目录删进入 `MEDIA_REMOVED`。
-- 恢复后相关照片流、帖子详情、Gear Edit、系统媒体目标列表都要重新出现。
-- 24h 撤销入口继续以回收站待清理区为准，不要求长期占据底部提示位。
+- `SERVER_ERROR`

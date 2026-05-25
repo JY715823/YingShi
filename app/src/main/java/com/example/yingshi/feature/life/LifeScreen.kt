@@ -33,11 +33,6 @@ fun LifeScreen(
                 onClick = onOpenLedger,
             )
             LifeEntryCard(
-                title = "纪念日",
-                summary = "后续生活模块入口，当前先保留轻量位置。",
-                onClick = {},
-            )
-            LifeEntryCard(
                 title = "聊天记录查看器",
                 summary = "导入 QCE ZIP，合并多会话，本地离线浏览 QQ 风格聊天记录。",
                 onClick = onOpenChatViewer,

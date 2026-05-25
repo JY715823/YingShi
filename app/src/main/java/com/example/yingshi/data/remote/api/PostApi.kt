@@ -4,6 +4,7 @@ import com.example.yingshi.data.remote.dto.ApiEnvelopeDto
 import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.PostDetailDto
+import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
@@ -16,6 +17,9 @@ import retrofit2.http.GET
 import retrofit2.http.Path
 
 interface PostApi {
+    @GET("api/posts")
+    suspend fun getPosts(): ApiEnvelopeDto<List<PostSummaryDto>>
+
     @GET("api/posts/{postId}")
     suspend fun getPostDetail(
         @Path("postId") postId: String,

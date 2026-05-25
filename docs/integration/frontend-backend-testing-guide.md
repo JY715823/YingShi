@@ -1,324 +1,243 @@
-# Frontend Backend Testing Guide
+# 前后端联调指南
 
-## Scope
-- Android repo: `YingShi`
-- paired backend repo: `yingshi-server`
+更新时间：2026-05-25
 
-## Stage 12.7 Hotfix
+## 适用范围
 
-Current verification focus:
+- Android 仓库：`E:\Study\App\YingShi`
+- 配套后端仓库：`E:\Study\App\YingShi-Server`
 
-1. Transfer center badge reflects pending / uploading / retryable tasks.
-2. Batch upload finishes with one summary toast only.
-3. Transfer center stays before notification center in the top-right action order.
-4. App photo feed and system media time scrubbers only drag from the thumb, not the track.
-5. System media is grouped by time and still supports multi-select, import, create post, and add-to-post flows.
-6. Trash `24h可撤销` stays in the same chip row and no longer opens a full-screen page.
+## 当前联调基线
 
-## Stage 12.5 Viewer Checks
+- Android `debug` 默认模式：`REAL`
+- Android `debug` 默认 `Base URL`：`http://10.106.3.193:8080/`
+- App 内联调入口：`我的 -> 设置 -> 后端联调诊断`
+- 后端全量 smoke 脚本：`E:\Study\App\YingShi-Server\scripts\integration-smoke.ps1`
 
-1. 在 `REAL` 图片 Viewer 中确认预览图优先级为 `thumbnailUrl -> mediaUrl -> originalUrl`。
-2. 当 `originalUrl` 缺失，或与当前预览图地址相同时，确认“加载原图”按钮不出现。
-3. 当 `originalUrl` 有意义时，确认“加载原图”会经历 `loading -> success / failure`，失败后仍保留预览图。
-4. 左右切换图片 / 视频时，确认前一张媒体的原图状态、视频 loading、error、playing 不串到下一张。
-5. 在照片流 Viewer 中点击“所属帖子”，确认单帖子直接进入帖子详情，多帖子可从 sheet 中选择。
-6. 从帖子详情进入 Viewer，再点击“所属帖子”，确认仍能稳定回到对应帖子，不会停留在占位提示。
-7. 系统媒体 Viewer 中确认没有评论、加载原图、所属帖子等帖子专属入口。
-8. 首次打开视频时，确认有稳定封面或统一视频占位，不直接黑屏；失败时有中文状态和重试入口。
-9. 帖子详情媒体区确认仍为矩形画布，图片按比例居中最大化，长图不会被错误裁剪。
-- Android diagnostics page: `Photos -> Notifications -> Settings -> Backend integration diagnostics`
-- backend smoke script: `../yingshi-server/scripts/integration-smoke.ps1`
+说明：
 
-## Seed Account
-- account: `demo.a@yingshi.local`
-- password: `demo123456`
-- alternate account: `demo.b@yingshi.local`
-- alternate password: `demo123456`
+- 诊断页现在是“轻量联调页”，主要负责 `Base URL / 模式 / 登录 / health`
+- 帖子列表、refresh-token、上传任务状态/confirm/cancel、通知、头像等完整接口验收，建议以服务端 smoke 脚本为主
+- Android 通知中心当前仍是 fake 数据，不用拿它来验后端通知接口
 
-## 1. Start the Backend
+## 种子账号
 
-From the `yingshi-server` root:
+- `demo.a@yingshi.local / demo123456`
+- `demo.b@yingshi.local / demo123456`
+
+## 1. 启动后端
+
+在 `E:\Study\App\YingShi-Server` 下执行：
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-Recommended first:
+建议先跑一次测试：
 
 ```powershell
 .\mvnw.cmd test
 ```
 
-Health URL:
+健康检查地址：
 
 ```text
 http://localhost:8080/api/health
 ```
 
-## 2. Run the Backend Smoke Script
+## 2. 先跑后端 smoke 脚本
 
-From the `yingshi-server` root:
+在 `E:\Study\App\YingShi-Server` 下执行：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\integration-smoke.ps1
 ```
 
-The script verifies:
+当前脚本会覆盖：
+
 - health
 - login token
+- refresh token
 - me
 - albums
 - album posts
+- posts list
 - post detail
 - post update
+- post cover
+- post media order
 - media feed
 - post comments
 - media comments
 - upload token
+- upload task status
 - local upload
-- trash list, detail, and restore
+- upload confirm
+- upload cancel
+- avatar upload / avatar fetch
+- notifications list / detail / read / read-all
+- trash list / detail / restore
 
-If the script finishes with:
+如果脚本输出：
 
 ```text
 Integration smoke completed with 0 failures.
 ```
 
-the backend is ready for Android smoke work.
+说明后端当前基线可用于 Android 真实联调。
 
-## 3. Android Base URL Setup
+## 3. Android `Base URL` 规则
 
-Current debug default:
+当前 Android 构建内置默认值：
+
+```text
+http://10.106.3.193:8080/
+```
+
+但诊断页里还提供两个常用预设：
+
+- 模拟器：`http://10.0.2.2:8080/`
+- 本机回环：`http://127.0.0.1:8080/`
+
+使用建议：
+
+- Android 模拟器：优先用 `10.0.2.2`
+- 真机同 Wi-Fi 联调：用电脑局域网 IP，例如 `http://192.168.1.100:8080/`
+- `127.0.0.1` 在真机上通常只会指向手机自己
+
+## 4. `FAKE / REAL` 切换规则
+
+当前行为：
+
+- 默认模式已经是 `REAL`
+- 模式切换会持久化到 `BackendDebugConfig`
+- 切换 `Base URL` 会清空旧 token 并重建 Retrofit
+- 切换 `Repository mode` 会递增 sessionVersion，避免 fake/real 页面状态混用
+
+建议：
+
+- 做纯 UI 精修时可切回 `FAKE`
+- 做接口验收、真数据链路验证时切到 `REAL`
+- 切到 `REAL` 后，需要重新打开目标页面，让它吃到新的 repository session
+
+## 5. 当前诊断页能力
+
+当前入口：
+
+1. 打开 App
+2. 进入 `我的`
+3. 打开 `设置`
+4. 打开 `后端联调诊断`
+
+当前页面支持：
+
+- 查看、编辑当前 `Base URL`
+- 套用模拟器 / `127.0.0.1` 预设
+- `保存并重登` 默认 demo 账号
+- 清理登录缓存
+- 切换 `FAKE / REAL`
+- 执行 `health` 检查
+- 查看最近一次联调结果
+
+当前页面不负责的内容：
+
+- 帖子列表 smoke
+- 上传任务 status / confirm / cancel
+- 真实通知接口
+- 头像上传
+
+这些能力应通过服务端 smoke 脚本、Swagger UI 或真实功能页联调完成。
+
+## 6. 真机联调步骤
+
+1. 电脑和手机连接到同一 Wi-Fi
+2. 在后端仓库启动服务：`.\mvnw.cmd spring-boot:run`
+3. 用 `ipconfig` 找到电脑局域网 IP
+4. 确认 Windows 防火墙允许入站 `8080`
+5. 在 Android 仓库构建 debug 包：
+
+```powershell
+.\gradlew.bat --no-daemon assembleDebug
+```
+
+6. 安装 debug 包到手机
+7. 打开 `我的 -> 设置 -> 后端联调诊断`
+8. 把 `Base URL` 改成 `http://<你的电脑IP>:8080/`
+9. 点击 `保存并重登`
+10. 确认登录状态变为成功，且 `当前生效地址` 已更新
+11. 点击 `检查健康`
+12. 确认最近结果里出现 `health=UP`
+13. 切到 `REAL`
+14. 重新打开以下页面逐项验收：
+   - `我的`：当前账号、共享空间、搭子资料是否可见
+   - `照片`：真实照片流是否加载
+   - `相册`：相册列表和帖子卡片是否加载
+   - 帖子详情：媒体、评论、编辑入口是否可用
+   - 回收站：列表、详情、恢复、移出、永久删除是否可用
+   - 系统媒体与传输中心：上传 / 导入后是否能回流到照片流
+
+## 7. 模拟器联调步骤
+
+1. 启动后端
+2. 构建并安装 Android debug 包到模拟器
+3. 进入 `我的 -> 设置 -> 后端联调诊断`
+4. 选择 `模拟器` 预设，或手动填写：
 
 ```text
 http://10.0.2.2:8080/
 ```
 
-This is correct for Android Emulator.
+5. 点击 `保存并重登`
+6. 做 `health` 检查
+7. 切到 `REAL`
+8. 重新打开要验证的页面
 
-For a physical phone:
-- the diagnostics page supports changing the value
-- `127.0.0.1` is available as a manual preset
-- for same-Wi-Fi testing, use the computer LAN IP instead, for example `http://192.168.1.100:8080/`
+## 8. Cleartext HTTP 说明
 
-Why:
-- `127.0.0.1` on the phone normally points back to the phone itself
-- same-Wi-Fi testing requires the PC LAN IP
+当前 Android 行为：
 
-## 4. Debug Cleartext HTTP
+- 只有 debug 构建放开了 cleartext HTTP
+- release 的网络安全策略没有放宽
 
-Current Android implementation:
-- debug build allows cleartext HTTP only
-- release security policy is untouched
+如果还看到 cleartext 失败：
 
-Files:
-- debug manifest overlay: `app/src/debug/AndroidManifest.xml`
-- debug network security config: `app/src/debug/res/xml/network_security_config.xml`
+- 确认安装的是 debug 包
+- 确认 `Base URL` 使用的是 `http://`
+- 重新执行 `assembleDebug`
 
-If you still see a cleartext failure:
-- confirm you are installing a debug build
-- confirm the base URL starts with `http://`
-- rebuild with `.\gradlew.bat --no-daemon assembleDebug`
+## 9. 常见问题
 
-## 5. Fake Real Switching
+`登录失败`
 
-Current behavior:
-- default mode stays `FAKE`
-- diagnostics page can switch `FAKE` / `REAL`
-- the switch is stored in debug runtime settings
-- changing `Repository mode` rebuilds the REAL page session so old fake/real view-model caches do not mix
-- changing `Base URL` clears the current token and rebuilds Retrofit immediately
+- 后端没启动
+- `Base URL` 指错机器
+- 刚切过 `Base URL`，旧 token 已被清空
+- 手机和电脑不在同一局域网
 
-Files:
-- config state: `app/src/main/java/com/example/yingshi/data/remote/config/BackendDebugConfig.kt`
-- Retrofit entry: `app/src/main/java/com/example/yingshi/data/remote/config/RemoteServiceFactory.kt`
-- repository switch point: `app/src/main/java/com/example/yingshi/data/repository/RepositoryProvider.kt`
+`health 成功，但真实页面还是提示去诊断页登录`
 
-Recommendation:
-- keep UI work on `FAKE`
-- switch to `REAL` only when you are explicitly checking backend integration
-- switch back to `FAKE` after the pass
+- 切到 `REAL` 后没有重新打开页面
+- 登录成功前页面已经缓存了旧状态
+- 后端重启后旧 token 失效
 
-## 6. Diagnostics Entry
+`模拟器连不上`
 
-Current path in the app:
-1. Open Photos.
-2. Open Notifications.
-3. Open Settings.
-4. Open `Backend integration diagnostics`.
+- 误用了 `localhost`
+- 应改成 `10.0.2.2`
 
-What this page supports:
-- view and edit `baseUrl`
-- apply emulator and `127.0.0.1` presets
-- switch `FAKE` / `REAL`
-- login with the dev seed account
-- test health
-- test albums and post detail
-- test media and comments
-- test trash
-- run one combined smoke pass
+`真机连不上`
 
-## 7. Exact Physical Device Acceptance Steps
+- 误用了 `127.0.0.1`
+- 应改成电脑局域网 IP
+- Windows 防火墙拦截了 `8080`
 
-Use this exact checklist:
+`通知中心还是 fake`
 
-1. Connect the phone and computer to the same Wi-Fi.
-2. Start the backend with `.\mvnw.cmd spring-boot:run`.
-3. Find the computer LAN IP with `ipconfig`.
-4. Confirm Windows Firewall allows inbound `8080`.
-5. Build Android with `.\gradlew.bat --no-daemon assembleDebug`.
-6. Install the debug app on the phone.
-7. Open `Photos -> Notifications -> Settings -> Backend integration diagnostics`.
-8. Replace the base URL with `http://<your-pc-ip>:8080/`.
-9. Tap `Save Base URL`.
-10. Verify the `Active base URL` row updates.
-11. Tap `Health`.
-12. Confirm `Last result` shows `[health] success`.
-13. Tap `Login and verify /me`.
-14. Confirm `Token state` becomes `Logged in`.
-15. If you later change `Base URL`, log in again because the app now clears the old token on base-url change.
-16. Tap `Albums and post detail`.
-17. Confirm `Last result` includes `albums=` and `post=`.
-18. Tap `Media and comments`.
-19. Confirm `Last result` includes `media=`, `postComments=`, and `mediaComments=`.
-20. Tap `Trash`.
-21. Confirm `Last result` includes `trash=` without a failure message.
-22. Tap `Run all smoke actions`.
-23. Confirm the page lists each smoke item as `success` or `failed`, and the summary contains `health=UP`, `upload=success`, and `trash=`.
-24. If you want to verify future real repository wiring, switch mode to `REAL`, then reopen the target screen so it picks up the new repository session.
-25. Open `照片` and confirm the feed shows real thumbnails or safe placeholders instead of flat fake gradients.
-26. Open `相册` and confirm post cards show real cover thumbnails. If some cards are briefly plain then recover after load, that is the current per-post detail enrichment path.
-27. Open one post detail page and confirm the media area shows real thumbnails, while missing URLs and failed image requests stay on a safe placeholder.
-28. Open `Gear Edit -> 媒体管理` and confirm the grid shows the same real thumbnails or safe placeholders without crashing.
-29. Open one image from the photo feed Viewer and confirm it first shows the preview image on a dark immersive background.
-30. Tap the original action and confirm the Viewer shows an original-loading state, then switches to the original image only after the original request succeeds.
-31. Force an original request failure if possible and confirm the preview remains visible, the action becomes retry, and no success toast appears.
-32. Swipe between several Viewer media items and confirm original loading / failed / loaded states do not leak between different `mediaId` values.
-33. Open an in-post Viewer from a post detail media item and repeat the preview, original-load, and dark-background checks.
-34. In post detail, test single-image original loading and `加载全帖原图`; confirm the batch toast reports loaded / no-original skipped / failed counts accurately.
-35. Open one REAL video from the photo-flow Viewer and confirm it can load, play, pause, and stop when you swipe away to another media item, and confirm it does not show `加载原图`.
-36. Open one REAL video from an in-post Viewer and confirm play / pause works there too, without carrying the previous media item's loading, error, or progress state.
-37. Open one system-media video Viewer and confirm the video itself can zoom or pan while the playback control bar stays fixed near the lower-left area inside the media canvas.
-38. In any video Viewer, verify that missing URLs or failed playback show Chinese fallback copy and do not crash the page; use the retry entry if the request can be retried.
-39. Switch mode back to `FAKE` when finished.
+- 这是当前预期行为
+- 后端通知接口请通过 smoke 脚本或 Swagger 验证
 
-## 8. Common Problems
+`上传后没有在主照片流里看到`
 
-Emulator cannot connect:
-- base URL still uses `localhost`
-- backend is not running on port `8080`
-
-Phone cannot connect:
-- phone and computer are not on the same Wi-Fi
-- base URL uses `127.0.0.1` instead of the PC LAN IP
-- Windows Firewall blocks inbound `8080`
-
-Login fails:
-- backend was restarted and the old token became invalid
-- base URL points to the wrong machine
-- the app is still on an older debug build
-
-Health passes but later requests fail:
-- login was not run yet
-- token is stale after a backend restart
-- repository mode changed but the target screen was not reopened after the switch
-
-Thumbnails still do not appear in REAL:
-- backend returned only relative paths but Android `baseUrl` points to the wrong host
-- backend returned video items without `thumbnailUrl`, `previewUrl`, or `coverUrl`, so Android can only show a video placeholder
-- album cards currently resolve real covers through extra `post detail` requests, so a post-detail failure can leave that one card on a safe placeholder
-
-Viewer image does not show the expected REAL photo:
-- confirm the app is in `REAL` mode and the target screen was reopened after switching modes
-- confirm the media DTO contains at least one preview URL candidate: `thumbnailUrl`, `mediaUrl`, or `originalUrl`
-- confirm the original action has an original URL candidate: `originalUrl` or `mediaUrl`
-- if preview works but original fails, the Viewer should keep the preview and move only that media item into the retry/failure state
-- if dark letterbox areas show colored demo backgrounds, reinstall the latest debug build because Stage 12.1 second-round Viewer uses the shared immersive background
-
-Viewer video does not play as expected:
-- confirm the media DTO contains a playable candidate URL in `videoUrl`, `mediaUrl`, or `originalUrl`
-- confirm poster display comes from `thumbnailUrl`, `previewUrl`, or `coverUrl`; without a poster URL the app should still stay safe and show a placeholder
-- if playback fails on one media item, verify the error state does not leak to the next item after swiping
-- if system-media controls appear to move with the zoomed video, reinstall the latest debug build because Stage 12.1 third-round Viewer separates the transformed video layer from the fixed control layer
-
-Repeated smoke runs change media count:
-- upload smoke adds media while the dev server stays up
-- restart the backend for a fresh H2 state
-- clean `local-storage` manually only when the backend is stopped
-
-## 9. Stage 12.2 State Consistency Checks
-
-1. In `REAL`, edit one post title in `Gear Edit`, return to the album page, and confirm the card title changes without switching mode.
-2. Open the same post detail page again and confirm title / summary / album chips are updated.
-3. From system media, add one image into an existing post and confirm photo feed, post detail media area, and `Gear Edit -> 媒体管理` all refresh to the new media set.
-4. Delete one media from `Gear Edit -> 媒体管理` and confirm the removed item disappears from photo feed, post detail, Viewer, and media management after returning.
-5. Delete one whole post and confirm album list, photo feed, and trash all reflect the change after the mutation completes.
-6. Restore one post or one media from trash and confirm the restored content reappears in the relevant list without mode leakage.
-7. Add, edit, and delete one media comment, then confirm the active comment thread, comment bubble, and visible count all refresh together.
-8. In system media, move one item to the Android system trash and confirm both the system media list and system media Viewer stop showing the deleted item.
-9. Turn `REAL` -> `FAKE` -> `REAL` and confirm previous REAL error / loading / selection state does not pollute FAKE pages, and vice versa.
-10. If any refresh request fails, confirm the page stays alive and exposes Chinese retry copy instead of crashing.
-
-## 10. Stage 12.4 Cleanup Checks
-
-1. In `REAL`, confirm feed thumbnails, Viewer preview/original loading, and video poster fallback still work after the shared media helper cleanup.
-2. Switch between image and video Viewer items and confirm loading/error/progress labels still stay isolated per media item after the shared Viewer-state cleanup.
-3. Edit a post, delete media, restore from trash, and add a media comment; confirm the affected pages still refresh correctly after mutation helpers replace page-local scope construction.
-4. Reopen `照片流` and `相册` and confirm REAL empty/error/retry cards still behave normally after shared backend state-card reuse.
-## Stage 12.3 回归重点
-
-1. 系统媒体选择多张媒体后执行“发成新帖子”，先看到“已加入上传队列”，全部上传并整理成功后：
-   - 照片流刷新
-   - 相册 / 帖子列表刷新
-   - 自动进入新帖子详情
-2. 系统媒体执行“加入已有帖子”，成功后帖子详情媒体区和 Gear Edit 媒体管理同步刷新。
-3. 故意制造上传后整理帖子失败时，主照片流不能出现未挂帖媒体。
-4. 在 REAL 模式删除帖子最后一张媒体时，应返回中文冲突提示，不允许留下空帖。
-5. 系统删后媒体应从照片流、帖子详情、Viewer、媒体管理中消失，并进入 app 回收站；恢复后重新出现。
-
-
-## 11. Stage 12.6 Add-Post / Add-Media Checks
-
-1. ???? Quick Add ?? `????`?????????????????????????????????????
-2. ? Quick Add ?? `????`?????????????????????????
-3. ?????????????? `?????`?????????????????? REAL???????????????????????????
-4. REAL ?????????????????????????????????????????????????????
-5. ????? Viewer ???????? `?????`??????????????????
-6. ??????? Viewer ??? `??????`?????????????????????? Gear Edit ????????
-7. ??????????????????????????????? `??`?????????????
-8. ????????????????????? `?????`????????????????????
-
-## 12. Stage 12.7 Smoothness Checks
-
-1. Open `系统媒体` from a cold app launch and confirm it starts loading automatically without requiring a manual refresh tap.
-2. Scroll a large system-media library and confirm the first screen appears quickly while later items continue to fill in as you approach them.
-3. Open `照片流`, scroll several screens, open one item in Viewer, swipe left or right, then go back. Confirm the preview image usually appears immediately instead of black-screening again.
-4. In `REAL`, delete media from the feed and confirm the item disappears immediately without an extra full-page blank/loading cycle before the global refresh settles.
-5. Add or edit comments in Viewer and confirm `帖子详情` does not fully reload the whole page just because the comment thread changed.
-6. Open `相册` in `REAL` with many posts and confirm the post list appears before every cover image finishes backfilling.
-## Stage 12.7 Upload / Import Acceptance
-
-Physical-device checks for upload/import:
-
-1. Switch Android to REAL mode and set baseUrl to the LAN server address.
-2. Use bottom `+ -> 上传媒体`, select one image and one video through the system picker, and confirm that root upload tasks move from waiting/uploading to success or a clear failure.
-3. After success, open the app photo feed and verify returned media appears without reinstalling or fake placeholders.
-4. In System Media, multi-select local media and run `导入到 App`; verify the same task panel, same logs, and same photo-feed refresh behavior.
-5. For failures, check logcat tag `SystemMediaUpload`; DEBUG logs should include source uri, mime type, display name, file size, upload id, returned media id, URLs, or server error body.
-6. Large local photos/videos require server multipart limits from Stage 12.7 (`200MB` file, `220MB` request).
-
-## Stage 12.7 Checks
-- Verify the photo top bar shows the gear icon for system media and the transfer-center icon beside notifications.
-- Verify upload/import tasks appear in Transfer Center instead of a persistent bottom queue.
-- Verify tapping the scrubber track does not jump; only dragging the thumb controls positioning.
-- Verify both the photo feed and system-media page follow the same scrubber rule.
-
-## Stage 12.8 Shared Library / Storage Checks
-
-1. Log in with `demo.a@yingshi.local` and confirm `/api/auth/me` returns `libraryId=library_shared`.
-2. Confirm Android does not read or send `spaceId`.
-3. Upload one image from bottom `+ -> upload media`; confirm the returned media appears in photo feed with empty `postIds` allowed.
-4. Confirm the server writes the original under `local-storage/originals/yyyy/MM` and any generated preview under `local-storage/previews/yyyy/MM`.
-5. Confirm seed/demo media lives under `local-storage/test/photos`, `local-storage/test/long`, or `local-storage/test/videos`, not under an old space directory.
-6. Confirm uploaded media keeps `capturedAtMillis`, `importedAtMillis`, and `displayTimeSource` when those values are available.
-7. Create or edit one post and confirm the request/response tolerates `eventStartedAtMillis`, `eventEndedAtMillis`, and `displayTimeSource`.
+- 当前媒体可能还没挂到帖子，但应已存在于真实媒体流
+- 如果服务端 smoke 刚跑过，数据量会变化，这是预期行为
+- 可重开 `照片` 页或重新进入 `REAL` 页面确认最新状态
