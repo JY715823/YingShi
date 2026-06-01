@@ -9,25 +9,43 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
+
+private data class NotificationDetailUiState(
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null,
+    val item: NotificationCenterItemUiModel? = null,
+)
 
 @Composable
 fun NotificationDetailScreen(
@@ -36,7 +54,52 @@ fun NotificationDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val item = FakeNotificationRepository.getNotification(route.notificationId)
+    val coroutineScope = rememberCoroutineScope()
+    val sessionKey = realBackendSessionKey("notification-detail-${route.notificationId}")
+    var uiState by remember(sessionKey, route.notificationId) {
+        mutableStateOf(NotificationDetailUiState(isLoading = true))
+    }
+
+    fun refresh(markRead: Boolean) {
+        coroutineScope.launch {
+            uiState = uiState.copy(isLoading = true, errorMessage = null)
+            when (val result = RepositoryProvider.notificationRepository.getNotification(route.notificationId)) {
+                is ApiResult.Success -> {
+                    val loadedItem = result.data.toNotificationCenterItemUiModel()
+                    uiState = NotificationDetailUiState(
+                        isLoading = false,
+                        item = loadedItem,
+                    )
+                    if (markRead && !loadedItem.isRead) {
+                        when (val readResult = RepositoryProvider.notificationRepository.markRead(route.notificationId)) {
+                            is ApiResult.Success -> {
+                                uiState = uiState.copy(
+                                    item = readResult.data.toNotificationCenterItemUiModel(),
+                                )
+                            }
+                            is ApiResult.Error -> {
+                                uiState = uiState.copy(
+                                    errorMessage = readResult.toBackendUiMessage("标记通知已读失败。"),
+                                )
+                            }
+                            ApiResult.Loading -> Unit
+                        }
+                    }
+                }
+                is ApiResult.Error -> {
+                    uiState = NotificationDetailUiState(
+                        isLoading = false,
+                        errorMessage = result.toBackendUiMessage("读取通知详情失败，请稍后重试。"),
+                    )
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    LaunchedEffect(sessionKey, route.notificationId) {
+        refresh(markRead = true)
+    }
 
     Column(
         modifier = modifier
@@ -49,11 +112,34 @@ fun NotificationDetailScreen(
     ) {
         NotificationDetailTopBar(onBack = onBack)
 
-        if (item == null) {
-            NotificationDetailEmptyState()
-        } else {
-            NotificationDetailPrimaryCard(item = item)
-            NotificationDetailTargetCard(item = item)
+        when {
+            uiState.isLoading && uiState.item == null -> {
+                NotificationDetailLoadingState()
+            }
+
+            uiState.item != null -> {
+                NotificationDetailPrimaryCard(item = requireNotNull(uiState.item))
+                NotificationDetailTargetCard(item = requireNotNull(uiState.item))
+                uiState.errorMessage?.let { message ->
+                    NotificationDetailMessageCard(
+                        message = message,
+                        actionLabel = "重试",
+                        onAction = { refresh(markRead = false) },
+                    )
+                }
+            }
+
+            uiState.errorMessage != null -> {
+                NotificationDetailMessageCard(
+                    message = uiState.errorMessage.orEmpty(),
+                    actionLabel = "重试",
+                    onAction = { refresh(markRead = true) },
+                )
+            }
+
+            else -> {
+                NotificationDetailEmptyState()
+            }
         }
     }
 }
@@ -149,7 +235,7 @@ private fun NotificationDetailTargetCard(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "跳转占位",
+                text = "通知目标",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -158,33 +244,105 @@ private fun NotificationDetailTargetCard(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
+            NotificationDetailMetaLine(
+                label = "目标类型",
+                value = item.targetType,
+            )
+            NotificationDetailMetaLine(
+                label = "小相册 ID",
+                value = item.postId,
+            )
+            NotificationDetailMetaLine(
+                label = "媒体 ID",
+                value = item.mediaId,
+            )
+            NotificationDetailMetaLine(
+                label = "回收站 ID",
+                value = item.trashItemId,
+            )
         }
     }
 }
 
 @Composable
-private fun NotificationDetailNoteCard() {
+private fun NotificationDetailMetaLine(
+    label: String,
+    value: String?,
+) {
+    if (value.isNullOrBlank()) return
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun NotificationDetailLoadingState() {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.4.dp)
+            Text(
+                text = "正在读取通知详情…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotificationDetailMessageCard(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
     ) {
         Column(
-            modifier = Modifier.padding(spacing.lg),
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             Text(
-                text = "当前阶段说明",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "通知仍然是本地 fake 数据，点击后的页面只负责承接跳转语义，不接真实推送、深链或服务端通知路由。",
-                style = MaterialTheme.typography.bodySmall,
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            TextButton(
+                modifier = Modifier.align(Alignment.End),
+                onClick = onAction,
+            ) {
+                Text(text = actionLabel)
+            }
         }
     }
 }
@@ -209,7 +367,7 @@ private fun NotificationDetailEmptyState() {
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "通知可能已经被替换，或当前会话中的 fake 数据发生了变化。",
+                text = "通知可能已经被替换，或者当前会话里已经找不到对应记录。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -238,26 +396,6 @@ private fun NotificationDetailCircleButton(
                 color = MaterialTheme.colorScheme.onSurface,
             )
         }
-    }
-}
-
-private fun notificationPlaceholderDescription(type: NotificationCenterItemType): String {
-    return when (type) {
-        NotificationCenterItemType.COMMENT ->
-            "这类通知后续会接真实帖子详情或 Viewer 评论区定位；当前只展示跳转占位。"
-        NotificationCenterItemType.CONTENT_UPDATE ->
-            "这类通知后续会接帖子或相册的真实内容变更入口；当前只展示跳转占位。"
-        NotificationCenterItemType.DELETE_RESTORE ->
-            "这类通知后续会接回收站分类操作或删除态详情；当前只展示跳转占位。"
-        NotificationCenterItemType.SYSTEM ->
-            "这类通知后续会接真实系统提醒详情；当前先保留为轻量详情页。"
-    }
-}
-
-private fun String.toNotificationDetailSourceLabel(): String {
-    return when (this) {
-        "notification-center" -> "通知中心"
-        else -> this
     }
 }
 

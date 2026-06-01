@@ -60,9 +60,15 @@ data class PhotoViewerRoute(
     val mediaItems: List<PhotoFeedItem>,
     val initialIndex: Int,
     val sourceLabel: String,
-    val showPostSegments: Boolean = false,
-    val sourcePostRoute: PostDetailPlaceholderRoute? = null,
-)
+    val showSmallAlbumSegments: Boolean = false,
+    val sourceSmallAlbumRoute: SmallAlbumDetailRoute? = null,
+) {
+    val showPostSegments: Boolean
+        get() = showSmallAlbumSegments
+
+    val sourcePostRoute: PostDetailPlaceholderRoute?
+        get() = sourceSmallAlbumRoute
+}
 
 @Immutable
 data class PhotoViewerOverlayUiModel(
@@ -70,10 +76,16 @@ data class PhotoViewerOverlayUiModel(
     val timeLabel: String,
     val originalLoadState: OriginalLoadState,
     val showOriginalAction: Boolean,
-    val relatedPostsLabel: String?,
-    val relatedPosts: List<ViewerRelatedPostUiModel>,
+    val relatedSmallAlbumsLabel: String?,
+    val relatedSmallAlbums: List<ViewerRelatedSmallAlbumUiModel>,
     val previewComments: List<CommentUiModel>,
-)
+) {
+    val relatedPostsLabel: String?
+        get() = relatedSmallAlbumsLabel
+
+    val relatedPosts: List<ViewerRelatedSmallAlbumUiModel>
+        get() = relatedSmallAlbums
+}
 
 enum class OriginalLoadState {
     NotLoaded,
@@ -92,9 +104,11 @@ internal fun OriginalLoadState.actionLabel(): String {
 }
 
 @Immutable
-data class ViewerRelatedPostUiModel(
+data class ViewerRelatedSmallAlbumUiModel(
     val id: String,
     val title: String,
     val subtitle: String,
-    val route: PostDetailPlaceholderRoute,
+    val route: SmallAlbumDetailRoute,
 )
+
+typealias ViewerRelatedPostUiModel = ViewerRelatedSmallAlbumUiModel

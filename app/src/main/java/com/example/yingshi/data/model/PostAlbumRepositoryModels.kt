@@ -9,10 +9,19 @@ data class RemotePostSummary(
     val eventStartedAtMillis: Long? = null,
     val eventEndedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
-    val albumIds: List<String>,
+    val albumId: String,
     val coverMediaId: String?,
     val mediaCount: Int,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+
+    val albumIds: List<String>
+        get() = listOf(albumId)
+
+    val selectedAlbumId: String
+        get() = albumId
+}
 
 data class RemotePostMedia(
     val mediaId: String,
@@ -46,10 +55,19 @@ data class RemotePostDetail(
     val eventStartedAtMillis: Long? = null,
     val eventEndedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
-    val albumIds: List<String>,
+    val albumId: String,
     val coverMediaId: String?,
     val mediaItems: List<RemotePostMedia>,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+
+    val albumIds: List<String>
+        get() = listOf(albumId)
+
+    val selectedAlbumId: String
+        get() = albumId
+}
 
 data class CreatePostPayload(
     val title: String,
@@ -58,10 +76,13 @@ data class CreatePostPayload(
     val eventStartedAtMillis: Long? = displayTimeMillis,
     val eventEndedAtMillis: Long? = null,
     val displayTimeSource: String? = "MANUAL",
-    val albumIds: List<String>,
+    val albumId: String,
     val initialMediaIds: List<String> = emptyList(),
     val coverMediaId: String? = null,
-)
+) {
+    val albumIds: List<String>
+        get() = listOf(albumId)
+}
 
 data class UpdatePostBasicInfoPayload(
     val title: String,
@@ -70,9 +91,15 @@ data class UpdatePostBasicInfoPayload(
     val eventStartedAtMillis: Long? = displayTimeMillis,
     val eventEndedAtMillis: Long? = null,
     val displayTimeSource: String? = "MANUAL",
-    val albumIds: List<String>,
-)
+    val albumId: String,
+) {
+    val albumIds: List<String>
+        get() = listOf(albumId)
+}
 
 data class UpdatePostAlbumsPayload(
-    val albumIds: List<String>,
-)
+    val albumId: String,
+) {
+    val albumIds: List<String>
+        get() = listOf(albumId)
+}

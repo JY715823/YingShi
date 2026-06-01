@@ -581,11 +581,11 @@ fun SystemMediaScreen(
                     selectionMode = false
                     Toast.makeText(
                         context,
-                        "已加入上传队列，成功项会进入目标帖子。",
+                        "已加入上传队列，成功项会进入目标小相册。",
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
-                    addToPostError = "这些媒体已经在目标帖子里，或没有可添加的媒体。"
+                    addToPostError = "这些媒体已经在目标小相册里，或没有可添加的媒体。"
                 }
             },
             onPostChosen = { post ->
@@ -602,11 +602,11 @@ fun SystemMediaScreen(
                     selectionMode = false
                     Toast.makeText(
                         context,
-                        "已加入上传队列，成功项会进入目标帖子。",
+                        "已加入上传队列，成功项会进入目标小相册。",
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
-                    addToPostError = "这些媒体已经在目标帖子里，或没有可添加的媒体。"
+                    addToPostError = "这些媒体已经在目标小相册里，或没有可添加的媒体。"
                 }
             },
         )
@@ -927,7 +927,7 @@ fun SystemMediaScreen(
                     selectedIds = emptyList()
                     selectionMode = false
                     if (selectedSnapshot.isEmpty()) {
-                        Toast.makeText(context, "请先选择要发成新帖子的媒体。", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "请先选择要新建小相册的媒体。", Toast.LENGTH_SHORT).show()
                     } else {
                         onOpenCreatePost(
                             CreatePostRoute(
@@ -1319,7 +1319,7 @@ private fun SystemMediaSelectionBar(
                         onClick = onImportToApp,
                     )
                     SystemMediaActionChip(
-                        text = "发成新帖子",
+                        text = "新建小相册",
                         emphasized = false,
                         modifier = Modifier.weight(1f),
                         onClick = onCreatePost,
@@ -1330,7 +1330,7 @@ private fun SystemMediaSelectionBar(
                     horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 ) {
                     SystemMediaActionChip(
-                        text = "加入已有帖子",
+                        text = "加入已有小相册",
                         emphasized = false,
                         modifier = Modifier.weight(1f),
                         onClick = onAddToPost,

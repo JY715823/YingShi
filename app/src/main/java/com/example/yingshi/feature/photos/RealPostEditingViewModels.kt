@@ -123,7 +123,7 @@ class RealGearEditViewModel(
                     _uiState.value = RealGearEditUiState(
                         isLoading = false,
                         albums = albums,
-                        errorMessage = detailResult.toBackendUiMessage("读取后端帖子失败。"),
+                        errorMessage = detailResult.toBackendUiMessage("读取后端小相册失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -160,9 +160,9 @@ class RealGearEditViewModel(
     fun toggleAlbum(albumId: String) {
         _uiState.update { state ->
             val updatedAlbumIds = if (state.selectedAlbumIds.contains(albumId)) {
-                state.selectedAlbumIds.filterNot { it == albumId }
+                emptyList()
             } else {
-                state.selectedAlbumIds + albumId
+                listOf(albumId)
             }
             state.copy(selectedAlbumIds = updatedAlbumIds)
                 .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
@@ -225,7 +225,7 @@ class RealGearEditViewModel(
                         title = snapshot.title.trim(),
                         summary = snapshot.summary.trim(),
                         displayTimeMillis = snapshot.displayTimeMillis,
-                        albumIds = snapshot.selectedAlbumIds,
+                        albumId = snapshot.selectedAlbumIds.first(),
                     ),
                 )
             ) {
@@ -235,7 +235,7 @@ class RealGearEditViewModel(
                         title = snapshot.title.trim(),
                         summary = snapshot.summary.trim(),
                         postDisplayTimeMillis = snapshot.displayTimeMillis,
-                        albumIds = snapshot.selectedAlbumIds,
+                        albumIds = listOf(snapshot.selectedAlbumIds.first()),
                     )
                     var committedMediaIds = initialMediaIds
                     var committedCoverMediaId = initialCoverMediaId
@@ -245,7 +245,7 @@ class RealGearEditViewModel(
                     removedIds.forEach { mediaId ->
                         when (
                             val deleteResult = RepositoryProvider.mediaRepository.deleteMediaFromPost(
-                                postId = route.postId,
+                                smallAlbumId = route.postId,
                                 mediaId = mediaId,
                                 deleteMode = "directory",
                             )
@@ -306,7 +306,7 @@ class RealGearEditViewModel(
                         it.copy(
                             isSaving = false,
                             hasChanges = false,
-                            statusMessage = "帖子信息已保存。",
+                            statusMessage = "小相册信息已保存。",
                         )
                     }
                     notifyRealBackendPostChanged(
@@ -324,7 +324,7 @@ class RealGearEditViewModel(
                     _uiState.update {
                         it.copy(
                             isSaving = false,
-                            errorMessage = result.toBackendUiMessage("保存帖子信息失败。"),
+                            errorMessage = result.toBackendUiMessage("保存小相册信息失败。"),
                         )
                     }
                 }
@@ -354,7 +354,7 @@ class RealGearEditViewModel(
                     _uiState.update {
                         it.copy(
                             isDeleting = false,
-                            statusMessage = "帖子已移入回收站。",
+                            statusMessage = "小相册已移入回收站。",
                         )
                     }
                     notifyRealBackendContentChanged(
@@ -366,7 +366,7 @@ class RealGearEditViewModel(
                     _uiState.update {
                         it.copy(
                             isDeleting = false,
-                            errorMessage = result.toBackendUiMessage("删除帖子失败。"),
+                            errorMessage = result.toBackendUiMessage("删除小相册失败。"),
                         )
                     }
                 }
@@ -487,7 +487,7 @@ class RealMediaManagementViewModel(
             normalizedIds.forEach { mediaId ->
                 when (
                     val result = mediaRepository.deleteMediaFromPost(
-                        postId = route.postId,
+                        smallAlbumId = route.postId,
                         mediaId = mediaId,
                         deleteMode = deleteMode,
                     )
@@ -508,7 +508,7 @@ class RealMediaManagementViewModel(
                     "媒体已系统删除并进入回收站。"
                 deleteMode.equals("system", ignoreCase = true) ->
                     "部分媒体已系统删除，但仍有失败项。"
-                firstFailure == null -> "媒体已从当前帖子移除。"
+                firstFailure == null -> "媒体已从当前小相册移除。"
                 else -> "部分媒体已移除，但仍有失败项。"
             }
 
@@ -550,7 +550,7 @@ class RealMediaManagementViewModel(
                     _uiState.update {
                         it.copy(
                             isMutating = false,
-                            statusMessage = "帖子已移入回收站。",
+                            statusMessage = "小相册已移入回收站。",
                         )
                     }
                     notifyRealBackendContentChanged(
@@ -562,7 +562,7 @@ class RealMediaManagementViewModel(
                     _uiState.update {
                         it.copy(
                             isMutating = false,
-                            errorMessage = result.toBackendUiMessage("删除帖子失败。"),
+                            errorMessage = result.toBackendUiMessage("删除小相册失败。"),
                         )
                     }
                 }

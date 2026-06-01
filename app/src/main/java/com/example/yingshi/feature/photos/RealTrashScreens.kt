@@ -488,7 +488,7 @@ fun RealTrashPageScreen(
             title = { Text("清空当前分类？") },
             text = {
                 Text(
-                    "将永久删除当前「${selectedType.label}」分类中的 ${uiState.entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；帖子删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前「${selectedType.label}」分类中的 ${uiState.entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
                 )
             },
             confirmButton = {
@@ -521,7 +521,7 @@ fun RealTrashPageScreen(
             },
             title = { Text("确认恢复？") },
             text = {
-                Text("将恢复 ${pendingRestoreEntries.size} 个回收站条目。恢复后会回到对应照片流或帖子关系。")
+                Text("将恢复 ${pendingRestoreEntries.size} 个回收站条目。恢复后会回到对应照片流或小相册关系。")
             },
             confirmButton = {
                 TextButton(
@@ -561,7 +561,7 @@ fun RealTrashPageScreen(
             title = { Text("删除选中项？") },
             text = {
                 Text(
-                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；帖子删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
                 )
             },
             confirmButton = {
@@ -1142,9 +1142,9 @@ private fun TrashEntryUiModel.toTrashPostDetailUiModel(mediaIds: List<String>): 
     val postId = sourcePostId?.takeIf { it.isNotBlank() } ?: id
     return PostDetailUiModel(
         postId = postId,
-        title = title.ifBlank { "回收站帖子" },
+        title = title.ifBlank { "回收站小相册" },
         summary = previewInfo.ifBlank { "后端没有返回额外说明。" },
-        contributorLabel = "回收站帖子",
+        contributorLabel = "回收站小相册",
         postDisplayTimeMillis = deletedAtMillis,
         albumIds = relatedPostIds.ifEmpty { listOf(postId) },
         albumChips = listOf("已删除", "媒体 ${mediaIds.size} 项"),
@@ -1178,7 +1178,7 @@ private fun RealTrashPostDetailTopBar(
     ) {
         RealTrashIconActionButton(text = "<", enabled = !isMutating, onClick = onBack)
         Text(
-            text = "帖子详情",
+            text = "小相册详情",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground,
@@ -1281,15 +1281,15 @@ private fun realTrashEntrySourceLine(entry: TrashEntryUiModel): String {
     return when (entry.type) {
         TrashEntryType.POST_DELETED -> {
             val mediaCount = entry.relatedMediaIds.size
-            "帖子删除 · 媒体 $mediaCount 项"
+            "小相册删除 · 媒体 $mediaCount 项"
         }
         TrashEntryType.MEDIA_REMOVED -> {
-            val source = entry.sourcePostId ?: entry.relatedPostIds.firstOrNull() ?: "当前帖子"
-            "从帖子移除 · 来源 $source"
+            val source = entry.sourcePostId ?: entry.relatedPostIds.firstOrNull() ?: "当前小相册"
+            "从小相册移除 · 来源 $source"
         }
         TrashEntryType.MEDIA_SYSTEM_DELETED -> {
             val postCount = entry.relatedPostIds.size
-            "媒体删除 · 影响帖子 $postCount 个"
+            "媒体删除 · 影响小相册 $postCount 个"
         }
     }
 }
@@ -2452,7 +2452,7 @@ private fun RealTrashPostViewerDetailContent(
             mediaArea = {
                 if (postDetail.mediaItems.isEmpty()) {
                     RealTrashSectionCard(
-                        title = "帖子媒体不可用",
+                        title = "小相册媒体不可用",
                         body = "当前删除项没有返回媒体快照或媒体 ID，该位置按已删除处理。",
                     )
                 } else {
@@ -2513,8 +2513,8 @@ private fun RealTrashPostViewerDetailContent(
             },
             comments = {
                 RealTrashReadOnlyCommentCard(
-                    title = "帖子评论",
-                    emptyText = "当前帖子没有可展示的评论。",
+                    title = "小相册评论",
+                    emptyText = "当前小相册没有可展示的评论。",
                     comments = postCommentsState,
                 )
             },
@@ -2551,7 +2551,7 @@ private fun RealTrashPostViewerDetailContent(
         AlertDialog(
             onDismissRequest = { showRestoreConfirm = false },
             title = { Text("确认恢复？") },
-            text = { Text("将恢复当前回收站帖子。") },
+            text = { Text("将恢复当前回收站小相册。") },
             confirmButton = {
                 TextButton(
                     enabled = !isMutating,
@@ -2906,7 +2906,7 @@ private fun RealTrashDetailContent(
             )
             if (item.sourcePostId != null) {
                 Text(
-                    text = "来源帖子：${item.sourcePostId}",
+                    text = "来源小相册：${item.sourcePostId}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2920,7 +2920,7 @@ private fun RealTrashDetailContent(
             }
             if (item.relatedPostIds.isNotEmpty()) {
                 Text(
-                    text = "关联帖子：${item.relatedPostIds.joinToString()}",
+                    text = "关联小相册：${item.relatedPostIds.joinToString()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3002,7 +3002,7 @@ private fun RealTrashDeletedPreview(
         mediaIds.isNotEmpty() -> {
             RealTrashMediaStrip(
                 title = when (type) {
-                    TrashEntryType.POST_DELETED -> "原帖子媒体"
+                    TrashEntryType.POST_DELETED -> "原小相册媒体"
                     TrashEntryType.MEDIA_REMOVED -> "被移除的媒体"
                     TrashEntryType.MEDIA_SYSTEM_DELETED -> "被删除的媒体"
                 },
@@ -3012,8 +3012,8 @@ private fun RealTrashDeletedPreview(
 
         type == TrashEntryType.POST_DELETED -> {
             RealTrashSectionCard(
-                title = "原帖子内容",
-                body = "当前后端删除项没有返回媒体快照，只能展示帖子标题和说明；后续可扩展更完整的帖子快照契约。",
+                title = "原小相册内容",
+                body = "当前后端删除项没有返回媒体快照，只能展示小相册标题和说明；后续可扩展更完整的小相册快照契约。",
             )
         }
 
@@ -3147,7 +3147,7 @@ private fun realTrashGridPostTitle(entry: TrashEntryUiModel): String {
     return entry.mediaSnapshot?.sourcePostTitle
         ?: entry.title
         ?: entry.sourcePostId
-        ?: "来源帖子"
+        ?: "来源小相册"
 }
 
 private fun TrashMediaSnapshot.toViewerPhotoFeedItem(): PhotoFeedItem {
@@ -3161,7 +3161,7 @@ private fun TrashMediaSnapshot.toViewerPhotoFeedItem(): PhotoFeedItem {
         displayMonth = date.get(java.util.Calendar.MONTH) + 1,
         displayDay = date.get(java.util.Calendar.DAY_OF_MONTH),
         commentCount = 0,
-        postIds = sourcePostId?.let(::listOf).orEmpty(),
+        smallAlbumIds = sourcePostId?.let(::listOf).orEmpty(),
         palette = palette,
         mediaType = mediaType,
         aspectRatio = aspectRatio,

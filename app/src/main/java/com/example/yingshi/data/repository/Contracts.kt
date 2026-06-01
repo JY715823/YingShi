@@ -4,6 +4,7 @@ import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
+import com.example.yingshi.data.model.NotificationMarkAllReadResult
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
@@ -11,6 +12,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
+import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
@@ -38,7 +40,7 @@ interface MediaRepository {
     ): ApiResult<RemoteMediaFeedPage>
 
     suspend fun deleteMediaFromPost(
-        postId: String,
+        smallAlbumId: String,
         mediaId: String,
         deleteMode: String,
     ): ApiResult<RemoteTrashItem>
@@ -86,7 +88,7 @@ interface PostRepository {
 
 interface CommentRepository {
     suspend fun getPostComments(
-        postId: String,
+        smallAlbumId: String,
         page: Int = 1,
         size: Int = 20,
     ): ApiResult<RemoteCommentPage>
@@ -98,7 +100,7 @@ interface CommentRepository {
     ): ApiResult<RemoteCommentPage>
 
     suspend fun createPostComment(
-        postId: String,
+        smallAlbumId: String,
         content: String,
     ): ApiResult<RemoteComment>
 
@@ -115,6 +117,22 @@ interface CommentRepository {
     suspend fun deleteComment(
         commentId: String,
     ): ApiResult<Unit>
+}
+
+interface NotificationRepository {
+    suspend fun getNotifications(
+        limit: Int? = null,
+    ): ApiResult<List<RemoteNotification>>
+
+    suspend fun getNotification(
+        notificationId: String,
+    ): ApiResult<RemoteNotification>
+
+    suspend fun markRead(
+        notificationId: String,
+    ): ApiResult<RemoteNotification>
+
+    suspend fun markAllRead(): ApiResult<NotificationMarkAllReadResult>
 }
 
 interface TrashRepository {
@@ -178,5 +196,12 @@ interface AuthRepository {
 
     suspend fun updateCurrentUserProfile(
         request: UpdateProfileRequestDto,
+    ): ApiResult<RemoteCurrentUser>
+
+    suspend fun uploadCurrentUserAvatar(
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        openInputStream: () -> InputStream,
     ): ApiResult<RemoteCurrentUser>
 }

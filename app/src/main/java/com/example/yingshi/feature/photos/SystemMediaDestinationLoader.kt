@@ -38,7 +38,7 @@ fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState
 
         if (!AuthSessionManager.isLoggedIn) {
             value = SystemMediaDestinationUiState(
-                errorMessage = "REAL 模式需要先登录，才能选择后端帖子作为导入目标。",
+                errorMessage = "REAL 模式需要先登录，才能选择后端小相册作为导入目标。",
             )
             return@produceState
         }
@@ -62,7 +62,7 @@ fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState
                         }
                         is ApiResult.Error -> {
                             if (firstError == null) {
-                                firstError = postsResult.toBackendUiMessage("读取相册帖子失败。")
+                                firstError = postsResult.toBackendUiMessage("读取相册下的小相册失败。")
                             }
                         }
                         ApiResult.Loading -> Unit

@@ -9,7 +9,7 @@ fun RemoteComment.toCommentUiModel(
         id = commentId,
         targetType = when (targetType.lowercase()) {
             "media" -> CommentTargetType.Media
-            else -> CommentTargetType.Post
+            else -> CommentTargetType.SmallAlbum
         },
         targetId = targetId,
         author = authorName,

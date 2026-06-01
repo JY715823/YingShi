@@ -3,7 +3,7 @@ package com.example.yingshi.data.remote.dto
 data class CommentDto(
     val commentId: String,
     val targetType: String,
-    val postId: String? = null,
+    val smallAlbumId: String? = null,
     val mediaId: String? = null,
     val authorId: String? = null,
     val authorName: String,
@@ -11,7 +11,10 @@ data class CommentDto(
     val createdAtMillis: Long,
     val updatedAtMillis: Long? = null,
     val isDeleted: Boolean = false,
-)
+) {
+    val postId: String?
+        get() = smallAlbumId
+}
 
 data class CommentListResponseDto(
     val comments: List<CommentDto>,

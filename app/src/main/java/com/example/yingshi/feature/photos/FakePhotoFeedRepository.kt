@@ -38,8 +38,8 @@ object FakePhotoFeedRepository {
                     displayMonth = parts.month,
                     displayDay = parts.day,
                     commentCount = placeholderCommentCount(latestEntry.mediaId),
-                    postIds = entries
-                        .mapNotNull { it.postId }
+                    smallAlbumIds = entries
+                        .mapNotNull { it.smallAlbumId }
                         .filterNot { hiddenPostIds.contains(it) }
                         .distinct(),
                     palette = latestEntry.palette,
@@ -70,7 +70,7 @@ object FakePhotoFeedRepository {
                         PhotoFeedSourceEntry(
                             mediaId = item.id,
                             mediaDisplayTimeMillis = item.displayTimeMillis,
-                            postId = postId,
+                            smallAlbumId = postId,
                             palette = item.palette,
                             mediaType = item.type.toAppMediaType(),
                             aspectRatio = item.aspectRatio,
@@ -149,7 +149,7 @@ object FakePhotoFeedRepository {
                                 hour = seed.hour,
                                 minute = seed.minute,
                             ),
-                            postId = postId,
+                            smallAlbumId = postId,
                             palette = seed.palette,
                             mediaType = seed.mediaType,
                             aspectRatio = seed.aspectRatio,

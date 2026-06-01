@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import android.widget.Toast
@@ -63,9 +64,12 @@ import com.example.yingshi.feature.photos.NotificationCenterRoute
 import com.example.yingshi.feature.photos.NotificationCenterScreen
 import com.example.yingshi.feature.photos.NotificationDetailRoute
 import com.example.yingshi.feature.photos.NotificationDetailScreen
+import com.example.yingshi.feature.photos.NotificationCenterItemType
+import com.example.yingshi.feature.photos.NotificationCenterItemUiModel
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
-import com.example.yingshi.feature.photos.PhotoFeedPageStateStore
+import com.example.yingshi.feature.photos.GlobalPhotoFeedPageStateStore
+import com.example.yingshi.feature.photos.PhotoThumbnailPalette
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
@@ -349,33 +353,33 @@ fun YingShiApp() {
         transferCenterRoute = null
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-        postDetailRoute = postDetailRouteWithNotice(route, route.entryNotice ?: "已加入帖子")
+        postDetailRoute = postDetailRouteWithNotice(route, route.entryNotice ?: "已加入小相册")
     }
     val requestPhotoFeedRefresh: (List<String>, Boolean) -> Unit = { resultMediaIds, hasRetryableItems ->
         val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
         val targetMediaId = validResultMediaIds.firstOrNull()
         if (targetMediaId != null) {
-            PhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
-            PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
-            PhotoFeedPageStateStore.pendingHighlightNonce += 1
-            PhotoFeedPageStateStore.pendingNewImportedMediaIds = validResultMediaIds.toSet()
-            PhotoFeedPageStateStore.pendingNewImportedNonce += 1
-            PhotoFeedPageStateStore.pendingImportHasRetryableItems = hasRetryableItems
+            GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
+            GlobalPhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            GlobalPhotoFeedPageStateStore.pendingHighlightNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingNewImportedMediaIds = validResultMediaIds.toSet()
+            GlobalPhotoFeedPageStateStore.pendingNewImportedNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingImportHasRetryableItems = hasRetryableItems
             val extraCount = (validResultMediaIds.size - 1).coerceAtLeast(0)
-            PhotoFeedPageStateStore.pendingLocateSuccessMessage = if (extraCount > 0) {
+            GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage = if (extraCount > 0) {
                 "已定位到刚导入媒体，另有 $extraCount 项已导入"
             } else {
                 "已定位到刚导入媒体"
             }
-            PhotoFeedPageStateStore.pendingLocateFailureMessage = if (extraCount > 0) {
+            GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = if (extraCount > 0) {
                 "已导入 ${validResultMediaIds.size} 项媒体，暂时没有在照片流中定位到目标"
             } else {
                 "已导入媒体，暂时没有在照片流中定位到目标"
             }
             if (hasRetryableItems) {
-                PhotoFeedPageStateStore.pendingLocateSuccessMessage =
+                GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage =
                     "已定位到刚导入媒体，未完成项可在传输中心查看并重试。"
-                PhotoFeedPageStateStore.pendingLocateFailureMessage =
+                GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage =
                     "成功项已导入，但暂时没有定位到目标；未完成项可在传输中心查看并重试。"
             }
         }
@@ -437,7 +441,7 @@ fun YingShiApp() {
                 event.postRoute != null &&
                 event.successCount > 0
             ) {
-                openPostDetailAfterAdd(event.postRoute.copy(entryNotice = "帖子创建完成"))
+                openPostDetailAfterAdd(event.postRoute.copy(entryNotice = "小相册创建完成"))
             } else if (
                 event.operationType == LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST &&
                 event.postRoute != null &&
@@ -604,44 +608,65 @@ fun YingShiApp() {
                         onBack = { notificationCenterRoute = null },
                         onOpenNotificationDetail = { notificationDetailRoute = it },
                         onOpenNotificationTarget = { item ->
-                            when (item.id) {
-                                "notice-comment-1",
-                                "notice-comment-2",
-                                "notice-post-update-1" -> {
+                            when {
+                                item.id == "notice-cache-1" -> {
                                     notificationCenterRoute = null
                                     notificationDetailRoute = null
-                                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                                        selectedDestinationName = RootDestination.PHOTOS.name
-                                        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                                    cacheManagementRoute = CacheManagementRoute(source = "notification-center")
+                                }
+
+                                !item.postId.isNullOrBlank() -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                                    postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                                        item.toNotificationPostRoute()
                                     } else {
-                                        FakeAlbumRepository.getPosts().firstOrNull()?.let { post ->
-                                            postDetailRoute = FakeAlbumRepository.toPostDetailRoute(post)
-                                        }
+                                        FakeAlbumRepository.getPost(item.postId)
+                                            ?.let(FakeAlbumRepository::toPostDetailRoute)
+                                            ?.copy(
+                                                entryNotice = "从通知进入",
+                                                highlightMediaIds = item.mediaId?.let(::listOf).orEmpty(),
+                                                focusMediaId = item.mediaId,
+                                            )
+                                            ?: item.toNotificationPostRoute()
                                     }
                                 }
-                                "notice-album-update-1" -> {
+
+                                !item.trashItemId.isNullOrBlank() && RepositoryProvider.currentMode == RepositoryMode.REAL -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
+                                    trashDetailRoute = TrashDetailRoute(
+                                        entryId = item.trashItemId,
+                                        entryType = item.targetType.toTrashEntryTypeOrNull(),
+                                        sourcePostId = item.postId,
+                                        sourceMediaId = item.mediaId,
+                                    )
+                                }
+
+                                item.type == NotificationCenterItemType.DELETE_RESTORE -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
+                                }
+
+                                item.targetType.equals("UPLOAD", ignoreCase = true) -> {
+                                    notificationCenterRoute = null
+                                    notificationDetailRoute = null
+                                    transferCenterRoute = TransferCenterRoute(source = "notification-center")
+                                }
+
+                                item.type == NotificationCenterItemType.CONTENT_UPDATE -> {
                                     notificationCenterRoute = null
                                     notificationDetailRoute = null
                                     selectedDestinationName = RootDestination.PHOTOS.name
                                     photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                                 }
-                                "notice-trash-1" -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.PHOTOS.name
-                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                }
-                                "notice-restore-1" -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.PHOTOS.name
-                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                }
-                                "notice-cache-1" -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    cacheManagementRoute = CacheManagementRoute(source = "notification-center")
-                                }
+
                                 else -> {
                                     notificationDetailRoute = NotificationDetailRoute(
                                         notificationId = item.id,
@@ -926,7 +951,7 @@ fun YingShiApp() {
                                             highlightMediaIds = emptyList(),
                                             focusMediaId = null,
                                         ),
-                                        "帖子已更新",
+                                        "小相册已更新",
                                     )
                                 } else {
                                     currentRoute
@@ -1127,14 +1152,14 @@ private fun transferToastMessage(event: LocalSystemMediaBridgeRepository.Operati
             else -> "导入失败，可重试"
         }
         LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> when {
-            isPartial -> "帖子部分创建完成"
-            succeeded && successCount > 0 -> "帖子创建完成"
-            cancelledCount > 0 && failureCount == 0 -> "帖子创建已取消"
-            else -> "帖子创建失败，可重试"
+            isPartial -> "小相册部分创建完成"
+            succeeded && successCount > 0 -> "小相册创建完成"
+            cancelledCount > 0 && failureCount == 0 -> "小相册创建已取消"
+            else -> "小相册创建失败，可重试"
         }
         LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> when {
             isPartial -> "部分加入成功"
-            succeeded && successCount > 0 -> "已加入帖子"
+            succeeded && successCount > 0 -> "已加入小相册"
             cancelledCount > 0 && failureCount == 0 -> "加入已取消"
             else -> "加入失败，可重试"
         }
@@ -1149,6 +1174,36 @@ private fun SystemMediaUploadTaskUiModel.successfulResultMediaIdsInOperation(): 
         .distinct()
     return ids.ifEmpty { resultMediaId?.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty() }
 }
+
+private fun NotificationCenterItemUiModel.toNotificationPostRoute(): PostDetailPlaceholderRoute {
+    val resolvedPostId = requireNotNull(postId)
+    val syntheticAlbumId = "notification-entry"
+    return PostDetailPlaceholderRoute(
+        postId = resolvedPostId,
+        albumId = syntheticAlbumId,
+        albumIds = listOf(syntheticAlbumId),
+        title = targetSummary.ifBlank { title },
+        summary = body,
+        postDisplayTimeMillis = createdAtMillis,
+        mediaCount = if (mediaId.isNullOrBlank()) 0 else 1,
+        coverPalette = NotificationPlaceholderPalette,
+        entryNotice = "从通知进入",
+        highlightMediaIds = mediaId?.let(::listOf).orEmpty(),
+        focusMediaId = mediaId,
+    )
+}
+
+private fun String?.toTrashEntryTypeOrNull(): TrashEntryType? {
+    val value = this?.trim().orEmpty()
+    if (value.isBlank()) return null
+    return TrashEntryType.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+}
+
+private val NotificationPlaceholderPalette = PhotoThumbnailPalette(
+    start = Color(0xFFE9E2D8),
+    end = Color(0xFFD7C6BB),
+    accent = Color(0xFF8C6C59),
+)
 
 @Preview(showBackground = true)
 @Composable

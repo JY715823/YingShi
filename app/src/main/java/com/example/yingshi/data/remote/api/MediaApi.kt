@@ -21,9 +21,9 @@ interface MediaApi {
         @Path("mediaId") mediaId: String,
     ): ResponseBody
 
-    @DELETE("api/posts/{postId}/media/{mediaId}")
+    @DELETE("api/small-albums/{smallAlbumId}/media/{mediaId}")
     suspend fun deleteMediaFromPost(
-        @Path("postId") postId: String,
+        @Path("smallAlbumId") smallAlbumId: String,
         @Path("mediaId") mediaId: String,
         @Query("deleteMode") deleteMode: String,
     ): ApiEnvelopeDto<TrashItemDto>

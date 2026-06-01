@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.UploadState
+import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.navigation.PhotosTopDestination
@@ -93,7 +95,15 @@ fun PhotosRootScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
-    val notificationUnreadCount = FakeNotificationRepository.unreadCount()
+    val notificationUnreadCount by produceState(
+        initialValue = 0,
+        key1 = realBackendSessionKey("photos-notification-bell"),
+    ) {
+        value = when (val result = RepositoryProvider.notificationRepository.getNotifications(limit = 100)) {
+            is ApiResult.Success -> result.data.count { !it.isRead }
+            else -> 0
+        }
+    }
     val transferTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val hasTransferFailure = transferTasks.any { it.canRetry || it.state == UploadState.FAILURE }
     val runningTransferCount = transferTasks.count {
@@ -186,7 +196,7 @@ fun PhotosRootScreen(
                 },
                 text = {
                     Text(
-                        text = "将从照片流全局删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关帖子里的引用。媒体会进入 App 回收站，后续可在回收站中恢复。",
+                        text = "将从照片流全局删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关小相册里的引用。媒体会进入 App 回收站，后续可在回收站中恢复。",
                     )
                 },
                 confirmButton = {
@@ -224,8 +234,8 @@ fun PhotosRootScreen(
                                         height = item.height,
                                         videoDurationMillis = item.videoDurationMillis,
                                         mediaSource = item.mediaSource,
-                                        sourcePostId = item.postIds.firstOrNull(),
-                                        sourcePostTitle = item.postIds.firstOrNull()
+                                        sourcePostId = item.smallAlbumIds.firstOrNull(),
+                                        sourcePostTitle = item.smallAlbumIds.firstOrNull()
                                             ?.let(FakeAlbumRepository::getPost)
                                             ?.title,
                                     )
@@ -282,7 +292,7 @@ fun PhotosRootScreen(
                         mediaItems = selectedItems,
                     )
                     if (addedCount <= 0) {
-                        addToPostDialogMessage = "这些媒体已经在目标帖子里了，可换一个帖子或取消。"
+                        addToPostDialogMessage = "这些媒体已经在目标小相册里了，可换一个小相册或取消。"
                         return@SystemMediaPostDestinationDialog
                     }
                     showAddToPostDialog = false
@@ -290,7 +300,7 @@ fun PhotosRootScreen(
                     photoSelectionState = photoSelectionState.clear()
                     Toast.makeText(
                         context,
-                        "已加入帖子",
+                        "已加入小相册",
                         Toast.LENGTH_SHORT,
                     ).show()
                     val addedMediaIds = selectedItemIds
@@ -299,7 +309,7 @@ fun PhotosRootScreen(
                     FakeAlbumRepository.getPost(postId)
                         ?.let(FakeAlbumRepository::toPostDetailRoute)
                         ?.copy(
-                            entryNotice = "已加入帖子",
+                            entryNotice = "已加入小相册",
                             highlightMediaIds = addedMediaIds,
                             focusMediaId = addedMediaIds.firstOrNull(),
                         )
@@ -776,14 +786,14 @@ private fun PhotoSelectionActionBarV2(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 SelectionActionRow(
-                    text = "新建帖子",
+                    text = "新建小相册",
                     onClick = {
                         showActions = false
                         onCreatePost()
                     },
                 )
                 SelectionActionRow(
-                    text = "加入已有帖子",
+                    text = "加入已有小相册",
                     onClick = {
                         showActions = false
                         onAddToPost()

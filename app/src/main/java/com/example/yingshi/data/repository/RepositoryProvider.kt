@@ -36,6 +36,12 @@ object RepositoryProvider {
             RepositoryMode.REAL -> RealCommentRepository(RemoteServiceFactory.commentApi)
         }
 
+    val notificationRepository: NotificationRepository
+        get() = when (currentMode) {
+            RepositoryMode.FAKE -> FakeNotificationRepositoryShell()
+            RepositoryMode.REAL -> RealNotificationRepository(RemoteServiceFactory.notificationApi)
+        }
+
     val trashRepository: TrashRepository
         get() = when (currentMode) {
             RepositoryMode.FAKE -> FakeTrashRepositoryShell()

@@ -409,7 +409,7 @@ fun TrashPageScreen(
             title = { Text("清空当前分类？") },
             text = {
                 Text(
-                    "将永久删除当前「${selectedType.label}」分类中的 ${entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；帖子删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前「${selectedType.label}」分类中的 ${entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
                 )
             },
             confirmButton = {
@@ -438,7 +438,7 @@ fun TrashPageScreen(
                 pendingRestoreEntries = emptyList()
             },
             title = { Text("确认恢复？") },
-            text = { Text("将恢复 ${pendingRestoreEntries.size} 个回收站条目。恢复后会回到对应照片流或帖子关系。") },
+            text = { Text("将恢复 ${pendingRestoreEntries.size} 个回收站条目。恢复后会回到对应照片流或小相册关系。") },
             confirmButton = {
                 TextButton(
                     enabled = pendingRestoreEntries.isNotEmpty(),
@@ -471,7 +471,7 @@ fun TrashPageScreen(
             title = { Text("删除选中项？") },
             text = {
                 Text(
-                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；帖子删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
                 )
             },
             confirmButton = {
@@ -930,9 +930,9 @@ private fun TrashEntryUiModel.primaryPreviewMedia(): TrashMediaSnapshot? {
 
 private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
     return when (entry.type) {
-        TrashEntryType.POST_DELETED -> "帖子整体进入 App 回收站"
-        TrashEntryType.MEDIA_REMOVED -> "只移除了当前帖子关联"
-        TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从照片流和相关帖子删除"
+        TrashEntryType.POST_DELETED -> "小相册整体进入 App 回收站"
+        TrashEntryType.MEDIA_REMOVED -> "只移除了当前小相册关联"
+        TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从照片流和相关小相册删除"
     }
 }
 
@@ -947,13 +947,13 @@ private fun trashEntrySourceLine(entry: TrashEntryUiModel): String {
             val postTitle = entry.relationSnapshots.firstOrNull()?.postTitle
                 ?: entry.mediaSnapshot?.sourcePostTitle
                 ?: entry.sourcePostId
-                ?: "当前帖子"
-            "来源帖子：$postTitle"
+                ?: "当前小相册"
+            "来源小相册：$postTitle"
         }
         TrashEntryType.MEDIA_SYSTEM_DELETED -> {
             val postCount = entry.relationSnapshots.size.takeIf { it > 0 }
                 ?: entry.relatedPostIds.size
-            "影响帖子 $postCount 个"
+            "影响小相册 $postCount 个"
         }
     }
 }
@@ -1014,5 +1014,5 @@ private fun trashGridPostTitle(entry: TrashEntryUiModel): String {
         ?: entry.mediaSnapshot?.sourcePostTitle
         ?: entry.title.removePrefix("从「").substringBefore("」移除媒体")
         ?: entry.sourcePostId
-        ?: "来源帖子"
+        ?: "来源小相册"
 }

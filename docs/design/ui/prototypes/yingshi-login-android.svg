@@ -1,0 +1,151 @@
+<svg width="1080" height="2400" viewBox="0 0 1080 2400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="166" y1="110" x2="936" y2="2262" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F3FBFF"/>
+      <stop offset="0.42" stop-color="#EDF9FF"/>
+      <stop offset="1" stop-color="#E6F5FC"/>
+    </linearGradient>
+    <radialGradient id="haloLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(258 436) rotate(58.027) scale(470.466 521.103)">
+      <stop stop-color="#BFEFFF" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#BFEFFF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="haloRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(860 312) rotate(128.792) scale(390.557 486.739)">
+      <stop stop-color="#E5F7D7" stop-opacity="0.68"/>
+      <stop offset="1" stop-color="#E5F7D7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="haloBottom" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(825 1920) rotate(122.371) scale(545.289 650.104)">
+      <stop stop-color="#D8F3FC" stop-opacity="0.58"/>
+      <stop offset="1" stop-color="#D8F3FC" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panelStroke" x1="222" y1="646" x2="858" y2="1666" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#D6ECF5" stop-opacity="0.96"/>
+    </linearGradient>
+    <linearGradient id="panelFill" x1="233" y1="614" x2="825" y2="1758" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFDF8"/>
+      <stop offset="0.56" stop-color="#FCFEFD"/>
+      <stop offset="1" stop-color="#F9FEFC"/>
+    </linearGradient>
+    <linearGradient id="heroCard" x1="610" y1="817" x2="826" y2="1092" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FFFD"/>
+      <stop offset="1" stop-color="#E9F8EF"/>
+    </linearGradient>
+    <linearGradient id="buttonFill" x1="236" y1="1452" x2="844" y2="1452" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#176D90"/>
+      <stop offset="1" stop-color="#248FB3"/>
+    </linearGradient>
+    <filter id="panelShadow" x="138" y="495" width="804" height="1333" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="28"/>
+      <feGaussianBlur stdDeviation="38"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.117647 0 0 0 0 0.317647 0 0 0 0 0.419608 0 0 0 0.12 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+    <filter id="softBlur" x="79" y="845" width="286" height="285" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="28" result="effect1_foregroundBlur_1_1"/>
+    </filter>
+    <filter id="softBlurRight" x="777" y="532" width="242" height="243" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="24" result="effect1_foregroundBlur_1_1"/>
+    </filter>
+  </defs>
+
+  <rect width="1080" height="2400" fill="url(#bgGradient)"/>
+  <rect width="1080" height="2400" fill="url(#haloLeft)"/>
+  <rect width="1080" height="2400" fill="url(#haloRight)"/>
+  <rect width="1080" height="2400" fill="url(#haloBottom)"/>
+
+  <path d="M108 282C158 226.307 210.848 192.706 266.543 181.2C344.025 165.182 430.126 198.391 492.003 247.704C555.753 298.509 594.562 368.783 674.52 395.57C738.269 416.918 808.679 404.361 869.903 434.514C944.858 471.426 993.78 552.541 1016 638.5V0H0V410.232C34.4163 392.166 73.0639 320.909 108 282Z" fill="#FFFFFF" fill-opacity="0.28"/>
+  <path d="M0 1886.4C70.6313 1824.93 164.926 1797.27 255.49 1807.26C333.973 1815.92 405.453 1851.18 483.637 1862.15C599.033 1878.34 712.662 1848.51 824.539 1880.61C922.978 1908.85 1011.29 1984.86 1080 2078.18V2400H0V1886.4Z" fill="#FFFFFF" fill-opacity="0.22"/>
+
+  <g filter="url(#softBlur)">
+    <circle cx="222" cy="987" r="86" fill="#CAEFFF" fill-opacity="0.88"/>
+  </g>
+  <g filter="url(#softBlurRight)">
+    <circle cx="898" cy="653" r="73" fill="#E9CC81" fill-opacity="0.16"/>
+  </g>
+
+  <rect x="92" y="70" width="896" height="2260" rx="54" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="8"/>
+  <rect x="104" y="82" width="872" height="2236" rx="46" stroke="#D6ECF5" stroke-opacity="0.68" stroke-width="2"/>
+
+  <text x="128" y="172" fill="#86AABD" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="30" font-weight="500">9:41</text>
+  <g opacity="0.8">
+    <rect x="859" y="145" width="54" height="28" rx="14" stroke="#86AABD" stroke-width="3"/>
+    <rect x="916" y="153" width="6" height="12" rx="3" fill="#86AABD"/>
+    <rect x="864" y="150" width="40" height="18" rx="9" fill="#86AABD"/>
+    <path d="M785 171C801.569 171 815 157.569 815 141C815 157.569 828.431 171 845 171" stroke="#86AABD" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M738 171C752.359 171 764 159.359 764 145C764 159.359 775.641 171 790 171" stroke="#86AABD" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+
+  <g filter="url(#panelShadow)">
+    <rect x="214" y="571" width="652" height="1181" rx="46" fill="url(#panelFill)"/>
+    <rect x="214.75" y="571.75" width="650.5" height="1179.5" rx="45.25" stroke="url(#panelStroke)" stroke-width="1.5"/>
+  </g>
+
+  <circle cx="540" cy="456" r="118" fill="#FFFFFF" fill-opacity="0.42"/>
+  <circle cx="540" cy="456" r="102" fill="#DFF4FC" fill-opacity="0.78" stroke="#FFFFFF" stroke-opacity="0.62" stroke-width="3"/>
+  <circle cx="540" cy="456" r="78" fill="#FCFEFD"/>
+  <path d="M497 482C524.667 447.333 552.333 447.333 580 482" stroke="#176D90" stroke-width="12" stroke-linecap="round"/>
+  <path d="M476 440C509.66 404.876 569.87 401.238 605 434.898" stroke="#248FB3" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="511" cy="447" r="8" fill="#176D90"/>
+  <circle cx="569" cy="447" r="8" fill="#176D90"/>
+  <circle cx="540" cy="405" r="6" fill="#E9CC81"/>
+
+  <text x="540" y="660" text-anchor="middle" fill="#176D90" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="72" font-weight="700" letter-spacing="4">映世</text>
+  <text x="540" y="716" text-anchor="middle" fill="#557B8D" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="28" font-weight="500">登录后，进入只属于两个人的共同相册空间</text>
+
+  <rect x="264" y="774" width="552" height="270" rx="34" fill="url(#heroCard)" stroke="#D6ECF5" stroke-width="1.5"/>
+  <text x="304" y="838" fill="#7896A5" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="600" letter-spacing="2">共同空间</text>
+  <text x="304" y="896" fill="#176D90" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="700">把照片、时间与日常放在一起</text>
+  <text x="304" y="944" fill="#5F8394" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="500">记录彼此看到的世界，也保留安静整理回忆的节奏。</text>
+  <rect x="304" y="978" width="146" height="38" rx="19" fill="#EEF8FF"/>
+  <text x="377" y="1004" text-anchor="middle" fill="#248FB3" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="700">长期共享</text>
+  <rect x="642" y="821" width="132" height="132" rx="30" fill="#FFFFFF" fill-opacity="0.82"/>
+  <circle cx="708" cy="871" r="24" fill="#BDEFFF"/>
+  <path d="M680 904C700.232 879.378 723.768 879.378 744 904" stroke="#176D90" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M689 860C703.863 844.315 719.626 844.315 734.489 860" stroke="#248FB3" stroke-width="6.5" stroke-linecap="round"/>
+  <circle cx="697" cy="871" r="5" fill="#176D90"/>
+  <circle cx="719" cy="871" r="5" fill="#176D90"/>
+  <rect x="660" y="979" width="96" height="20" rx="10" fill="#E9CC81" fill-opacity="0.45"/>
+
+  <text x="264" y="1134" fill="#89A8B8" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="600">邮箱</text>
+  <rect x="236" y="1158" width="608" height="124" rx="28" fill="#FFFFFF" fill-opacity="0.82"/>
+  <rect x="236.75" y="1158.75" width="606.5" height="122.5" rx="27.25" stroke="#D6ECF5" stroke-width="1.5"/>
+  <rect x="270" y="1194" width="54" height="54" rx="18" fill="#EAF7FC"/>
+  <path d="M287 1210H307C314.18 1210 320 1215.82 320 1223V1223C320 1230.18 314.18 1236 307 1236H287C279.82 1236 274 1230.18 274 1223V1223C274 1215.82 279.82 1210 287 1210Z" stroke="#248FB3" stroke-width="3"/>
+  <path d="M279 1217L297 1229L315 1217" stroke="#248FB3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="350" y="1235" fill="#8AA6B4" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="30" font-weight="500">输入邮箱</text>
+
+  <text x="264" y="1363" fill="#89A8B8" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="600">密码</text>
+  <rect x="236" y="1387" width="608" height="124" rx="28" fill="#FFFFFF"/>
+  <rect x="236.75" y="1387.75" width="606.5" height="122.5" rx="27.25" stroke="#BFE2EF" stroke-width="2.5"/>
+  <rect x="270" y="1423" width="54" height="54" rx="18" fill="#EDF8F2"/>
+  <path d="M285 1446C285 1432.193 296.193 1421 310 1421V1421C323.807 1421 335 1432.193 335 1446V1463H285V1446Z" stroke="#176D90" stroke-width="3"/>
+  <rect x="280" y="1440" width="60" height="36" rx="10" fill="#FCFEFD" stroke="#176D90" stroke-width="3"/>
+  <circle cx="310" cy="1456" r="5" fill="#176D90"/>
+  <text x="350" y="1464" fill="#607E8E" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="30" font-weight="600">••••••••••</text>
+  <text x="776" y="1463" text-anchor="end" fill="#248FB3" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="700">显示</text>
+
+  <rect x="236" y="1562" width="608" height="126" rx="30" fill="url(#buttonFill)"/>
+  <text x="540" y="1639" text-anchor="middle" fill="#FFFFFF" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="34" font-weight="700" letter-spacing="2">登录</text>
+
+  <rect x="236" y="1718" width="608" height="126" rx="30" fill="#F7FCFE" fill-opacity="0.86"/>
+  <rect x="236.75" y="1718.75" width="606.5" height="124.5" rx="29.25" stroke="#D6ECF5" stroke-width="1.5"/>
+  <rect x="270" y="1751" width="62" height="62" rx="22" fill="#E3F8D7"/>
+  <path d="M289 1783.5L302 1796.5L317 1768.5" stroke="#248FB3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="356" y="1774" fill="#557989" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="26" font-weight="600">首次登录后，将自动进入你们的共享相册</text>
+  <text x="356" y="1815" fill="#9F8961" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="600">我们会保留你的登录状态，方便之后继续记录。</text>
+
+  <rect x="277" y="1902" width="200" height="50" rx="25" fill="#EFF8FC"/>
+  <circle cx="314" cy="1927" r="8" fill="#E9CC81"/>
+  <text x="344" y="1935" fill="#7897A7" font-family="MiSans, PingFang SC, Noto Sans SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="600">安静进入共同空间</text>
+
+  <path d="M186 2112C266.351 2049.25 357.133 2017.16 458.953 2015.72C593.399 2013.82 671.626 2059.45 807.567 2084.54C851.592 2092.67 896.403 2096.75 942 2093.4V2258H138V2197.23C145.327 2164.19 159.76 2132.5 186 2112Z" fill="#DFF4FC" fill-opacity="0.72"/>
+  <path d="M223 2156C288.121 2107.14 360.013 2082.85 438.676 2083.15C560.738 2083.6 660.309 2138.65 782.287 2147.14C829.941 2150.46 877.611 2146.68 924 2135.85" stroke="#C0E8F5" stroke-width="4" stroke-linecap="round"/>
+  <path d="M204 2207C253.964 2171.13 308.227 2153.85 366.791 2155.17C452.103 2157.1 525.026 2200.92 610.484 2203.28C668.203 2204.87 723.556 2187.53 777.682 2169.34C833.557 2150.57 889.75 2140.91 946 2140.36" stroke="#FFFFFF" stroke-opacity="0.66" stroke-width="5" stroke-linecap="round"/>
+</svg>

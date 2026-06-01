@@ -679,7 +679,7 @@ private fun TrashPostViewerDetailScreen(
             )
 
             if (snapshot == null) {
-                TrashDetailEmptyCard(text = "当前帖子快照不存在，暂时无法展示删除态详情。")
+                TrashDetailEmptyCard(text = "当前小相册快照不存在，暂时无法展示删除态详情。")
             } else {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -692,7 +692,7 @@ private fun TrashPostViewerDetailScreen(
                         verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
                     ) {
                         Text(
-                            text = snapshot.post.title.ifBlank { "未命名帖子" },
+                            text = snapshot.post.title.ifBlank { "未命名小相册" },
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -702,7 +702,7 @@ private fun TrashPostViewerDetailScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 帖子时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)} · ${snapshot.mediaSnapshots.size} 项媒体",
+                            text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 小相册时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)} · ${snapshot.mediaSnapshots.size} 项媒体",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
                         )
@@ -710,7 +710,7 @@ private fun TrashPostViewerDetailScreen(
                 }
 
                 if (snapshot.mediaSnapshots.isEmpty()) {
-                    TrashDetailEmptyCard(text = "这个帖子里的媒体已不可用。")
+                    TrashDetailEmptyCard(text = "这个小相册里的媒体已不可用。")
                 } else {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -739,8 +739,8 @@ private fun TrashPostViewerDetailScreen(
                     }
                 }
                 TrashReadOnlyCommentCard(
-                    title = "帖子评论",
-                    emptyText = "当前帖子没有可展示的评论。",
+                    title = "小相册评论",
+                    emptyText = "当前小相册没有可展示的评论。",
                     comments = postComments,
                 )
             }
@@ -781,7 +781,7 @@ private fun TrashPostViewerDetailScreen(
         AlertDialog(
             onDismissRequest = { showRestoreConfirm = false },
             title = { Text("确认恢复？") },
-            text = { Text("将恢复当前回收站帖子。") },
+            text = { Text("将恢复当前回收站小相册。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -821,7 +821,7 @@ private fun TrashPostViewerTopBar(
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                text = "回收站帖子查看",
+                text = "回收站小相册查看",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
             )
@@ -1065,7 +1065,7 @@ private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
 private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
     val snapshot = entry.postSnapshot
     if (snapshot == null) {
-        TrashDetailEmptyCard(text = "当前帖子快照不存在，暂时无法展示删除态详情。")
+        TrashDetailEmptyCard(text = "当前小相册快照不存在，暂时无法展示删除态详情。")
         return
     }
 
@@ -1089,13 +1089,13 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
             verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
         ) {
             Text(
-                text = "只读帖子浏览",
+                text = "只读小相册浏览",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
 
             if (mediaSnapshots.isEmpty()) {
-                TrashDetailEmptyCard(text = "当前帖子没有可展示的媒体快照。")
+                TrashDetailEmptyCard(text = "当前小相册没有可展示的媒体快照。")
             } else {
                 HorizontalPager(
                     state = pagerState,
@@ -1127,17 +1127,17 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
                     verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
                 ) {
                     Text(
-                        text = snapshot.post.title.ifBlank { "未命名帖子" },
+                        text = snapshot.post.title.ifBlank { "未命名小相册" },
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = snapshot.post.summary.ifBlank { "该删除态优先使用回收站中的帖子快照。正常列表里即使已经移除，也不会影响这里查看。" },
+                        text = snapshot.post.summary.ifBlank { "该删除态优先使用回收站中的小相册快照。正常列表里即使已经移除，也不会影响这里查看。" },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "帖子时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)}",
+                        text = "小相册时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1153,8 +1153,8 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
             }
 
             TrashReadOnlyCommentCard(
-                title = "帖子评论（只读）",
-                emptyText = "当前帖子没有可展示的帖子评论。",
+                title = "小相册评论（只读）",
+                emptyText = "当前小相册没有可展示的小相册评论。",
                 comments = comments,
             )
         }
@@ -1216,9 +1216,9 @@ private fun TrashDeletedMediaContent(
                     )
                     Text(
                         text = if (systemWide) {
-                            "媒体本体已从照片页和相关帖子中本地隐藏。恢复后会重新回到照片流，并补回被清除的帖子关系。"
+                            "媒体本体已从照片页和相关小相册中本地隐藏。恢复后会重新回到照片流，并补回被清除的小相册关系。"
                         } else {
-                            "本次只移除了当前帖子与该媒体的关系。媒体本体和媒体评论仍然保留，不影响其他帖子。"
+                            "本次只移除了当前小相册与该媒体的关系。媒体本体和媒体评论仍然保留，不影响其他小相册。"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1230,14 +1230,14 @@ private fun TrashDeletedMediaContent(
                     )
                     media.sourcePostTitle?.let { sourceTitle ->
                         Text(
-                            text = "来源帖子 $sourceTitle",
+                            text = "来源小相册 $sourceTitle",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
                         )
                     }
                     if (relatedPosts.isEmpty()) {
                         Text(
-                            text = "当前没有可展示的帖子关系快照。",
+                            text = "当前没有可展示的小相册关系快照。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1573,7 +1573,7 @@ private fun trashViewerPostTitle(entry: TrashEntryUiModel): String {
         ?: entry.mediaSnapshot?.sourcePostTitle
         ?: entry.title.removePrefix("从「").substringBefore("」移除媒体")
         ?: entry.sourcePostId
-        ?: "来源帖子"
+        ?: "来源小相册"
 }
 
 @Preview(showBackground = true)

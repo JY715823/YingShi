@@ -19,7 +19,7 @@ enum class AppMediaType {
 data class PhotoFeedSourceEntry(
     val mediaId: String,
     val mediaDisplayTimeMillis: Long,
-    val postId: String?,
+    val smallAlbumId: String?,
     val palette: PhotoThumbnailPalette,
     val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
@@ -27,7 +27,10 @@ data class PhotoFeedSourceEntry(
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
     val mediaSource: AppContentMediaSource? = null,
-)
+) {
+    val postId: String?
+        get() = smallAlbumId
+}
 
 @Immutable
 data class PhotoFeedItem(
@@ -37,7 +40,7 @@ data class PhotoFeedItem(
     val displayMonth: Int,
     val displayDay: Int,
     val commentCount: Int,
-    val postIds: List<String>,
+    val smallAlbumIds: List<String>,
     val palette: PhotoThumbnailPalette,
     val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
@@ -45,7 +48,10 @@ data class PhotoFeedItem(
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
     val mediaSource: AppContentMediaSource? = null,
-)
+) {
+    val postIds: List<String>
+        get() = smallAlbumIds
+}
 
 enum class PhotoFeedDensity(
     val columns: Int,

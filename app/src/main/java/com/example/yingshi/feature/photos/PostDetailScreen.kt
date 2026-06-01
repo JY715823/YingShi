@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,8 +26,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ModeComment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,9 +100,15 @@ fun PostDetailScreen(
     var mediaCommentPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
+    var showSmallAlbumComments by rememberSaveable(route.postId) {
+        mutableStateOf(false)
+    }
 
     BackHandler(enabled = mediaCommentPage != null) {
         mediaCommentPage = null
+    }
+    BackHandler(enabled = showSmallAlbumComments) {
+        showSmallAlbumComments = false
     }
     BackHandler(enabled = inPostViewerInitialPage != null) {
         inPostViewerInitialPage = null
@@ -121,7 +132,7 @@ fun PostDetailScreen(
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            PostDetailContent(
+            SmallAlbumDetailContent(
                 detail = detail,
                 highlightMediaIds = route.highlightMediaIds,
                 focusMediaId = route.focusMediaId,
@@ -129,9 +140,26 @@ fun PostDetailScreen(
                 onBack = onBack,
                 onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
                 onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
-                onOpenMediaComments = { page -> mediaCommentPage = page },
+                onOpenSmallAlbumComments = { showSmallAlbumComments = true },
                 modifier = Modifier.fillMaxSize(),
             )
+
+            if (showSmallAlbumComments) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.18f))
+                        .clickable { showSmallAlbumComments = false },
+                )
+                FakeSmallAlbumCommentSheet(
+                    postId = detail.postId,
+                    onClose = { showSmallAlbumComments = false },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                        .padding(bottom = YingShiThemeTokens.spacing.lg),
+                )
+            }
 
             mediaCommentPage?.let { page ->
                 val media = detail.mediaItems.getOrNull(page.coerceAtLeast(0))
@@ -182,6 +210,9 @@ private fun RealPostDetailScreen(
     var mediaCommentPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
+    var showSmallAlbumComments by rememberSaveable(route.postId) {
+        mutableStateOf(false)
+    }
 
     val detail = detailWithEntryNotice
     val detailMediaIds = detail?.mediaItems?.map { it.id }.orEmpty()
@@ -197,6 +228,9 @@ private fun RealPostDetailScreen(
 
     BackHandler(enabled = mediaCommentPage != null) {
         mediaCommentPage = null
+    }
+    BackHandler(enabled = showSmallAlbumComments) {
+        showSmallAlbumComments = false
     }
     BackHandler(enabled = inPostViewerInitialPage != null) {
         inPostViewerInitialPage = null
@@ -236,7 +270,7 @@ private fun RealPostDetailScreen(
                     PostDetailInfoState(
                         title = "真实模式需要登录",
                         message = uiState.errorMessage
-                            ?: "请先到后端联调诊断页登录，再打开这个帖子。",
+                            ?: "请先到后端联调诊断页登录，再打开这个小相册。",
                         onBack = onBack,
                         actionLabel = "重试",
                         onAction = viewModel::refresh,
@@ -253,7 +287,7 @@ private fun RealPostDetailScreen(
 
                 uiState.errorMessage != null && detail == null -> {
                     val errorMessage = uiState.errorMessage
-                        ?: "读取后端帖子详情失败。"
+                        ?: "读取后端小相册详情失败。"
                     PostDetailInfoState(
                         title = "后端请求失败",
                         message = errorMessage,
@@ -272,7 +306,7 @@ private fun RealPostDetailScreen(
                 }
 
                 else -> {
-                    RealPostDetailContent(
+                    RealSmallAlbumDetailContent(
                         detail = detail,
                         uiState = uiState,
                         highlightMediaIds = route.highlightMediaIds,
@@ -282,13 +316,36 @@ private fun RealPostDetailScreen(
                         onRefresh = viewModel::refresh,
                         onOpenGearEdit = onOpenGearEdit,
                         onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
-                        onOpenMediaComments = { page -> mediaCommentPage = page },
+                        onOpenSmallAlbumComments = { showSmallAlbumComments = true },
+                        onRetrySmallAlbumComments = viewModel::retryPostComments,
                         onCreatePostComment = viewModel::createPostComment,
                         onUpdatePostComment = viewModel::updatePostComment,
                         onDeletePostComment = viewModel::deletePostComment,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
+
+            if (showSmallAlbumComments && detail != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.18f))
+                        .clickable { showSmallAlbumComments = false },
+                )
+                RealSmallAlbumCommentSheet(
+                    smallAlbumId = detail.postId,
+                    state = uiState.postComments,
+                    onClose = { showSmallAlbumComments = false },
+                    onRetry = viewModel::retryPostComments,
+                    onCreateComment = viewModel::createPostComment,
+                    onUpdateComment = viewModel::updatePostComment,
+                    onDeleteComment = viewModel::deletePostComment,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                        .padding(bottom = YingShiThemeTokens.spacing.lg),
+                )
             }
 
             selectedMedia?.let { media ->
@@ -319,7 +376,7 @@ private fun RealPostDetailScreen(
 }
 
 @Composable
-private fun RealPostDetailContent(
+private fun RealSmallAlbumDetailContent(
     detail: PostDetailUiModel,
     uiState: PostDetailRealUiState,
     highlightMediaIds: List<String>,
@@ -329,7 +386,8 @@ private fun RealPostDetailContent(
     onRefresh: () -> Unit,
     onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
-    onOpenMediaComments: (Int) -> Unit,
+    onOpenSmallAlbumComments: () -> Unit,
+    onRetrySmallAlbumComments: () -> Unit,
     onCreatePostComment: (String) -> Unit,
     onUpdatePostComment: (String, String) -> Unit,
     onDeletePostComment: (String) -> Unit,
@@ -342,17 +400,9 @@ private fun RealPostDetailContent(
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val pagerState = rememberPagerState(
-        pageCount = { detail.mediaItems.size },
-    )
-    val currentPage = if (hasMedia) {
-        pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
-    } else {
-        0
-    }
-    val currentMedia = detail.mediaItems.getOrNull(currentPage)
-    val currentMediaCommentState = currentMedia?.let { uiState.mediaComments[it.id] }
-    val currentMediaCommentCount = currentMediaCommentState?.comments?.size ?: currentMedia?.commentCount ?: 0
+    val feedItems = remember(detail.mediaItems) { detail.toSmallAlbumFeedItems() }
+    val pageStateStore = remember(detail.postId) { PhotoFeedPageStateStore() }
+    var detailScrollTrigger by remember(detail.postId) { mutableIntStateOf(0) }
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
     val feedbackKey = "${detail.postId}:$feedbackNonce"
     val highlightKey = remember(highlightMediaIds, feedbackNonce) {
@@ -367,13 +417,16 @@ private fun RealPostDetailContent(
     var resultNotice by rememberSaveable(detail.postId, highlightKey, focusMediaId) {
         mutableStateOf<String?>(null)
     }
-    val visibleHighlightMediaIds = if (showNewAddedState) highlightMediaIds.toSet() else emptySet()
     LaunchedEffect(detail.postId, postMediaIds, focusMediaId, highlightKey) {
         val targetId = focusMediaId ?: highlightMediaIds.firstOrNull()
         if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
         val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
         if (targetIndex >= 0) {
-            pagerState.scrollToPage(targetIndex)
+            pageStateStore.pendingScrollTargetMediaId = targetId
+            pageStateStore.pendingHighlightNonce = feedbackNonce
+            pageStateStore.pendingLocateSuccessMessage = null
+            pageStateStore.pendingLocateFailureMessage = null
+            detailScrollTrigger += 1
             val otherCount = highlightMediaIds.distinct().size - 1
             resultNotice = if (otherCount > 0) {
                 "已定位到刚加入媒体，另有 $otherCount 项新加入"
@@ -395,45 +448,20 @@ private fun RealPostDetailContent(
         delay(3200L)
         showEntryNotice = false
     }
-    val currentOriginalTarget = remember(currentMedia) {
-        currentMedia?.toRealOriginalMediaTarget()
-    }
-    val currentOriginalState = if (currentMedia?.mediaType == AppMediaType.IMAGE && currentOriginalTarget != null) {
-        RealOriginalLoadRepository.getState(currentOriginalTarget)
-    } else {
-        OriginalLoadState.NotLoaded
-    }
-    var lastNotifiedOriginalState by remember(currentMedia?.id) {
-        mutableStateOf<OriginalLoadState?>(null)
-    }
-    currentMedia?.let { media ->
-        LaunchedEffect(media.id, currentOriginalState) {
-            if (media.mediaType != AppMediaType.IMAGE) {
-                lastNotifiedOriginalState = currentOriginalState
-                return@LaunchedEffect
-            }
-            val previousState = lastNotifiedOriginalState
-            if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Loaded) {
-                Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
-            } else if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Failed) {
-                Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
-            }
-            lastNotifiedOriginalState = currentOriginalState
-        }
-    }
     val originalTargets = remember(detail.mediaItems) {
         detail.mediaItems.map { it.toRealOriginalMediaTarget() }
     }
     val postOriginalSummary = RealOriginalLoadRepository.getPostSummaryForTargets(originalTargets)
-    PostDetailBodyLayout(
+    SmallAlbumDetailBodyLayout(
         modifier = modifier,
         topBar = {
-            PostDetailTopBar(
+            SmallAlbumDetailTopBar(
                 onBack = onBack,
                 onExport = {
                     Toast.makeText(context, "导出能力暂时仍为占位。", Toast.LENGTH_SHORT).show()
                 },
                 onEdit = onOpenGearEdit,
+                onOpenComments = onOpenSmallAlbumComments,
             )
         },
         notice = {
@@ -451,107 +479,12 @@ private fun RealPostDetailContent(
                 )
             }
         },
-        mediaArea = {
-            PostMediaArea(
-                detail = detail,
-                currentPage = currentPage,
-                modifier = Modifier.fillMaxWidth(),
-                onOpenMedia = { onOpenMediaViewer(currentPage) },
-            ) {
-                if (hasMedia) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(372.dp),
-                        beyondViewportPageCount = 1,
-                        key = { page -> detail.mediaItems[page].id },
-                    ) { page ->
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            PostMediaCard(
-                                media = detail.mediaItems[page],
-                                isNewlyAdded = visibleHighlightMediaIds.contains(detail.mediaItems[page].id),
-                                originalLoadState = if (detail.mediaItems[page].mediaType == AppMediaType.IMAGE) {
-                                    RealOriginalLoadRepository.getState(detail.mediaItems[page].toRealOriginalMediaTarget())
-                                } else {
-                                    OriginalLoadState.NotLoaded
-                                },
-                                onOriginalLoadStateChange = { state ->
-                                    val media = detail.mediaItems[page]
-                                    val mediaTarget = media.toRealOriginalMediaTarget()
-                                    val previousState = RealOriginalLoadRepository.getState(mediaTarget)
-                                    if (previousState != state) {
-                                        RealOriginalLoadRepository.setState(mediaTarget, state)
-                                        if (page == currentPage) {
-                                            when (state) {
-                                                OriginalLoadState.Loaded -> {
-                                                    Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
-                                                }
-                                                OriginalLoadState.Failed -> {
-                                                    Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
-                                                }
-                                                else -> Unit
-                                            }
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = { onOpenMediaViewer(page) },
-                            )
-                        }
-                    }
-                } else {
-                    PostEmptyMediaState(modifier = Modifier.fillMaxWidth())
-                }
-            }
-        },
-        mediaInfo = {
-            if (currentMedia != null && currentOriginalTarget != null) {
-                PostMediaInfoRow(
-                    media = currentMedia,
-                    commentCount = currentMediaCommentCount,
-                    originalLoadState = currentOriginalState,
-                    showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE &&
-                        currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType),
-                    onCommentClick = { onOpenMediaComments(currentPage) },
-                    onOriginalClick = {
-                        when {
-                            currentMedia.mediaType != AppMediaType.IMAGE ||
-                                !currentMedia.mediaSource.hasMeaningfulViewerOriginal(currentMedia.mediaType) -> {
-                                Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
-                            }
-
-                            currentOriginalState == OriginalLoadState.Loading -> {
-                                Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
-                            }
-
-                            currentOriginalState == OriginalLoadState.Loaded -> {
-                                Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
-                            }
-
-                            else -> {
-                                if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, accessToken)) {
-                                    Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    },
-                )
-            } else {
-                PostMediaEmptyInfoRow()
-            }
-        },
-        postInfo = {
-            PostInfoSection(
+        infoSection = {
+            SmallAlbumInfoSection(
                 detail = detail,
                 originalSummary = postOriginalSummary,
                 onLoadAllOriginals = {
-                    Toast.makeText(context, "开始加载全帖原图", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "开始加载小相册原图", Toast.LENGTH_SHORT).show()
                     coroutineScope.launch {
                         val summary = RealOriginalLoadRepository.loadAllOriginals(
                             context = context,
@@ -565,17 +498,25 @@ private fun RealPostDetailContent(
                 },
             )
         },
-        comments = {
-            RealCommentThreadCard(
-                title = "帖子评论",
-                subtitle = "这里展示的是整篇帖子的评论，不和媒体评论混合。",
-                stateKeyPrefix = "real-post-comment-${detail.postId}",
-                emptyText = "还没有评论。可以写下第一句，也可以先安静地留着。",
-                state = uiState.postComments,
-                onRetry = onRefresh,
-                onCreateComment = onCreatePostComment,
-                onUpdateComment = onUpdatePostComment,
-                onDeleteComment = onDeletePostComment,
+        mediaSection = {
+            SmallAlbumPhotoFeedSection(
+                feedItems = feedItems,
+                pageStateStore = pageStateStore,
+                scrollTrigger = detailScrollTrigger,
+                onOpenMediaViewer = onOpenMediaViewer,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        commentSummary = {
+            SmallAlbumCommentSummaryCard(
+                commentCount = uiState.postComments.comments.size,
+                isLoading = uiState.postComments.isLoading,
+                statusMessage = uiState.postComments.statusMessage,
+                errorMessage = uiState.postComments.errorMessage,
+                onOpenComments = onOpenSmallAlbumComments,
+                onRetry = onRetrySmallAlbumComments,
+                label = "小相册评论",
+                emptyText = "评论入口已经移到右上角，这里只保留当前状态提示。",
             )
         },
     )
@@ -868,8 +809,8 @@ private fun PostDetailLoadingState(
     modifier: Modifier = Modifier,
 ) {
     PostDetailInfoState(
-        title = "正在读取帖子详情",
-        message = "正在从后端获取帖子详情和评论…",
+        title = "正在读取小相册详情",
+        message = "正在从后端获取小相册详情和评论…",
         onBack = onBack,
         modifier = modifier,
         loading = true,
@@ -895,10 +836,11 @@ private fun PostDetailInfoState(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        PostDetailTopBar(
+        SmallAlbumDetailTopBar(
             onBack = onBack,
             onExport = {},
             onEdit = {},
+            onOpenComments = {},
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -979,13 +921,14 @@ private fun PostDetailMissingState(
             ),
         verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
     ) {
-        PostDetailTopBar(
+        SmallAlbumDetailTopBar(
             onBack = onBack,
             onExport = {},
             onEdit = {},
+            onOpenComments = {},
         )
         Text(
-            text = "当前帖子没有可展示的媒体，可能已经被删除、被移出关系，或仍处于系统删除状态。",
+            text = "当前小相册没有可展示的媒体，可能已经被删除、被移出关系，或仍处于系统删除状态。",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -993,7 +936,7 @@ private fun PostDetailMissingState(
 }
 
 @Composable
-private fun PostDetailContent(
+private fun SmallAlbumDetailContent(
     detail: PostDetailUiModel,
     highlightMediaIds: List<String>,
     focusMediaId: String?,
@@ -1001,20 +944,13 @@ private fun PostDetailContent(
     onBack: () -> Unit,
     onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
-    onOpenMediaComments: (Int) -> Unit,
+    onOpenSmallAlbumComments: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val hasMedia = detail.mediaItems.isNotEmpty()
-    val pagerState = rememberPagerState(
-        pageCount = { detail.mediaItems.size },
-    )
-    val currentPage = if (hasMedia) {
-        pagerState.currentPage.coerceIn(0, detail.mediaItems.lastIndex)
-    } else {
-        0
-    }
-    val currentMedia = detail.mediaItems.getOrNull(currentPage)
+    val feedItems = remember(detail.mediaItems) { detail.toSmallAlbumFeedItems() }
+    val pageStateStore = remember(detail.postId) { PhotoFeedPageStateStore() }
+    var detailScrollTrigger by remember(detail.postId) { mutableIntStateOf(0) }
     val postMediaIds = remember(detail.mediaItems) {
         detail.mediaItems.map { it.id }
     }
@@ -1031,13 +967,14 @@ private fun PostDetailContent(
     var resultNotice by rememberSaveable(detail.postId, highlightKey, focusMediaId) {
         mutableStateOf<String?>(null)
     }
-    val visibleHighlightMediaIds = if (showNewAddedState) highlightMediaIds.toSet() else emptySet()
     LaunchedEffect(detail.postId, postMediaIds, focusMediaId, highlightKey) {
         val targetId = focusMediaId ?: highlightMediaIds.firstOrNull()
         if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
         val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
         if (targetIndex >= 0) {
-            pagerState.scrollToPage(targetIndex)
+            pageStateStore.pendingScrollTargetMediaId = targetId
+            pageStateStore.pendingHighlightNonce = feedbackNonce
+            detailScrollTrigger += 1
             val otherCount = highlightMediaIds.distinct().size - 1
             resultNotice = if (otherCount > 0) {
                 "已定位到刚加入媒体，另有 $otherCount 项新加入"
@@ -1059,19 +996,18 @@ private fun PostDetailContent(
         delay(3200L)
         showEntryNotice = false
     }
-    val currentOriginalState = currentMedia?.let { FakeOriginalLoadRepository.getState(it.id) }
-        ?: OriginalLoadState.NotLoaded
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
 
-    PostDetailBodyLayout(
+    SmallAlbumDetailBodyLayout(
         modifier = modifier,
         topBar = {
-            PostDetailTopBar(
+            SmallAlbumDetailTopBar(
                 onBack = onBack,
                 onExport = {
                     Toast.makeText(context, "导出 / 保存将在后续阶段接入", Toast.LENGTH_SHORT).show()
                 },
                 onEdit = onOpenGearEdit,
+                onOpenComments = onOpenSmallAlbumComments,
             )
         },
         notice = {
@@ -1082,121 +1018,107 @@ private fun PostDetailContent(
                 PostInlineNotice(text = message)
             }
         },
-        mediaArea = {
-            PostMediaArea(
-                detail = detail,
-                currentPage = currentPage,
-                modifier = Modifier.fillMaxWidth(),
-                onOpenMedia = { onOpenMediaViewer(currentPage) },
-            ) {
-                if (hasMedia) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(372.dp),
-                        beyondViewportPageCount = 1,
-                        key = { page -> detail.mediaItems[page].id },
-                    ) { page ->
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            PostMediaCard(
-                                media = detail.mediaItems[page],
-                                isNewlyAdded = visibleHighlightMediaIds.contains(detail.mediaItems[page].id),
-                                originalLoadState = FakeOriginalLoadRepository.getState(detail.mediaItems[page].id),
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = { onOpenMediaViewer(page) },
-                            )
-                        }
-                    }
-                } else {
-                    PostEmptyMediaState(modifier = Modifier.fillMaxWidth())
-                }
-            }
-        },
-        mediaInfo = {
-            if (currentMedia != null) {
-                PostMediaInfoRow(
-                    media = currentMedia,
-                    commentCount = CommentGateway.mediaCommentCount(currentMedia.id),
-                    originalLoadState = currentOriginalState,
-                    showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE,
-                    onCommentClick = { onOpenMediaComments(currentPage) },
-                    onOriginalClick = {
-                        when (currentOriginalState) {
-                            OriginalLoadState.NotLoaded -> {
-                                FakeOriginalLoadRepository.loadOriginal(currentMedia.id)
-                                Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                            }
-
-                            OriginalLoadState.Loading -> {
-                                Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
-                            }
-
-                            OriginalLoadState.Loaded -> {
-                                Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                            }
-
-                            OriginalLoadState.Failed -> {
-                                FakeOriginalLoadRepository.retryOriginal(currentMedia.id)
-                                Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                )
-            } else {
-                PostMediaEmptyInfoRow()
-            }
-        },
-        postInfo = {
-            PostInfoSection(
+        infoSection = {
+            SmallAlbumInfoSection(
                 detail = detail,
                 originalSummary = postOriginalSummary,
                 onLoadAllOriginals = {
                     FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
-                    Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u5168\u5e16\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "开始加载小相册原图", Toast.LENGTH_SHORT).show()
                 },
             )
         },
-        comments = { PostCommentSection(postId = detail.postId) },
+        mediaSection = {
+            SmallAlbumPhotoFeedSection(
+                feedItems = feedItems,
+                pageStateStore = pageStateStore,
+                scrollTrigger = detailScrollTrigger,
+                onOpenMediaViewer = onOpenMediaViewer,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        commentSummary = {
+            SmallAlbumCommentSummaryCard(
+                commentCount = detail.comments.size,
+                isLoading = false,
+                statusMessage = null,
+                errorMessage = null,
+                onOpenComments = onOpenSmallAlbumComments,
+                onRetry = null,
+                label = "小相册评论",
+                emptyText = "评论入口已经移到右上角，这里只保留当前状态提示。",
+            )
+        },
     )
 }
 
 @Composable
-fun PostDetailBodyLayout(
+fun SmallAlbumDetailBodyLayout(
     modifier: Modifier = Modifier,
     topBar: @Composable () -> Unit,
     notice: @Composable () -> Unit = {},
-    mediaArea: @Composable () -> Unit,
-    mediaInfo: @Composable () -> Unit,
-    postInfo: @Composable () -> Unit,
-    comments: @Composable () -> Unit,
+    infoSection: @Composable () -> Unit,
+    mediaSection: @Composable () -> Unit,
+    commentSummary: @Composable () -> Unit = {},
 ) {
     val spacing = YingShiThemeTokens.spacing
     Column(
         modifier = modifier
             .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg)
             .padding(top = spacing.xs, bottom = spacing.lg),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         topBar()
         notice()
-        mediaArea()
-        mediaInfo()
-        postInfo()
-        comments()
+        infoSection()
+        commentSummary()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            mediaSection()
+        }
     }
 }
 
 @Composable
-private fun PostDetailTopBar(
+fun PostDetailBodyLayout(
+    modifier: Modifier = Modifier,
+    topBar: @Composable () -> Unit,
+    mediaArea: @Composable () -> Unit,
+    mediaInfo: @Composable () -> Unit = {},
+    postInfo: @Composable () -> Unit,
+    comments: @Composable () -> Unit = {},
+) {
+    SmallAlbumDetailBodyLayout(
+        modifier = modifier,
+        topBar = topBar,
+        infoSection = {
+            Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm)) {
+                postInfo()
+                comments()
+            }
+        },
+        mediaSection = {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            ) {
+                mediaArea()
+                mediaInfo()
+            }
+        },
+    )
+}
+
+@Composable
+private fun SmallAlbumDetailTopBar(
     onBack: () -> Unit,
     onExport: () -> Unit,
     onEdit: () -> Unit,
+    onOpenComments: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
 
@@ -1207,92 +1129,34 @@ private fun PostDetailTopBar(
     ) {
         PostCircleButton(text = "<", onClick = onBack)
         Text(
-            text = "帖子详情",
+            text = "小相册详情",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
         )
         PostActionChip(text = "导出/保存", onClick = onExport)
+        SmallAlbumCommentButton(onClick = onOpenComments)
         PostCircleButton(text = "齿", onClick = onEdit)
     }
 }
 
 @Composable
-fun PostMediaArea(
-    detail: PostDetailUiModel,
-    currentPage: Int,
-    modifier: Modifier = Modifier,
-    onOpenMedia: () -> Unit,
-    pager: @Composable () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+private fun SmallAlbumCommentButton(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RectangleShape,
-            color = Color.White,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White),
-            ) {
-                pager()
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (detail.mediaItems.isEmpty()) "0 / 0" else "${currentPage + 1} / ${detail.mediaItems.size}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = if (detail.mediaItems.isEmpty()) "暂未加入媒体" else "同帖媒体序列",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            if (detail.mediaItems.isNotEmpty()) {
-                PostActionChip(text = "查看媒体", onClick = onOpenMedia)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PostEmptyMediaState(modifier: Modifier = Modifier) {
-    val spacing = YingShiThemeTokens.spacing
-    Box(
-        modifier = modifier
-            .height(260.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            Text(
-                text = "这个帖子还没有媒体",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "标题、简介和评论会先保留在这里，之后加入照片或视频就会展示在上方。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Filled.ModeComment,
+                contentDescription = "打开小相册评论",
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -1416,7 +1280,7 @@ private fun PostMediaEmptyInfoRow() {
 }
 
 @Composable
-fun PostInfoSection(
+fun SmallAlbumInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
     onLoadAllOriginals: () -> Unit,
@@ -1484,7 +1348,62 @@ fun PostInfoSection(
 }
 
 @Composable
-private fun PostCommentSection(postId: String) {
+fun PostInfoSection(
+    detail: PostDetailUiModel,
+    originalSummary: PostOriginalLoadSummary,
+    onLoadAllOriginals: () -> Unit,
+) {
+    SmallAlbumInfoSection(
+        detail = detail,
+        originalSummary = originalSummary,
+        onLoadAllOriginals = onLoadAllOriginals,
+    )
+}
+
+@Composable
+fun PostMediaArea(
+    detail: PostDetailUiModel,
+    currentPage: Int,
+    modifier: Modifier = Modifier,
+    onOpenMedia: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "媒体",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (detail.mediaItems.isNotEmpty()) {
+                Text(
+                    text = "${currentPage + 1} / ${detail.mediaItems.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        content()
+        if (detail.mediaItems.isNotEmpty()) {
+            PostActionChip(text = "查看媒体", onClick = onOpenMedia)
+        }
+    }
+}
+
+@Composable
+private fun FakeSmallAlbumCommentSheet(
+    postId: String,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val context = LocalContext.current
@@ -1509,20 +1428,35 @@ private fun PostCommentSection(postId: String) {
     }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        shadowElevation = 8.dp,
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            Text(
-                text = "帖子评论",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "小相册评论",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "这些评论属于当前小相册，不和媒体评论混在一起。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                PostActionChip(text = "关闭", onClick = onClose)
+            }
             if (visibleComments.isEmpty()) {
                 Text(
                     text = "还没有评论。可以写下第一句，也可以先安静地留着。",
@@ -1627,12 +1561,122 @@ private fun PostCommentSection(postId: String) {
             }
             CommentInputBar(
                 stateKey = "post-comment-input-$postId",
-                placeholder = "写一条帖子评论",
+                placeholder = "写一条小相册评论",
                 onSend = { content ->
                     CommentGateway.addPostComment(postId, content)
                     expanded = false
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun RealSmallAlbumCommentSheet(
+    smallAlbumId: String,
+    state: RealCommentThreadUiState,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        shadowElevation = 8.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "小相册评论",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "这些评论只属于当前小相册 ${smallAlbumId.takeLast(6)}。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                PostActionChip(text = "关闭", onClick = onClose)
+            }
+
+            RealCommentThreadContent(
+                state = state,
+                stateKeyPrefix = "real-small-album-comment-$smallAlbumId",
+                emptyText = "还没有评论。可以写下第一句，也可以先安静地留着。",
+                onRetry = onRetry,
+                onCreateComment = onCreateComment,
+                onUpdateComment = onUpdateComment,
+                onDeleteComment = onDeleteComment,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumCommentSummaryCard(
+    commentCount: Int,
+    isLoading: Boolean,
+    statusMessage: String?,
+    errorMessage: String?,
+    onOpenComments: () -> Unit,
+    onRetry: (() -> Unit)?,
+    label: String,
+    emptyText: String,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = when {
+                        isLoading -> "正在读取评论…"
+                        !errorMessage.isNullOrBlank() -> errorMessage
+                        !statusMessage.isNullOrBlank() -> statusMessage
+                        commentCount > 0 -> "当前有 $commentCount 条评论，点击右上角图标查看和输入。"
+                        else -> emptyText
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (onRetry != null && !errorMessage.isNullOrBlank()) {
+                PostActionChip(text = "重试", onClick = onRetry)
+            }
+            PostActionChip(text = "打开评论", onClick = onOpenComments)
         }
     }
 }
@@ -1670,7 +1714,7 @@ private fun MediaCommentPlaceholderSheet(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "只属于当前媒体，不混入帖子评论区",
+                        text = "只属于当前媒体，不混入小相册评论区",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1799,6 +1843,70 @@ private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
     return aspectRatio.coerceIn(0.05f, 20f)
 }
 
+@Composable
+private fun SmallAlbumPhotoFeedSection(
+    feedItems: List<PhotoFeedItem>,
+    pageStateStore: PhotoFeedPageStateStore,
+    scrollTrigger: Int,
+    onOpenMediaViewer: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val mediaPositionLookup = remember(feedItems) {
+        feedItems.mapIndexed { index, item -> item.mediaId to index }.toMap()
+    }
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+    ) {
+        Text(
+            text = "媒体",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = if (feedItems.isEmpty()) {
+                "这个小相册里还没有媒体。标题和评论会先保留在这里，后续加入照片或视频就会展示出来。"
+            } else {
+                "按照片流样式浏览这个小相册里的媒体，支持时间分组、密度切换和时间 scrubber。"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            if (feedItems.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "还没有媒体",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                PhotoFeedScreen(
+                    feedItems = feedItems,
+                    pageStateStore = pageStateStore,
+                    modifier = Modifier.fillMaxSize(),
+                    selectionState = PhotoFeedSelectionState(),
+                    scrollTrigger = scrollTrigger,
+                    onOpenViewer = { route ->
+                        onOpenMediaViewer(route.initialIndex)
+                    },
+                )
+            }
+        }
+    }
+}
+
 internal fun String?.meaningfulPostSummaryOrNull(): String? {
     val normalized = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return normalized.takeUnless {
@@ -1806,31 +1914,35 @@ internal fun String?.meaningfulPostSummaryOrNull(): String? {
     }
 }
 
+private fun PostDetailUiModel.toSmallAlbumFeedItems(): List<PhotoFeedItem> {
+    return mediaItems.map { media ->
+        val parts = postViewerDateParts(media.displayTimeMillis)
+        PhotoFeedItem(
+            mediaId = media.id,
+            mediaDisplayTimeMillis = media.displayTimeMillis,
+            displayYear = parts.year,
+            displayMonth = parts.month,
+            displayDay = parts.day,
+            commentCount = media.commentCount,
+            smallAlbumIds = listOf(postId),
+            palette = media.palette,
+            mediaType = media.mediaType,
+            aspectRatio = media.aspectRatio,
+            width = media.width,
+            height = media.height,
+            videoDurationMillis = media.videoDurationMillis,
+            mediaSource = media.mediaSource,
+        )
+    }
+}
+
 private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewerRoute {
     return PhotoViewerRoute(
-        mediaItems = mediaItems.map { media ->
-            val parts = postViewerDateParts(media.displayTimeMillis)
-            PhotoFeedItem(
-                mediaId = media.id,
-                mediaDisplayTimeMillis = media.displayTimeMillis,
-                displayYear = parts.year,
-                displayMonth = parts.month,
-                displayDay = parts.day,
-                commentCount = media.commentCount,
-                postIds = listOf(postId),
-                palette = media.palette,
-                mediaType = media.mediaType,
-                aspectRatio = media.aspectRatio,
-                width = media.width,
-                height = media.height,
-                videoDurationMillis = media.videoDurationMillis,
-                mediaSource = media.mediaSource,
-            )
-        },
+        mediaItems = toSmallAlbumFeedItems(),
         initialIndex = initialIndex,
         sourceLabel = title,
-        showPostSegments = true,
-        sourcePostRoute = PostDetailPlaceholderRoute(
+        showSmallAlbumSegments = true,
+        sourceSmallAlbumRoute = PostDetailPlaceholderRoute(
             postId = postId,
             albumId = albumIds.firstOrNull() ?: "viewer-post",
             albumIds = albumIds.ifEmpty { listOf("viewer-post") },

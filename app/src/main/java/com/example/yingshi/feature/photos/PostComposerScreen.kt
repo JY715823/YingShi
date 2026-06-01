@@ -189,9 +189,9 @@ fun CreatePostScreen(
 
     fun toggleAlbum(albumId: String) {
         selectedAlbumIds = if (selectedAlbumIds.contains(albumId)) {
-            selectedAlbumIds.filterNot { it == albumId }
+            emptyList()
         } else {
-            selectedAlbumIds + albumId
+            listOf(albumId)
         }
     }
 
@@ -218,7 +218,7 @@ fun CreatePostScreen(
                     additionalAppCoverMediaId = resolvedCoverMediaId,
                 )
                 if (queuedCount > 0) {
-                    Toast.makeText(context, "已加入上传队列，完成后会创建新帖子。", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "已加入上传队列，完成后会创建新小相册。", Toast.LENGTH_SHORT).show()
                     onSubmittedToBackground()
                 } else {
                     localMessage = "当前没有可处理的媒体。"
@@ -230,7 +230,7 @@ fun CreatePostScreen(
                     additionalAppMediaItems = selectedAppMediaIds.mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem),
                 )
                 if (createdPost == null) {
-                    localMessage = "本地新帖子创建失败，请稍后重试。"
+                    localMessage = "本地新小相册创建失败，请稍后重试。"
                 } else {
                     onCreated(FakeAlbumRepository.toPostDetailRoute(createdPost))
                 }
@@ -244,10 +244,10 @@ fun CreatePostScreen(
                     isSubmitting = true
                     val result = RepositoryProvider.postRepository.createPost(
                         CreatePostPayload(
-                            title = draft.title.ifBlank { "新帖子" },
+                            title = draft.title.ifBlank { "新小相册" },
                             summary = draft.summary,
                             displayTimeMillis = draft.displayTimeMillis,
-                            albumIds = draft.albumIds,
+                            albumId = draft.requireAlbumId(),
                             initialMediaIds = selectedAppMediaIds,
                             coverMediaId = resolvedCoverMediaId,
                         ),
@@ -266,7 +266,7 @@ fun CreatePostScreen(
                             )
                         }
                         is ApiResult.Error -> {
-                            localMessage = result.toBackendUiMessage("创建帖子失败，请稍后重试。")
+                            localMessage = result.toBackendUiMessage("创建小相册失败，请稍后重试。")
                         }
                         ApiResult.Loading -> Unit
                     }
@@ -278,7 +278,7 @@ fun CreatePostScreen(
                     mediaItems = selectedItems,
                 )
                 if (createdPost == null) {
-                    localMessage = "本地新帖子创建失败，请稍后重试。"
+                    localMessage = "本地新小相册创建失败，请稍后重试。"
                 } else {
                     onCreated(
                         FakeAlbumRepository.toPostDetailRoute(createdPost).copy(
@@ -295,10 +295,10 @@ fun CreatePostScreen(
             isSubmitting = true
             val result = RepositoryProvider.postRepository.createPost(
                 CreatePostPayload(
-                    title = draft.title.ifBlank { "新帖子" },
+                    title = draft.title.ifBlank { "新小相册" },
                     summary = draft.summary,
                     displayTimeMillis = draft.displayTimeMillis,
-                    albumIds = draft.albumIds,
+                    albumId = draft.requireAlbumId(),
                     coverMediaId = null,
                 ),
             )
@@ -315,7 +315,7 @@ fun CreatePostScreen(
                     )
                 }
                 is ApiResult.Error -> {
-                    localMessage = result.toBackendUiMessage("创建帖子失败，请稍后重试。")
+                    localMessage = result.toBackendUiMessage("创建小相册失败，请稍后重试。")
                 }
                 ApiResult.Loading -> Unit
             }
@@ -343,14 +343,14 @@ fun CreatePostScreen(
             when {
                 seedState.isLoading -> {
                     BackendLoadingCard(
-                        text = "正在准备新增帖子表单…",
+                        text = "正在准备新增小相册表单…",
                         fillWidth = true,
                     )
                 }
                 seedState.tokenMissing -> {
                     BackendNoticeCard(
                         title = "需要先登录",
-                        text = "REAL 模式下新增帖子前需要先登录，当前无法读取后端相册。",
+                        text = "REAL 模式下新增小相册前需要先登录，当前无法读取后端大相册。",
                         fillWidth = true,
                     )
                 }
@@ -406,11 +406,11 @@ fun CreatePostScreen(
                     }
 
                     CreatePostSection(
-                        title = "放进相册",
+                        title = "选择所属大相册",
                         subtitle = if (selectedAlbumIds.isEmpty()) {
-                            "至少选择一个相册后才能发布。"
+                            "请选择一个父大相册后再发布。"
                         } else {
-                            "已选择 ${selectedAlbumIds.size} 个相册。"
+                            "当前父大相册：${selectedAlbumTitles.firstOrNull() ?: "未选择"}"
                         },
                     ) {
                         if (seedState.albums.isEmpty()) {
@@ -500,7 +500,7 @@ private fun CreatePostTopBar(
             )
             Text(
                 text = if (mediaCount > 0) {
-                    "整理 $mediaCount 项媒体，发布成一条帖子。"
+                    "整理 $mediaCount 项媒体，生成一个小相册。"
                 } else {
                     "先写下内容，发布后仍可继续补媒体。"
                 },
@@ -529,12 +529,12 @@ private fun CreatePostMemoryHeader(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "准备发布",
+                text = "准备创建",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "把选中的照片和视频整理成一条正式帖子，发布后会进入帖子详情。",
+                text = "把选中的照片和视频整理成一个正式小相册，创建后会进入小相册详情。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -647,7 +647,7 @@ private fun CreatePostMediaPreviewSection(
         },
     ) {
         if (items.isEmpty()) {
-            BackendInlineNotice(text = "当前没有媒体，发布后可在帖子设置中继续管理。")
+            BackendInlineNotice(text = "当前没有媒体，创建后可在小相册设置中继续管理。")
             return@CreatePostSection
         }
         Row(
@@ -823,7 +823,7 @@ private suspend fun loadCreatePostUiState(
         is ApiResult.Error -> {
             CreatePostUiState(
                 isLoading = false,
-                errorMessage = result.toBackendUiMessage("读取相册失败，暂时无法创建帖子。"),
+                errorMessage = result.toBackendUiMessage("读取大相册失败，暂时无法创建小相册。"),
                 displayTimeMillis = defaultDisplayTime,
                 initialMediaItems = initialItems,
                 selectedCoverSourceMediaId = defaultCoverId,

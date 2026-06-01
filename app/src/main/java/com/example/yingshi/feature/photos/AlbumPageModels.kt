@@ -3,7 +3,7 @@ package com.example.yingshi.feature.photos
 import androidx.compose.runtime.Immutable
 
 @Immutable
-data class AlbumSummaryUiModel(
+data class LargeAlbumSummaryUiModel(
     val id: String,
     val title: String,
     val subtitle: String,
@@ -11,7 +11,7 @@ data class AlbumSummaryUiModel(
 )
 
 @Immutable
-data class AlbumPostCardUiModel(
+data class SmallAlbumCardUiModel(
     val id: String,
     val albumId: String,
     val albumIds: List<String> = listOf(albumId),
@@ -23,10 +23,16 @@ data class AlbumPostCardUiModel(
     val coverMediaType: AppMediaType = AppMediaType.IMAGE,
     val coverAspectRatio: Float = 1f,
     val coverMediaSource: AppContentMediaSource? = null,
-)
+) {
+    val smallAlbumId: String
+        get() = id
+
+    val smallAlbumDisplayTimeMillis: Long
+        get() = postDisplayTimeMillis
+}
 
 @Immutable
-data class PostDetailUiModel(
+data class SmallAlbumDetailUiModel(
     val postId: String,
     val title: String,
     val summary: String,
@@ -34,13 +40,22 @@ data class PostDetailUiModel(
     val postDisplayTimeMillis: Long,
     val albumIds: List<String>,
     val albumChips: List<String>,
-    val mediaItems: List<PostDetailMediaUiModel>,
+    val mediaItems: List<SmallAlbumDetailMediaUiModel>,
     val comments: List<CommentUiModel>,
     val entryNotice: String? = null,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+
+    val smallAlbumDisplayTimeMillis: Long
+        get() = postDisplayTimeMillis
+
+    val albumId: String
+        get() = albumIds.firstOrNull().orEmpty()
+}
 
 @Immutable
-data class PostDetailMediaUiModel(
+data class SmallAlbumDetailMediaUiModel(
     val id: String,
     val displayTimeMillis: Long,
     val commentCount: Int,
@@ -63,7 +78,7 @@ enum class AlbumGridDensity(
 }
 
 @Immutable
-data class PostDetailPlaceholderRoute(
+data class SmallAlbumDetailRoute(
     val postId: String,
     val albumId: String,
     val albumIds: List<String> = listOf(albumId),
@@ -78,29 +93,50 @@ data class PostDetailPlaceholderRoute(
     val highlightMediaIds: List<String> = emptyList(),
     val focusMediaId: String? = highlightMediaIds.firstOrNull(),
     val feedbackNonce: Int = 0,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+
+    val smallAlbumDisplayTimeMillis: Long
+        get() = postDisplayTimeMillis
+}
 
 @Immutable
 data class GearEditRoute(
     val postId: String,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+}
 
 @Immutable
 data class MediaManagementRoute(
     val postId: String,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+}
 
 @Immutable
-data class EditablePostDraft(
+data class EditableSmallAlbumDraft(
     val postId: String,
     val title: String,
     val summary: String,
     val postDisplayTimeMillis: Long,
     val albumIds: List<String>,
-)
+) {
+    val smallAlbumId: String
+        get() = postId
+
+    val smallAlbumDisplayTimeMillis: Long
+        get() = postDisplayTimeMillis
+
+    val albumId: String
+        get() = albumIds.firstOrNull().orEmpty()
+}
 
 @Immutable
-data class ManagedPostMediaUiModel(
+data class ManagedSmallAlbumMediaUiModel(
     val id: String,
     val displayTimeMillis: Long,
     val commentCount: Int,
@@ -111,3 +147,11 @@ data class ManagedPostMediaUiModel(
     val videoDurationMillis: Long? = null,
     val mediaSource: AppContentMediaSource? = null,
 )
+
+typealias AlbumSummaryUiModel = LargeAlbumSummaryUiModel
+typealias AlbumPostCardUiModel = SmallAlbumCardUiModel
+typealias PostDetailUiModel = SmallAlbumDetailUiModel
+typealias PostDetailMediaUiModel = SmallAlbumDetailMediaUiModel
+typealias PostDetailPlaceholderRoute = SmallAlbumDetailRoute
+typealias EditablePostDraft = EditableSmallAlbumDraft
+typealias ManagedPostMediaUiModel = ManagedSmallAlbumMediaUiModel

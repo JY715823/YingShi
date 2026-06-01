@@ -573,16 +573,16 @@ fun PhotoViewerScreen(
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
             originalLoadState = currentOriginalState,
             showOriginalAction = canOpenOriginal,
-            relatedPostsLabel = if (currentItem.postIds.isNotEmpty()) {
-                if (currentItem.postIds.size > 1) {
-                    "所属帖子 ${currentItem.postIds.size}"
+            relatedSmallAlbumsLabel = if (currentItem.smallAlbumIds.isNotEmpty()) {
+                if (currentItem.smallAlbumIds.size > 1) {
+                    "所属小相册 ${currentItem.smallAlbumIds.size}"
                 } else {
-                    "所属帖子"
+                    "所属小相册"
                 }
             } else {
                 null
             },
-            relatedPosts = relatedPosts,
+            relatedSmallAlbums = relatedPosts,
             previewComments = previewComments,
         )
     }
@@ -666,7 +666,7 @@ fun PhotoViewerScreen(
             title = { Text(text = "删除当前 App 媒体到回收站？") },
             text = {
                 Text(
-                    text = "这是 App 媒体删除：当前媒体会从照片流消失，并影响所有引用它的帖子。删除后会进入 App 回收站，后续可在回收站中恢复。",
+                    text = "这是 App 媒体删除：当前媒体会从照片流消失，并影响所有引用它的小相册。删除后会进入 App 回收站，后续可在回收站中恢复。",
                 )
             },
             confirmButton = {
@@ -1072,7 +1072,7 @@ fun PhotoViewerScreen(
                         )
                         if (addedCount <= 0) {
                             addToPostPendingPostId = null
-                            addToPostError = "该媒体已在目标帖子中。"
+                            addToPostError = "该媒体已在目标小相册中。"
                             return@SystemMediaPostDestinationDialog
                         }
                         showAddToExistingPostPicker = false
@@ -1381,14 +1381,14 @@ private fun PhotoViewerTopBar(
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text(text = "所属帖子") },
+                    text = { Text(text = "所属小相册") },
                     onClick = {
                         menuExpanded = false
                         onOpenRelatedPosts()
                     },
                 )
                 DropdownMenuItem(
-                    text = { Text(text = "新建帖子") },
+                    text = { Text(text = "新建小相册") },
                     onClick = {
                         menuExpanded = false
                         onCreatePost()
@@ -2755,18 +2755,18 @@ private fun ViewerRelatedPostsSheet(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "所属帖子",
+                text = "所属小相册",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
             Text(
-                text = "查看当前媒体所属的帖子，或将其加入已有帖子。",
+                text = "查看当前媒体所属的小相册，或将其加入已有小相册。",
                 style = MaterialTheme.typography.labelMedium,
                 color = ViewerSurface.copy(alpha = 0.58f),
             )
             if (posts.isEmpty()) {
                 Text(
-                    text = "当前媒体还没有所属帖子。",
+                    text = "当前媒体还没有所属小相册。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = ViewerSurface.copy(alpha = 0.66f),
                 )
@@ -2796,7 +2796,7 @@ private fun ViewerRelatedPostsSheet(
             }
             TextButton(onClick = onAddToExistingPost) {
                 Text(
-                    text = "加入已有帖子",
+                    text = "加入已有小相册",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                     color = ViewerSurface.copy(alpha = 0.92f),
                 )
@@ -2840,9 +2840,9 @@ private fun buildViewerRelatedPosts(
             id = postId,
             title = route.title,
             subtitle = if (media.postIds.size == 1) {
-                "点击进入所属帖子"
+                "点击进入所属小相册"
             } else {
-                "所属帖子 ${index + 1} / ${media.postIds.size}"
+                "所属小相册 ${index + 1} / ${media.postIds.size}"
             },
             route = route,
         )
@@ -2869,7 +2869,7 @@ private fun buildViewerRelatedPostRoute(
     val fallbackSummary = sourcePostRoute
         ?.takeIf { it.postId == postId }
         ?.summary
-        ?: "从媒体查看态进入的所属帖子"
+        ?: "从媒体查看态进入的所属小相册"
     return PostDetailPlaceholderRoute(
         postId = postId,
         albumId = sourcePostRoute?.albumId ?: "viewer-related",
@@ -2993,7 +2993,7 @@ private fun PhotoViewerScreenPreview() {
                 mediaItems = FakePhotoFeedRepository.getPhotoFeed(),
                 initialIndex = 0,
                 sourceLabel = "照片页全局媒体流",
-                showPostSegments = false,
+                showSmallAlbumSegments = false,
             ),
             onBack = { },
         )

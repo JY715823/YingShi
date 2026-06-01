@@ -137,8 +137,8 @@ fun SettingsScreen(
             )
             SettingsInfoRow(
                 title = "通知权限",
-                subtitle = "通知中心当前仍是本地 fake 数据，真实通知权限接入留到后续阶段。",
-                value = "占位",
+                subtitle = "通知中心在 REAL 模式下已经接入后端通知接口；系统推送权限本身仍留到后续阶段。",
+                value = "已接后端",
             )
         }
 

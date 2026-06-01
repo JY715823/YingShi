@@ -272,7 +272,7 @@ internal fun sharedMediaDiskCacheKey(url: String): String = "media:$url"
 
 internal fun sharedOriginalDiskCacheKey(url: String): String = "original:$url"
 
-private fun resolveBackendMediaUrl(rawUrl: String?): String? {
+internal fun resolveBackendMediaUrl(rawUrl: String?): String? {
     val normalized = rawUrl?.trim().orEmpty()
     if (normalized.isEmpty()) return null
     return runCatching {

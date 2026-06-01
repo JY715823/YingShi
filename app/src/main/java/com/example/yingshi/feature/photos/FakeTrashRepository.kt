@@ -130,7 +130,7 @@ object FakeTrashRepository {
                 } else if (FakeAlbumRepository.getPost(postId) == null) {
                     return TrashMutationResult(
                         success = false,
-                        message = "原帖子不可用，无法恢复到原帖子",
+                        message = "原小相册不可用，无法恢复到原小相册",
                     )
                 } else {
                     FakeAlbumRepository.restoreMediaToPost(
@@ -158,7 +158,7 @@ object FakeTrashRepository {
             TrashMutationResult(
                 success = true,
                 message = when (entry.type) {
-                    TrashEntryType.POST_DELETED -> "已恢复帖子删除。"
+                    TrashEntryType.POST_DELETED -> "已恢复小相册删除。"
                     TrashEntryType.MEDIA_REMOVED -> "已恢复媒体与原帖关系。"
                     TrashEntryType.MEDIA_SYSTEM_DELETED -> "已恢复媒体本体和关联关系。"
                 },
@@ -182,7 +182,7 @@ object FakeTrashRepository {
                 id = "trash-post-${snapshot.post.id}-$deletedAtMillis",
                 type = TrashEntryType.POST_DELETED,
                 deletedAtMillis = deletedAtMillis,
-                title = snapshot.post.title.ifBlank { "未命名帖子" },
+                title = snapshot.post.title.ifBlank { "未命名小相册" },
                 previewInfo = "删除于 ${formatTrashTime(deletedAtMillis)} · ${snapshot.mediaSnapshots.size} 张媒体 · ${snapshot.post.albumIds.size.coerceAtLeast(1)} 个所属相册",
                 sourcePostId = snapshot.post.id,
                 relatedMediaIds = snapshot.mediaSnapshots.map { it.mediaId },
@@ -209,7 +209,7 @@ object FakeTrashRepository {
                     id = "trash-removed-${post.id}-${media.mediaId}-$deletedAtMillis",
                     type = TrashEntryType.MEDIA_REMOVED,
                     deletedAtMillis = deletedAtMillis,
-                    title = "从「${post.title.ifBlank { "当前帖子" }}」移除媒体",
+                    title = "从「${post.title.ifBlank { "当前小相册" }}」移除媒体",
                     previewInfo = "${formatTrashMediaLabel(media.displayTimeMillis)} · 媒体本体和评论仍保留",
                     sourcePostId = post.id,
                     sourceMediaId = media.mediaId,
@@ -219,7 +219,7 @@ object FakeTrashRepository {
                     relationSnapshots = listOf(
                         TrashPostRelationSnapshot(
                             postId = post.id,
-                            postTitle = post.title.ifBlank { "当前帖子" },
+                            postTitle = post.title.ifBlank { "当前小相册" },
                             mediaSnapshot = media,
                         ),
                     ),
@@ -248,7 +248,7 @@ object FakeTrashRepository {
                     type = TrashEntryType.MEDIA_SYSTEM_DELETED,
                     deletedAtMillis = deletedAtMillis,
                     title = media.sourcePostTitle?.let { "删除「$it」中的媒体" } ?: "删除媒体",
-                    previewInfo = "${formatTrashMediaLabel(media.displayTimeMillis)} · 已从全局媒体流和相关帖子中本地隐藏",
+                    previewInfo = "${formatTrashMediaLabel(media.displayTimeMillis)} · 已从全局媒体流和相关小相册中本地隐藏",
                     sourcePostId = media.sourcePostId,
                     sourceMediaId = media.mediaId,
                     relatedPostIds = relations.map { it.postId }.distinct(),

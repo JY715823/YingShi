@@ -40,7 +40,7 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         aspectRatio = aspectRatio,
         displayTimeMillis = normalizedDisplayTime,
         commentCount = 0,
-        postIds = postIds,
+        smallAlbumIds = smallAlbumIds,
         thumbnailUrl = thumbnailUrl ?: previewUrl,
         mediaUrl = mediaUrl ?: url,
         coverUrl = coverUrl,
@@ -59,7 +59,7 @@ fun AlbumDto.toRemoteModel(): RemoteAlbum {
         title = title,
         subtitle = subtitle,
         coverMediaId = coverMediaId,
-        postCount = postCount,
+        smallAlbumCount = smallAlbumCount,
     )
 }
 
@@ -73,7 +73,7 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
         eventStartedAtMillis = eventStartedAtMillis,
         eventEndedAtMillis = eventEndedAtMillis,
         displayTimeSource = displayTimeSource,
-        albumIds = albumIds,
+        albumId = albumId,
         coverMediaId = coverMediaId,
         mediaCount = mediaCount,
     )
@@ -115,7 +115,7 @@ fun PostDetailDto.toRemoteDetail(): RemotePostDetail {
         eventStartedAtMillis = eventStartedAtMillis,
         eventEndedAtMillis = eventEndedAtMillis,
         displayTimeSource = displayTimeSource,
-        albumIds = albumIds,
+        albumId = albumId,
         coverMediaId = coverMediaId,
         mediaItems = mediaItems.map(PostMediaDto::toRemotePostMedia),
     )
@@ -131,7 +131,7 @@ fun PostDetailDto.toRemoteSummary(): RemotePostSummary {
         eventStartedAtMillis = eventStartedAtMillis,
         eventEndedAtMillis = eventEndedAtMillis,
         displayTimeSource = displayTimeSource,
-        albumIds = albumIds,
+        albumId = albumId,
         coverMediaId = coverMediaId,
         mediaCount = mediaCount,
     )
@@ -141,7 +141,7 @@ fun CommentDto.toRemoteModel(): RemoteComment {
     return RemoteComment(
         commentId = commentId,
         targetType = targetType,
-        targetId = postId ?: mediaId.orEmpty(),
+        targetId = smallAlbumId ?: mediaId.orEmpty(),
         authorId = authorId,
         authorName = authorName,
         content = content.orEmpty(),
@@ -165,13 +165,13 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
         trashItemId = trashItemId,
         itemType = itemType,
         state = state,
-        sourcePostId = sourcePostId,
+        sourceSmallAlbumId = sourceSmallAlbumId,
         sourceMediaId = sourceMediaId,
         commentTargetMediaId = commentTargetMediaId,
         title = title,
         previewInfo = previewInfo,
         deletedAtMillis = deletedAtMillis,
-        relatedPostIds = relatedPostIds,
+        relatedSmallAlbumIds = relatedSmallAlbumIds,
         relatedMediaIds = relatedMediaIds,
         sourceMediaType = sourceMediaType,
         sourceMediaWidth = sourceMediaWidth,

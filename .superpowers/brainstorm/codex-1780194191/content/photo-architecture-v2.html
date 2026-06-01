@@ -1,0 +1,142 @@
+<div class="section">
+  <div class="label">Section 4 Revised</div>
+  <h2>照片结构调整：去掉帖子详情，改成“大小相册 + 统一照片流”</h2>
+  <p class="subtitle">
+    这一版把浏览路径压短了。前台不再让“帖子详情页”承担主浏览角色，用户以后主要走的是：
+    首页引入 / 照片页进入 -> 照片流或相册 -> 小相册详情 -> viewer。
+    帖子如果还存在，更像发布和编辑时的内容组织单位，而不是一个必须单独打开的详情页面。
+  </p>
+</div>
+
+<div class="split section">
+  <div class="mockup">
+    <div class="mockup-header">新版照片层级</div>
+    <div class="mockup-body" style="display:grid; gap:12px; background:linear-gradient(180deg, #eef9ff 0%, #f4fbf8 100%); border-radius:18px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div style="padding:8px 14px; border-radius:999px; background:#d8eef6; color:#214f61; font-weight:600;">照片流</div>
+        <div style="padding:8px 14px; border-radius:999px; background:#ffffff; border:1px solid #d6e8ef; color:#6c8a95;">相册</div>
+        <div style="padding:8px 14px; border-radius:999px; background:#ffffff; border:1px solid #d6e8ef; color:#6c8a95;">回收站</div>
+      </div>
+
+      <div style="padding:14px; border-radius:18px; background:#ffffff; border:1px solid #d6e8ef; display:grid; gap:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div style="height:18px; width:98px; border-radius:999px; background:#214f61;"></div>
+          <div style="height:14px; width:64px; border-radius:999px; background:#d8eef6;"></div>
+        </div>
+        <div style="height:12px; width:82%; border-radius:999px; background:#9bb7c0;"></div>
+        <div style="display:grid; gap:8px;">
+          <div style="padding:12px; border-radius:16px; background:#eef8ec; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:grid; gap:6px;">
+              <div style="height:12px; width:68px; border-radius:999px; background:#5f8b6c;"></div>
+              <div style="height:11px; width:118px; border-radius:999px; background:#94b59c;"></div>
+            </div>
+            <div style="height:28px; width:58px; border-radius:999px; background:#ffffff;"></div>
+          </div>
+          <div style="padding:12px; border-radius:16px; background:#eef8ec; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:grid; gap:6px;">
+              <div style="height:12px; width:76px; border-radius:999px; background:#5f8b6c;"></div>
+              <div style="height:11px; width:132px; border-radius:999px; background:#94b59c;"></div>
+            </div>
+            <div style="height:28px; width:58px; border-radius:999px; background:#ffffff;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr; gap:8px;">
+        <div style="padding:14px; border-radius:18px; background:#ffffff; border:1px solid #d6e8ef;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="display:grid; gap:6px;">
+              <div style="height:12px; width:74px; border-radius:999px; background:#7ea8b6;"></div>
+              <div style="height:18px; width:118px; border-radius:999px; background:#214f61;"></div>
+            </div>
+            <div style="padding:6px 10px; border-radius:999px; background:#d8eef6; color:#214f61; font-size:12px;">小相册详情</div>
+          </div>
+          <div style="display:grid; gap:8px;">
+            <div style="height:84px; border-radius:14px; background:linear-gradient(135deg, #cfe7ef, #f3f8fb);"></div>
+            <div style="height:84px; border-radius:14px; background:linear-gradient(135deg, #dcefd8, #f3f8fb);"></div>
+            <div style="height:84px; border-radius:14px; background:linear-gradient(135deg, #f2e7c8, #f8fafc);"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:12px 14px; border-radius:18px; background:rgba(255,255,255,0.88); border:1px solid #d6e8ef; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:grid; gap:6px;">
+          <div style="height:12px; width:84px; border-radius:999px; background:#7ea8b6;"></div>
+          <div style="height:12px; width:156px; border-radius:999px; background:#afc5cc;"></div>
+        </div>
+        <div style="padding:6px 10px; border-radius:999px; background:#ffffff; border:1px solid #d6e8ef; color:#6c8a95; font-size:12px;">点媒体 -> viewer</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">页面职责收束</div>
+    <div class="mockup-body">
+      <div class="options">
+        <div class="option selected" style="cursor:default;">
+          <div class="letter">1</div>
+          <div class="content">
+            <h3>帖子详情页移除</h3>
+            <p>前台浏览不再多一层“帖子详情”。用户看内容时，要么在照片流里浏览，要么进入某个小相册流。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor:default;">
+          <div class="letter">2</div>
+          <div class="content">
+            <h3>大相册只做分类容器</h3>
+            <p>大相册是一个大类，下面全是小相册。它负责分组和引导，不负责承载细媒体流。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor:default;">
+          <div class="letter">3</div>
+          <div class="content">
+            <h3>小相册详情和照片流同构</h3>
+            <p>小相册详情页直接复用照片流的视觉语言和浏览节奏，只是把数据范围切成当前小相册。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor:default;">
+          <div class="letter">4</div>
+          <div class="content">
+            <h3>viewer 成为唯一沉浸查看终点</h3>
+            <p>无论从照片流还是小相册流点进媒体，最后都进同一个 viewer，不再被帖子详情截一下。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">Question</div>
+  <h3>这版照片信息架构，是否就是你现在想定下来的方向？</h3>
+  <div class="options">
+    <div class="option" data-choice="overall-ok" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>整体对</h3>
+        <p>帖子详情就去掉，照片前台以后主要围绕照片流、小相册流和 viewer 来做。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="big-album-lighter" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>大相册还要更轻</h3>
+        <p>我接受大小相册两级，但大相册最好更像目录页，不要再长成一个重页面。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="small-album-more-feed-like" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>小相册要更像照片流</h3>
+        <p>结构对，但我希望小相册详情几乎就是照片流模板，只改头部信息和筛选上下文。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="remove-post-concept-frontstage" onclick="toggleSelect(this)">
+      <div class="letter">D</div>
+      <div class="content">
+        <h3>帖子概念前台再退后</h3>
+        <p>我不只是要去掉详情页，我还想让“帖子”在前台几乎不被用户感知到。</p>
+      </div>
+    </div>
+  </div>
+</div>

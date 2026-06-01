@@ -76,7 +76,7 @@ fun RealPhotoFeedPage(
             title = { Text("删除 App 媒体到回收站？") },
             text = {
                 Text(
-                    "将从照片流删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关帖子里的引用。REAL 模式会调用后端媒体删除接口，成功后写入后端回收站；失败项会保留并显示原因。",
+                    "将从照片流删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关小相册里的引用。REAL 模式会调用后端媒体删除接口，成功后写入后端回收站；失败项会保留并显示原因。",
                 )
             },
             confirmButton = {
@@ -143,7 +143,7 @@ fun RealPhotoFeedPage(
                                     selectedAlbumId = result.data.albumIds.firstOrNull()
                                         ?: posts.firstOrNull { it.id == postId }?.albumId.orEmpty(),
                                 ).copy(
-                                    entryNotice = "已加入帖子",
+                                    entryNotice = "已加入小相册",
                                     highlightMediaIds = selectedItems.map { it.mediaId }.distinct(),
                                     focusMediaId = selectedItems.firstOrNull()?.mediaId,
                                 ),
@@ -151,7 +151,7 @@ fun RealPhotoFeedPage(
                         }
                         is com.example.yingshi.data.remote.result.ApiResult.Error -> {
                             addToPostPendingPostId = null
-                            addToPostError = result.toBackendUiMessage("加入已有帖子失败，请重试。")
+                            addToPostError = result.toBackendUiMessage("加入已有小相册失败，请重试。")
                         }
                         com.example.yingshi.data.remote.result.ApiResult.Loading -> {
                             addToPostPendingPostId = null
@@ -315,13 +315,13 @@ private fun RealFeedSelectionBarV2(
                 enabled = !isDeleting,
                 onClick = onCreatePost,
             ) {
-                Text("新建帖子")
+                Text("新建小相册")
             }
             TextButton(
                 enabled = !isDeleting,
                 onClick = onAddToPost,
             ) {
-                Text("加入已有帖子")
+                Text("加入已有小相册")
             }
             TextButton(
                 enabled = !isDeleting,

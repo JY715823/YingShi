@@ -574,7 +574,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = false,
-                            message = "帖子创建失败，可重试。",
+                            message = "小相册创建失败，可重试。",
                         )
                     } else {
                         OperationResultEvent(
@@ -582,7 +582,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = true,
-                            message = "帖子创建完成",
+                            message = "小相册创建完成",
                             postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
                         )
                     }
@@ -629,9 +629,9 @@ object LocalSystemMediaBridgeRepository {
                         operationType = OperationType.ADD_TO_EXISTING_POST,
                         succeeded = addedCount > 0,
                         message = if (addedCount > 0) {
-                            "已加入帖子"
+                            "已加入小相册"
                         } else {
-                            "这些媒体已在目标帖子中"
+                            "这些媒体已在目标小相册中"
                         },
                         postRoute = postRoute.takeIf { addedCount > 0 },
                     )
@@ -689,7 +689,7 @@ object LocalSystemMediaBridgeRepository {
             enqueueFakeUploadTask(
                 operationId = operationId,
                 mediaItem = item,
-                targetLabel = "发成新帖子",
+                targetLabel = "新建小相册",
                 onOperationSuccess = {
                     val createdPost = createPostFromSystemMediaDraft(
                         draft = finalDraft,
@@ -702,7 +702,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = false,
-                            message = "帖子创建失败，可重试。",
+                            message = "小相册创建失败，可重试。",
                         )
                     } else {
                         OperationResultEvent(
@@ -710,7 +710,7 @@ object LocalSystemMediaBridgeRepository {
                             operationId = operationId,
                             operationType = OperationType.CREATE_POST,
                             succeeded = true,
-                            message = "帖子创建完成",
+                            message = "小相册创建完成",
                             postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
                         )
                     }
@@ -735,7 +735,7 @@ object LocalSystemMediaBridgeRepository {
             enqueueFakeUploadTask(
                 operationId = operationId,
                 mediaItem = item,
-                targetLabel = "加入已有帖子",
+                targetLabel = "加入已有小相册",
                 onOperationSuccess = {
                     val addedCount = addSystemMediaToExistingPost(postId, mediaItems)
                     val postRoute = FakeAlbumRepository.getPost(postId)
@@ -746,9 +746,9 @@ object LocalSystemMediaBridgeRepository {
                         operationType = OperationType.ADD_TO_EXISTING_POST,
                         succeeded = addedCount > 0,
                         message = if (addedCount > 0) {
-                            "已加入帖子"
+                            "已加入小相册"
                         } else {
-                            "这些媒体已在目标帖子中"
+                            "这些媒体已在目标小相册中"
                         },
                         postRoute = postRoute.takeIf { addedCount > 0 },
                     )
@@ -956,7 +956,7 @@ object LocalSystemMediaBridgeRepository {
                 context = context,
                 operationId = operationId,
                 mediaItem = item,
-                targetLabel = "发成新帖子",
+                targetLabel = "新建小相册",
                 sourceItems = mediaItems,
                 finalizeAction = { uploadedMedia ->
                     finalizeCreatePostReal(
@@ -1009,7 +1009,7 @@ object LocalSystemMediaBridgeRepository {
                 context = context,
                 operationId = operationId,
                 mediaItem = item,
-                targetLabel = "加入已有帖子",
+                targetLabel = "加入已有小相册",
                 sourceItems = mediaItems,
                 finalizeAction = { uploadedMedia ->
                     finalizeAppendToPostReal(
@@ -1413,7 +1413,7 @@ object LocalSystemMediaBridgeRepository {
                     title = draft.title.ifBlank { buildRealPostTitle(sourceItems) },
                     summary = draft.summary.ifBlank { buildRealPostSummary(sourceItems) },
                     displayTimeMillis = draft.displayTimeMillis,
-                    albumIds = finalAlbumIds,
+                    albumId = finalAlbumIds.first(),
                     initialMediaIds = finalMediaIds,
                     coverMediaId = coverMediaId?.takeIf { finalMediaIds.contains(it) },
                 ),
@@ -1427,7 +1427,7 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.CREATE_POST,
-                        successMessage = "帖子创建完成",
+                        successMessage = "小相册创建完成",
                         postRoute = result.data.toPostDetailPlaceholderRoute(
                             selectedAlbumId = result.data.albumIds.firstOrNull() ?: finalAlbumIds.first(),
                         ),
@@ -1437,7 +1437,7 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> ApiResult.Error(
                 code = result.code,
-                message = result.message.ifBlank { "上传完成，但帖子创建失败，可重试。" },
+                message = result.message.ifBlank { "上传完成，但小相册创建失败，可重试。" },
                 throwable = result.throwable,
             )
             ApiResult.Loading -> ApiResult.Loading
@@ -1466,7 +1466,7 @@ object LocalSystemMediaBridgeRepository {
                 ApiResult.Success(
                     RealFinalizeResult(
                         operationType = OperationType.ADD_TO_EXISTING_POST,
-                        successMessage = "已加入帖子",
+                        successMessage = "已加入小相册",
                         postRoute = postRoute,
                         affectedPostIds = setOf(postId),
                     ),
@@ -1474,7 +1474,7 @@ object LocalSystemMediaBridgeRepository {
             }
             is ApiResult.Error -> ApiResult.Error(
                 code = result.code,
-                message = result.message.ifBlank { "上传完成，但加入帖子失败，可重试。" },
+                message = result.message.ifBlank { "上传完成，但加入小相册失败，可重试。" },
                 throwable = result.throwable,
             )
             ApiResult.Loading -> ApiResult.Loading
@@ -1513,7 +1513,7 @@ object LocalSystemMediaBridgeRepository {
             updateSuccessfulOperationTasks(
                 operationId = operationId,
                 state = UploadState.UPLOADING,
-                statusMessage = "部分上传完成，正在用成功项创建帖子",
+                statusMessage = "部分上传完成，正在用成功项创建小相册",
             )
         } else {
             updateOperationTasks(
@@ -1521,9 +1521,9 @@ object LocalSystemMediaBridgeRepository {
                 state = UploadState.UPLOADING,
                 statusMessage = when (request?.operationType) {
                     OperationType.IMPORT_TO_APP -> "上传完成，正在刷新照片流"
-                    OperationType.ADD_TO_EXISTING_POST -> "上传完成，正在加入帖子"
+                    OperationType.ADD_TO_EXISTING_POST -> "上传完成，正在加入小相册"
                     OperationType.CREATE_POST,
-                    null -> "上传完成，正在创建帖子"
+                    null -> "上传完成，正在创建小相册"
                 },
             )
         }
@@ -1573,12 +1573,12 @@ object LocalSystemMediaBridgeRepository {
                     updateSuccessfulOperationTasks(
                         operationId = operationId,
                         state = UploadState.FAILURE,
-                        statusMessage = if (canFinalizePartialAddToPost) "加入帖子失败" else "帖子创建失败",
+                        statusMessage = if (canFinalizePartialAddToPost) "加入小相册失败" else "小相册创建失败",
                         errorMessage = result.message.ifBlank {
                             if (canFinalizePartialAddToPost) {
-                                "上传完成，但加入帖子失败，可重试。"
+                                "上传完成，但加入小相册失败，可重试。"
                             } else {
-                                "上传完成，但帖子创建失败，可重试。"
+                                "上传完成，但小相册创建失败，可重试。"
                             }
                         },
                         canRetry = true,
@@ -1588,8 +1588,8 @@ object LocalSystemMediaBridgeRepository {
                         operationId = operationId,
                         state = UploadState.FAILURE,
                         statusMessage = when (request?.operationType) {
-                            OperationType.ADD_TO_EXISTING_POST -> "加入帖子失败"
-                            else -> "帖子创建失败"
+                            OperationType.ADD_TO_EXISTING_POST -> "加入小相册失败"
+                            else -> "小相册创建失败"
                         },
                         errorMessage = result.message.ifBlank { "上传完成，但收尾处理失败，可重试。" },
                         canRetry = true,
@@ -1836,7 +1836,7 @@ object LocalSystemMediaBridgeRepository {
                 (task.state == UploadState.FAILURE || task.state == UploadState.CANCELLED)
             ) {
                 uploadTasksState[index] = task.copy(
-                    statusMessage = "未加入新帖子",
+                    statusMessage = "未加入新小相册",
                     errorMessage = task.errorMessage ?: "该媒体未上传成功，可稍后重试。",
                     canRetry = true,
                 )
@@ -2557,7 +2557,7 @@ object LocalSystemMediaBridgeRepository {
             is CreatePostOperationRequest -> {
                 OperationTaskMeta(
                     operationType = OperationType.CREATE_POST,
-                    targetLabel = "新建帖子",
+                    targetLabel = "新建小相册",
                     operationTitle = request.draft.title.ifBlank { buildRealPostTitle(request.mediaItems) },
                     mediaCount = request.mediaItems.size + request.additionalAppMediaIds.size,
                 )
@@ -2568,7 +2568,7 @@ object LocalSystemMediaBridgeRepository {
                 }
                 OperationTaskMeta(
                     operationType = OperationType.ADD_TO_EXISTING_POST,
-                    targetLabel = "加入已有帖子",
+                    targetLabel = "加入已有小相册",
                     operationTitle = title,
                     mediaCount = request.mediaItems.size,
                 )

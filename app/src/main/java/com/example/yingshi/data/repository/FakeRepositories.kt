@@ -4,6 +4,7 @@ import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
+import com.example.yingshi.data.model.NotificationMarkAllReadResult
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
@@ -11,6 +12,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
+import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
@@ -32,6 +34,7 @@ import com.example.yingshi.feature.photos.AlbumPostCardUiModel
 import com.example.yingshi.feature.photos.CommentTargetType
 import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.FakeCommentRepository
+import com.example.yingshi.feature.photos.FakeNotificationRepository
 import com.example.yingshi.feature.photos.FakePhotoFeedRepository
 import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.PostDetailUiModel
@@ -58,7 +61,7 @@ class FakeMediaRepositoryShell : MediaRepository {
                     aspectRatio = item.aspectRatio,
                     displayTimeMillis = item.mediaDisplayTimeMillis,
                     commentCount = item.commentCount,
-                    postIds = item.postIds,
+                    smallAlbumIds = item.postIds,
                 )
             }
         return ApiResult.Success(items)
@@ -88,7 +91,7 @@ class FakeMediaRepositoryShell : MediaRepository {
     }
 
     override suspend fun deleteMediaFromPost(
-        postId: String,
+        smallAlbumId: String,
         mediaId: String,
         deleteMode: String,
     ): ApiResult<RemoteTrashItem> {
@@ -115,7 +118,7 @@ class FakeAlbumRepositoryShell : AlbumRepository {
                     title = album.title,
                     subtitle = album.subtitle,
                     coverMediaId = null,
-                    postCount = FakeAlbumRepository.getPosts().count { it.albumIds.contains(album.id) },
+                    smallAlbumCount = FakeAlbumRepository.getPosts().count { it.albumId == album.id },
                 )
             },
         )
@@ -124,7 +127,7 @@ class FakeAlbumRepositoryShell : AlbumRepository {
     override suspend fun getAlbumPosts(albumId: String): ApiResult<List<RemotePostSummary>> {
         return ApiResult.Success(
             FakeAlbumRepository.getPosts()
-                .filter { it.albumIds.contains(albumId) }
+                .filter { it.albumId == albumId }
                 .map { it.toRemotePostSummary() },
         )
     }
@@ -134,18 +137,18 @@ class FakeAlbumRepositoryShell : AlbumRepository {
         payload: UpdatePostAlbumsPayload,
     ): ApiResult<RemotePostSummary> {
         val draft = FakeAlbumRepository.getEditablePostDraft(postId)
-            ?: return ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found")
+            ?: return ApiResult.Error(code = "SMALL_ALBUM_NOT_FOUND", message = "Fake small album not found")
         FakeAlbumRepository.updatePostBasicInfo(
             postId = postId,
             title = draft.title,
             summary = draft.summary,
             postDisplayTimeMillis = draft.postDisplayTimeMillis,
-            albumIds = payload.albumIds,
+            albumIds = listOf(payload.albumId),
         )
         return FakeAlbumRepository.getPost(postId)
             ?.toRemotePostSummary()
             ?.let { ApiResult.Success(it) }
-            ?: ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found after album update")
+            ?: ApiResult.Error(code = "SMALL_ALBUM_NOT_FOUND", message = "Fake small album not found after album update")
     }
 }
 
@@ -158,7 +161,7 @@ class FakePostRepositoryShell : PostRepository {
 
     override suspend fun getPostDetail(postId: String): ApiResult<RemotePostDetail> {
         val post = FakeAlbumRepository.getPost(postId)
-            ?: return ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found")
+            ?: return ApiResult.Error(code = "SMALL_ALBUM_NOT_FOUND", message = "Fake small album not found")
         val detailRoute = FakeAlbumRepository.toPostDetailRoute(post)
         val detail = FakeAlbumRepository.getPostDetail(detailRoute)
         return ApiResult.Success(
@@ -171,7 +174,7 @@ class FakePostRepositoryShell : PostRepository {
             title = payload.title,
             summary = payload.summary,
             postDisplayTimeMillis = payload.displayTimeMillis,
-            albumIds = payload.albumIds,
+            albumIds = listOf(payload.albumId),
         )
         return ApiResult.Success(post.toRemotePostSummary())
     }
@@ -196,12 +199,12 @@ class FakePostRepositoryShell : PostRepository {
             title = payload.title,
             summary = payload.summary,
             postDisplayTimeMillis = payload.displayTimeMillis,
-            albumIds = payload.albumIds,
+            albumIds = listOf(payload.albumId),
         )
         return FakeAlbumRepository.getPost(postId)
             ?.toRemotePostSummary()
             ?.let { ApiResult.Success(it) }
-            ?: ApiResult.Error(code = "POST_NOT_FOUND", message = "Fake post not found after basic info update")
+            ?: ApiResult.Error(code = "SMALL_ALBUM_NOT_FOUND", message = "Fake small album not found after basic info update")
     }
 
     override suspend fun setPostCover(
@@ -210,7 +213,7 @@ class FakePostRepositoryShell : PostRepository {
     ): ApiResult<RemotePostDetail> {
         val updated = FakeAlbumRepository.setPostCover(postId, coverMediaId)
         if (!updated) {
-            return ApiResult.Error(code = "POST_COVER_INVALID", message = "Fake post cover update failed")
+            return ApiResult.Error(code = "SMALL_ALBUM_COVER_INVALID", message = "Fake small album cover update failed")
         }
         return getPostDetail(postId)
     }
@@ -221,7 +224,7 @@ class FakePostRepositoryShell : PostRepository {
     ): ApiResult<RemotePostDetail> {
         val updated = FakeAlbumRepository.updatePostMediaOrder(postId, orderedMediaIds)
         if (!updated) {
-            return ApiResult.Error(code = "POST_MEDIA_ORDER_INVALID", message = "Fake post media order update failed")
+            return ApiResult.Error(code = "SMALL_ALBUM_MEDIA_ORDER_INVALID", message = "Fake small album media order update failed")
         }
         return getPostDetail(postId)
     }
@@ -236,11 +239,11 @@ class FakePostRepositoryShell : PostRepository {
 
 class FakeCommentRepositoryShell : CommentRepository {
     override suspend fun getPostComments(
-        postId: String,
+        smallAlbumId: String,
         page: Int,
         size: Int,
     ): ApiResult<RemoteCommentPage> {
-        val allComments = FakeCommentRepository.getPostComments(postId)
+        val allComments = FakeCommentRepository.getPostComments(smallAlbumId)
             .map { comment -> comment.toRemoteComment() }
         val comments = paginateComments(allComments, page, size)
         return ApiResult.Success(
@@ -272,11 +275,11 @@ class FakeCommentRepositoryShell : CommentRepository {
     }
 
     override suspend fun createPostComment(
-        postId: String,
+        smallAlbumId: String,
         content: String,
     ): ApiResult<RemoteComment> {
-        FakeCommentRepository.addPostComment(postId, content)
-        return FakeCommentRepository.getPostComments(postId)
+        FakeCommentRepository.addPostComment(smallAlbumId, content)
+        return FakeCommentRepository.getPostComments(smallAlbumId)
             .firstOrNull()
             ?.toRemoteComment()
             ?.let { ApiResult.Success(it) }
@@ -361,6 +364,47 @@ class FakeCommentRepositoryShell : CommentRepository {
         return ApiResult.Error(
             code = "COMMENT_NOT_FOUND",
             message = "Fake comment not found",
+        )
+    }
+}
+
+class FakeNotificationRepositoryShell : NotificationRepository {
+    override suspend fun getNotifications(limit: Int?): ApiResult<List<RemoteNotification>> {
+        val items = FakeNotificationRepository.getNotifications()
+            .let { notifications ->
+                if (limit == null || limit < 1) {
+                    notifications
+                } else {
+                    notifications.take(limit)
+                }
+            }
+            .map { item -> item.toRemoteNotification() }
+        return ApiResult.Success(items)
+    }
+
+    override suspend fun getNotification(notificationId: String): ApiResult<RemoteNotification> {
+        return FakeNotificationRepository.getNotification(notificationId)
+            ?.toRemoteNotification()
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(
+                code = "NOTIFICATION_NOT_FOUND",
+                message = "Fake notification not found",
+            )
+    }
+
+    override suspend fun markRead(notificationId: String): ApiResult<RemoteNotification> {
+        FakeNotificationRepository.markRead(notificationId)
+        return getNotification(notificationId)
+    }
+
+    override suspend fun markAllRead(): ApiResult<NotificationMarkAllReadResult> {
+        val unreadCount = FakeNotificationRepository.unreadCount()
+        FakeNotificationRepository.markAllRead()
+        return ApiResult.Success(
+            NotificationMarkAllReadResult(
+                success = true,
+                affectedCount = unreadCount,
+            ),
         )
     }
 }
@@ -574,6 +618,18 @@ class FakeAuthRepositoryShell : AuthRepository {
             ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
         return ApiResult.Success(updatedProfile)
     }
+
+    override suspend fun uploadCurrentUserAvatar(
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        openInputStream: () -> InputStream,
+    ): ApiResult<RemoteCurrentUser> {
+        val fakeAvatarUrl = "content://fake-avatar/${System.currentTimeMillis()}-${fileName.ifBlank { "avatar" }}"
+        val updatedProfile = fakeAuthUpdateAvatar(fakeAvatarUrl)
+            ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
+        return ApiResult.Success(updatedProfile)
+    }
 }
 
 private fun AppMediaType.toRemoteMediaType(): String {
@@ -590,7 +646,7 @@ private fun AlbumPostCardUiModel.toRemotePostSummary(): RemotePostSummary {
         summary = summary,
         contributorLabel = null,
         displayTimeMillis = postDisplayTimeMillis,
-        albumIds = albumIds,
+        albumId = albumId,
         coverMediaId = null,
         mediaCount = mediaCount,
     )
@@ -604,7 +660,7 @@ private fun PostDetailUiModel.toRemotePostDetail(): RemotePostDetail {
         summary = summary,
         contributorLabel = contributorLabel,
         displayTimeMillis = postDisplayTimeMillis,
-        albumIds = albumIds,
+        albumId = albumId,
         coverMediaId = coverMediaId,
         mediaItems = mediaItems.mapIndexed { index, media ->
             RemotePostMedia(
@@ -641,7 +697,7 @@ private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment():
     return RemoteComment(
         commentId = id,
         targetType = when (targetType) {
-            CommentTargetType.Post -> "POST"
+            CommentTargetType.SmallAlbum -> "SMALL_ALBUM"
             CommentTargetType.Media -> "MEDIA"
         },
         targetId = targetId,
@@ -654,6 +710,22 @@ private fun com.example.yingshi.feature.photos.CommentUiModel.toRemoteComment():
     )
 }
 
+private fun com.example.yingshi.feature.photos.NotificationCenterItemUiModel.toRemoteNotification(): RemoteNotification {
+    return RemoteNotification(
+        notificationId = id,
+        type = type.apiValue,
+        title = title,
+        body = body,
+        createdAtMillis = createdAtMillis,
+        isRead = isRead,
+        targetSummary = targetSummary,
+        targetType = targetType,
+        smallAlbumId = postId,
+        mediaId = mediaId,
+        trashItemId = trashItemId,
+    )
+}
+
 private fun String.toTrashEntryTypeOrNull(): TrashEntryType? {
     return TrashEntryType.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
 }
@@ -663,9 +735,13 @@ private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashIt
 ): RemoteTrashItem {
     return RemoteTrashItem(
         trashItemId = id,
-        itemType = type.name,
+        itemType = when (type) {
+            TrashEntryType.POST_DELETED -> "smallAlbumDeleted"
+            TrashEntryType.MEDIA_REMOVED -> "mediaRemoved"
+            TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"
+        },
         state = state,
-        sourcePostId = sourcePostId,
+        sourceSmallAlbumId = sourcePostId,
         sourceMediaId = sourceMediaId,
         commentTargetMediaId = sourceMediaId
             ?: mediaSnapshot?.mediaId
@@ -673,7 +749,7 @@ private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashIt
         title = title,
         previewInfo = previewInfo,
         deletedAtMillis = deletedAtMillis,
-        relatedPostIds = relatedPostIds,
+        relatedSmallAlbumIds = relatedPostIds,
         relatedMediaIds = relatedMediaIds,
     )
 }

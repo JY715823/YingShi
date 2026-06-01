@@ -106,10 +106,7 @@ fun AlbumPageScreen(
         densityName ?: settingsState.defaultAlbumGridDensity.name,
     )
     val gridState = rememberLazyGridState()
-    val selectedAlbum = remember(albums, selectedAlbumId) {
-        albums.firstOrNull { it.id == selectedAlbumId } ?: albums.firstOrNull()
-    }
-    val filteredPosts = posts.filter { it.albumIds.contains(selectedAlbumId) }
+    val filteredPosts = posts.filter { it.albumId == selectedAlbumId }
     val chipRows = remember(albums) { buildAlbumChipRows(albums) }
     val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
     var recentlyUpdatedPostId by remember { mutableStateOf<String?>(null) }
@@ -152,7 +149,7 @@ fun AlbumPageScreen(
                 ),
             ) {
                 Text(
-                    text = "这个相册里暂时还没有帖子占位。",
+                    text = "这个大相册里暂时还没有小相册。",
                     modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -300,13 +297,13 @@ private fun RealAlbumPageScreen(
                 when {
                     uiState.isPostsLoading -> {
                         AlbumPageLoadingCard(
-                            text = "正在读取这个相册里的帖子…",
+                            text = "正在读取这个大相册里的小相册…",
                         )
                     }
 
                     uiState.postsErrorMessage != null -> {
                         val postsErrorMessage = uiState.postsErrorMessage
-                            ?: "读取这个相册下的帖子失败。"
+                            ?: "读取这个大相册下的小相册失败。"
                         AlbumPageNoticeCard(
                             text = postsErrorMessage,
                             actionLabel = "重试",
@@ -318,7 +315,7 @@ private fun RealAlbumPageScreen(
 
                     uiState.posts.isEmpty() -> {
                         AlbumPageNoticeCard(
-                            text = "这个相册当前还没有后端帖子。",
+                            text = "这个大相册当前还没有后端小相册。",
                         )
                     }
 
@@ -789,7 +786,7 @@ fun PostDetailPlaceholderScreen(
             }
 
             Text(
-                text = "帖子详情",
+                text = "小相册详情",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
             )
@@ -852,12 +849,12 @@ fun PostDetailPlaceholderScreen(
                         verticalArrangement = Arrangement.spacedBy(spacing.xs),
                     ) {
                         Text(
-                            text = "帖子详情入口已接通",
+                            text = "小相册详情入口已接通",
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            text = "后续帖子详情页会在这里接入媒体序列、帖子信息区和帖子评论区。",
+                            text = "后续这里会接入顶部信息区、照片流式媒体区和小相册评论入口。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

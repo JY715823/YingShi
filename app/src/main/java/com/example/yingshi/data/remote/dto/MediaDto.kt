@@ -23,5 +23,8 @@ data class MediaDto(
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val createdAtMillis: Long? = null,
-    val postIds: List<String> = emptyList(),
-)
+    val smallAlbumIds: List<String> = emptyList(),
+) {
+    val postIds: List<String>
+        get() = smallAlbumIds
+}

@@ -34,7 +34,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -89,6 +88,7 @@ private const val PhotoFeedNewImportBadgeMillis = 12_000L
 fun PhotoFeedScreen(
     feedItems: List<PhotoFeedItem> = FakePhotoFeedRepository.getPhotoFeed(),
     modifier: Modifier = Modifier,
+    pageStateStore: PhotoFeedPageStateStore = GlobalPhotoFeedPageStateStore,
     selectionState: PhotoFeedSelectionState = PhotoFeedSelectionState(),
     bottomOverlayPadding: Dp = 0.dp,
     isLoadingMore: Boolean = false,
@@ -168,9 +168,9 @@ fun PhotoFeedScreen(
         )
     }
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = PhotoFeedPageStateStore.savedFirstVisibleItemIndex
+        initialFirstVisibleItemIndex = pageStateStore.savedFirstVisibleItemIndex
             .coerceIn(0, blocks.lastIndex.coerceAtLeast(0)),
-        initialFirstVisibleItemScrollOffset = PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset,
+        initialFirstVisibleItemScrollOffset = pageStateStore.savedFirstVisibleItemScrollOffset,
     )
     val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
     var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
@@ -329,23 +329,23 @@ fun PhotoFeedScreen(
         }
     }
 
-    LaunchedEffect(PhotoFeedPageStateStore.pendingNewImportedNonce) {
-        val nonce = PhotoFeedPageStateStore.pendingNewImportedNonce
+    LaunchedEffect(pageStateStore.pendingNewImportedNonce) {
+        val nonce = pageStateStore.pendingNewImportedNonce
         if (nonce == 0 || nonce == consumedNewImportedNonce) return@LaunchedEffect
         consumedNewImportedNonce = nonce
-        val ids = PhotoFeedPageStateStore.pendingNewImportedMediaIds
+        val ids = pageStateStore.pendingNewImportedMediaIds
         if (ids.isEmpty()) return@LaunchedEffect
         newImportedMediaIds = ids
         delay(PhotoFeedNewImportBadgeMillis)
         if (consumedNewImportedNonce == nonce) {
             newImportedMediaIds = emptySet()
-            PhotoFeedPageStateStore.pendingNewImportedMediaIds = emptySet()
+            pageStateStore.pendingNewImportedMediaIds = emptySet()
         }
     }
 
     LaunchedEffect(scrollTrigger, blocks) {
-        val mediaId = PhotoFeedPageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
-        val highlightNonce = PhotoFeedPageStateStore.pendingHighlightNonce
+        val mediaId = pageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
+        val highlightNonce = pageStateStore.pendingHighlightNonce
         val targetBlockIndex = findBlockIndexForMedia(blocks, mediaId)
         if (mediaId != pendingTargetMediaIdSnapshot) {
             pendingTargetMediaIdSnapshot = mediaId
@@ -354,17 +354,17 @@ fun PhotoFeedScreen(
         if (targetBlockIndex < 0) {
             if (!hasMore) {
                 delay(PhotoFeedPendingTargetRefreshGraceMillis)
-                if (PhotoFeedPageStateStore.pendingScrollTargetMediaId != mediaId) {
+                if (pageStateStore.pendingScrollTargetMediaId != mediaId) {
                     return@LaunchedEffect
                 }
-                PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
-                PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
-                PhotoFeedPageStateStore.pendingLocateFailureMessage?.let { message ->
+                pageStateStore.pendingScrollTargetMediaId = null
+                pageStateStore.pendingScrollAnchorOriginalIndex = -1
+                pageStateStore.pendingLocateFailureMessage?.let { message ->
                     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                 }
-                PhotoFeedPageStateStore.pendingLocateSuccessMessage = null
-                PhotoFeedPageStateStore.pendingLocateFailureMessage = null
-                PhotoFeedPageStateStore.pendingImportHasRetryableItems = false
+                pageStateStore.pendingLocateSuccessMessage = null
+                pageStateStore.pendingLocateFailureMessage = null
+                pageStateStore.pendingImportHasRetryableItems = false
                 pendingTargetMediaIdSnapshot = null
                 pendingTargetLoadAttemptBlockCount = -1
                 return@LaunchedEffect
@@ -383,24 +383,24 @@ fun PhotoFeedScreen(
         highlightedTargetMediaId = mediaId
         highlightedTargetNonce = highlightNonce
         restoredSavedAnchorMediaId = mediaId
-        PhotoFeedPageStateStore.savedFirstVisibleItemIndex = targetBlockIndex
-        PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset = targetScrollOffset
-        PhotoFeedPageStateStore.savedFirstVisibleMediaId = mediaId
-        PhotoFeedPageStateStore.pendingScrollTargetMediaId = null
-        PhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
-        PhotoFeedPageStateStore.pendingLocateSuccessMessage?.let { message ->
+        pageStateStore.savedFirstVisibleItemIndex = targetBlockIndex
+        pageStateStore.savedFirstVisibleItemScrollOffset = targetScrollOffset
+        pageStateStore.savedFirstVisibleMediaId = mediaId
+        pageStateStore.pendingScrollTargetMediaId = null
+        pageStateStore.pendingScrollAnchorOriginalIndex = -1
+        pageStateStore.pendingLocateSuccessMessage?.let { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
-        PhotoFeedPageStateStore.pendingLocateSuccessMessage = null
-        PhotoFeedPageStateStore.pendingLocateFailureMessage = null
-        PhotoFeedPageStateStore.pendingImportHasRetryableItems = false
+        pageStateStore.pendingLocateSuccessMessage = null
+        pageStateStore.pendingLocateFailureMessage = null
+        pageStateStore.pendingImportHasRetryableItems = false
         pendingTargetMediaIdSnapshot = null
         pendingTargetLoadAttemptBlockCount = -1
     }
 
     LaunchedEffect(blocks) {
-        if (PhotoFeedPageStateStore.pendingScrollTargetMediaId != null) return@LaunchedEffect
-        val savedMediaId = PhotoFeedPageStateStore.savedFirstVisibleMediaId ?: return@LaunchedEffect
+        if (pageStateStore.pendingScrollTargetMediaId != null) return@LaunchedEffect
+        val savedMediaId = pageStateStore.savedFirstVisibleMediaId ?: return@LaunchedEffect
         if (savedMediaId == restoredSavedAnchorMediaId) return@LaunchedEffect
         val targetBlockIndex = findBlockIndexForMedia(blocks, savedMediaId)
         if (targetBlockIndex < 0) return@LaunchedEffect
@@ -412,7 +412,7 @@ fun PhotoFeedScreen(
         restoredSavedAnchorMediaId = savedMediaId
         listState.scrollToItem(
             index = targetBlockIndex,
-            scrollOffset = PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset,
+            scrollOffset = pageStateStore.savedFirstVisibleItemScrollOffset,
         )
     }
 
@@ -431,9 +431,9 @@ fun PhotoFeedScreen(
                 mediaId = firstMediaId,
             )
         }.collect { (index, offset, mediaId) ->
-            PhotoFeedPageStateStore.savedFirstVisibleItemIndex = index
-            PhotoFeedPageStateStore.savedFirstVisibleItemScrollOffset = offset
-            PhotoFeedPageStateStore.savedFirstVisibleMediaId = mediaId
+            pageStateStore.savedFirstVisibleItemIndex = index
+            pageStateStore.savedFirstVisibleItemScrollOffset = offset
+            pageStateStore.savedFirstVisibleMediaId = mediaId
         }
     }
 
@@ -533,7 +533,7 @@ fun PhotoFeedScreen(
                                                 mediaItems = feedItems,
                                                 initialIndex = mediaPositionLookup[item.mediaId] ?: 0,
                                                 sourceLabel = "photos-feed",
-                                                showPostSegments = false,
+                                                showSmallAlbumSegments = false,
                                             ),
                                         )
                                         selectionState
@@ -546,7 +546,7 @@ fun PhotoFeedScreen(
                                         mediaItems = feedItems,
                                         initialIndex = mediaPositionLookup[item.mediaId] ?: 0,
                                         sourceLabel = "photos-feed",
-                                        showPostSegments = false,
+                                        showSmallAlbumSegments = false,
                                     ),
                                 )
                             },
@@ -848,9 +848,9 @@ private fun PhotoFeedTimeScrubber(
 ) {
     val density = LocalDensity.current
     val spacing = YingShiThemeTokens.spacing
-    val thumbWidth = 22.dp
-    val thumbHeight = 76.dp
-    val endMargin = 8.dp
+    val thumbWidth = 24.dp
+    val thumbHeight = 78.dp
+    val endMargin = 4.dp
 
     var scrubberHeightPx by remember { mutableIntStateOf(0) }
     var labelHeightPx by remember { mutableIntStateOf(0) }
@@ -946,7 +946,7 @@ private fun PhotoFeedTimeScrubber(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 10.dp)
-                    .size(8.dp),
+                    .size(7.dp),
             ) {
                 val w = size.width
                 val h = size.height
@@ -970,8 +970,8 @@ private fun PhotoFeedTimeScrubber(
             Canvas(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 10.dp)
-                    .size(8.dp),
+                    .padding(bottom = 9.dp)
+                    .size(7.dp),
             ) {
                 val w = size.width
                 val h = size.height
@@ -1430,11 +1430,7 @@ private fun sectionSpacing(density: PhotoFeedDensity): Dp {
 }
 
 private fun rowSpacing(density: PhotoFeedDensity): Dp {
-    return when {
-        density.columns <= 4 -> 2.dp
-        density.columns <= 8 -> 2.dp
-        else -> 2.dp
-    }
+    return 2.dp
 }
 
 private fun photoFeedThumbnailRequestSize(density: PhotoFeedDensity): Int {

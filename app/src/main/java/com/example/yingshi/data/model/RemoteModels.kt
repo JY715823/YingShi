@@ -11,7 +11,7 @@ data class RemoteMedia(
     val aspectRatio: Float?,
     val displayTimeMillis: Long,
     val commentCount: Int,
-    val postIds: List<String>,
+    val smallAlbumIds: List<String>,
     val thumbnailUrl: String? = null,
     val mediaUrl: String? = null,
     val coverUrl: String? = null,
@@ -21,7 +21,10 @@ data class RemoteMedia(
     val capturedAtMillis: Long? = null,
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
-)
+) {
+    val postIds: List<String>
+        get() = smallAlbumIds
+}
 
 data class RemoteMediaFeedPage(
     val items: List<RemoteMedia>,
@@ -34,8 +37,11 @@ data class RemoteAlbum(
     val title: String,
     val subtitle: String,
     val coverMediaId: String?,
-    val postCount: Int,
-)
+    val smallAlbumCount: Int,
+) {
+    val postCount: Int
+        get() = smallAlbumCount
+}
 
 data class RemoteComment(
     val commentId: String,
@@ -53,13 +59,13 @@ data class RemoteTrashItem(
     val trashItemId: String,
     val itemType: String,
     val state: String?,
-    val sourcePostId: String?,
+    val sourceSmallAlbumId: String?,
     val sourceMediaId: String?,
     val commentTargetMediaId: String?,
     val title: String,
     val previewInfo: String,
     val deletedAtMillis: Long,
-    val relatedPostIds: List<String>,
+    val relatedSmallAlbumIds: List<String>,
     val relatedMediaIds: List<String>,
     val sourceMediaType: String? = null,
     val sourceMediaWidth: Int? = null,
@@ -67,7 +73,13 @@ data class RemoteTrashItem(
     val sourceMediaAspectRatio: Float? = null,
     val sourceMediaDurationMillis: Long? = null,
     val sourceMediaMimeType: String? = null,
-)
+){
+    val sourcePostId: String?
+        get() = sourceSmallAlbumId
+
+    val relatedPostIds: List<String>
+        get() = relatedSmallAlbumIds
+}
 
 data class RemoteUploadToken(
     val uploadId: String,

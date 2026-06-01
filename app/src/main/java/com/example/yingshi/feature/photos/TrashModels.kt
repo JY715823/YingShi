@@ -7,16 +7,16 @@ enum class TrashEntryType(
     val summary: String,
 ) {
     POST_DELETED(
-        label = "帖子删除",
-        summary = "恢复帖子本体、帖子评论和帖子与媒体关系。",
+        label = "小相册删除",
+        summary = "恢复小相册本体、小相册评论和小相册与媒体关系。",
     ),
     MEDIA_REMOVED(
         label = "媒体移除",
-        summary = "只恢复当前帖子与该媒体的关系，不影响媒体本体和媒体评论。",
+        summary = "只恢复当前小相册与该媒体的关系，不影响媒体本体和媒体评论。",
     ),
     MEDIA_SYSTEM_DELETED(
         label = "媒体删除",
-        summary = "恢复媒体本体、被清除的帖子关系和媒体评论入口。",
+        summary = "恢复媒体本体、被清除的小相册关系和媒体评论入口。",
     ),
 }
 

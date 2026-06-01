@@ -109,7 +109,7 @@ fun TransferCenterScreen(
         if (showClearCompletedDialog) {
             TransferClearRecordsDialog(
                 title = "清理已完成的传输记录？",
-                body = "只会从传输中心移除已结束的任务记录，不会删除已导入 App 的媒体、已创建的帖子，或已加入帖子里的媒体。",
+                body = "只会从传输中心移除已结束的任务记录，不会删除已导入 App 的媒体、已创建的小相册，或已加入小相册里的媒体。",
                 onDismiss = { showClearCompletedDialog = false },
                 onConfirm = {
                     showClearCompletedDialog = false
@@ -164,7 +164,7 @@ private fun TransferEmptyState() {
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "导入 App、新建帖子、加入已有帖子后的进度和结果会显示在这里。",
+                text = "导入 App、新建小相册、加入已有小相册后的进度和结果会显示在这里。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -300,7 +300,7 @@ private fun TransferOperationCard(
                 }
                 if (allTerminal) {
                     Text(
-                        text = "清理记录只会移除这条传输记录，不会删除已导入媒体或帖子内容。",
+                        text = "清理记录只会移除这条传输记录，不会删除已导入媒体或小相册内容。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -331,8 +331,8 @@ private fun TransferOperationCard(
                     openTargetTask?.let { target ->
                         TextButton(onClick = { onOpen(target) }) {
                             Text(when (target.operationType) {
-                                LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "查看新帖子"
-                                LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "查看目标帖子"
+                                LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "查看新小相册"
+                                LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "查看目标小相册"
                                 LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> "查看照片"
                             })
                         }
@@ -353,7 +353,7 @@ private fun TransferOperationCard(
     if (showClearGroupDialog) {
         TransferClearRecordsDialog(
             title = "清理这组传输记录？",
-            body = "只会从传输中心移除本组记录，不会删除已导入 App 的媒体、已创建的帖子，或已加入帖子里的媒体。",
+            body = "只会从传输中心移除本组记录，不会删除已导入 App 的媒体、已创建的小相册，或已加入小相册里的媒体。",
             onDismiss = { showClearGroupDialog = false },
             onConfirm = {
                 showClearGroupDialog = false
@@ -588,8 +588,8 @@ private fun List<SystemMediaUploadTaskUiModel>.openTargetTask(): SystemMediaUplo
 private fun LocalSystemMediaBridgeRepository.OperationType.label(): String {
     return when (this) {
         LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> "导入 App"
-        LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "新建帖子"
-        LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "加入已有帖子"
+        LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "新建小相册"
+        LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "加入已有小相册"
     }
 }
 
@@ -603,13 +603,13 @@ private fun failureRetryExplanation(
     val actionText = when (task.operationType) {
         LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> {
             if (task.resultPostRoute != null) {
-                "帖子已创建，成功项已保留；失败项可在传输中心重试，不会重复创建已成功内容。"
+                "小相册已创建，成功项已保留；失败项可在传输中心重试，不会重复创建已成功内容。"
             } else {
                 "成功项已保留；失败项可在传输中心重试，不会重复创建已成功内容。"
             }
         }
         LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
-            "目标帖子是「${task.operationTitle ?: task.targetLabel}」。成功项已保留；失败项可在传输中心重试，不会重复加入已成功内容。"
+            "目标小相册是「${task.operationTitle ?: task.targetLabel}」。成功项已保留；失败项可在传输中心重试，不会重复加入已成功内容。"
         LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
             "成功项已进入 App；失败项可在传输中心重试，不会重复导入已成功内容。"
     }
@@ -670,9 +670,9 @@ private fun operationStateLabel(
                 "部分导入完成：$countText。成功项已保留，失败或取消项可重试。"
             LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> {
                 if (tasks.any { it.resultPostRoute != null }) {
-                    "帖子已创建：$countText。成功项已保留，失败或取消项可重试。"
+                    "小相册已创建：$countText。成功项已保留，失败或取消项可重试。"
                 } else {
-                    "帖子未完整创建：$countText。失败或取消项可重试。"
+                    "小相册未完整创建：$countText。失败或取消项可重试。"
                 }
             }
             LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
@@ -682,9 +682,9 @@ private fun operationStateLabel(
             LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP ->
                 "导入完成：成功 $successCount 项，可查看照片"
             LocalSystemMediaBridgeRepository.OperationType.CREATE_POST ->
-                "帖子创建完成：成功 $successCount 项，可查看新帖子"
+                "小相册创建完成：成功 $successCount 项，可查看新小相册"
             LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST ->
-                "已加入「$targetLabel」：成功 $successCount 项，可查看目标帖子"
+                "已加入「$targetLabel」：成功 $successCount 项，可查看目标小相册"
         }
         else -> "任务已更新"
     }

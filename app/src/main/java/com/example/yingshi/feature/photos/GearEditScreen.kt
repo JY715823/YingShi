@@ -202,7 +202,7 @@ fun GearEditScreen(
         }
         isSaving = false
         onPostUpdated(route.postId, selectedAlbumIds.firstOrNull())
-        Toast.makeText(context, "帖子已保存", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "小相册已保存", Toast.LENGTH_SHORT).show()
         onBack()
     }
 
@@ -247,7 +247,7 @@ fun GearEditScreen(
 
         GearEditSection(
             title = "时间设置",
-            subtitle = "沿用新建帖子流程的发布时间检查，保存后同步到详情。",
+            subtitle = "沿用新建小相册流程的发布时间检查，保存后同步到详情。",
         ) {
             Text(
                 text = formatGearEditTime(displayTimeMillis),
@@ -272,16 +272,16 @@ fun GearEditScreen(
         }
 
         GearEditSection(
-            title = "放进相册",
+            title = "选择所属大相册",
             subtitle = if (selectedAlbumIds.isEmpty()) {
-                "至少选择一个相册后才能保存。"
+                "请选择一个父大相册后再保存。"
             } else {
-                "已选择 ${selectedAlbumIds.size} 个相册。"
+                "当前父大相册：${selectedAlbumTitles.firstOrNull() ?: "未选择"}"
             },
         ) {
             if (selectedAlbumIds.isEmpty()) {
                 Text(
-                    text = "请至少选择一个相册后再保存。",
+                    text = "请选择一个父大相册后再保存。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -291,8 +291,9 @@ fun GearEditScreen(
                 selectedAlbumIds = selectedAlbumIds,
                 onToggleAlbum = { albumId ->
                     if (selectedAlbumIds.contains(albumId)) {
-                        selectedAlbumIds.remove(albumId)
+                        selectedAlbumIds.clear()
                     } else {
+                        selectedAlbumIds.clear()
                         selectedAlbumIds.add(albumId)
                     }
                 },
@@ -314,11 +315,11 @@ fun GearEditScreen(
 
         GearEditSection(
             title = "危险操作",
-            subtitle = "删除帖子会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
+            subtitle = "删除小相册会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
         ) {
             GearEditEntryRow(
-                title = "删除整个帖子",
-                subtitle = "本轮支持“仅删帖子”以及“删帖子并系统删其中媒体”的本地版本。",
+                title = "删除整个小相册",
+                subtitle = "本轮支持“仅删小相册”以及“删小相册并系统删其中媒体”的本地版本。",
                 danger = true,
                 onClick = {
                     showDeletePostDialog = true
@@ -330,19 +331,19 @@ fun GearEditScreen(
     if (showDeletePostDialog) {
         AlertDialog(
             onDismissRequest = { showDeletePostDialog = false },
-            title = { Text("删除整个帖子") },
+            title = { Text("删除整个小相册") },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
                 ) {
-                    Text("选择只删除帖子，或在删除帖子时把其中媒体一起记入“媒体系统删”。")
+                    Text("选择只删除小相册，或在删除小相册时把其中媒体一起记入“媒体系统删”。")
                     if (systemDeleteImpact.sharedMediaCount > 0) {
                         Text(
-                            text = "其中有 ${systemDeleteImpact.sharedMediaCount} 张媒体同时属于其他帖子，会带来 ${systemDeleteImpact.affectedOtherPostCount} 个其他帖子的全局影响。",
+                            text = "其中有 ${systemDeleteImpact.sharedMediaCount} 张媒体同时属于其他小相册，会带来 ${systemDeleteImpact.affectedOtherPostCount} 个其他小相册的全局影响。",
                             color = MaterialTheme.colorScheme.error,
                         )
                     } else if (systemDeleteImpact.mediaCount > 0) {
-                        Text("当前帖子共有 ${systemDeleteImpact.mediaCount} 张媒体会进入本地系统删流程。")
+                        Text("当前小相册共有 ${systemDeleteImpact.mediaCount} 张媒体会进入本地系统删流程。")
                     }
                 }
             },
@@ -354,7 +355,7 @@ fun GearEditScreen(
                             onDeleteCurrentPost(route.postId, false)
                         },
                     ) {
-                        Text("仅删帖子")
+                        Text("仅删小相册")
                     }
                     TextButton(
                         onClick = {
@@ -362,7 +363,7 @@ fun GearEditScreen(
                             onDeleteCurrentPost(route.postId, true)
                         },
                     ) {
-                        Text("删帖并系统删媒体")
+                        Text("删小相册并系统删媒体")
                     }
                 }
             },
@@ -438,7 +439,7 @@ private fun RealGearEditScreen(
                 saveEnabled = false,
             )
             Text(
-                text = "正在读取后端帖子编辑信息…",
+                text = "正在读取后端小相册编辑信息…",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -512,7 +513,7 @@ private fun RealGearEditScreen(
 
         GearEditSection(
             title = "时间设置",
-            subtitle = "沿用新建帖子流程的发布时间检查，保存后同步到后端。",
+            subtitle = "沿用新建小相册流程的发布时间检查，保存后同步到后端。",
         ) {
             Text(
                 text = formatGearEditTime(uiState.displayTimeMillis),
@@ -537,16 +538,16 @@ private fun RealGearEditScreen(
         }
 
         GearEditSection(
-            title = "放进相册",
+            title = "选择所属大相册",
             subtitle = if (uiState.selectedAlbumIds.isEmpty()) {
-                "至少选择一个相册后才能保存。"
+                "请选择一个父大相册后再保存。"
             } else {
-                "已选择 ${uiState.selectedAlbumIds.size} 个相册。"
+                "当前父大相册：${selectedAlbumTitles.firstOrNull() ?: "未选择"}"
             },
         ) {
             if (uiState.selectedAlbumIds.isEmpty()) {
                 Text(
-                    text = "请至少选择一个相册后再保存。",
+                    text = "请选择一个父大相册后再保存。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -580,11 +581,11 @@ private fun RealGearEditScreen(
 
         GearEditSection(
             title = "危险操作",
-            subtitle = "删除帖子会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
+            subtitle = "删除小相册会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
         ) {
             GearEditEntryRow(
-                title = "删除整个帖子",
-                subtitle = "REAL 模式下会把帖子移入后端回收站。",
+                title = "删除整个小相册",
+                subtitle = "REAL 模式下会把小相册移入后端回收站。",
                 danger = true,
                 onClick = { showDeletePostDialog = true },
             )
@@ -594,9 +595,9 @@ private fun RealGearEditScreen(
     if (showDeletePostDialog) {
         AlertDialog(
             onDismissRequest = { showDeletePostDialog = false },
-            title = { Text("删除整个帖子") },
+            title = { Text("删除整个小相册") },
             text = {
-                Text("确认后会把当前帖子移入后端回收站，帖子详情、相册页和回收站会同步刷新。")
+                Text("确认后会把当前小相册移入后端回收站，小相册详情、大相册页和回收站会同步刷新。")
             },
             confirmButton = {
                 TextButton(
@@ -633,7 +634,7 @@ private fun GearEditTopBar(
             Text("取消")
         }
         Text(
-            text = "帖子编辑",
+            text = "小相册编辑",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -666,7 +667,7 @@ private fun GearEditMemoryHeader(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "标题、简介、相册、封面和媒体顺序会在保存后一起刷新到帖子详情。",
+                text = "标题、简介、所属大相册、封面和媒体顺序会在保存后一起刷新到小相册详情。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -731,7 +732,7 @@ private fun GearEditMediaPreviewSection(
     GearEditSection(
         title = "媒体",
         subtitle = if (items.isEmpty()) {
-            "当前帖子没有媒体。"
+            "当前小相册没有媒体。"
         } else {
             "预览前 4 项；排序、封面和移除都在全部列表中管理。"
         },
@@ -807,7 +808,7 @@ private fun GearEditPublishSummary(
     albumTitles: List<String>,
     displayTimeMillis: Long,
 ) {
-    GearEditSection(title = "保存前检查", subtitle = "确认后会刷新帖子详情和相册卡片。") {
+    GearEditSection(title = "保存前检查", subtitle = "确认后会刷新小相册详情和大相册卡片。") {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
@@ -856,7 +857,7 @@ private fun GearEditSaveRow(
                 containerColor = MaterialTheme.colorScheme.primary,
             ),
         ) {
-            Text(if (isSaving) "保存中…" else "保存帖子")
+            Text(if (isSaving) "保存中…" else "保存小相册")
         }
     }
 }
@@ -1112,7 +1113,7 @@ private fun GearEditMissingState(
     ) {
         GearEditTopBar(onCancel = onBack, onSave = onBack)
         Text(
-            text = "当前帖子不存在，暂时无法进入 Gear Edit。",
+            text = "当前小相册不存在，暂时无法进入 Gear Edit。",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

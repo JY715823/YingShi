@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -129,17 +128,10 @@ private fun ProfileCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                ) {
-                    Text(
-                        text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "Y",
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                ProfileAvatar(
+                    name = displayName,
+                    avatarUrl = currentUser?.avatarUrl,
+                )
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
@@ -221,17 +213,10 @@ private fun PartnerCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
-                ) {
-                    Text(
-                        text = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "Y",
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                ProfileAvatar(
+                    name = displayName,
+                    avatarUrl = partner?.avatarUrl,
+                )
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),

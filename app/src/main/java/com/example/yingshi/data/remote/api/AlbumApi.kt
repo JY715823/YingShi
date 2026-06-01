@@ -10,7 +10,7 @@ interface AlbumApi {
     @GET("api/albums")
     suspend fun getAlbums(): ApiEnvelopeDto<List<AlbumDto>>
 
-    @GET("api/albums/{albumId}/posts")
+    @GET("api/albums/{albumId}/small-albums")
     suspend fun getAlbumPosts(
         @Path("albumId") albumId: String,
     ): ApiEnvelopeDto<List<PostSummaryDto>>

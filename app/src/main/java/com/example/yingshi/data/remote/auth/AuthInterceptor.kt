@@ -22,14 +22,6 @@ class AuthInterceptor(
             }
         }
 
-        val request = builder.build()
-        val response = chain.proceed(request)
-        if (!skipAuth && response.code == 401 && tokenProvider is AuthSessionManager) {
-            val sentToken = request.header("Authorization")
-                ?.removePrefix("${RemoteConfig.AUTH_SCHEME} ")
-                ?.trim()
-            tokenProvider.clearTokensIfAccessToken(sentToken)
-        }
-        return response
+        return chain.proceed(builder.build())
     }
 }

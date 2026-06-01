@@ -91,13 +91,21 @@ object AuthSessionManager : TokenProvider {
         val tokens = tokenStore.getTokens() ?: return null
         val accessToken = tokens.accessToken.takeIf { it.isNotBlank() } ?: return null
         if (tokens.accessTokenExpireAtMillis <= System.currentTimeMillis() + ACCESS_TOKEN_EXPIRY_SKEW_MILLIS) {
-            clearTokens()
-            return null
+            return if (AuthRefreshCoordinator.refreshBlocking()) {
+                tokenStore.getTokens()?.accessToken?.takeIf { it.isNotBlank() }
+            } else {
+                clearTokens()
+                null
+            }
         }
         return accessToken
     }
 
     fun getRefreshToken(): String? = tokenStore.getTokens()?.refreshToken
+
+    fun peekRefreshToken(): String? = tokenStore.getTokens()?.refreshToken?.takeIf { it.isNotBlank() }
+
+    fun peekTokens(): AuthTokens? = tokenStore.getTokens()
 
     fun saveTokens(tokens: AuthTokens) {
         tokenStore.saveTokens(tokens)

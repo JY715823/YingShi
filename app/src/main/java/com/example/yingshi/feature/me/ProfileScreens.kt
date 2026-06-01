@@ -1,6 +1,12 @@
-﻿package com.example.yingshi.feature.me
+package com.example.yingshi.feature.me
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,7 +14,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -21,8 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,7 +54,7 @@ private const val SUMMARY_PROFILE =
     "\u8fd9\u91cc\u662f\u4f60\u4eec\u5171\u4eab\u7a7a\u95f4\u91cc\u7684\u4e2a\u4eba\u5165\u53e3\uff0c\u53ea\u653e\u663e\u79f0\u3001\u7b80\u4ecb\u548c\u8f7b\u91cf\u8d26\u53f7\u4fe1\u606f\u3002"
 private const val TITLE_EDIT = "\u7f16\u8f91\u8d44\u6599"
 private const val SUMMARY_EDIT =
-    "\u8fd9\u91cc\u53ea\u4fee\u6539\u6635\u79f0\u548c\u7b80\u4ecb\uff0c\u5934\u50cf\u7ee7\u7eed\u4f7f\u7528\u9ed8\u8ba4\u5360\u4f4d\u3002"
+    "\u8fd9\u91cc\u53ef\u4ee5\u4fee\u6539\u6635\u79f0\u3001\u7b80\u4ecb\u548c\u4e2a\u4eba\u5934\u50cf\u3002"
 private const val TEXT_BIO_EMPTY = "\u6682\u672a\u8bbe\u7f6e\u7b80\u4ecb\u3002"
 private const val TITLE_PARTNER = "\u53e6\u4e00\u534a"
 private const val SUMMARY_PARTNER = "\u4e00\u8d77\u8bb0\u5f55\u3001\u4e00\u8d77\u56de\u770b\uff0c\u8fd9\u91cc\u662f\u4f60\u4eec\u5171\u540c\u7a7a\u95f4\u91cc\u7684\u53e6\u4e00\u4f4d\u3002"
@@ -65,9 +70,16 @@ private const val ACTION_EDIT = "\u7f16\u8f91\u8d44\u6599"
 private const val ACTION_CANCEL = "\u53d6\u6d88"
 private const val ACTION_SAVE = "\u4fdd\u5b58"
 private const val ACTION_SAVING = "\u4fdd\u5b58\u4e2d..."
+private const val ACTION_UPDATE_AVATAR = "\u66f4\u6362\u5934\u50cf"
+private const val ACTION_UPLOADING_AVATAR = "\u4e0a\u4f20\u5934\u50cf\u4e2d..."
 private const val MESSAGE_SAVED = "\u8d44\u6599\u5df2\u4fdd\u5b58"
+private const val MESSAGE_AVATAR_UPDATED = "\u5934\u50cf\u5df2\u66f4\u65b0"
+private const val MESSAGE_AVATAR_PICK_CANCELLED = "\u5df2\u53d6\u6d88\u9009\u62e9\u5934\u50cf"
+private const val MESSAGE_AVATAR_PICK_FAILED = "\u65e0\u6cd5\u8bfb\u53d6\u9009\u4e2d\u7684\u5934\u50cf"
 private const val TEXT_UNFILLED = "\u672a\u586b\u5199"
 private const val TEXT_UNRECORDED = "\u672a\u8bb0\u5f55"
+private const val FALLBACK_AVATAR_FILE_NAME = "avatar.jpg"
+private const val FALLBACK_AVATAR_MIME_TYPE = "image/jpeg"
 
 data class PersonalProfileRoute(
     val source: String = "my-page",
@@ -111,7 +123,10 @@ fun PersonalProfileScreen(
                             horizontalArrangement = Arrangement.spacedBy(spacing.md),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            ProfileAvatar(name = currentUser.displayName)
+                            ProfileAvatar(
+                                name = currentUser.displayName,
+                                avatarUrl = currentUser.avatarUrl,
+                            )
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(spacing.xxs),
@@ -228,7 +243,10 @@ private fun PartnerSection(
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ProfileAvatar(name = displayName)
+                ProfileAvatar(
+                    name = displayName,
+                    avatarUrl = partner?.avatarUrl,
+                )
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
@@ -271,7 +289,52 @@ fun EditProfileScreen(
     var displayName by rememberSaveable(currentUser.userId) { mutableStateOf(currentUser.displayName) }
     var bio by rememberSaveable(currentUser.userId) { mutableStateOf(currentUser.bio.orEmpty()) }
     var isSaving by remember { mutableStateOf(false) }
+    var isUploadingAvatar by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri == null) {
+            Toast.makeText(context, MESSAGE_AVATAR_PICK_CANCELLED, Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            isUploadingAvatar = true
+            errorMessage = null
+            val uploadResult = runCatching {
+                RepositoryProvider.authRepository.uploadCurrentUserAvatar(
+                    fileName = uri.resolvePickedDisplayName(context),
+                    mimeType = context.contentResolver.getType(uri)?.takeIf { it.isNotBlank() }
+                        ?: FALLBACK_AVATAR_MIME_TYPE,
+                    fileSizeBytes = uri.resolvePickedSizeBytes(context) ?: 0L,
+                    openInputStream = {
+                        context.contentResolver.openInputStream(uri) ?: error(MESSAGE_AVATAR_PICK_FAILED)
+                    },
+                )
+            }.getOrElse {
+                ApiResult.Error(
+                    code = "AUTH_AVATAR_PICK_FAILED",
+                    message = MESSAGE_AVATAR_PICK_FAILED,
+                    throwable = it,
+                )
+            }
+            when (uploadResult) {
+                is ApiResult.Success -> {
+                    onProfileSaved(uploadResult.data)
+                    Toast.makeText(context, MESSAGE_AVATAR_UPDATED, Toast.LENGTH_SHORT).show()
+                }
+                is ApiResult.Error -> {
+                    if (uploadResult.isUnauthorized()) {
+                        onSessionExpired(uploadResult.message)
+                    } else {
+                        errorMessage = uploadResult.message
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+            isUploadingAvatar = false
+        }
+    }
 
     ShellPage(
         title = TITLE_EDIT,
@@ -280,13 +343,35 @@ fun EditProfileScreen(
         modifier = modifier.fillMaxSize(),
         content = {
             Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ProfileAvatar(
+                        name = displayName.ifBlank { currentUser.displayName },
+                        avatarUrl = currentUser.avatarUrl,
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            avatarPickerLauncher.launch(
+                                PickVisualMediaRequest(
+                                    mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                ),
+                            )
+                        },
+                        enabled = !isSaving && !isUploadingAvatar,
+                    ) {
+                        Text(if (isUploadingAvatar) ACTION_UPLOADING_AVATAR else ACTION_UPDATE_AVATAR)
+                    }
+                }
+
                 OutlinedTextField(
                     value = displayName,
                     onValueChange = { newValue -> displayName = newValue },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(LABEL_DISPLAY_NAME) },
                     singleLine = true,
-                    enabled = !isSaving,
+                    enabled = !isSaving && !isUploadingAvatar,
                 )
                 OutlinedTextField(
                     value = bio,
@@ -295,7 +380,7 @@ fun EditProfileScreen(
                     label = { Text(LABEL_BIO) },
                     minLines = 4,
                     maxLines = 6,
-                    enabled = !isSaving,
+                    enabled = !isSaving && !isUploadingAvatar,
                 )
 
                 errorMessage?.let {
@@ -312,7 +397,7 @@ fun EditProfileScreen(
                 ) {
                     OutlinedButton(
                         onClick = onBack,
-                        enabled = !isSaving,
+                        enabled = !isSaving && !isUploadingAvatar,
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(ACTION_CANCEL)
@@ -347,7 +432,7 @@ fun EditProfileScreen(
                                 isSaving = false
                             }
                         },
-                        enabled = !isSaving && displayName.trim().isNotBlank(),
+                        enabled = !isSaving && !isUploadingAvatar && displayName.trim().isNotBlank(),
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(if (isSaving) ACTION_SAVING else ACTION_SAVE)
@@ -356,24 +441,6 @@ fun EditProfileScreen(
             }
         },
     )
-}
-
-@Composable
-private fun ProfileAvatar(
-    name: String,
-) {
-    val avatarLabel = name.firstOrNull()?.uppercaseChar()?.toString() ?: "Y"
-    Surface(
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-    ) {
-        Text(
-            text = avatarLabel,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
 }
 
 @Composable
@@ -403,6 +470,40 @@ private fun formatEpochMillis(epochMillis: Long?): String {
     return runCatching {
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(epochMillis))
     }.getOrDefault(TEXT_UNRECORDED)
+}
+
+private fun Uri.resolvePickedDisplayName(context: Context): String {
+    return context.contentResolver.query(
+        this,
+        arrayOf(OpenableColumns.DISPLAY_NAME),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val columnIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (columnIndex >= 0) cursor.getString(columnIndex) else null
+        } else {
+            null
+        }
+    }.orEmpty().ifBlank { FALLBACK_AVATAR_FILE_NAME }
+}
+
+private fun Uri.resolvePickedSizeBytes(context: Context): Long? {
+    return context.contentResolver.query(
+        this,
+        arrayOf(OpenableColumns.SIZE),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val columnIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (columnIndex >= 0 && !cursor.isNull(columnIndex)) cursor.getLong(columnIndex) else null
+        } else {
+            null
+        }
+    }
 }
 
 @Preview(showBackground = true)

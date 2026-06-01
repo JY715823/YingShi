@@ -4,13 +4,13 @@ data class TrashItemDto(
     val trashItemId: String,
     val itemType: String,
     val state: String? = null,
-    val sourcePostId: String? = null,
+    val sourceSmallAlbumId: String? = null,
     val sourceMediaId: String? = null,
     val commentTargetMediaId: String? = null,
     val title: String,
     val previewInfo: String,
     val deletedAtMillis: Long,
-    val relatedPostIds: List<String> = emptyList(),
+    val relatedSmallAlbumIds: List<String> = emptyList(),
     val relatedMediaIds: List<String> = emptyList(),
     val sourceMediaType: String? = null,
     val sourceMediaWidth: Int? = null,
@@ -18,7 +18,13 @@ data class TrashItemDto(
     val sourceMediaAspectRatio: Float? = null,
     val sourceMediaDurationMillis: Long? = null,
     val sourceMediaMimeType: String? = null,
-)
+) {
+    val sourcePostId: String?
+        get() = sourceSmallAlbumId
+
+    val relatedPostIds: List<String>
+        get() = relatedSmallAlbumIds
+}
 
 data class TrashPageResponseDto(
     val items: List<TrashItemDto> = emptyList(),

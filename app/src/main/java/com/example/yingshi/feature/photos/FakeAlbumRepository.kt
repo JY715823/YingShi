@@ -115,8 +115,8 @@ object FakeAlbumRepository {
             id = postId,
             albumId = primaryAlbum.id,
             albumIds = normalizedAlbumIds,
-            title = title.ifBlank { "本地占位帖子" },
-            summary = summary.ifBlank { "本地创建的帖子占位内容" },
+            title = title.ifBlank { "本地占位小相册" },
+            summary = summary.ifBlank { "本地创建的小相册占位内容" },
             postDisplayTimeMillis = postDisplayTimeMillis,
             mediaCount = 1,
             coverPalette = primaryAlbum.accent,
@@ -151,7 +151,7 @@ object FakeAlbumRepository {
                 mediaCount = normalizedMedia.size,
                 displayTimeMillis = postTime,
             ),
-            summary = "从系统媒体工具区加入的本地占位帖子",
+            summary = "从系统媒体工具区加入的本地占位小相册",
             postDisplayTimeMillis = postTime,
             mediaCount = normalizedMedia.size,
             coverPalette = coverMedia.palette,
@@ -225,7 +225,7 @@ object FakeAlbumRepository {
                     displayTimeMillis = postTime,
                 )
             },
-            summary = draft.summary.ifBlank { "从系统媒体工具区加入的本地帖子" },
+            summary = draft.summary.ifBlank { "从系统媒体工具区加入的本地小相册" },
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -270,7 +270,7 @@ object FakeAlbumRepository {
                     displayTimeMillis = postTime,
                 )
             },
-            summary = draft.summary.ifBlank { "从照片流选择媒体创建的本地帖子" },
+            summary = draft.summary.ifBlank { "从照片流选择媒体创建的本地小相册" },
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -327,7 +327,7 @@ object FakeAlbumRepository {
                     displayTimeMillis = postTime,
                 )
             },
-            summary = draft.summary.ifBlank { "从系统媒体和照片流共同选择媒体创建的本地帖子" },
+            summary = draft.summary.ifBlank { "从系统媒体和照片流共同选择媒体创建的本地小相册" },
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -682,7 +682,7 @@ object FakeAlbumRepository {
                         .add(
                             TrashPostRelationSnapshot(
                                 postId = post.id,
-                                postTitle = post.title.ifBlank { "当前帖子" },
+                                postTitle = post.title.ifBlank { "当前小相册" },
                                 mediaSnapshot = snapshot,
                             ),
                         )
@@ -969,7 +969,7 @@ object FakeAlbumRepository {
             mediaSource = mediaSource,
             isCover = isCover,
             sourcePostId = sourcePostId,
-            sourcePostTitle = sourcePostTitle.ifBlank { "当前帖子" },
+            sourcePostTitle = sourcePostTitle.ifBlank { "当前小相册" },
         )
     }
 

@@ -170,7 +170,7 @@ class AlbumPageRealViewModel(
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,
-                            postsErrorMessage = result.toBackendUiMessage("读取相册下帖子失败。"),
+                            postsErrorMessage = result.toBackendUiMessage("读取大相册下的小相册失败。"),
                         )
                     }
                 }
@@ -261,7 +261,7 @@ class PostDetailRealViewModel(
                     _uiState.value = PostDetailRealUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "请先到后端联调页检查后端地址，再打开 REAL 帖子详情。"
+                            "请先到后端联调页检查后端地址，再打开 REAL 小相册详情。"
                         },
                     )
                     return@launch
@@ -299,7 +299,7 @@ class PostDetailRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = PostDetailRealUiState(
                         isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取后端帖子详情失败。"),
+                        errorMessage = result.toBackendUiMessage("读取后端小相册详情失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit

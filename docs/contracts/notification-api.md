@@ -1,22 +1,31 @@
 # Notification API Contract
 
-更新时间：2026-05-25
+Updated: 2026-05-25
 
-## 状态
+## Status
 
-- 后端通知接口已经在 `YingShi-Server` 中提供
-- 当前 Android 通知中心 UI 仍使用本地 fake 数据
-- 本文档主要用于说明后端现有通知契约，便于后续 Android 真通知接入
+- the backend notification API is already available in `YingShi-Server`
+- Android notification-center list, detail, read, and mark-all-read are now wired in `REAL` mode
+- base path: `/api/notifications`
+- all endpoints require bearer auth
 
-## 基础规则
+## Current Notification Sources
 
-- 基础路径：`/api/notifications`
-- 所有接口都要求 bearer auth
-- 当前通知列表是“服务端聚合事件流”，来源包括：
-  - 评论
-  - 帖子内容更新
-  - 回收站删除 / 恢复状态变化
-  - 上传任务完成 / 取消
+The backend currently materializes a merged notification feed from:
+
+- comments
+- post content updates
+- trash state changes
+- upload completion or cancellation
+
+Current backend notification `type` values:
+
+- `comment`
+- `comment_edit`
+- `comment_delete`
+- `content_update`
+- `delete_restore`
+- `system`
 
 ## Notification DTO
 
@@ -24,8 +33,8 @@
 {
   "notificationId": "comment:comment_001",
   "type": "comment",
-  "title": "另一位成员 评论了帖子",
-  "body": "这张照片真好看",
+  "title": "Demo B commented on a post",
+  "body": "Looks great",
   "createdAtMillis": 1777416400000,
   "isRead": false,
   "targetSummary": "Night Walk",
@@ -36,35 +45,32 @@
 }
 ```
 
-## 1. `GET /api/notifications`
+## Comment Variants
 
-查询参数：
+The backend now distinguishes:
 
-- `limit` 可选，默认由服务端决定
+- `comment` for new comments by another member
+- `comment_edit` when another member edits your comment
+- `comment_delete` when another member deletes your comment
 
-响应：
+## Endpoints
 
-- 返回 `List<NotificationDto>`
+`GET /api/notifications`
 
-说明：
+- optional query param: `limit`
+- returns `List<NotificationDto>`
 
-- 当前服务端会按时间倒序返回聚合后的通知事件
+`GET /api/notifications/{notificationId}`
 
-## 2. `GET /api/notifications/{notificationId}`
+- returns one `NotificationDto`
 
-响应：
+`POST /api/notifications/{notificationId}/read`
 
-- 返回一个 `NotificationDto`
+- returns the same notification with `isRead = true`
 
-## 3. `POST /api/notifications/{notificationId}/read`
+`POST /api/notifications/read-all`
 
-响应：
-
-- 返回已更新为 `isRead = true` 的 `NotificationDto`
-
-## 4. `POST /api/notifications/read-all`
-
-响应 `data`：
+Response `data`:
 
 ```json
 {
@@ -73,7 +79,8 @@
 }
 ```
 
-## Android 现状
+## Android Current Behavior
 
-- 顶部铃铛、通知中心列表、通知详情页目前都还是本地 fake 数据
-- 后续 Android 接真实通知时，可直接按本契约切换到远端接口
+- bell unread count is derived from the real notification feed in `REAL` mode
+- tapping a notification can route into post detail, trash, transfer center, or notification detail fallback depending on the payload
+- `FAKE` mode still keeps local seed notifications for shell/demo use

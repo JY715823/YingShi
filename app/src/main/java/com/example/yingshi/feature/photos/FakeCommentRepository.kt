@@ -13,7 +13,7 @@ object FakeCommentRepository {
         "这一组放在一起看，比单张照片更像那天的完整记忆。",
         "标题先这样占位，后面接真实评论系统时再替换。",
         "我喜欢这里保留一点上下文，不急着进入全屏查看。",
-        "这条先当作帖子评论，只讨论整组内容。",
+        "这条先当作小相册评论，只讨论整组内容。",
         "以后这里可以承接更长一点的记录，但现在先保持轻。",
         "这组里最有感觉的是开头那几张，节奏很好。",
         "如果后面要导出成纪念册，这一帖应该保留下来。",
@@ -21,7 +21,7 @@ object FakeCommentRepository {
         "先记一笔，后面真实输入器接入后再完善。",
         "评论区保持这样干净就很好，不要太社区化。",
         "超过十条时先给展开入口，后面再接分页。",
-        "这是一条用于验证展开更多占位的帖子评论。",
+        "这是一条用于验证展开更多占位的小相册评论。",
     )
 
     private val mediaCommentBodies = listOf(
@@ -34,7 +34,7 @@ object FakeCommentRepository {
         "这条是媒体评论，只属于当前这张图。",
         "以后真实评论接入时，这里应该跟着 mediaId 走。",
         "预览层能看到这条，说明滚动列表已经成立。",
-        "同一个媒体出现在不同帖子里，也应该共享这些评论。",
+        "同一个媒体出现在不同小相册里，也应该共享这些评论。",
         "这条用于验证预览最多十条的上限。",
     )
 
@@ -62,7 +62,7 @@ object FakeCommentRepository {
         comments.add(
             index = 0,
             element = createLocalComment(
-                targetType = CommentTargetType.Post,
+                targetType = CommentTargetType.SmallAlbum,
                 targetId = postId,
                 content = normalized,
             ),
@@ -133,7 +133,7 @@ object FakeCommentRepository {
         return List(count) { index ->
             CommentUiModel(
                 id = "$postId-post-comment-$index",
-                targetType = CommentTargetType.Post,
+                targetType = CommentTargetType.SmallAlbum,
                 targetId = postId,
                 author = if (index % 2 == 0) "我" else "你",
                 content = postCommentBodies[index % postCommentBodies.size],

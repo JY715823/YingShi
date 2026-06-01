@@ -64,11 +64,11 @@ fun SystemMediaPostDestinationDialog(
     val albumCards = albums.map { album ->
         SystemMediaAlbumChoice(
             album = album,
-            postCount = posts.count { post -> post.albumIds.contains(album.id) },
+            postCount = posts.count { post -> post.albumId == album.id },
         )
     }
     val postsInSelectedAlbum = selectedAlbum?.let { album ->
-        posts.filter { post -> post.albumIds.contains(album.id) }
+        posts.filter { post -> post.albumId == album.id }
             .sortedByDescending { it.postDisplayTimeMillis }
     }.orEmpty()
 
@@ -78,9 +78,9 @@ fun SystemMediaPostDestinationDialog(
         },
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = if (selectedAlbum == null) "选择相册" else "选择帖子")
+                Text(text = if (selectedAlbum == null) "选择大相册" else "选择小相册")
                 Text(
-                    text = selectedAlbum?.title ?: "先选择一个相册，再选择目标帖子",
+                    text = selectedAlbum?.title ?: "先选择一个大相册，再选择目标小相册",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -114,7 +114,7 @@ fun SystemMediaPostDestinationDialog(
                         SystemMediaPickerEmptyState(text = "当前没有可选相册。")
                     } else {
                         Text(
-                            text = "按相册选择",
+                            text = "按大相册选择",
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -135,7 +135,7 @@ fun SystemMediaPostDestinationDialog(
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
-                                        text = "${choice.postCount} 个帖子",
+                                        text = "${choice.postCount} 个小相册",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -144,7 +144,7 @@ fun SystemMediaPostDestinationDialog(
                         }
                     }
                 } else if (postsInSelectedAlbum.isEmpty()) {
-                    SystemMediaPickerEmptyState(text = "该相册下还没有帖子。")
+                    SystemMediaPickerEmptyState(text = "该大相册下还没有小相册。")
                 } else {
                     postsInSelectedAlbum.forEach { post ->
                         SystemMediaPostChoiceCard(
@@ -192,12 +192,12 @@ private fun SystemMediaRecentPostsSection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "最近帖子",
+            text = "最近小相册",
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
         )
         if (posts.isEmpty()) {
-            SystemMediaPickerEmptyState(text = "还没有最近帖子，可从下方相册选择。")
+            SystemMediaPickerEmptyState(text = "还没有最近小相册，可从下方大相册选择。")
         } else {
             posts.forEach { post ->
                 SystemMediaPostChoiceCard(
@@ -220,11 +220,7 @@ private fun SystemMediaPostChoiceCard(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val albumLabel = post.albumIds
-        .mapNotNull { albumTitleById[it] }
-        .distinct()
-        .take(2)
-        .joinToString(" / ")
+    val albumLabel = albumTitleById[post.albumId].orEmpty()
         .ifBlank { "未归档相册" }
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
@@ -318,7 +314,7 @@ private fun SystemMediaPickerLoadingState() {
                 strokeWidth = 2.dp,
             )
             Text(
-                text = "正在加载相册和帖子...",
+                text = "正在加载大相册和小相册...",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

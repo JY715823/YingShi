@@ -5,5 +5,8 @@ data class AlbumDto(
     val title: String,
     val subtitle: String,
     val coverMediaId: String? = null,
-    val postCount: Int = 0,
-)
+    val smallAlbumCount: Int = 0,
+) {
+    val postCount: Int
+        get() = smallAlbumCount
+}

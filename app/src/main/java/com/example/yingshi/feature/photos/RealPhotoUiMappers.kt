@@ -15,7 +15,7 @@ fun RemoteAlbum.toAlbumSummaryUiModel(): AlbumSummaryUiModel {
     return AlbumSummaryUiModel(
         id = albumId,
         title = title,
-        subtitle = subtitle.ifBlank { "共 $postCount 个帖子" },
+        subtitle = subtitle.ifBlank { "共 $smallAlbumCount 个小相册" },
         accent = palette,
     )
 }
@@ -137,7 +137,7 @@ fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
         displayMonth = calendar.get(Calendar.MONTH) + 1,
         displayDay = calendar.get(Calendar.DAY_OF_MONTH),
         commentCount = commentCount,
-        postIds = postIds,
+        smallAlbumIds = smallAlbumIds,
         palette = realPaletteFor(mediaId),
         mediaType = mediaKind,
         aspectRatio = toResolvedAspectRatio(mediaKind),
@@ -305,6 +305,7 @@ private fun RemotePostMedia.toResolvedAspectRatio(mediaType: AppMediaType): Floa
 
 private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {
     return when (itemType) {
+        "smallAlbumDeleted" -> TrashEntryType.POST_DELETED
         "mediaRemoved" -> TrashEntryType.MEDIA_REMOVED
         "mediaSystemDeleted" -> TrashEntryType.MEDIA_SYSTEM_DELETED
         else -> TrashEntryType.POST_DELETED
@@ -313,7 +314,7 @@ private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {
 
 private fun RemoteTrashItem.defaultTrashTitle(): String {
     return when (toTrashEntryType()) {
-        TrashEntryType.POST_DELETED -> "已删除帖子"
+        TrashEntryType.POST_DELETED -> "已删除小相册"
         TrashEntryType.MEDIA_REMOVED -> "已移出媒体"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "已删除媒体"
     }
@@ -321,8 +322,8 @@ private fun RemoteTrashItem.defaultTrashTitle(): String {
 
 private fun RemoteTrashItem.defaultTrashPreview(): String {
     return when (toTrashEntryType()) {
-        TrashEntryType.POST_DELETED -> "帖子已移入回收站"
-        TrashEntryType.MEDIA_REMOVED -> "媒体已从帖子中移出"
+        TrashEntryType.POST_DELETED -> "小相册已移入回收站"
+        TrashEntryType.MEDIA_REMOVED -> "媒体已从小相册中移出"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从空间中删除"
     }
 }

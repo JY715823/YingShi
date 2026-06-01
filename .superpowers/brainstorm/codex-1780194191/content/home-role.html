@@ -1,0 +1,149 @@
+<div class="section">
+  <div class="label">Home Role</div>
+  <h2>那首页要扮演什么角色？</h2>
+  <p class="subtitle">
+    你已经选了 B：重做壳层 + 首页 + 照片主路径。现在真正要定的是首页在整个 app 里的职责。
+    我更推荐 2，因为它最适合你现在“照片是主产品，但其他模块也要被温柔承接”的状态。
+  </p>
+</div>
+
+<div class="cards section">
+  <div class="card" data-choice="1" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 18px; align-items: stretch; justify-content: stretch; background: linear-gradient(180deg, #eef8fd, #e9f4f8);">
+      <div style="width: 100%; border-radius: 16px; overflow: hidden; border: 1px solid #d8e8ef; background: rgba(255,255,255,0.94);">
+        <div style="padding: 12px; display: grid; gap: 10px;">
+          <div style="height: 14px; width: 38%; border-radius: 999px; background: #2b87a5;"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+            <div style="height: 58px; border-radius: 12px; background: #d8eef6;"></div>
+            <div style="height: 58px; border-radius: 12px; background: #eef8ec;"></div>
+            <div style="height: 58px; border-radius: 12px; background: #f8f0df;"></div>
+          </div>
+          <div style="height: 96px; border-radius: 14px; background: white; border: 1px solid #d8e8ef;"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div style="height: 74px; border-radius: 12px; background: white; border: 1px solid #d8e8ef;"></div>
+            <div style="height: 74px; border-radius: 12px; background: white; border: 1px solid #d8e8ef;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>1. 总览仪表盘型</h3>
+      <p>首页就是全局总览。先看到最近照片、未读通知、账本摘要、聊天导入状态，再决定去哪个模块。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="2" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 18px; align-items: stretch; justify-content: stretch; background: linear-gradient(180deg, #eff9ff, #edf7f1);">
+      <div style="width: 100%; border-radius: 18px; overflow: hidden; border: 1px solid #d7e7ea; background: rgba(255,255,255,0.92);">
+        <div style="padding: 14px 14px 10px; display: grid; gap: 10px;">
+          <div style="height: 16px; width: 42%; border-radius: 999px; background: #237f96;"></div>
+          <div style="height: 86px; border-radius: 18px; background: linear-gradient(135deg, #ffffff, #eef8ec); border: 1px solid #d8e8ef;"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="height: 68px; border-radius: 14px; background: #eef8ec;"></div>
+            <div style="height: 68px; border-radius: 14px; background: white; border: 1px solid #d8e8ef;"></div>
+          </div>
+          <div style="height: 50px; border-radius: 14px; background: #d8eef6;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>2. 温柔开场型</h3>
+      <p>首页先给你们一个“共同空间”的开场，再承接照片入口、生活入口和少量状态信息。信息更克制，气质更完整。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="3" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 18px; align-items: stretch; justify-content: stretch; background: linear-gradient(180deg, #eef8fd, #f1f7ec);">
+      <div style="width: 100%; border-radius: 18px; overflow: hidden; border: 1px solid #d8e8ef; background: rgba(255,255,255,0.92);">
+        <div style="padding: 12px; display: grid; gap: 10px;">
+          <div style="height: 15px; width: 46%; border-radius: 999px; background: #2b87a5;"></div>
+          <div style="display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 10px;">
+            <div style="height: 118px; border-radius: 16px; background: white; border: 1px solid #d8e8ef;"></div>
+            <div style="display: grid; gap: 10px;">
+              <div style="height: 54px; border-radius: 14px; background: #eef8ec;"></div>
+              <div style="height: 54px; border-radius: 14px; background: #f8f0df;"></div>
+            </div>
+          </div>
+          <div style="height: 42px; border-radius: 14px; background: white; border: 1px solid #d8e8ef;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>3. 共享时间线型</h3>
+      <p>首页本身就是轻量“共同生活流”，把照片、记账、聊天痕迹混成一条温和的共享时间线，再跳入详情。</p>
+    </div>
+  </div>
+</div>
+
+<div class="split section">
+  <div class="mockup">
+    <div class="mockup-header">我推荐 2 的原因</div>
+    <div class="mockup-body">
+      <div class="options">
+        <div class="option selected" style="cursor: default;">
+          <div class="letter">1</div>
+          <div class="content">
+            <h3>不会和照片 tab 抢角色</h3>
+            <p>首页负责“开场”和“承接”，照片主路径继续在照片模块里做深，不会互相打架。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor: default;">
+          <div class="letter">2</div>
+          <div class="content">
+            <h3>更适合你想做的气质</h3>
+            <p>如果你不想把 app 做成工具仪表盘，2 最容易长出“共同空间”的感觉。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor: default;">
+          <div class="letter">3</div>
+          <div class="content">
+            <h3>还能给未来留扩展位</h3>
+            <p>后面无论加总览信息还是共享事件流，都可以从 2 的骨架继续长，不会太死。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">三个定位的差别</div>
+    <div class="mockup-body">
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>1 更强在</h4>
+          <ul>
+            <li>信息密度高</li>
+            <li>工具感清楚</li>
+            <li>适合重运营</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>1 的风险</h4>
+          <ul>
+            <li>容易像控制台</li>
+            <li>温度感偏弱</li>
+            <li>会抢照片入口戏份</li>
+          </ul>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>3 更强在</h4>
+          <ul>
+            <li>概念最特别</li>
+            <li>情绪价值高</li>
+            <li>叙事感最强</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>3 的风险</h4>
+          <ul>
+            <li>实现复杂</li>
+            <li>容易信息混杂</li>
+            <li>对内容质量依赖高</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

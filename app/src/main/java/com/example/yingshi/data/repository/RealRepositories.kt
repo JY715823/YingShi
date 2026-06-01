@@ -4,6 +4,7 @@ import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
+import com.example.yingshi.data.model.NotificationMarkAllReadResult
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
@@ -11,6 +12,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
+import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
@@ -24,7 +26,8 @@ import com.example.yingshi.data.remote.api.AlbumApi
 import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
 import com.example.yingshi.data.remote.api.MediaApi
-import com.example.yingshi.data.remote.api.PostApi
+import com.example.yingshi.data.remote.api.NotificationApi
+import com.example.yingshi.data.remote.api.SmallAlbumApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
 import com.example.yingshi.data.remote.auth.AuthSessionManager
@@ -99,13 +102,13 @@ class RealMediaRepository(
     }
 
     override suspend fun deleteMediaFromPost(
-        postId: String,
+        smallAlbumId: String,
         mediaId: String,
         deleteMode: String,
     ): ApiResult<RemoteTrashItem> {
         return runCatching {
             mediaApi.deleteMediaFromPost(
-                postId = postId,
+                smallAlbumId = smallAlbumId,
                 mediaId = mediaId,
                 deleteMode = deleteMode,
             ).data.toRemoteModel()
@@ -114,7 +117,7 @@ class RealMediaRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_MEDIA_DELETE_REQUEST_FAILED",
-                    message = "REAL post-media delete request failed",
+                    message = "REAL small-album media delete request failed",
                     throwable = it,
                 )
             },
@@ -138,7 +141,7 @@ class RealMediaRepository(
 }
 
 class RealPostRepository(
-    private val postApi: PostApi,
+    private val postApi: SmallAlbumApi,
 ) : PostRepository {
     override suspend fun getPosts(): ApiResult<List<RemotePostSummary>> {
         return runCatching {
@@ -157,7 +160,7 @@ class RealPostRepository(
 
     override suspend fun getPostDetail(postId: String): ApiResult<RemotePostDetail> {
         return runCatching {
-            postApi.getPostDetail(postId).data.toRemoteDetail()
+            postApi.getPostDetail(smallAlbumId = postId).data.toRemoteDetail()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -181,7 +184,7 @@ class RealPostRepository(
                     eventStartedAtMillis = payload.eventStartedAtMillis,
                     eventEndedAtMillis = payload.eventEndedAtMillis,
                     displayTimeSource = payload.displayTimeSource,
-                    albumIds = payload.albumIds,
+                    albumId = payload.albumId,
                     initialMediaIds = payload.initialMediaIds,
                     coverMediaId = payload.coverMediaId,
                 ),
@@ -205,7 +208,7 @@ class RealPostRepository(
     ): ApiResult<RemotePostDetail> {
         return runCatching {
             postApi.addMediaToPost(
-                postId = postId,
+                smallAlbumId = postId,
                 request = AddPostMediaRequestDto(
                     mediaIds = mediaIds,
                     coverMediaId = coverMediaId,
@@ -229,7 +232,7 @@ class RealPostRepository(
     ): ApiResult<RemotePostSummary> {
         return runCatching {
             postApi.updatePostBasicInfo(
-                postId = postId,
+                smallAlbumId = postId,
                 request = UpdatePostBasicInfoRequestDto(
                     title = payload.title,
                     summary = payload.summary,
@@ -238,7 +241,7 @@ class RealPostRepository(
                     eventStartedAtMillis = payload.eventStartedAtMillis,
                     eventEndedAtMillis = payload.eventEndedAtMillis,
                     displayTimeSource = payload.displayTimeSource,
-                    albumIds = payload.albumIds,
+                    albumId = payload.albumId,
                 ),
             ).data.toRemoteSummary()
         }.fold(
@@ -259,7 +262,7 @@ class RealPostRepository(
     ): ApiResult<RemotePostDetail> {
         return runCatching {
             postApi.setPostCover(
-                postId = postId,
+                smallAlbumId = postId,
                 request = SetPostCoverRequestDto(coverMediaId = coverMediaId),
             ).data.toRemoteDetail()
         }.fold(
@@ -280,7 +283,7 @@ class RealPostRepository(
     ): ApiResult<RemotePostDetail> {
         return runCatching {
             postApi.updatePostMediaOrder(
-                postId = postId,
+                smallAlbumId = postId,
                 request = UpdatePostMediaOrderRequestDto(orderedMediaIds = orderedMediaIds),
             ).data.toRemoteDetail()
         }.fold(
@@ -297,7 +300,7 @@ class RealPostRepository(
 
     override suspend fun deletePost(postId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
-            postApi.deletePost(postId).data.toRemoteModel()
+            postApi.deletePost(smallAlbumId = postId).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -337,7 +340,7 @@ class RealAlbumRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "ALBUM_POSTS_REQUEST_FAILED",
-                    message = "REAL album-posts request failed",
+                    message = "REAL album small-albums request failed",
                     throwable = it,
                 )
             },
@@ -350,7 +353,7 @@ class RealAlbumRepository(
     ): ApiResult<RemotePostSummary> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",
-            message = "Current backend updates album membership through PATCH /api/posts/{postId}",
+            message = "Current backend updates parent album through PATCH /api/small-albums/{smallAlbumId}",
         )
     }
 }
@@ -359,18 +362,18 @@ class RealCommentRepository(
     private val commentApi: CommentApi,
 ) : CommentRepository {
     override suspend fun getPostComments(
-        postId: String,
+        smallAlbumId: String,
         page: Int,
         size: Int,
     ): ApiResult<RemoteCommentPage> {
         return runCatching {
-            commentApi.getPostComments(postId = postId, page = page, size = size).data.toRemotePage()
+            commentApi.getPostComments(smallAlbumId = smallAlbumId, page = page, size = size).data.toRemotePage()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_LIST_REQUEST_FAILED",
-                    message = "REAL post comment list request failed",
+                    message = "REAL small-album comment list request failed",
                     throwable = it,
                 )
             },
@@ -397,12 +400,12 @@ class RealCommentRepository(
     }
 
     override suspend fun createPostComment(
-        postId: String,
+        smallAlbumId: String,
         content: String,
     ): ApiResult<RemoteComment> {
         return runCatching {
             commentApi.createPostComment(
-                postId = postId,
+                smallAlbumId = smallAlbumId,
                 request = CreateCommentRequestDto(content = content),
             ).data.toRemoteModel()
         }.fold(
@@ -410,7 +413,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_CREATE_REQUEST_FAILED",
-                    message = "REAL post comment create request failed",
+                    message = "REAL small-album comment create request failed",
                     throwable = it,
                 )
             },
@@ -469,6 +472,82 @@ class RealCommentRepository(
                 ApiResult.Error(
                     code = "COMMENT_DELETE_REQUEST_FAILED",
                     message = "REAL comment delete request failed",
+                    throwable = it,
+                )
+            },
+        )
+    }
+}
+
+class RealNotificationRepository(
+    private val notificationApi: NotificationApi,
+) : NotificationRepository {
+    override suspend fun getNotifications(limit: Int?): ApiResult<List<RemoteNotification>> {
+        return runCatching {
+            notificationApi.getNotifications(limit = limit).data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "NOTIFICATION_LIST_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u8bfb\u53d6\u901a\u77e5\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getNotification(notificationId: String): ApiResult<RemoteNotification> {
+        return runCatching {
+            notificationApi.getNotification(notificationId = notificationId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "NOTIFICATION_DETAIL_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u8bfb\u53d6\u901a\u77e5\u8be6\u60c5\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun markRead(notificationId: String): ApiResult<RemoteNotification> {
+        return runCatching {
+            notificationApi.markRead(notificationId = notificationId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "NOTIFICATION_MARK_READ_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u6807\u8bb0\u901a\u77e5\u5df2\u8bfb\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun markAllRead(): ApiResult<NotificationMarkAllReadResult> {
+        return runCatching {
+            notificationApi.markAllRead().data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "NOTIFICATION_MARK_ALL_READ_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(
+                        throwable = it,
+                        fallback = "\u5168\u90e8\u6807\u8bb0\u5df2\u8bfb\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
                     throwable = it,
                 )
             },
@@ -788,14 +867,9 @@ private class ProgressInputStreamRequestBody(
 ) : RequestBody() {
     override fun contentType() = mimeType.toMediaTypeOrNull()
 
-    override fun contentLength() = -1L
+    override fun contentLength() = expectedLengthBytes.takeIf { it > 0L } ?: -1L
 
     override fun writeTo(sink: BufferedSink) {
-        if (expectedLengthBytes <= 0L) {
-            notifyProgress(100)
-            return
-        }
-
         var written = 0L
         var lastProgress = -1
         val buffer = ByteArray(UploadProgressChunkBytes)
@@ -807,16 +881,20 @@ private class ProgressInputStreamRequestBody(
                 if (readCount == 0) continue
                 sink.write(buffer, 0, readCount)
                 written += readCount.toLong()
-                val progress = ((written * 100L) / expectedLengthBytes)
-                    .toInt()
-                    .coerceIn(0, 100)
+                val progress = if (expectedLengthBytes > 0L) {
+                    ((written * 100L) / expectedLengthBytes)
+                        .toInt()
+                        .coerceIn(0, 100)
+                } else {
+                    0
+                }
                 if (progress != lastProgress) {
                     lastProgress = progress
                     notifyProgress(progress)
                 }
             }
         }
-        if (lastProgress < 100) {
+        if (expectedLengthBytes <= 0L || lastProgress < 100) {
             notifyProgress(100)
         }
     }
@@ -829,6 +907,34 @@ private class ProgressInputStreamRequestBody(
 }
 
 private const val UploadProgressChunkBytes = 64 * 1024
+
+private fun backendRequestErrorMessage(
+    throwable: Throwable,
+    fallback: String,
+): String {
+    val httpException = throwable as? HttpException
+    if (httpException != null) {
+        return when (httpException.code()) {
+            401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
+            404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u540e\u7aef\u8d44\u6e90\u3002"
+            in 500..599 -> "\u540e\u7aef\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+            else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
+        }
+    }
+    val message = throwable.message?.trim().orEmpty()
+    if (message.contains("Unable to resolve host", ignoreCase = true)) {
+        return "\u65e0\u6cd5\u8fde\u63a5\u5230\u5f53\u524d\u540e\u7aef\uff0c\u8bf7\u68c0\u67e5 baseUrl \u548c\u5c40\u57df\u7f51\u8fde\u63a5\u3002"
+    }
+    if (
+        message.contains("Failed to connect", ignoreCase = true) ||
+        message.contains("Connection refused", ignoreCase = true) ||
+        message.contains("timeout", ignoreCase = true)
+    ) {
+        return "\u8bf7\u6c42\u540e\u7aef\u901a\u77e5\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5 baseUrl \u3001\u5c40\u57df\u7f51\u8fde\u63a5\u548c\u670d\u52a1\u72b6\u6001\u3002"
+    }
+    return message.takeIf { it.isNotBlank() } ?: fallback
+}
 
 private fun uploadRequestErrorMessage(
     throwable: Throwable,
@@ -953,6 +1059,40 @@ class RealAuthRepository(
                     message = authRequestErrorMessage(
                         throwable = it,
                         fallback = "\u4fdd\u5b58\u8d44\u6599\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun uploadCurrentUserAvatar(
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        openInputStream: () -> InputStream,
+    ): ApiResult<RemoteCurrentUser> {
+        return runCatching {
+            val filePart = MultipartBody.Part.createFormData(
+                name = "file",
+                filename = fileName,
+                body = ProgressInputStreamRequestBody(
+                    expectedLengthBytes = fileSizeBytes,
+                    mimeType = mimeType,
+                    openInputStream = openInputStream,
+                    onProgressPercent = {},
+                ),
+            )
+            authApi.uploadCurrentUserAvatar(filePart).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                val httpCode = (it as? HttpException)?.code()
+                ApiResult.Error(
+                    code = if (httpCode == 401) "AUTH_UNAUTHORIZED" else "AUTH_AVATAR_UPLOAD_REQUEST_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "Upload avatar failed. Please retry.",
                     ),
                     throwable = it,
                 )

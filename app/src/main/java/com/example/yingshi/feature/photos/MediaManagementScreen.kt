@@ -201,13 +201,13 @@ fun MediaManagementScreen(
 
         val removedPosts = FakeAlbumRepository.deletePostsLocally(outcome.deletedPostIds)
         if (removedPosts.contains(route.postId)) {
-            Toast.makeText(context, "当前帖子已移入本地回收站", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "当前小相册已移入本地回收站", Toast.LENGTH_SHORT).show()
             onCurrentPostDeleted()
             return
         }
 
         val actionLabel = when (semantic) {
-            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> "已从当前帖子移除，并写入回收站"
+            FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY -> "已从当前小相册移除，并写入回收站"
             FakeAlbumRepository.MediaDeleteSemantic.SYSTEM_WIDE -> "已执行本地系统删，并写入回收站"
         }
         Toast.makeText(context, actionLabel, Toast.LENGTH_SHORT).show()
@@ -267,7 +267,7 @@ fun MediaManagementScreen(
                         orderedIds = sortDraftOrder.ifEmpty { repoMediaItems.map { it.id } },
                     )
                     if (saved) {
-                        Toast.makeText(context, "当前帖子媒体顺序已保存", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "当前小相册媒体顺序已保存", Toast.LENGTH_SHORT).show()
                     }
                 }
                 exitMode()
@@ -285,7 +285,7 @@ fun MediaManagementScreen(
                 verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 Text(
-                    text = post.title.ifBlank { "当前帖子" },
+                    text = post.title.ifBlank { "当前小相册" },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -376,7 +376,7 @@ fun MediaManagementScreen(
             title = { Text("确认处理选中媒体？") },
             text = {
                 Text(
-                    "已选 $deleteCount 项媒体。\n\n“只从帖子移除”只解除这些媒体和当前帖子的关联，媒体仍保留在照片流和其他帖子中。\n\n“全局删除媒体”会从照片流删除媒体，并影响所有引用它们的帖子；删除项会进入 App 回收站。",
+                    "已选 $deleteCount 项媒体。\n\n“只从小相册移除”只解除这些媒体和当前小相册的关联，媒体仍保留在照片流和其他小相册中。\n\n“全局删除媒体”会从照片流删除媒体，并影响所有引用它们的小相册；删除项会进入 App 回收站。",
                 )
             },
             confirmButton = {
@@ -390,7 +390,7 @@ fun MediaManagementScreen(
                 TextButton(
                     onClick = { handleSemanticSelection(FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY) },
                 ) {
-                    Text("只从帖子移除")
+                    Text("只从小相册移除")
                 }
             },
         )
@@ -404,7 +404,7 @@ fun MediaManagementScreen(
             },
             title = { Text("空帖保护") },
             text = {
-                Text("继续处理会让当前帖子变成空帖。本轮不允许直接留下空帖子。你可以确认删除整个帖子到回收站，或取消本次操作。")
+                Text("继续处理会让当前小相册变成空相册。本轮不允许直接留下空小相册。你可以确认删除整个小相册到回收站，或取消本次操作。")
             },
             confirmButton = {
                 TextButton(
@@ -416,7 +416,7 @@ fun MediaManagementScreen(
                         executeDelete(semantic)
                     },
                 ) {
-                    Text("删除帖子到回收站")
+                    Text("删除小相册到回收站")
                 }
             },
             dismissButton = {
@@ -535,13 +535,13 @@ private fun RealMediaManagementScreen(
                 verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 Text(
-                    text = uiState.postTitle.ifBlank { "当前帖子" },
+                    text = uiState.postTitle.ifBlank { "当前小相册" },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = when {
-                        uiState.tokenMissing -> "REAL 模式需要先登录，才能管理后端帖子媒体。"
+                        uiState.tokenMissing -> "REAL 模式需要先登录，才能管理后端小相册媒体。"
                         uiState.isLoading -> "正在读取后端媒体列表…"
                         uiState.errorMessage != null -> uiState.errorMessage ?: "读取媒体管理数据失败。"
                         uiState.statusMessage != null -> uiState.statusMessage ?: ""
@@ -610,7 +610,7 @@ private fun RealMediaManagementScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "当前帖子还没有可管理的真实媒体。",
+                        text = "当前小相册还没有可管理的真实媒体。",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -676,7 +676,7 @@ private fun RealMediaManagementScreen(
             title = { Text("确认处理选中媒体？") },
             text = {
                 Text(
-                    "已选 $deleteCount 项媒体。\n\n“仅从当前帖子移除”只删除当前帖子里的关联，媒体仍保留在照片流和其他帖子中。\n\n“全局删除媒体”会从整个 App 内容空间删除媒体，并写入后端回收站，照片流和相关帖子都会受到影响。",
+                    "已选 $deleteCount 项媒体。\n\n“仅从当前小相册移除”只删除当前小相册里的关联，媒体仍保留在照片流和其他小相册中。\n\n“全局删除媒体”会从整个 App 内容空间删除媒体，并写入后端回收站，照片流和相关小相册都会受到影响。",
                 )
             },
             confirmButton = {
@@ -698,7 +698,7 @@ private fun RealMediaManagementScreen(
                         exitMode()
                     },
                 ) {
-                    Text("仅从当前帖子移除")
+                    Text("仅从当前小相册移除")
                 }
             },
         )
@@ -784,7 +784,7 @@ private fun UnifiedFakePostMediaManagementScreen(
                 }
             }
             onPostUpdated(route.postId)
-            Toast.makeText(context, "帖子媒体列表已保存", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "小相册媒体列表已保存", Toast.LENGTH_SHORT).show()
             onBack()
         },
         modifier = modifier,
@@ -865,7 +865,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                         removedIds.forEach { mediaId ->
                             when (
                                 val result = RepositoryProvider.mediaRepository.deleteMediaFromPost(
-                                    postId = route.postId,
+                                    smallAlbumId = route.postId,
                                     mediaId = mediaId,
                                     deleteMode = "directory",
                                 )
@@ -900,7 +900,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                                 )
                             }
                             onPostUpdated(route.postId)
-                            Toast.makeText(context, "帖子媒体列表已保存", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "小相册媒体列表已保存", Toast.LENGTH_SHORT).show()
                             onBack()
                         } else {
                             Toast.makeText(context, firstFailure, Toast.LENGTH_SHORT).show()
@@ -1262,7 +1262,7 @@ private fun MediaManagementMissingState(
             onFinishMode = {},
         )
         Text(
-            text = "当前帖子不存在，暂时无法进入媒体管理。",
+            text = "当前小相册不存在，暂时无法进入媒体管理。",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1271,10 +1271,10 @@ private fun MediaManagementMissingState(
 
 private fun modeDescription(mode: MediaManagementMode): String {
     return when (mode) {
-        MediaManagementMode.NORMAL -> "两列网格管理当前帖子的媒体。本轮已接入目录删 / 本地系统删、排序壳子和封面同步。"
+        MediaManagementMode.NORMAL -> "两列网格管理当前小相册的媒体。本轮已接入目录删 / 本地系统删、排序壳子和封面同步。"
         MediaManagementMode.DELETE -> "删除模式支持多选；点击“删除（x）”后先选择目录删还是系统删，不直接删除。"
         MediaManagementMode.SORT -> "排序模式使用上移 / 下移完成本地调整；点击完成保存，点击取消恢复进入排序前的顺序。"
-        MediaManagementMode.SET_COVER -> "点击某张媒体即可本地设为封面，并尽量同步到帖子详情页和相册页。"
+        MediaManagementMode.SET_COVER -> "点击某张媒体即可本地设为封面，并尽量同步到小相册详情页和大相册页。"
         MediaManagementMode.EDIT_TIME -> "修改媒体时间继续保留入口占位，本轮不接复杂时间编辑器。"
     }
 }

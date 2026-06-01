@@ -1,0 +1,161 @@
+<div class="section">
+  <div class="label">Redesign Direction</div>
+  <h2>先选我们这次重设计的切入路线</h2>
+  <p class="subtitle">
+    这 3 条路都建立在同一个体检结论上：功能已经不浅，真正的问题是首页缺位、外壳过重、视觉系统太薄、模块语言割裂。
+    我个人更推荐 B，因为它最像“重新立住主产品”，而不是只做表面抛光。
+  </p>
+</div>
+
+<div class="cards section">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 18px; align-items: stretch; justify-content: stretch;">
+      <div style="width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: #f7fbff;">
+        <div style="height: 18px; background: linear-gradient(90deg, #cfe9f5, #e7f6fb);"></div>
+        <div style="padding: 14px; display: grid; gap: 10px;">
+          <div style="height: 14px; width: 48%; border-radius: 999px; background: #87bad0;"></div>
+          <div style="height: 74px; border-radius: 12px; background: white; border: 1px solid #d8e8ef;"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div style="height: 58px; border-radius: 12px; background: #eef8ec;"></div>
+            <div style="height: 58px; border-radius: 12px; background: white; border: 1px solid #d8e8ef;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 只做视觉统一</h3>
+      <p>先不动信息架构，重点重做颜色、卡片、按钮、排版、底栏和常用组件，让全 app 先从“能看”变成“成体系”。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 18px; align-items: stretch; justify-content: stretch; background: linear-gradient(180deg, #edf9ff, #dff2f6);">
+      <div style="width: 100%; border-radius: 18px; overflow: hidden; border: 1px solid #c9dfe5; background: rgba(255,255,255,0.92);">
+        <div style="padding: 12px 14px 8px; display: grid; gap: 8px; border-bottom: 1px solid #dbecef;">
+          <div style="height: 13px; width: 34%; border-radius: 999px; background: #2c8baa;"></div>
+          <div style="height: 54px; border-radius: 14px; background: linear-gradient(135deg, #ffffff, #edf7f1);"></div>
+        </div>
+        <div style="padding: 12px 14px 14px; display: grid; gap: 10px;">
+          <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 10px;">
+            <div style="height: 74px; border-radius: 14px; background: white; border: 1px solid #d8e8ef;"></div>
+            <div style="height: 74px; border-radius: 14px; background: #eef8ec;"></div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+            <div style="height: 48px; border-radius: 12px; background: #d9eef6;"></div>
+            <div style="height: 48px; border-radius: 12px; background: white; border: 1px solid #d8e8ef;"></div>
+            <div style="height: 48px; border-radius: 12px; background: white; border: 1px solid #d8e8ef;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 重做壳层 + 首页 + 照片主路径</h3>
+      <p>先把 app 的第一印象、主导航、首页角色、照片流/相册/帖子这条核心链路统一起来，再决定其他模块怎么跟进。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 18px; align-items: stretch; justify-content: stretch; background: linear-gradient(180deg, #f3fbff, #eef7ef);">
+      <div style="width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+        <div style="border-radius: 14px; overflow: hidden; border: 1px solid #d8e8ef; background: white;">
+          <div style="height: 18px; background: #cfe9f5;"></div>
+          <div style="padding: 10px; display: grid; gap: 8px;">
+            <div style="height: 54px; border-radius: 10px; background: #eff8fd;"></div>
+            <div style="height: 18px; border-radius: 999px; background: #d9eef6;"></div>
+          </div>
+        </div>
+        <div style="border-radius: 14px; overflow: hidden; border: 1px solid #d8e8ef; background: white;">
+          <div style="height: 18px; background: #d8f0de;"></div>
+          <div style="padding: 10px; display: grid; gap: 8px;">
+            <div style="height: 54px; border-radius: 10px; background: #eef8ec;"></div>
+            <div style="height: 18px; border-radius: 999px; background: #d8f0de;"></div>
+          </div>
+        </div>
+        <div style="border-radius: 14px; overflow: hidden; border: 1px solid #d8e8ef; background: white;">
+          <div style="height: 18px; background: #efe7d6;"></div>
+          <div style="padding: 10px; display: grid; gap: 8px;">
+            <div style="height: 54px; border-radius: 10px; background: #f8f1e1;"></div>
+            <div style="height: 18px; border-radius: 999px; background: #efe7d6;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 全模块品牌统一</h3>
+      <p>把照片、账本、聊天一起纳入同一品牌系统，允许各自保留专业气质，但从壳层、字体、颜色和组件语言上回到一个家族里。</p>
+    </div>
+  </div>
+</div>
+
+<div class="section split">
+  <div class="mockup">
+    <div class="mockup-header">我推荐 B 的原因</div>
+    <div class="mockup-body">
+      <div class="options">
+        <div class="option selected" style="cursor: default;">
+          <div class="letter">1</div>
+          <div class="content">
+            <h3>最能解决真正的问题</h3>
+            <p>不只是美化，而是把首页缺位、壳层松散、照片主产品不够立这几个核心问题一起打掉。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor: default;">
+          <div class="letter">2</div>
+          <div class="content">
+            <h3>范围比 C 更稳</h3>
+            <p>不会一下把账本和聊天全部拖进大改，但又比 A 更像真正的产品升级。</p>
+          </div>
+        </div>
+        <div class="option selected" style="cursor: default;">
+          <div class="letter">3</div>
+          <div class="content">
+            <h3>适合你现在这个阶段</h3>
+            <p>你的功能已经“够用了”，现在最该补的是主产品气质和主路径体验，而不是继续分散火力。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">三条路的代价差异</div>
+    <div class="mockup-body">
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>A 的优点</h4>
+          <ul>
+            <li>最快见效</li>
+            <li>改动风险最小</li>
+            <li>适合先止丑</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>A 的问题</h4>
+          <ul>
+            <li>首页依旧空</li>
+            <li>壳层问题不解</li>
+            <li>模块割裂还在</li>
+          </ul>
+        </div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>B 的优点</h4>
+          <ul>
+            <li>最平衡</li>
+            <li>能立主产品</li>
+            <li>后续扩展顺</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>C 的代价</h4>
+          <ul>
+            <li>范围最大</li>
+            <li>设计约束更难</li>
+            <li>容易战线拉长</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

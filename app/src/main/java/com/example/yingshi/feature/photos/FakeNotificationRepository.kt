@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.mutableStateListOf
+import com.example.yingshi.data.model.RemoteNotification
 
 @Immutable
 data class NotificationCenterRoute(
@@ -23,15 +24,34 @@ data class NotificationCenterItemUiModel(
     val createdAtMillis: Long,
     val isRead: Boolean,
     val targetSummary: String,
+    val targetType: String? = null,
+    val postId: String? = null,
+    val mediaId: String? = null,
+    val trashItemId: String? = null,
 )
 
 enum class NotificationCenterItemType(
     val label: String,
+    val apiValue: String,
 ) {
-    COMMENT("评论"),
-    CONTENT_UPDATE("内容更新"),
-    DELETE_RESTORE("删除 / 恢复"),
-    SYSTEM("系统"),
+    COMMENT("评论", "comment"),
+    CONTENT_UPDATE("内容更新", "content_update"),
+    DELETE_RESTORE("删除 / 恢复", "delete_restore"),
+    SYSTEM("系统", "system"),
+    ;
+
+    companion object {
+        fun fromApiValue(value: String): NotificationCenterItemType {
+            return when (value.lowercase()) {
+                "comment",
+                "comment_edit",
+                "comment_delete" -> COMMENT
+                "content_update" -> CONTENT_UPDATE
+                "delete_restore" -> DELETE_RESTORE
+                else -> SYSTEM
+            }
+        }
+    }
 }
 
 enum class NotificationCenterFilter(
@@ -54,43 +74,51 @@ object FakeNotificationRepository {
             body = "“这张的光好温柔。”已经追加到当前媒体评论里。",
             createdAtMillis = 1_777_412_800_000L,
             isRead = false,
-            targetSummary = "将进入对应帖子详情 / Viewer 评论区占位",
+            targetSummary = "将进入对应小相册详情 / Viewer 评论区占位",
+            targetType = "POST",
+            postId = "post-river-night",
         ),
         NotificationCenterItemUiModel(
             id = "notice-comment-2",
             type = NotificationCenterItemType.COMMENT,
-            title = "帖子评论有新回复",
-            body = "“夜晚散步”下新增了一条本地帖子评论占位。",
+            title = "小相册评论有新回复",
+            body = "“夜晚散步”下新增了一条本地小相册评论占位。",
             createdAtMillis = 1_777_411_600_000L,
             isRead = false,
-            targetSummary = "将进入对应帖子详情 / 评论区占位",
+            targetSummary = "将进入对应小相册详情 / 评论区占位",
+            targetType = "POST",
+            postId = "post-window-light",
         ),
         NotificationCenterItemUiModel(
             id = "notice-post-update-1",
             type = NotificationCenterItemType.CONTENT_UPDATE,
-            title = "帖子内容有更新",
+            title = "小相册内容有更新",
             body = "“四月窗边”的标题和简介刚刚被本地修改。",
             createdAtMillis = 1_777_409_200_000L,
             isRead = false,
-            targetSummary = "将进入相关帖子或相册占位",
+            targetSummary = "将进入相关小相册或大相册占位",
+            targetType = "POST",
+            postId = "post-window-light",
         ),
         NotificationCenterItemUiModel(
             id = "notice-album-update-1",
             type = NotificationCenterItemType.CONTENT_UPDATE,
             title = "相册目录有变动",
-            body = "“周末餐桌”相册下的帖子顺序已在本地重新整理。",
+            body = "“周末餐桌”大相册下的小相册顺序已在本地重新整理。",
             createdAtMillis = 1_777_405_600_000L,
             isRead = true,
             targetSummary = "将进入相关相册目录占位",
+            targetType = "ALBUM",
         ),
         NotificationCenterItemUiModel(
             id = "notice-trash-1",
             type = NotificationCenterItemType.DELETE_RESTORE,
             title = "有内容进入回收站",
-            body = "1 条帖子删除记录和 2 个媒体删除快照已写入本地回收站。",
+            body = "1 条小相册删除记录和 2 个媒体删除快照已写入本地回收站。",
             createdAtMillis = 1_777_401_000_000L,
             isRead = true,
             targetSummary = "将进入回收站或对应删除态详情占位",
+            targetType = "MEDIA_SYSTEM_DELETED",
         ),
         NotificationCenterItemUiModel(
             id = "notice-restore-1",
@@ -100,6 +128,7 @@ object FakeNotificationRepository {
             createdAtMillis = 1_777_393_600_000L,
             isRead = true,
             targetSummary = "将进入回收站分类操作区",
+            targetType = "MEDIA_SYSTEM_DELETED",
         ),
         NotificationCenterItemUiModel(
             id = "notice-cache-1",
@@ -109,15 +138,17 @@ object FakeNotificationRepository {
             createdAtMillis = 1_777_386_400_000L,
             isRead = false,
             targetSummary = "将打开系统通知详情占位页",
+            targetType = "SYSTEM",
         ),
         NotificationCenterItemUiModel(
             id = "notice-viewer-video-1",
             type = NotificationCenterItemType.SYSTEM,
             title = "Viewer 视频壳层可用",
-            body = "照片流 Viewer 和帖子内 Viewer 现在都能识别视频媒体。",
+            body = "照片流 Viewer 和小相册内 Viewer 现在都能识别视频媒体。",
             createdAtMillis = 1_777_379_200_000L,
             isRead = true,
             targetSummary = "将打开系统通知详情占位页",
+            targetType = "SYSTEM",
         ),
     )
 
@@ -155,4 +186,24 @@ object FakeNotificationRepository {
             }
         }
     }
+}
+
+fun RemoteNotification.toNotificationCenterItemUiModel(): NotificationCenterItemUiModel {
+    return NotificationCenterItemUiModel(
+        id = notificationId,
+        type = NotificationCenterItemType.fromApiValue(type),
+        title = title,
+        body = body,
+        createdAtMillis = createdAtMillis,
+        isRead = isRead,
+        targetSummary = targetSummary.orNotificationTargetSummary(),
+        targetType = targetType,
+        postId = postId,
+        mediaId = mediaId,
+        trashItemId = trashItemId,
+    )
+}
+
+private fun String?.orNotificationTargetSummary(): String {
+    return this?.takeIf { it.isNotBlank() } ?: "Notification target"
 }

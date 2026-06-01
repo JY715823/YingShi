@@ -3,9 +3,12 @@ package com.example.yingshi.feature.photos
 import androidx.compose.runtime.Immutable
 
 enum class CommentTargetType {
-    Post,
+    SmallAlbum,
     Media,
 }
+
+val CommentTargetType.Post: CommentTargetType
+    get() = CommentTargetType.SmallAlbum
 
 @Immutable
 data class CommentUiModel(

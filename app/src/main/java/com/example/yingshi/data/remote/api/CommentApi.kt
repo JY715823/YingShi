@@ -14,9 +14,9 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface CommentApi {
-    @GET("api/posts/{postId}/comments")
+    @GET("api/small-albums/{smallAlbumId}/comments")
     suspend fun getPostComments(
-        @Path("postId") postId: String,
+        @Path("smallAlbumId") smallAlbumId: String,
         @Query("page") page: Int = 1,
         @Query("size") size: Int = 10,
     ): ApiEnvelopeDto<CommentListResponseDto>
@@ -28,9 +28,9 @@ interface CommentApi {
         @Query("size") size: Int = 10,
     ): ApiEnvelopeDto<CommentListResponseDto>
 
-    @POST("api/posts/{postId}/comments")
+    @POST("api/small-albums/{smallAlbumId}/comments")
     suspend fun createPostComment(
-        @Path("postId") postId: String,
+        @Path("smallAlbumId") smallAlbumId: String,
         @Body request: CreateCommentRequestDto,
     ): ApiEnvelopeDto<CommentDto>
 

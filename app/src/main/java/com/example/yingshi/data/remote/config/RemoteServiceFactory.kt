@@ -5,10 +5,12 @@ import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
 import com.example.yingshi.data.remote.api.HealthApi
 import com.example.yingshi.data.remote.api.MediaApi
-import com.example.yingshi.data.remote.api.PostApi
+import com.example.yingshi.data.remote.api.NotificationApi
+import com.example.yingshi.data.remote.api.SmallAlbumApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
 import com.example.yingshi.data.remote.auth.AuthInterceptor
+import com.example.yingshi.data.remote.auth.AuthRefreshCoordinator
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -23,6 +25,7 @@ object RemoteServiceFactory {
             .writeTimeout(90, TimeUnit.SECONDS)
             .callTimeout(120, TimeUnit.SECONDS)
             .addInterceptor(AuthInterceptor(AuthSessionManager))
+            .authenticator(AuthRefreshCoordinator.createAuthenticator())
             .build()
     }
 
@@ -33,6 +36,7 @@ object RemoteServiceFactory {
             .writeTimeout(10, TimeUnit.MINUTES)
             .callTimeout(10, TimeUnit.MINUTES)
             .addInterceptor(AuthInterceptor(AuthSessionManager))
+            .authenticator(AuthRefreshCoordinator.createAuthenticator())
             .build()
     }
 
@@ -91,14 +95,22 @@ object RemoteServiceFactory {
         get() = createService()
     val mediaApi: MediaApi
         get() = createService()
-    val postApi: PostApi
+    val postApi: SmallAlbumApi
         get() = createService()
     val albumApi: AlbumApi
         get() = createService()
     val commentApi: CommentApi
         get() = createService()
+    val notificationApi: NotificationApi
+        get() = createService()
     val trashApi: TrashApi
         get() = createService()
     val uploadApi: UploadApi
         get() = createUploadService()
+
+    init {
+        AuthRefreshCoordinator.registerAuthApiFactory {
+            createService<AuthApi>()
+        }
+    }
 }

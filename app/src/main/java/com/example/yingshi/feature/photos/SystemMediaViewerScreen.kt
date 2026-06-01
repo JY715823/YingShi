@@ -284,11 +284,11 @@ fun SystemMediaViewerScreen(
                         addToPostError = null
                         Toast.makeText(
                             context,
-                            "已加入上传队列，成功后会进入目标帖子。",
+                            "已加入上传队列，成功后会进入目标小相册。",
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
-                        addToPostError = "该媒体已经在目标帖子里，或没有可添加的媒体。"
+                        addToPostError = "该媒体已经在目标小相册里，或没有可添加的媒体。"
                     }
                 },
                 onPostChosen = { post ->
@@ -303,11 +303,11 @@ fun SystemMediaViewerScreen(
                         addToPostError = null
                         Toast.makeText(
                             context,
-                            "已加入上传队列，成功后会进入目标帖子。",
+                            "已加入上传队列，成功后会进入目标小相册。",
                             Toast.LENGTH_SHORT,
                         ).show()
                     } else {
-                        addToPostError = "该媒体已经在目标帖子里，或没有可添加的媒体。"
+                        addToPostError = "该媒体已经在目标小相册里，或没有可添加的媒体。"
                     }
                 },
             )
@@ -1084,17 +1084,17 @@ private fun SystemMediaViewerMenuSheet(
             )
             SystemMediaViewerMenuAction(
                 title = "导入app",
-                subtitle = "只导入到 app 照片流，不要求归属到帖子。",
+                subtitle = "只导入到 app 照片流，不要求归属到小相册。",
                 onClick = onImportToApp,
             )
             SystemMediaViewerMenuAction(
-                title = "发成新帖子",
-                subtitle = "把当前系统媒体发成一个新的 app 帖子。",
+                title = "新建小相册",
+                subtitle = "把当前系统媒体整理成一个新的 app 小相册。",
                 onClick = onCreatePost,
             )
             SystemMediaViewerMenuAction(
-                title = "加入已有帖子",
-                subtitle = "选择已有相册和帖子，把当前媒体加入进去。",
+                title = "加入已有小相册",
+                subtitle = "选择已有大相册和小相册，把当前媒体加入进去。",
                 onClick = onAddToPost,
             )
             SystemMediaViewerMenuAction(

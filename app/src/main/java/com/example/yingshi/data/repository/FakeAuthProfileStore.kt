@@ -95,6 +95,22 @@ fun fakeAuthUpdateProfile(displayName: String, bio: String?): RemoteCurrentUser?
 }
 
 @Synchronized
+fun fakeAuthUpdateAvatar(avatarUrl: String?): RemoteCurrentUser? {
+    if (!AuthSessionManager.isLoggedIn) {
+        return null
+    }
+    val account = activeAccount ?: DEFAULT_FAKE_ACCOUNT
+    val currentProfile = profilesByAccount[account] ?: fakeAuthLoginProfile(account)
+    val updatedProfile = currentProfile.copy(
+        avatarUrl = avatarUrl?.trim()?.takeIf { it.isNotBlank() },
+        updatedAtMillis = System.currentTimeMillis(),
+    )
+    profilesByAccount[account] = updatedProfile
+    activeAccount = account
+    return updatedProfile
+}
+
+@Synchronized
 fun fakeAuthLogout() {
     activeAccount = null
 }

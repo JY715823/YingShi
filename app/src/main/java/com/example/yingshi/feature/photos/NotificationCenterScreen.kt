@@ -19,13 +19,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,11 +40,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
+
+private data class NotificationCenterUiState(
+    val isLoading: Boolean = false,
+    val isMutating: Boolean = false,
+    val errorMessage: String? = null,
+    val notifications: List<NotificationCenterItemUiModel> = emptyList(),
+)
 
 @Composable
 fun NotificationCenterScreen(
@@ -59,11 +73,43 @@ fun NotificationCenterScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
-    val notifications = FakeNotificationRepository.getNotifications()
-    val unreadCount = FakeNotificationRepository.unreadCount()
+    val coroutineScope = rememberCoroutineScope()
+    val sessionKey = realBackendSessionKey("notification-center-${route.source}")
     var selectedFilterName by rememberSaveable { mutableStateOf(NotificationCenterFilter.ALL.name) }
+    var uiState by remember(sessionKey) {
+        mutableStateOf(NotificationCenterUiState(isLoading = true))
+    }
     val selectedFilter = NotificationCenterFilter.valueOf(selectedFilterName)
-    val filteredNotifications = FakeNotificationRepository.getNotifications(selectedFilter)
+    val filteredNotifications = uiState.notifications.filterBy(selectedFilter)
+    val unreadCount = uiState.notifications.count { !it.isRead }
+
+    fun refresh(showLoading: Boolean = true) {
+        coroutineScope.launch {
+            uiState = uiState.copy(
+                isLoading = showLoading,
+                errorMessage = null,
+            )
+            when (val result = RepositoryProvider.notificationRepository.getNotifications(limit = 100)) {
+                is ApiResult.Success -> {
+                    uiState = NotificationCenterUiState(
+                        isLoading = false,
+                        notifications = result.data.map { it.toNotificationCenterItemUiModel() },
+                    )
+                }
+                is ApiResult.Error -> {
+                    uiState = uiState.copy(
+                        isLoading = false,
+                        errorMessage = result.toBackendUiMessage("读取通知失败，请稍后重试。"),
+                    )
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    LaunchedEffect(sessionKey) {
+        refresh(showLoading = true)
+    }
 
     Column(
         modifier = modifier
@@ -75,39 +121,106 @@ fun NotificationCenterScreen(
     ) {
         NotificationCenterTopBar(
             unreadCount = unreadCount,
+            markAllReadEnabled = unreadCount > 0 && !uiState.isMutating,
             onBack = onBack,
             onMarkAllRead = {
-                FakeNotificationRepository.markAllRead()
-                Toast.makeText(context, "已全部标记为已读", Toast.LENGTH_SHORT).show()
+                coroutineScope.launch {
+                    uiState = uiState.copy(isMutating = true, errorMessage = null)
+                    when (val result = RepositoryProvider.notificationRepository.markAllRead()) {
+                        is ApiResult.Success -> {
+                            uiState = uiState.copy(
+                                isMutating = false,
+                                notifications = uiState.notifications.map { item ->
+                                    if (item.isRead) item else item.copy(isRead = true)
+                                },
+                            )
+                            Toast.makeText(
+                                context,
+                                if (result.data.affectedCount > 0) {
+                                    "已全部标记为已读"
+                                } else {
+                                    "当前没有新的未读通知"
+                                },
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        is ApiResult.Error -> {
+                            uiState = uiState.copy(
+                                isMutating = false,
+                                errorMessage = result.toBackendUiMessage("全部标记已读失败，请稍后重试。"),
+                            )
+                        }
+                        ApiResult.Loading -> Unit
+                    }
+                }
             },
         )
 
         NotificationFilterRow(
             selectedFilter = selectedFilter,
+            notifications = uiState.notifications,
             onFilterSelected = { selectedFilterName = it.name },
         )
 
-        if (filteredNotifications.isEmpty()) {
-            NotificationCenterEmptyState(
-                filter = selectedFilter,
-                modifier = Modifier.fillMaxWidth(),
+        uiState.errorMessage?.let { message ->
+            NotificationCenterMessageCard(
+                message = message,
+                actionLabel = "重试",
+                onAction = { refresh(showLoading = uiState.notifications.isEmpty()) },
             )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                items(
-                    items = filteredNotifications,
-                    key = NotificationCenterItemUiModel::id,
-                ) { item ->
-                    NotificationCenterItemRow(
-                        item = item,
-                        onClick = {
-                            FakeNotificationRepository.markRead(item.id)
-                            onOpenNotificationTarget(item)
-                        },
-                    )
+        }
+
+        when {
+            uiState.isLoading && uiState.notifications.isEmpty() -> {
+                NotificationCenterLoadingState(
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            filteredNotifications.isEmpty() -> {
+                NotificationCenterEmptyState(
+                    filter = selectedFilter,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    items(
+                        items = filteredNotifications,
+                        key = NotificationCenterItemUiModel::id,
+                    ) { item ->
+                        NotificationCenterItemRow(
+                            item = item,
+                            onClick = {
+                                coroutineScope.launch {
+                                    val targetItem = if (item.isRead) {
+                                        item
+                                    } else {
+                                        when (val result = RepositoryProvider.notificationRepository.markRead(item.id)) {
+                                            is ApiResult.Success -> {
+                                                val updatedItem = result.data.toNotificationCenterItemUiModel()
+                                                uiState = uiState.replaceNotification(updatedItem)
+                                                updatedItem
+                                            }
+                                            is ApiResult.Error -> {
+                                                uiState = uiState.copy(
+                                                    errorMessage = result.toBackendUiMessage("标记通知已读失败。"),
+                                                )
+                                                uiState = uiState.replaceNotification(item.copy(isRead = true))
+                                                item.copy(isRead = true)
+                                            }
+                                            ApiResult.Loading -> item.copy(isRead = true)
+                                        }
+                                    }
+                                    onOpenNotificationTarget(targetItem)
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -117,6 +230,7 @@ fun NotificationCenterScreen(
 @Composable
 private fun NotificationCenterTopBar(
     unreadCount: Int,
+    markAllReadEnabled: Boolean,
     onBack: () -> Unit,
     onMarkAllRead: () -> Unit,
 ) {
@@ -134,50 +248,21 @@ private fun NotificationCenterTopBar(
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
             )
-        }
-        TextButton(onClick = onMarkAllRead) {
-            Text(text = "全部已读")
-        }
-    }
-}
-
-@Composable
-private fun NotificationCenterSummary(
-    source: String,
-    unreadCount: Int,
-    totalCount: Int,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Surface(
-        shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
-                Text(
-                    text = "通知中心",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = "入口来源：${source.toNotificationSourceLabel()}，当前只保留本地 fake 通知与跳转语义。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            NotificationStatusBadge(
-                text = "未读 $unreadCount / $totalCount",
-                emphasized = unreadCount > 0,
+            Text(
+                text = if (unreadCount > 0) {
+                    "还有 $unreadCount 条未读"
+                } else {
+                    "当前都已读完"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        TextButton(
+            enabled = markAllReadEnabled,
+            onClick = onMarkAllRead,
+        ) {
+            Text(text = "全部已读")
         }
     }
 }
@@ -185,6 +270,7 @@ private fun NotificationCenterSummary(
 @Composable
 private fun NotificationFilterRow(
     selectedFilter: NotificationCenterFilter,
+    notifications: List<NotificationCenterItemUiModel>,
     onFilterSelected: (NotificationCenterFilter) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -198,7 +284,7 @@ private fun NotificationFilterRow(
         NotificationCenterFilter.entries.forEach { filter ->
             NotificationFilterChip(
                 filter = filter,
-                unreadCount = FakeNotificationRepository.unreadCount(filter),
+                unreadCount = notifications.unreadCount(filter),
                 selected = filter == selectedFilter,
                 onClick = { onFilterSelected(filter) },
             )
@@ -413,6 +499,69 @@ private fun NotificationStatusBadge(
 }
 
 @Composable
+private fun NotificationCenterLoadingState(
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.4.dp)
+            Text(
+                text = "正在读取通知…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotificationCenterMessageCard(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(
+                modifier = Modifier.align(Alignment.End),
+                onClick = onAction,
+            ) {
+                Text(text = actionLabel)
+            }
+        }
+    }
+}
+
+@Composable
 private fun NotificationCenterEmptyState(
     filter: NotificationCenterFilter,
     modifier: Modifier = Modifier,
@@ -438,6 +587,11 @@ private fun NotificationCenterEmptyState(
                 },
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "等评论、内容更新或回收站变更出现后，这里会自动展示。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -467,12 +621,29 @@ private fun NotificationCircleButton(
     }
 }
 
-private fun String.toNotificationSourceLabel(): String {
-    return when (this) {
-        "photos-bell" -> "照片页铃铛"
-        "notification-center" -> "通知中心"
-        else -> this
+private fun NotificationCenterUiState.replaceNotification(
+    updatedItem: NotificationCenterItemUiModel,
+): NotificationCenterUiState {
+    return copy(
+        notifications = notifications.map { item ->
+            if (item.id == updatedItem.id) updatedItem else item
+        },
+    )
+}
+
+private fun List<NotificationCenterItemUiModel>.filterBy(
+    filter: NotificationCenterFilter,
+): List<NotificationCenterItemUiModel> {
+    return when (val targetType = filter.targetType) {
+        null -> this
+        else -> filter { it.type == targetType }
     }
+}
+
+private fun List<NotificationCenterItemUiModel>.unreadCount(
+    filter: NotificationCenterFilter,
+): Int {
+    return filterBy(filter).count { !it.isRead }
 }
 
 private fun formatNotificationTime(timeMillis: Long): String {

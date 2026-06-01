@@ -10,11 +10,14 @@ import com.example.yingshi.data.remote.dto.LogoutResponseDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenResponseDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Part
 
 interface AuthApi {
     @Headers("${RemoteConfig.NO_AUTH_HEADER}: true")
@@ -40,5 +43,11 @@ interface AuthApi {
     @PATCH("api/auth/me/profile")
     suspend fun updateCurrentUserProfile(
         @Body request: UpdateProfileRequestDto,
+    ): ApiEnvelopeDto<CurrentUserDto>
+
+    @Multipart
+    @POST("api/auth/me/avatar")
+    suspend fun uploadCurrentUserAvatar(
+        @Part file: MultipartBody.Part,
     ): ApiEnvelopeDto<CurrentUserDto>
 }

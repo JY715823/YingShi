@@ -434,7 +434,7 @@ internal fun PostMediaListScreen(
         AlertDialog(
             onDismissRequest = { pendingSingleDeleteId = null },
             title = { Text("移除媒体？") },
-            text = { Text("确认从当前帖子媒体列表中移除这项媒体。") },
+            text = { Text("确认从当前小相册媒体列表中移除这项媒体。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -457,7 +457,7 @@ internal fun PostMediaListScreen(
         AlertDialog(
             onDismissRequest = { showBatchDeleteConfirm = false },
             title = { Text("批量移除媒体？") },
-            text = { Text("确认从当前帖子媒体列表中移除已选 ${selectedIds.size} 项媒体。") },
+            text = { Text("确认从当前小相册媒体列表中移除已选 ${selectedIds.size} 项媒体。") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -486,7 +486,7 @@ internal fun PostMediaListScreen(
         AlertDialog(
             onDismissRequest = { showKeepOneMediaDialog = false },
             title = { Text("至少保留一项媒体") },
-            text = { Text("当前帖子媒体管理暂不允许把帖子媒体全部移除。") },
+            text = { Text("当前小相册媒体管理暂不允许把小相册媒体全部移除。") },
             confirmButton = {
                 TextButton(onClick = { showKeepOneMediaDialog = false }) {
                     Text("知道了")
@@ -513,7 +513,7 @@ private fun PostMediaListTopBar(
             Text("取消")
         }
         Text(
-            text = "帖子媒体列表",
+            text = "小相册媒体列表",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onBackground,
@@ -669,7 +669,7 @@ private fun PostMediaViewerScreen(
         AlertDialog(
             onDismissRequest = { showSetCoverConfirm = false },
             title = { Text("设为封面？") },
-            text = { Text("确认将这项媒体设为当前帖子的封面。") },
+            text = { Text("确认将这项媒体设为当前小相册的封面。") },
             confirmButton = {
                 TextButton(
                     onClick = {

@@ -18,12 +18,12 @@ enum class PhotosTopDestination(
     PHOTOS(
         label = "照片",
         headline = "全局媒体流",
-        supporting = "按媒体时间浏览 app 内容区中的去重媒体，不显示帖子卡语义。",
+        supporting = "按媒体时间浏览 app 内容区中的去重媒体，不显示小相册卡片语义。",
     ),
     ALBUMS(
         label = "相册",
-        headline = "相册与帖子目录",
-        supporting = "按相册浏览帖子，先保持切换、网格和帖子详情主流程稳定。",
+        headline = "大小相册目录",
+        supporting = "按大相册浏览小相册，先保持切换、网格和小相册详情主流程稳定。",
     ),
     TRASH(
         label = "回收站",
