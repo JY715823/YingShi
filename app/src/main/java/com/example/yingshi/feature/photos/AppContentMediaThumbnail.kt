@@ -32,7 +32,7 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
-internal fun AppContentMediaThumbnail(
+fun AppContentMediaThumbnail(
     mediaSource: AppContentMediaSource?,
     mediaType: AppMediaType,
     palette: PhotoThumbnailPalette,

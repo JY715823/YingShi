@@ -10,6 +10,33 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LedgerDao {
+    @Query("SELECT * FROM ledger_books ORDER BY isDeleted ASC, sortOrder ASC")
+    suspend fun getAllBooks(): List<LedgerBookEntity>
+
+    @Query("SELECT * FROM ledger_categories ORDER BY bookId ASC, type ASC, sortOrder ASC")
+    suspend fun getAllCategories(): List<LedgerCategoryEntity>
+
+    @Query("SELECT * FROM ledger_accounts ORDER BY bookId ASC, sortOrder ASC")
+    suspend fun getAllAccounts(): List<LedgerAccountEntity>
+
+    @Query("SELECT * FROM ledger_transactions ORDER BY occurredAtMillis DESC, createdAtMillis DESC")
+    suspend fun getAllTransactions(): List<LedgerTransactionEntity>
+
+    @Query("SELECT * FROM ledger_budgets ORDER BY startMillis ASC, createdAtMillis ASC")
+    suspend fun getAllBudgets(): List<LedgerBudgetEntity>
+
+    @Query("SELECT * FROM ledger_category_budgets ORDER BY budgetId ASC, createdAtMillis ASC")
+    suspend fun getAllCategoryBudgets(): List<LedgerCategoryBudgetEntity>
+
+    @Query("SELECT * FROM ledger_deleted_items ORDER BY deletedAtMillis DESC")
+    suspend fun getAllDeletedItems(): List<LedgerDeletedItemEntity>
+
+    @Query("SELECT * FROM ledger_recurring_rules ORDER BY createdAtMillis ASC")
+    suspend fun getAllRecurringRules(): List<LedgerRecurringRuleEntity>
+
+    @Query("SELECT * FROM ledger_recurring_occurrences ORDER BY createdAtMillis ASC")
+    suspend fun getAllRecurringOccurrences(): List<LedgerRecurringOccurrenceEntity>
+
     @Query("SELECT COUNT(*) FROM ledger_books WHERE isDeleted = 0")
     suspend fun activeBookCount(): Int
 
@@ -210,6 +237,9 @@ interface LedgerDao {
     suspend fun insertBook(book: LedgerBookEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBooks(books: List<LedgerBookEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategories(categories: List<LedgerCategoryEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -225,13 +255,25 @@ interface LedgerDao {
     suspend fun insertTransactionRaw(transaction: LedgerTransactionEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactionsRaw(transactions: List<LedgerTransactionEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBudget(budget: LedgerBudgetEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBudgets(budgets: List<LedgerBudgetEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategoryBudget(categoryBudget: LedgerCategoryBudgetEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategoryBudgets(categoryBudgets: List<LedgerCategoryBudgetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDeletedItem(deletedItem: LedgerDeletedItemEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDeletedItems(deletedItems: List<LedgerDeletedItemEntity>)
 
     @Update
     suspend fun updateBook(book: LedgerBookEntity)
@@ -268,6 +310,33 @@ interface LedgerDao {
 
     @Query("DELETE FROM ledger_deleted_items WHERE itemId = :itemId")
     suspend fun permanentlyDeleteDeletedItem(itemId: String)
+
+    @Query("DELETE FROM ledger_recurring_occurrences")
+    suspend fun clearRecurringOccurrences()
+
+    @Query("DELETE FROM ledger_recurring_rules")
+    suspend fun clearRecurringRules()
+
+    @Query("DELETE FROM ledger_deleted_items")
+    suspend fun clearDeletedItems()
+
+    @Query("DELETE FROM ledger_category_budgets")
+    suspend fun clearCategoryBudgets()
+
+    @Query("DELETE FROM ledger_budgets")
+    suspend fun clearBudgets()
+
+    @Query("DELETE FROM ledger_transactions")
+    suspend fun clearTransactions()
+
+    @Query("DELETE FROM ledger_accounts")
+    suspend fun clearAccounts()
+
+    @Query("DELETE FROM ledger_categories")
+    suspend fun clearCategories()
+
+    @Query("DELETE FROM ledger_books")
+    suspend fun clearBooks()
 
     @Query("UPDATE ledger_categories SET hidden = :hidden, updatedAtMillis = :updatedAtMillis WHERE id = :categoryId")
     suspend fun setCategoryHidden(categoryId: String, hidden: Boolean, updatedAtMillis: Long)
@@ -367,6 +436,32 @@ interface LedgerDao {
                     updatedAtMillis = transaction.updatedAtMillis,
                 ),
             )
+        }
+    }
+
+    @Transaction
+    suspend fun replaceAllData(snapshot: LedgerLocalSnapshot) {
+        clearRecurringOccurrences()
+        clearRecurringRules()
+        clearDeletedItems()
+        clearCategoryBudgets()
+        clearBudgets()
+        clearTransactions()
+        clearAccounts()
+        clearCategories()
+        clearBooks()
+        if (snapshot.books.isNotEmpty()) insertBooks(snapshot.books)
+        if (snapshot.categories.isNotEmpty()) insertCategories(snapshot.categories)
+        if (snapshot.accounts.isNotEmpty()) insertAccounts(snapshot.accounts)
+        if (snapshot.transactions.isNotEmpty()) insertTransactionsRaw(snapshot.transactions)
+        if (snapshot.budgets.isNotEmpty()) insertBudgets(snapshot.budgets)
+        if (snapshot.categoryBudgets.isNotEmpty()) insertCategoryBudgets(snapshot.categoryBudgets)
+        if (snapshot.deletedItems.isNotEmpty()) insertDeletedItems(snapshot.deletedItems)
+        if (snapshot.recurringRules.isNotEmpty()) {
+            snapshot.recurringRules.forEach { insertRecurringRule(it) }
+        }
+        if (snapshot.recurringOccurrences.isNotEmpty()) {
+            snapshot.recurringOccurrences.forEach { insertRecurringOccurrence(it) }
         }
     }
 }

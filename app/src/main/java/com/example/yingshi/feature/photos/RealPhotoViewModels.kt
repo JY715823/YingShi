@@ -83,7 +83,7 @@ class AlbumPageRealViewModel(
                     _uiState.value = AlbumPageRealUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "请先到后端联调页检查后端地址，再打开 REAL 相册页。"
+                            "需要先完成登录，请检查连接设置后再打开相册。"
                         },
                     )
                     return@launch
@@ -117,7 +117,7 @@ class AlbumPageRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = AlbumPageRealUiState(
                         isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取后端相册失败。"),
+                        errorMessage = result.toBackendUiMessage("读取相册失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -261,7 +261,7 @@ class PostDetailRealViewModel(
                     _uiState.value = PostDetailRealUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "请先到后端联调页检查后端地址，再打开 REAL 小相册详情。"
+                            "需要先完成登录，请检查连接设置后再打开小相册。"
                         },
                     )
                     return@launch
@@ -299,7 +299,7 @@ class PostDetailRealViewModel(
                 is ApiResult.Error -> {
                     _uiState.value = PostDetailRealUiState(
                         isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取后端小相册详情失败。"),
+                        errorMessage = result.toBackendUiMessage("读取小相册详情失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -449,7 +449,7 @@ class PostDetailRealViewModel(
             _uiState.update {
                 it.copy(
                     postComments = it.postComments.copy(
-                        errorMessage = "登录状态缺失，请先到联调诊断页重新登录。",
+                        errorMessage = "登录状态缺失，请重新登录。",
                     ),
                 )
             }
@@ -488,7 +488,7 @@ class PostDetailRealViewModel(
                 state.copy(
                     mediaComments = state.mediaComments + (
                         mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                            errorMessage = "登录状态缺失，请先到联调诊断页重新登录。",
+                            errorMessage = "登录状态缺失，请重新登录。",
                         )
                     ),
                 )
@@ -601,12 +601,12 @@ private fun Throwable?.toNetworkDetail(): String? {
     return when (this) {
         null -> null
         is HttpException -> when (code()) {
-            401 -> "登录状态已失效，请先到联调诊断页重新登录。"
+            401 -> "登录状态已失效，请重新登录。"
             403 -> "当前账号没有权限执行这个操作。"
-            404 -> "后端资源不存在，可能已经被删除或恢复。"
-            else -> "后端请求失败，HTTP ${code()}。"
+            404 -> "资源不存在，可能已经被删除或恢复。"
+            else -> "同步请求失败，HTTP ${code()}。"
         }
-        is IOException -> message ?: "网络请求失败，请检查 baseUrl、同一 Wi-Fi 和服务端状态。"
+        is IOException -> message ?: "网络请求失败，请检查服务地址、网络和服务状态。"
         else -> message
     }
 }

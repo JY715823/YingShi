@@ -38,7 +38,7 @@ fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState
 
         if (!AuthSessionManager.isLoggedIn) {
             value = SystemMediaDestinationUiState(
-                errorMessage = "REAL 模式需要先登录，才能选择后端小相册作为导入目标。",
+                errorMessage = "请先连接服务，才能选择在线小相册作为导入目标。",
             )
             return@produceState
         }
@@ -76,7 +76,7 @@ fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState
             }
             is ApiResult.Error -> {
                 value = SystemMediaDestinationUiState(
-                    errorMessage = albumsResult.toBackendUiMessage("读取后端相册失败。"),
+                    errorMessage = albumsResult.toBackendUiMessage("读取相册失败。"),
                 )
             }
             ApiResult.Loading -> Unit

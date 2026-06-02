@@ -74,7 +74,7 @@ object FakeNotificationRepository {
             body = "“这张的光好温柔。”已经追加到当前媒体评论里。",
             createdAtMillis = 1_777_412_800_000L,
             isRead = false,
-            targetSummary = "将进入对应小相册详情 / Viewer 评论区占位",
+            targetSummary = "夜晚散步",
             targetType = "POST",
             postId = "post-river-night",
         ),
@@ -82,10 +82,10 @@ object FakeNotificationRepository {
             id = "notice-comment-2",
             type = NotificationCenterItemType.COMMENT,
             title = "小相册评论有新回复",
-            body = "“夜晚散步”下新增了一条本地小相册评论占位。",
+            body = "“夜晚散步”下有一条新的回复。",
             createdAtMillis = 1_777_411_600_000L,
             isRead = false,
-            targetSummary = "将进入对应小相册详情 / 评论区占位",
+            targetSummary = "夜晚散步",
             targetType = "POST",
             postId = "post-window-light",
         ),
@@ -96,7 +96,7 @@ object FakeNotificationRepository {
             body = "“四月窗边”的标题和简介刚刚被本地修改。",
             createdAtMillis = 1_777_409_200_000L,
             isRead = false,
-            targetSummary = "将进入相关小相册或大相册占位",
+            targetSummary = "四月窗边",
             targetType = "POST",
             postId = "post-window-light",
         ),
@@ -107,7 +107,7 @@ object FakeNotificationRepository {
             body = "“周末餐桌”大相册下的小相册顺序已在本地重新整理。",
             createdAtMillis = 1_777_405_600_000L,
             isRead = true,
-            targetSummary = "将进入相关相册目录占位",
+            targetSummary = "周末餐桌",
             targetType = "ALBUM",
         ),
         NotificationCenterItemUiModel(
@@ -117,7 +117,7 @@ object FakeNotificationRepository {
             body = "1 条小相册删除记录和 2 个媒体删除快照已写入本地回收站。",
             createdAtMillis = 1_777_401_000_000L,
             isRead = true,
-            targetSummary = "将进入回收站或对应删除态详情占位",
+            targetSummary = "回收站",
             targetType = "MEDIA_SYSTEM_DELETED",
         ),
         NotificationCenterItemUiModel(
@@ -127,27 +127,27 @@ object FakeNotificationRepository {
             body = "现在可以在回收站按分类批量恢复或清空内容。",
             createdAtMillis = 1_777_393_600_000L,
             isRead = true,
-            targetSummary = "将进入回收站分类操作区",
+            targetSummary = "回收站",
             targetType = "MEDIA_SYSTEM_DELETED",
         ),
         NotificationCenterItemUiModel(
             id = "notice-cache-1",
             type = NotificationCenterItemType.SYSTEM,
-            title = "缓存管理壳层已接入",
-            body = "设置页现在可以进入全局缓存清理占位页，但当前仍不扫描真实磁盘。",
+            title = "缓存可以清理",
+            body = "缩略图缓存可在设置中清理，照片和相册内容不会被删除。",
             createdAtMillis = 1_777_386_400_000L,
             isRead = false,
-            targetSummary = "将打开系统通知详情占位页",
+            targetSummary = "设置",
             targetType = "SYSTEM",
         ),
         NotificationCenterItemUiModel(
             id = "notice-viewer-video-1",
             type = NotificationCenterItemType.SYSTEM,
-            title = "Viewer 视频壳层可用",
-            body = "照片流 Viewer 和小相册内 Viewer 现在都能识别视频媒体。",
+            title = "视频可以直接查看",
+            body = "照片流和小相册中的视频现在可以在查看器里播放。",
             createdAtMillis = 1_777_379_200_000L,
             isRead = true,
-            targetSummary = "将打开系统通知详情占位页",
+            targetSummary = "照片流",
             targetType = "SYSTEM",
         ),
     )
@@ -205,5 +205,5 @@ fun RemoteNotification.toNotificationCenterItemUiModel(): NotificationCenterItem
 }
 
 private fun String?.orNotificationTargetSummary(): String {
-    return this?.takeIf { it.isNotBlank() } ?: "Notification target"
+    return this?.takeIf { it.isNotBlank() } ?: "查看相关内容"
 }

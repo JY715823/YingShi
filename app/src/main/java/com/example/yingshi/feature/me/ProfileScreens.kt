@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -101,6 +102,7 @@ fun PersonalProfileScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     ShellPage(
         title = TITLE_PROFILE,
@@ -151,7 +153,7 @@ fun PersonalProfileScreen(
                         )
                         if (isRefreshing) {
                             Text(
-                                text = "姝ｅ湪鍚屾鏈€鏂拌祫鏂?..",
+                                text = "正在同步最新资料...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -177,8 +179,6 @@ fun PersonalProfileScreen(
                     ) {
                         ProfileInfoRow(label = LABEL_ACCOUNT, value = currentUser.account)
                         ProfileInfoRow(label = LABEL_JOINED_AT, value = formatEpochMillis(currentUser.createdAtMillis))
-                        ProfileInfoRow(label = LABEL_ENV, value = repositoryMode.name)
-                        ProfileInfoRow(label = "baseUrl", value = baseUrl)
                     }
                 }
 
@@ -189,8 +189,8 @@ fun PersonalProfileScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    color = colors.sectionBackground.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.24f)),
                 ) {
                     Column(
                         modifier = Modifier.padding(spacing.lg),
@@ -212,6 +212,14 @@ fun PersonalProfileScreen(
                 Button(
                     onClick = onOpenEditProfile,
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primaryContainer,
+                        contentColor = colors.onPrimaryContainer,
+                        disabledContainerColor = colors.sectionBackground,
+                        disabledContentColor = colors.textSecondary,
+                    ),
+                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
                 ) {
                     Text(ACTION_EDIT)
                 }
@@ -284,6 +292,7 @@ fun EditProfileScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var displayName by rememberSaveable(currentUser.userId) { mutableStateOf(currentUser.displayName) }
@@ -434,6 +443,14 @@ fun EditProfileScreen(
                         },
                         enabled = !isSaving && !isUploadingAvatar && displayName.trim().isNotBlank(),
                         modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryContainer,
+                            contentColor = colors.onPrimaryContainer,
+                            disabledContainerColor = colors.sectionBackground,
+                            disabledContentColor = colors.textSecondary,
+                        ),
+                        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
                     ) {
                         Text(if (isSaving) ACTION_SAVING else ACTION_SAVE)
                     }

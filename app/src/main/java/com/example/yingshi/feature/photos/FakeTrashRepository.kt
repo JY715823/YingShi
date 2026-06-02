@@ -166,7 +166,7 @@ object FakeTrashRepository {
         } else {
             TrashMutationResult(
                 success = false,
-                message = "当前对象已不存在，暂时无法恢复。",
+                message = "当前对象已不存在，无法恢复。",
             )
         }
     }

@@ -678,7 +678,7 @@ private fun ImportedChatListScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "导入 QCE ZIP 后，本地解压、合并入库并离线浏览。",
+                        text = "导入 QCE ZIP 后会先在本机解压合并，再同步保存可用记录。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2170,7 +2170,7 @@ private fun MediaResourceCard(
             ImportedResourceRenderKind.IMAGE -> {
                 if (previewState is AsyncImagePainter.State.Error) {
                     MissingMediaPlaceholder(
-                        label = if (resource.isAnimatedImage) "动图暂时不可用" else "图片暂时不可用",
+                        label = if (resource.isAnimatedImage) "动图当前不可用" else "图片当前不可用",
                         icon = Icons.Default.Image,
                         dark = false,
                     )
@@ -2749,7 +2749,7 @@ private fun ChatViewerImageCanvas(
 
         if (!showPreview && !showOriginal) {
             MissingMediaPlaceholder(
-                label = "图片暂时不可用",
+                label = "图片当前不可用",
                 icon = Icons.Default.Image,
                 dark = true,
             )

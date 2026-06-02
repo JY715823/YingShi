@@ -1,0 +1,1510 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>映世颜色系统调色台</title>
+  <style>
+    :root {
+      --appBackground: #F1FBFD;
+      --sectionBackground: #DFF5F4;
+      --raisedSurface: #FFFFFC;
+      --primaryContainer: #BDEFFF;
+      --onPrimaryContainer: #1F2933;
+      --selectedPillBg: #BDEFFF;
+      --primaryAction: #BDEFFF;
+      --primaryActionPressed: #A7E9FF;
+      --titleAccent: #26313A;
+      --softGreenContainer: #D8F2E6;
+      --goldAccent: #9A6A2A;
+      --memoryAccent: #A94C42;
+      --memoryContainer: #FFE1DA;
+      --onMemoryContainer: #3A2724;
+      --memoryWash: #FFF1EE;
+      --dividerSoft: #C7E6EC;
+      --glassStroke: #A9E5F2;
+      --glowWash: #E7FAFF;
+      --textPrimary: #1F2933;
+      --textSecondary: #5E7580;
+      --viewerBackground: #101F26;
+      --viewerSurface: #1D333C;
+      --viewerAccent: #BDEFFF;
+      --viewerText: #F4FBFC;
+      --viewerTextSecondary: #A9C3CC;
+
+      --toolPage: #F7FCFD;
+      --toolPanel: #FFFFFF;
+      --toolInk: #162128;
+      --toolMuted: #637780;
+      --toolLine: #D9E8EC;
+      --toolDanger: #A33A32;
+      --toolOk: #24744C;
+      --toolShadow: 0 6px 14px rgba(31, 41, 51, 0.07);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--toolPage);
+      color: var(--toolInk);
+      font-family: Inter, "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 24px;
+      background: var(--toolPanel);
+      border-right: 1px solid var(--toolLine);
+    }
+
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      font-size: 24px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    h3 {
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .lede {
+      margin-top: 8px;
+      max-width: 38ch;
+      color: var(--toolMuted);
+      font-size: 14px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: var(--glowWash);
+      color: var(--titleAccent);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid var(--glassStroke);
+    }
+
+    .tool-section {
+      padding: 18px 0;
+      border-top: 1px solid var(--toolLine);
+    }
+
+    .preset-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .preset,
+    .copy-button,
+    .reset-button {
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 8px;
+      background: #EEF8FA;
+      color: var(--toolInk);
+      text-align: left;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+
+    .preset:hover,
+    .copy-button:hover,
+    .reset-button:hover {
+      background: var(--glowWash);
+    }
+
+    .preset:active,
+    .copy-button:active,
+    .reset-button:active {
+      transform: translateY(1px);
+    }
+
+    .reset-button {
+      color: var(--toolDanger);
+    }
+
+    .token-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .token-control {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid var(--toolLine);
+      border-radius: 8px;
+      background: var(--toolPanel);
+    }
+
+    .token-control input[type="color"] {
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+    }
+
+    .token-meta {
+      min-width: 0;
+    }
+
+    .token-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+    }
+
+    .token-name {
+      overflow: hidden;
+      color: var(--toolInk);
+      font-size: 13px;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .token-role {
+      display: block;
+      margin-top: 3px;
+      color: var(--toolMuted);
+      font-size: 12px;
+    }
+
+    .hex-input {
+      width: 96px;
+      min-height: 30px;
+      padding: 0 8px;
+      border: 1px solid var(--toolLine);
+      border-radius: 8px;
+      background: #FBFDFD;
+      color: var(--toolInk);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .main {
+      padding: 28px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(340px, 500px) minmax(340px, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 18px;
+      border: 1px solid var(--toolLine);
+      border-radius: 8px;
+      background: var(--toolPanel);
+      box-shadow: var(--toolShadow);
+    }
+
+    .panel + .panel {
+      margin-top: 20px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .panel-header p {
+      margin-top: 4px;
+      color: var(--toolMuted);
+      font-size: 13px;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: #EEF8FA;
+      color: var(--toolMuted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .tab[aria-selected="true"] {
+      background: var(--primaryContainer);
+      color: var(--onPrimaryContainer);
+      box-shadow: inset 0 0 0 1px var(--glassStroke);
+    }
+
+    .phone-stage {
+      display: grid;
+      place-items: center;
+      min-height: 720px;
+      padding: 24px;
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(231, 250, 255, 0.44)),
+        var(--appBackground);
+      border: 1px solid var(--toolLine);
+    }
+
+    .phone {
+      width: min(100%, 360px);
+      min-height: 680px;
+      border-radius: 24px;
+      padding: 14px;
+      background: var(--appBackground);
+      color: var(--textPrimary);
+      box-shadow: 0 14px 30px rgba(31, 41, 51, 0.16);
+      overflow: hidden;
+    }
+
+    .phone.viewer-mode {
+      background: var(--viewerBackground);
+      color: var(--viewerText);
+    }
+
+    .phone-status {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 6px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: inherit;
+    }
+
+    .phone-page {
+      min-height: 620px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 8px 4px 86px;
+    }
+
+    .phone-title-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .phone-title {
+      color: var(--titleAccent);
+      font-size: 25px;
+      line-height: 1.1;
+      font-weight: 800;
+    }
+
+    .phone-subtitle,
+    .surface-text,
+    .album-count {
+      color: var(--textSecondary);
+      font-size: 13px;
+    }
+
+    .wordmark {
+      margin-top: 28px;
+      color: var(--titleAccent);
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .hero-login {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+      padding-top: 18px;
+    }
+
+    .surface,
+    .field,
+    .album-card,
+    .life-item {
+      border: 1px solid var(--dividerSoft);
+      border-radius: 12px;
+      background: var(--raisedSurface);
+    }
+
+    .surface {
+      padding: 16px;
+    }
+
+    .surface.mist {
+      border-color: var(--glassStroke);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.72), var(--glowWash)),
+        var(--sectionBackground);
+    }
+
+    .surface.life {
+      background: var(--softGreenContainer);
+      border-color: rgba(169, 229, 242, 0.7);
+    }
+
+    .surface.memory {
+      background: var(--memoryWash);
+      border-color: var(--memoryContainer);
+    }
+
+    .surface-title {
+      color: var(--titleAccent);
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .login-fields {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field {
+      padding: 14px 16px;
+      color: var(--textSecondary);
+      background: rgba(255, 255, 252, 0.86);
+    }
+
+    .cta {
+      min-height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--glassStroke);
+      background:
+        linear-gradient(100deg, rgba(255, 255, 255, 0.62), var(--glowWash), var(--primaryContainer)),
+        var(--primaryContainer);
+      color: var(--onPrimaryContainer);
+      font-weight: 800;
+      box-shadow: 0 4px 9px rgba(31, 41, 51, 0.08);
+    }
+
+    .cta:active {
+      background: var(--primaryActionPressed);
+    }
+
+    .icon-button {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid var(--glassStroke);
+      background: var(--primaryContainer);
+      color: var(--onPrimaryContainer);
+      font-size: 19px;
+      font-weight: 800;
+    }
+
+    .segmented {
+      display: flex;
+      gap: 8px;
+      padding: 6px;
+      border-radius: 999px;
+      background: var(--sectionBackground);
+      border: 1px solid var(--dividerSoft);
+    }
+
+    .segment {
+      flex: 1;
+      min-height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      color: var(--textSecondary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .segment.active {
+      background: var(--primaryContainer);
+      color: var(--onPrimaryContainer);
+      box-shadow: inset 0 0 0 1px var(--glassStroke);
+    }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .photo-cell {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(31, 41, 51, 0.10), rgba(154, 106, 42, 0.14)),
+        linear-gradient(180deg, var(--raisedSurface), var(--sectionBackground));
+      border: 1px solid rgba(255, 255, 255, 0.62);
+    }
+
+    .photo-cell.new::after {
+      content: "新";
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      min-width: 24px;
+      padding: 2px 7px;
+      border: 1px solid color-mix(in srgb, var(--memoryAccent) 20%, transparent);
+      border-radius: 999px;
+      background: var(--memoryContainer);
+      color: var(--onMemoryContainer);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .tool-stack {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .memory-badge,
+    .memory-pill {
+      border: 1px solid color-mix(in srgb, var(--memoryAccent) 20%, transparent);
+      background: var(--memoryContainer);
+      color: var(--onMemoryContainer);
+      font-weight: 800;
+    }
+
+    .memory-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      min-width: 21px;
+      padding: 1px 5px;
+      border-radius: 999px;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .memory-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .memory-dot {
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: var(--memoryAccent);
+    }
+
+    .album-grid,
+    .life-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .album-card,
+    .life-item {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .album-cover {
+      width: 58px;
+      height: 58px;
+      flex: 0 0 auto;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--sectionBackground), var(--primaryContainer));
+      border: 1px solid rgba(255, 255, 255, 0.68);
+    }
+
+    .album-name {
+      color: var(--titleAccent);
+      font-weight: 800;
+    }
+
+    .album-count {
+      color: var(--goldAccent);
+      font-weight: 700;
+    }
+
+    .album-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-top: 5px;
+    }
+
+    .life-item {
+      justify-content: space-between;
+    }
+
+    .life-item strong {
+      color: var(--titleAccent);
+    }
+
+    .life-item span {
+      color: var(--memoryAccent);
+      font-weight: 800;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      right: 4px;
+      bottom: 6px;
+      left: 4px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      padding: 8px;
+      border-radius: 18px;
+      border: 1px solid var(--glassStroke);
+      background: rgba(255, 255, 252, 0.88);
+    }
+
+    .nav-item {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      color: var(--textSecondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .nav-item.active {
+      background: var(--primaryContainer);
+      color: var(--onPrimaryContainer);
+    }
+
+    .viewer-canvas {
+      min-height: 628px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .viewer-top {
+      display: flex;
+      justify-content: space-between;
+      color: var(--viewerText);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .viewer-media {
+      position: relative;
+      flex: 1;
+      border-radius: 16px;
+      background:
+        linear-gradient(145deg, rgba(189, 239, 255, 0.18), rgba(244, 251, 252, 0.03)),
+        #162A32;
+      border: 1px solid rgba(189, 239, 255, 0.16);
+    }
+
+    .viewer-float {
+      position: absolute;
+      right: 14px;
+      bottom: 18px;
+      left: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .comment-bubble,
+    .viewer-action,
+    .viewer-sheet {
+      border: 1px solid rgba(189, 239, 255, 0.20);
+      background: color-mix(in srgb, var(--viewerSurface) 82%, transparent);
+      color: var(--viewerTextSecondary);
+    }
+
+    .comment-bubble {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+
+    .viewer-action {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      color: var(--viewerAccent);
+      font-weight: 800;
+    }
+
+    .viewer-sheet {
+      padding: 14px;
+      border-radius: 14px;
+      font-size: 13px;
+    }
+
+    .palette-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+      gap: 8px;
+    }
+
+    .swatch {
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 2px;
+      padding: 8px;
+      border: 1px solid var(--toolLine);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .swatch-name,
+    .swatch-hex {
+      width: max-content;
+      max-width: 100%;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.78);
+      color: #17212A;
+      font-size: 11px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .audit-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .audit-card {
+      padding: 12px;
+      border: 1px solid var(--toolLine);
+      border-radius: 8px;
+      background: #FBFDFD;
+    }
+
+    .audit-title {
+      color: var(--toolInk);
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .contrast-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-top: 8px;
+      color: var(--toolMuted);
+      font-size: 13px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .badge.ok {
+      background: #E6F5EC;
+      color: var(--toolOk);
+    }
+
+    .badge.bad {
+      background: #FBE8E5;
+      color: var(--toolDanger);
+    }
+
+    .export-area {
+      width: 100%;
+      min-height: 260px;
+      padding: 12px;
+      border: 1px solid var(--toolLine);
+      border-radius: 8px;
+      background: #0F1D24;
+      color: #EAF7FA;
+      font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--titleAccent);
+      color: var(--raisedSurface);
+      font-size: 13px;
+      font-weight: 800;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 180ms ease, transform 180ms ease;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 980px) {
+      .app,
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+
+      .main {
+        padding: 18px;
+      }
+
+      .phone-stage {
+        min-height: auto;
+        padding: 14px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div>
+          <h1>映世颜色系统调色台</h1>
+          <p class="lede">珍珠白、浅玉绿、清透浅蓝光面、石墨文字、旧金日期细节和温暖记忆状态。</p>
+        </div>
+        <span class="status-pill">温暖记忆</span>
+      </div>
+
+      <section class="tool-section">
+        <h2>预设</h2>
+        <div class="preset-grid" id="presetGrid"></div>
+      </section>
+
+      <section class="tool-section">
+        <h2>浅色 Token</h2>
+        <div class="token-list" id="lightTokens"></div>
+      </section>
+
+      <section class="tool-section">
+        <h2>Viewer Token</h2>
+        <div class="token-list" id="viewerTokens"></div>
+      </section>
+
+      <section class="tool-section">
+        <h2>操作</h2>
+        <div class="preset-grid">
+          <button type="button" class="copy-button" id="copyComposeButton">复制 Compose</button>
+          <button type="button" class="copy-button" id="copyCssButton">复制 CSS</button>
+          <button type="button" class="copy-button" id="copyJsonButton">复制 JSON</button>
+          <button type="button" class="reset-button" id="resetButton">恢复温暖记忆</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div class="workspace">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>场景预览</h2>
+              <p>登录、照片、相册、生活、Viewer 共用同一套 token，检查浅蓝和记忆色是否只在该出现的地方出现。</p>
+            </div>
+          </div>
+          <div class="tabs" id="previewTabs"></div>
+          <div class="phone-stage">
+            <div class="phone" id="phonePreview"></div>
+          </div>
+        </section>
+
+        <div>
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>色带</h2>
+                <p>快速看整体是否偏廉价浅蓝、偏绿、偏金，或 Viewer 是否脱节。</p>
+              </div>
+            </div>
+            <div class="palette-strip" id="paletteStrip"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>对比度</h2>
+                <p>主按钮、旧金细节、温暖记忆状态和 Viewer 次文字都要保底。</p>
+              </div>
+            </div>
+            <div class="audit-grid" id="auditGrid"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>导出</h2>
+                <p>随 token 实时更新，可直接给 Compose、CSS 或文档使用。</p>
+              </div>
+              <select id="exportMode" class="hex-input" aria-label="导出格式">
+                <option value="compose">Compose</option>
+                <option value="css">CSS</option>
+                <option value="json">JSON</option>
+                <option value="markdown">Markdown</option>
+              </select>
+            </div>
+            <textarea class="export-area" id="exportArea" spellcheck="false"></textarea>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">已复制</div>
+
+  <script>
+    const tokenMeta = [
+      { key: "appBackground", group: "light", role: "珍珠浅蓝页面底" },
+      { key: "sectionBackground", group: "light", role: "浅玉蓝绿分区" },
+      { key: "raisedSurface", group: "light", role: "珍珠白卡片" },
+      { key: "primaryContainer", group: "light", role: "浅蓝主操作容器" },
+      { key: "onPrimaryContainer", group: "light", role: "浅蓝容器上的石墨文字" },
+      { key: "selectedPillBg", group: "light", role: "兼容旧字段，当前态圆片底" },
+      { key: "primaryAction", group: "light", role: "兼容旧字段，浅蓝主操作底" },
+      { key: "primaryActionPressed", group: "light", role: "主操作按压态浅蓝" },
+      { key: "titleAccent", group: "light", role: "标题、图标、结构强调" },
+      { key: "softGreenContainer", group: "light", role: "浅玉绿辅助分区" },
+      { key: "goldAccent", group: "light", role: "日期、数量、旧金细节" },
+      { key: "memoryAccent", group: "light", role: "温暖记忆强调色，状态点和小数字" },
+      { key: "memoryContainer", group: "light", role: "温暖状态 badge 浅底" },
+      { key: "onMemoryContainer", group: "light", role: "温暖浅底上的文字" },
+      { key: "memoryWash", group: "light", role: "极轻情绪洗色" },
+      { key: "dividerSoft", group: "light", role: "轻边界、分割线" },
+      { key: "glassStroke", group: "light", role: "微玻璃边线" },
+      { key: "glowWash", group: "light", role: "轻流光洗色" },
+      { key: "textPrimary", group: "light", role: "正文石墨黑" },
+      { key: "textSecondary", group: "light", role: "可读蓝灰辅助文字" },
+      { key: "viewerBackground", group: "viewer", role: "Viewer 深色背景" },
+      { key: "viewerSurface", group: "viewer", role: "Viewer 浮层" },
+      { key: "viewerAccent", group: "viewer", role: "Viewer 清透高光" },
+      { key: "viewerText", group: "viewer", role: "Viewer 主文字" },
+      { key: "viewerTextSecondary", group: "viewer", role: "Viewer 次文字" }
+    ];
+
+    const defaults = {
+      appBackground: "#F1FBFD",
+      sectionBackground: "#DFF5F4",
+      raisedSurface: "#FFFFFC",
+      primaryContainer: "#BDEFFF",
+      onPrimaryContainer: "#1F2933",
+      selectedPillBg: "#BDEFFF",
+      primaryAction: "#BDEFFF",
+      primaryActionPressed: "#A7E9FF",
+      titleAccent: "#26313A",
+      softGreenContainer: "#D8F2E6",
+      goldAccent: "#9A6A2A",
+      memoryAccent: "#A94C42",
+      memoryContainer: "#FFE1DA",
+      onMemoryContainer: "#3A2724",
+      memoryWash: "#FFF1EE",
+      dividerSoft: "#C7E6EC",
+      glassStroke: "#A9E5F2",
+      glowWash: "#E7FAFF",
+      textPrimary: "#1F2933",
+      textSecondary: "#5E7580",
+      viewerBackground: "#101F26",
+      viewerSurface: "#1D333C",
+      viewerAccent: "#BDEFFF",
+      viewerText: "#F4FBFC",
+      viewerTextSecondary: "#A9C3CC"
+    };
+
+    const presets = {
+      "珍珠玉蓝": defaults,
+      "温暖记忆": {
+        ...defaults,
+        memoryAccent: "#A94C42",
+        memoryContainer: "#FFE1DA",
+        onMemoryContainer: "#3A2724",
+        memoryWash: "#FFF1EE",
+        goldAccent: "#9A6A2A"
+      },
+      "月白冰蓝": {
+        ...defaults,
+        appBackground: "#F6FDFF",
+        sectionBackground: "#EAF8F8",
+        raisedSurface: "#FFFFFF",
+        primaryContainer: "#D4F6FF",
+        selectedPillBg: "#D4F6FF",
+        primaryAction: "#D4F6FF",
+        primaryActionPressed: "#BDEFFF",
+        glassStroke: "#BDEAF2",
+        glowWash: "#F0FCFF",
+        softGreenContainer: "#E7F6EE",
+        memoryAccent: "#A54F45",
+        memoryContainer: "#FFE6E0",
+        memoryWash: "#FFF5F2",
+        textSecondary: "#627880"
+      },
+      "浅蓝石墨": {
+        ...defaults,
+        appBackground: "#ECFAFD",
+        sectionBackground: "#D4F1F2",
+        primaryContainer: "#ADEBFF",
+        selectedPillBg: "#ADEBFF",
+        primaryAction: "#ADEBFF",
+        primaryActionPressed: "#98E2FA",
+        titleAccent: "#202932",
+        textPrimary: "#182229",
+        textSecondary: "#536C76",
+        glassStroke: "#8FDBED",
+        goldAccent: "#8E5F24",
+        memoryAccent: "#9E463C",
+        memoryContainer: "#FFD9D2",
+        memoryWash: "#FFF0ED"
+      },
+      "Viewer 沉浸": {
+        ...defaults,
+        viewerBackground: "#0C1A21",
+        viewerSurface: "#172D36",
+        viewerAccent: "#A9EFFF",
+        viewerText: "#F5FCFD",
+        viewerTextSecondary: "#B1CAD1",
+        primaryContainer: "#C5F3FF",
+        selectedPillBg: "#C5F3FF",
+        primaryAction: "#C5F3FF"
+      }
+    };
+
+    let state = loadState();
+    let currentPreview = "login";
+
+    const previewTabs = [
+      { id: "login", label: "登录" },
+      { id: "photos", label: "照片" },
+      { id: "albums", label: "相册" },
+      { id: "life", label: "生活" },
+      { id: "viewer", label: "Viewer" }
+    ];
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem("yingshi-pearl-jade-blue") || "null");
+        return saved ? { ...defaults, ...saved } : { ...defaults };
+      } catch {
+        return { ...defaults };
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem("yingshi-pearl-jade-blue", JSON.stringify(state));
+    }
+
+    function isHex(value) {
+      return /^#[0-9a-fA-F]{6}$/.test(value);
+    }
+
+    function setToken(key, value) {
+      const next = value.trim().toUpperCase();
+      if (!isHex(next)) return;
+      state[key] = next;
+      if (key === "primaryContainer") {
+        state.selectedPillBg = next;
+        state.primaryAction = next;
+      }
+      if (key === "primaryAction") {
+        state.primaryContainer = next;
+        state.selectedPillBg = next;
+      }
+      saveState();
+      render();
+    }
+
+    function applyPreset(preset) {
+      state = { ...preset };
+      saveState();
+      render();
+      showToast("已应用方案");
+    }
+
+    function renderControls() {
+      const light = document.getElementById("lightTokens");
+      const viewer = document.getElementById("viewerTokens");
+      light.innerHTML = "";
+      viewer.innerHTML = "";
+
+      tokenMeta.forEach((token) => {
+        const row = document.createElement("label");
+        row.className = "token-control";
+        row.innerHTML = `
+          <input type="color" value="${state[token.key]}" aria-label="${token.key}">
+          <span class="token-meta">
+            <span class="token-top">
+              <span class="token-name">${token.key}</span>
+              <input class="hex-input" value="${state[token.key]}" aria-label="${token.key} hex">
+            </span>
+            <span class="token-role">${token.role}</span>
+          </span>
+        `;
+        row.querySelector("input[type='color']").addEventListener("input", (event) => setToken(token.key, event.target.value));
+        row.querySelector(".hex-input").addEventListener("change", (event) => setToken(token.key, event.target.value));
+        (token.group === "viewer" ? viewer : light).append(row);
+      });
+    }
+
+    function renderPresets() {
+      const grid = document.getElementById("presetGrid");
+      grid.innerHTML = "";
+      Object.entries(presets).forEach(([name, preset]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "preset";
+        button.textContent = name;
+        button.addEventListener("click", () => applyPreset(preset));
+        grid.append(button);
+      });
+    }
+
+    function renderTabs() {
+      const tabs = document.getElementById("previewTabs");
+      tabs.innerHTML = "";
+      previewTabs.forEach((item) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "tab";
+        button.setAttribute("aria-selected", String(item.id === currentPreview));
+        button.textContent = item.label;
+        button.addEventListener("click", () => {
+          currentPreview = item.id;
+          render();
+        });
+        tabs.append(button);
+      });
+    }
+
+    function renderPhone() {
+      const phone = document.getElementById("phonePreview");
+      phone.className = currentPreview === "viewer" ? "phone viewer-mode" : "phone";
+      phone.innerHTML = previews[currentPreview]();
+    }
+
+    const statusBar = `
+      <div class="phone-status">
+        <span>9:41</span>
+        <span>5G  82%</span>
+      </div>
+    `;
+
+    const previews = {
+      login: () => `
+        ${statusBar}
+        <div class="phone-page">
+          <div class="hero-login">
+            <div>
+              <div class="wordmark">映世</div>
+              <p class="phone-subtitle">两个人的相册与生活记录</p>
+            </div>
+            <div class="surface memory">
+              <div class="surface-title">温暖记忆</div>
+              <p class="surface-text">浅蓝仍是主操作，温暖色只点亮纪念、未读、同步和关系状态。</p>
+              <div class="album-meta"><span class="memory-pill">纪念日提醒</span></div>
+            </div>
+            <div class="login-fields">
+              <div class="field">邮箱</div>
+              <div class="field">密码</div>
+              <div class="cta">登录</div>
+            </div>
+          </div>
+        </div>
+      `,
+      photos: () => `
+        ${statusBar}
+        <div class="phone-page">
+          <div class="phone-title-row">
+            <div>
+              <div class="phone-title">照片</div>
+              <p class="phone-subtitle">全部媒体按时间浏览</p>
+            </div>
+            <span class="tool-stack">
+              <button class="icon-button" type="button" aria-label="系统媒体">＋</button>
+              <span class="memory-badge">3</span>
+            </span>
+          </div>
+          <div class="segmented">
+            <div class="segment active">照片</div>
+            <div class="segment">相册</div>
+            <div class="segment">工具</div>
+          </div>
+          <div class="surface mist">
+            <div class="surface-title">2026 年 6 月</div>
+            <p class="surface-text">选中态使用浅蓝容器。新导入、未读和同步状态使用温暖记忆色。</p>
+            <div class="album-meta"><span class="memory-pill">新导入</span><span class="memory-pill">同步完成</span></div>
+          </div>
+          <div class="photo-grid">
+            ${Array.from({ length: 12 }).map((_, index) => `<div class='photo-cell${index === 1 || index === 8 ? " new" : ""}'></div>`).join("")}
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item">首页</div>
+            <div class="nav-item active">照片</div>
+            <div class="nav-item">生活</div>
+            <div class="nav-item">我的</div>
+          </div>
+        </div>
+      `,
+      albums: () => `
+        ${statusBar}
+        <div class="phone-page">
+          <div class="phone-title-row">
+            <div>
+              <div class="phone-title">相册</div>
+              <p class="phone-subtitle">按目录沉淀共同记忆</p>
+            </div>
+            <button class="icon-button" type="button" aria-label="筛选">⌕</button>
+          </div>
+          <div class="surface life">
+            <div class="surface-title">小相册</div>
+            <p class="surface-text">玉绿只做辅助承托，卡片主体仍然保持珍珠白。</p>
+          </div>
+          <div class="album-grid">
+            ${["夏天", "晚餐", "出行", "日常"].map((name, index) => `
+              <div class="album-card">
+                <div class="album-cover"></div>
+                <div>
+                  <div class="album-name">${name}</div>
+                  <div class="album-meta">
+                    <span class="album-count">${18 + index * 7} 张媒体</span>
+                    ${index === 0 ? "<span class='memory-pill'>刚更新</span>" : ""}
+                  </div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+          <div class="bottom-nav">
+            <div class="nav-item">首页</div>
+            <div class="nav-item active">照片</div>
+            <div class="nav-item">生活</div>
+            <div class="nav-item">我的</div>
+          </div>
+        </div>
+      `,
+      life: () => `
+        ${statusBar}
+        <div class="phone-page">
+          <div class="phone-title-row">
+            <div>
+              <div class="phone-title">生活</div>
+              <p class="phone-subtitle">账本与聊天记录查看器</p>
+            </div>
+            <button class="icon-button" type="button" aria-label="更多">⋯</button>
+          </div>
+          <div class="surface life">
+            <div class="surface-title">今日入口</div>
+            <p class="surface-text">生活感来自浅玉绿分区，关键动作仍回到浅蓝主操作。</p>
+            <div class="album-meta"><span class="memory-dot"></span><span class="surface-text">云端同步正常</span></div>
+          </div>
+          <div class="life-list">
+            <div class="life-item"><strong>记一笔支出</strong><span>¥ 86</span></div>
+            <div class="life-item"><strong>聊天记录查看器</strong><span>24 条</span></div>
+            <div class="life-item"><strong>本月共同账本</strong><span>6 月</span></div>
+          </div>
+          <div class="cta">进入生活台</div>
+          <div class="bottom-nav">
+            <div class="nav-item">首页</div>
+            <div class="nav-item">照片</div>
+            <div class="nav-item active">生活</div>
+            <div class="nav-item">我的</div>
+          </div>
+        </div>
+      `,
+      viewer: () => `
+        ${statusBar}
+        <div class="viewer-canvas">
+          <div class="viewer-top">
+            <span>返回</span>
+            <span>12 / 48</span>
+          </div>
+          <div class="viewer-media">
+            <div class="viewer-float">
+              <div class="comment-bubble">今天这张光线很好，像下午刚醒来的房间。</div>
+              <div class="viewer-action">↗</div>
+            </div>
+          </div>
+          <div class="viewer-sheet">Viewer 使用独立深色 token。浮层轻，文字清楚，图片或视频永远是第一主角。</div>
+        </div>
+      `
+    };
+
+    function renderPaletteStrip() {
+      const strip = document.getElementById("paletteStrip");
+      strip.innerHTML = "";
+      tokenMeta.forEach((token) => {
+        const cell = document.createElement("div");
+        cell.className = "swatch";
+        cell.style.background = state[token.key];
+        cell.innerHTML = `
+          <span class="swatch-name">${token.key}</span>
+          <span class="swatch-hex">${state[token.key]}</span>
+        `;
+        strip.append(cell);
+      });
+    }
+
+    function hexToRgb(hex) {
+      const value = hex.replace("#", "");
+      return {
+        r: parseInt(value.slice(0, 2), 16) / 255,
+        g: parseInt(value.slice(2, 4), 16) / 255,
+        b: parseInt(value.slice(4, 6), 16) / 255
+      };
+    }
+
+    function linear(channel) {
+      return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+    }
+
+    function luminance(hex) {
+      const { r, g, b } = hexToRgb(hex);
+      return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+    }
+
+    function contrast(a, b) {
+      const l1 = luminance(a);
+      const l2 = luminance(b);
+      const bright = Math.max(l1, l2);
+      const dark = Math.min(l1, l2);
+      return (bright + 0.05) / (dark + 0.05);
+    }
+
+    function colorValue(keyOrHex) {
+      return keyOrHex.startsWith("#") ? keyOrHex : state[keyOrHex];
+    }
+
+    function renderAudit() {
+      const checks = [
+        ["正文 / 页面底", "textPrimary", "appBackground", 4.5],
+        ["辅助文字 / 页面底", "textSecondary", "appBackground", 4.5],
+        ["标题 / 分区", "titleAccent", "sectionBackground", 4.5],
+        ["主按钮石墨字 / 浅蓝容器", "onPrimaryContainer", "primaryContainer", 4.5],
+        ["旧金小字 / 珍珠白卡片", "goldAccent", "raisedSurface", 4.5],
+        ["记忆强调 / 珍珠白卡片", "memoryAccent", "raisedSurface", 4.5],
+        ["记忆强调 / 页面底", "memoryAccent", "appBackground", 4.5],
+        ["记忆浅底文字", "onMemoryContainer", "memoryContainer", 4.5],
+        ["正文 / 记忆洗色", "textPrimary", "memoryWash", 4.5],
+        ["Viewer 主文字 / 背景", "viewerText", "viewerBackground", 4.5],
+        ["Viewer 次文字 / 背景", "viewerTextSecondary", "viewerBackground", 4.5],
+        ["Viewer 高光 / 背景", "viewerAccent", "viewerBackground", 3]
+      ];
+      const grid = document.getElementById("auditGrid");
+      grid.innerHTML = "";
+      checks.forEach(([label, fgKey, bgKey, target]) => {
+        const fg = colorValue(fgKey);
+        const bg = colorValue(bgKey);
+        const ratio = contrast(fg, bg);
+        const pass = ratio >= target;
+        const item = document.createElement("div");
+        item.className = "audit-card";
+        item.innerHTML = `
+          <div class="audit-title">${label}</div>
+          <div class="contrast-line">
+            <span>${ratio.toFixed(2)} : 1</span>
+            <span class="badge ${pass ? "ok" : "bad"}">${pass ? "通过" : "偏低"}</span>
+          </div>
+        `;
+        grid.append(item);
+      });
+    }
+
+    function pascal(key) {
+      return key.replace(/(^|_|\b)([a-z])/g, (_, __, letter) => letter.toUpperCase());
+    }
+
+    const composeNames = {
+      appBackground: "YingShiAppBackground",
+      sectionBackground: "YingShiSectionBackground",
+      raisedSurface: "YingShiRaisedSurface",
+      primaryContainer: "YingShiPrimaryContainer",
+      onPrimaryContainer: "YingShiOnPrimaryContainer",
+      selectedPillBg: "YingShiSelectedPillBg",
+      primaryAction: "YingShiPrimaryAction",
+      primaryActionPressed: "YingShiPrimaryActionPressed",
+      titleAccent: "YingShiTitleAccent",
+      softGreenContainer: "YingShiSoftGreenContainer",
+      goldAccent: "YingShiGoldAccent",
+      memoryAccent: "YingShiMemoryAccent",
+      memoryContainer: "YingShiMemoryContainer",
+      onMemoryContainer: "YingShiOnMemoryContainer",
+      memoryWash: "YingShiMemoryWash",
+      dividerSoft: "YingShiDividerSoft",
+      glassStroke: "YingShiGlassStroke",
+      glowWash: "YingShiGlowWash",
+      textPrimary: "YingShiTextPrimary",
+      textSecondary: "YingShiTextSecondary",
+      viewerBackground: "YingShiViewerBackground",
+      viewerSurface: "YingShiViewerSurface",
+      viewerAccent: "YingShiViewerAccent",
+      viewerText: "YingShiViewerText",
+      viewerTextSecondary: "YingShiViewerTextSecondary"
+    };
+
+    function composeExport() {
+      const toColor = (hex) => `Color(0xFF${hex.replace("#", "")})`;
+      return tokenMeta.map((token) => {
+        const name = composeNames[token.key] || `YingShi${pascal(token.key)}`;
+        return `val ${name} = ${toColor(state[token.key])}`;
+      }).join("\n");
+    }
+
+    function cssExport() {
+      return `:root {\n${tokenMeta.map((token) => `  --${token.key}: ${state[token.key]};`).join("\n")}\n}`;
+    }
+
+    function jsonExport() {
+      return JSON.stringify(state, null, 2);
+    }
+
+    function markdownExport() {
+      return [
+        "| Token | Hex |",
+        "| --- | --- |",
+        ...tokenMeta.map((token) => `| \`${token.key}\` | \`${state[token.key]}\` |`)
+      ].join("\n");
+    }
+
+    function renderExport() {
+      const mode = document.getElementById("exportMode").value;
+      const map = {
+        compose: composeExport,
+        css: cssExport,
+        json: jsonExport,
+        markdown: markdownExport
+      };
+      document.getElementById("exportArea").value = map[mode]();
+    }
+
+    function renderRootVars() {
+      Object.entries(state).forEach(([key, value]) => {
+        document.documentElement.style.setProperty(`--${key}`, value);
+      });
+    }
+
+    function render() {
+      renderRootVars();
+      renderPresets();
+      renderControls();
+      renderTabs();
+      renderPhone();
+      renderPaletteStrip();
+      renderAudit();
+      renderExport();
+    }
+
+    async function copyText(text, label) {
+      await navigator.clipboard.writeText(text);
+      showToast(label);
+    }
+
+    function showToast(text) {
+      const toast = document.getElementById("toast");
+      toast.textContent = text;
+      toast.classList.add("show");
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 1400);
+    }
+
+    document.getElementById("resetButton").addEventListener("click", () => applyPreset(defaults));
+    document.getElementById("exportMode").addEventListener("change", renderExport);
+    document.getElementById("copyComposeButton").addEventListener("click", () => copyText(composeExport(), "Compose 已复制"));
+    document.getElementById("copyCssButton").addEventListener("click", () => copyText(cssExport(), "CSS 已复制"));
+    document.getElementById("copyJsonButton").addEventListener("click", () => copyText(jsonExport(), "JSON 已复制"));
+
+    render();
+  </script>
+</body>
+</html>

@@ -752,13 +752,14 @@ private fun PostMediaListCard(
                             .align(Alignment.TopStart)
                             .padding(start = spacing.xs, top = spacing.xs),
                         shape = RoundedCornerShape(radius.capsule),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                        color = YingShiThemeTokens.colors.selectedPillBg.copy(alpha = 0.92f),
+                        border = BorderStroke(1.dp, YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.74f)),
                     ) {
                         Text(
                             text = "封面",
                             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White,
+                            color = YingShiThemeTokens.colors.titleAccent,
                         )
                     }
                 }
@@ -849,13 +850,14 @@ private fun PostMediaDragOverlay(
                         .align(Alignment.TopStart)
                         .padding(start = spacing.xs, top = spacing.xs),
                     shape = RoundedCornerShape(radius.capsule),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                    color = YingShiThemeTokens.colors.selectedPillBg.copy(alpha = 0.92f),
+                    border = BorderStroke(1.dp, YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.74f)),
                 ) {
                     Text(
                         text = "封面",
                         modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
+                        color = YingShiThemeTokens.colors.titleAccent,
                     )
                 }
             }

@@ -350,7 +350,7 @@ fun CreatePostScreen(
                 seedState.tokenMissing -> {
                     BackendNoticeCard(
                         title = "需要先登录",
-                        text = "REAL 模式下新增小相册前需要先登录，当前无法读取后端大相册。",
+                        text = "新增小相册前需要先连接服务，当前无法读取大相册。",
                         fillWidth = true,
                     )
                 }
@@ -455,7 +455,10 @@ fun CreatePostScreen(
                             enabled = !isSubmitting && !seedState.tokenMissing,
                             shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
+                                containerColor = YingShiThemeTokens.colors.primaryContainer,
+                                contentColor = YingShiThemeTokens.colors.onPrimaryContainer,
+                                disabledContainerColor = YingShiThemeTokens.colors.sectionBackground,
+                                disabledContentColor = YingShiThemeTokens.colors.textSecondary,
                             ),
                         ) {
                             Text(publishButtonText)
@@ -823,7 +826,7 @@ private suspend fun loadCreatePostUiState(
         is ApiResult.Error -> {
             CreatePostUiState(
                 isLoading = false,
-                errorMessage = result.toBackendUiMessage("读取大相册失败，暂时无法创建小相册。"),
+                errorMessage = result.toBackendUiMessage("读取大相册失败，当前无法创建小相册。"),
                 displayTimeMillis = defaultDisplayTime,
                 initialMediaItems = initialItems,
                 selectedCoverSourceMediaId = defaultCoverId,

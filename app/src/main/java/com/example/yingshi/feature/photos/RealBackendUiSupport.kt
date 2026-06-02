@@ -20,13 +20,13 @@ internal fun Throwable?.toBackendNetworkDetail(): String? {
     return when (this) {
         null -> null
         is HttpException -> when (code()) {
-            401 -> "登录状态已失效，请先到联调诊断页重新登录。"
+            401 -> "登录状态已失效，请重新登录。"
             403 -> "当前账号没有权限执行这个操作。"
-            404 -> "后端资源不存在，可能已经被删除或恢复。"
+            404 -> "资源不存在，可能已经被删除或恢复。"
             409 -> null
-            else -> "后端请求失败，HTTP ${code()}。"
+            else -> "同步请求失败，HTTP ${code()}。"
         }
-        is IOException -> message ?: "网络请求失败，请检查 baseUrl、同一 Wi-Fi 和服务端状态。"
+        is IOException -> message ?: "网络请求失败，请检查服务地址、网络和服务状态。"
         else -> message
     }
 }

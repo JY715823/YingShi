@@ -22,6 +22,8 @@ data class MediaDto(
     val capturedAtMillis: Long? = null,
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
+    val recordOwnerUserId: String? = null,
+    val uploadedByUserId: String? = null,
     val createdAtMillis: Long? = null,
     val smallAlbumIds: List<String> = emptyList(),
 ) {

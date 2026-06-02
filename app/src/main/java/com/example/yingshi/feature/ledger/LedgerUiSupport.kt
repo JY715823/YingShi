@@ -88,16 +88,16 @@ import com.example.yingshi.feature.ledger.data.LedgerBook
 import com.example.yingshi.feature.ledger.data.ledgerBookTemplateLabel
 import java.time.YearMonth
 
-val LedgerHeaderGreen = Color(0xFF47B972)
+val LedgerHeaderGreen = Color(0xFF26313A)
 val LedgerGreen = LedgerHeaderGreen
-val LedgerGreenSoft = Color(0xFFEAF8EF)
+val LedgerGreenSoft = Color(0xFFD8F2E6)
 val LedgerIncomeGreen = Color(0xFF4CAF50)
 val LedgerExpenseRed = Color(0xFFF56B82)
-val LedgerPageBackground = Color(0xFFF3F4FA)
-val LedgerGroupedHeader = Color(0xFFF7F7F8)
-val LedgerDivider = Color(0xFFE9E9EE)
-val LedgerMuted = Color(0xFF9AA0A8)
-val LedgerSubtleText = Color(0xFFB3B6BE)
+val LedgerPageBackground = Color(0xFFF1FBFD)
+val LedgerGroupedHeader = Color(0xFFDFF5F4)
+val LedgerDivider = Color(0xFFC7E6EC)
+val LedgerMuted = Color(0xFF5E7580)
+val LedgerSubtleText = Color(0xFF6A8189)
 
 fun ledgerColor(raw: Long): Color = Color(raw)
 

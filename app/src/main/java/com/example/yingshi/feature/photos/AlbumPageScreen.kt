@@ -3,7 +3,6 @@ package com.example.yingshi.feature.photos
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,24 +13,33 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,14 +54,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import com.example.yingshi.ui.components.yingShiClickable
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -69,19 +80,22 @@ fun AlbumPageScreen(
     albums: List<AlbumSummaryUiModel>,
     posts: List<AlbumPostCardUiModel>,
     onOpenPost: (PostDetailPlaceholderRoute) -> Unit,
-    onManageAlbums: () -> Unit,
+    onCreateLargeAlbum: () -> Unit,
+    onCreateSmallAlbum: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
         RealAlbumPageScreen(
             onOpenPost = onOpenPost,
-            onManageAlbums = onManageAlbums,
+            onCreateLargeAlbum = onCreateLargeAlbum,
+            onCreateSmallAlbum = onCreateSmallAlbum,
             modifier = modifier,
         )
         return
     }
 
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val settingsState = FakeSettingsRepository.getSettingsState()
     var selectedAlbumId by rememberSaveable(albums) {
         mutableStateOf(albums.firstOrNull()?.id.orEmpty())
@@ -107,7 +121,6 @@ fun AlbumPageScreen(
     )
     val gridState = rememberLazyGridState()
     val filteredPosts = posts.filter { it.albumId == selectedAlbumId }
-    val chipRows = remember(albums) { buildAlbumChipRows(albums) }
     val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
     var recentlyUpdatedPostId by remember { mutableStateOf<String?>(null) }
 
@@ -129,30 +142,35 @@ fun AlbumPageScreen(
     }
 
     Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         AlbumSwitchSection(
-            rows = chipRows,
+            albums = albums,
             selectedAlbumId = selectedAlbumId,
             onSelectAlbum = { selectedAlbumId = it },
+            selectedAlbumIdForCreate = selectedAlbumId.takeIf { it.isNotBlank() },
+            onCreateLargeAlbum = onCreateLargeAlbum,
+            onCreateSmallAlbum = onCreateSmallAlbum,
         )
 
         if (filteredPosts.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                color = MaterialTheme.colorScheme.surface,
+                color = colors.sectionBackground.copy(alpha = 0.58f),
                 border = BorderStroke(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+                    color = colors.dividerSoft.copy(alpha = 0.62f),
                 ),
             ) {
                 Text(
-                    text = "这个大相册里暂时还没有小相册。",
-                    modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
+                    text = "这个大相册里还没有小相册。",
+                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.lg),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = YingShiThemeTokens.colors.textSecondary,
                 )
             }
         } else {
@@ -195,7 +213,8 @@ fun AlbumPageScreen(
 @Composable
 private fun RealAlbumPageScreen(
     onOpenPost: (PostDetailPlaceholderRoute) -> Unit,
-    onManageAlbums: () -> Unit,
+    onCreateLargeAlbum: () -> Unit,
+    onCreateSmallAlbum: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sessionKey = realBackendSessionKey("real-album-page")
@@ -233,7 +252,6 @@ private fun RealAlbumPageScreen(
         densityName ?: settingsState.defaultAlbumGridDensity.name,
     )
     val gridState = rememberLazyGridState()
-    val chipRows = remember(uiState.albums) { buildAlbumChipRows(uiState.albums) }
     var recentlyUpdatedPostId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(pendingUpdatedPostId, uiState.posts) {
@@ -253,14 +271,16 @@ private fun RealAlbumPageScreen(
         }
     }
     Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         when {
             uiState.tokenMissing -> {
                 AlbumPageNoticeCard(
                     text = uiState.errorMessage
-                        ?: "请先到后端联调诊断页登录，再使用 REAL 模式。",
+                        ?: "请先在连接设置完成登录。",
                     actionLabel = "重试",
                     onAction = viewModel::refresh,
                 )
@@ -271,7 +291,7 @@ private fun RealAlbumPageScreen(
             }
 
             uiState.errorMessage != null && uiState.albums.isEmpty() -> {
-                val errorMessage = uiState.errorMessage ?: "读取后端相册失败。"
+                val errorMessage = uiState.errorMessage ?: "读取相册失败。"
                 AlbumPageNoticeCard(
                     text = errorMessage,
                     actionLabel = "重试",
@@ -289,9 +309,12 @@ private fun RealAlbumPageScreen(
 
             else -> {
                 AlbumSwitchSection(
-                    rows = chipRows,
+                    albums = uiState.albums,
                     selectedAlbumId = uiState.selectedAlbumId.orEmpty(),
                     onSelectAlbum = viewModel::selectAlbum,
+                    selectedAlbumIdForCreate = uiState.selectedAlbumId,
+                    onCreateLargeAlbum = onCreateLargeAlbum,
+                    onCreateSmallAlbum = onCreateSmallAlbum,
                 )
 
                 when {
@@ -315,7 +338,7 @@ private fun RealAlbumPageScreen(
 
                     uiState.posts.isEmpty() -> {
                         AlbumPageNoticeCard(
-                            text = "这个大相册当前还没有后端小相册。",
+                            text = "这个大相册里还没有小相册。",
                         )
                     }
 
@@ -377,16 +400,17 @@ private fun RealAlbumPageScreen(
 
 @Composable
 private fun AlbumPageLoadingCard(
-    text: String = "正在读取后端相册…",
+    text: String = "正在读取相册…",
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surface,
+        color = colors.sectionBackground.copy(alpha = 0.58f),
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+            color = colors.dividerSoft.copy(alpha = 0.62f),
         ),
     ) {
         Row(
@@ -394,11 +418,15 @@ private fun AlbumPageLoadingCard(
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp,
+                color = colors.primaryAction,
+            )
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -411,27 +439,256 @@ private fun AlbumPageNoticeCard(
     onAction: (() -> Unit)? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surface,
+        color = colors.sectionBackground.copy(alpha = 0.58f),
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+            color = colors.dividerSoft.copy(alpha = 0.62f),
         ),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             if (actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) {
-                    Text(actionLabel)
+                AlbumInlineActionButton(text = actionLabel, onClick = onAction)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumIconAction(
+    text: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    contentDescription: String,
+    containerColor: Color? = null,
+    contentColor: Color? = null,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val resolvedContentColor = contentColor ?: colors.titleAccent
+    Surface(
+        modifier = Modifier
+            .size(34.dp)
+            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+        shape = CircleShape,
+        color = containerColor ?: colors.sectionBackground.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
+        shadowElevation = 1.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = resolvedContentColor,
+                    modifier = Modifier.size(19.dp),
+                )
+            } else {
+                Text(
+                    text = text.orEmpty(),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = resolvedContentColor,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumEmptyStateCard(
+    selectedAlbumTitle: String?,
+    onCreateSmallAlbum: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = colors.sectionBackground.copy(alpha = 0.62f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = colors.dividerSoft.copy(alpha = 0.62f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = if (selectedAlbumTitle.isNullOrBlank()) {
+                    "先选一个大相册"
+                } else {
+                    "这个大相册里还没有小相册。"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
+            )
+            AlbumInlineActionButton(text = "新建小相册", onClick = onCreateSmallAlbum)
+        }
+    }
+}
+
+@Composable
+private fun AlbumSwitchSection(
+    albums: List<AlbumSummaryUiModel>,
+    selectedAlbumId: String,
+    onSelectAlbum: (String) -> Unit,
+    selectedAlbumIdForCreate: String?,
+    onCreateLargeAlbum: () -> Unit,
+    onCreateSmallAlbum: (String?) -> Unit,
+) {
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    var showAlbumMenu by rememberSaveable { mutableStateOf(false) }
+    val visibleAlbums = remember(albums, selectedAlbumId) {
+        preferredVisibleAlbums(albums, selectedAlbumId)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.md),
+        color = Color.Transparent,
+        border = null,
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 1.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                visibleAlbums.forEach { album ->
+                    AlbumSwitchChip(
+                        album = album,
+                        selected = album.id == selectedAlbumId,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSelectAlbum(album.id) },
+                    )
+                }
+                repeat((3 - visibleAlbums.size).coerceAtLeast(0)) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+            AlbumIconAction(
+                icon = Icons.Rounded.Menu,
+                contentDescription = "全部大相册",
+                containerColor = colors.primaryContainer.copy(alpha = 0.74f),
+                contentColor = colors.titleAccent,
+                onClick = { showAlbumMenu = true },
+            )
+            AlbumIconAction(
+                icon = Icons.Rounded.CreateNewFolder,
+                contentDescription = "新建大相册",
+                containerColor = colors.glowWash.copy(alpha = 0.90f),
+                contentColor = colors.titleAccent,
+                onClick = onCreateLargeAlbum,
+            )
+            AlbumIconAction(
+                icon = Icons.Rounded.Add,
+                contentDescription = "新建小相册",
+                containerColor = colors.softGreenContainer.copy(alpha = 0.90f),
+                contentColor = colors.softGreenAction,
+                onClick = { onCreateSmallAlbum(selectedAlbumIdForCreate) },
+            )
+        }
+    }
+
+    if (showAlbumMenu) {
+        AlbumDirectoryDialog(
+            albums = albums,
+            selectedAlbumId = selectedAlbumId,
+            onDismiss = { showAlbumMenu = false },
+            onSelectAlbum = { albumId ->
+                showAlbumMenu = false
+                onSelectAlbum(albumId)
+            },
+        )
+    }
+}
+
+@Composable
+private fun AlbumDirectoryDialog(
+    albums: List<AlbumSummaryUiModel>,
+    selectedAlbumId: String,
+    onDismiss: () -> Unit,
+    onSelectAlbum: (String) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    var query by rememberSaveable { mutableStateOf("") }
+    val filteredAlbums = remember(albums, query) {
+        val keyword = query.trim()
+        if (keyword.isBlank()) {
+            albums
+        } else {
+            albums.filter { album ->
+                album.title.contains(keyword, ignoreCase = true) ||
+                    album.subtitle.contains(keyword, ignoreCase = true)
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 460.dp),
+            shape = RoundedCornerShape(radius.lg),
+            color = colors.glowWash.copy(alpha = 0.98f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.74f)),
+            shadowElevation = 3.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "选择大相册",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                AlbumSearchField(
+                    query = query,
+                    onQueryChange = { query = it },
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 330.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(
+                        items = filteredAlbums,
+                        key = { it.id },
+                    ) { album ->
+                        AlbumDirectoryRow(
+                            album = album,
+                            selected = album.id == selectedAlbumId,
+                            onClick = { onSelectAlbum(album.id) },
+                        )
+                    }
+                }
+                if (filteredAlbums.isEmpty()) {
+                    Text(
+                        text = "没有找到相册",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                    )
                 }
             }
         }
@@ -439,31 +696,101 @@ private fun AlbumPageNoticeCard(
 }
 
 @Composable
-private fun AlbumSwitchSection(
-    rows: List<List<AlbumSummaryUiModel>>,
-    selectedAlbumId: String,
-    onSelectAlbum: (String) -> Unit,
+private fun AlbumSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-
-    Column(
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.capsule),
+        color = colors.sectionBackground.copy(alpha = 0.64f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
     ) {
-        rows.forEach { rowAlbums ->
-            Row(
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Search,
+                contentDescription = null,
+                tint = colors.textSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.merge(
+                    TextStyle(color = colors.textPrimary),
+                ),
+                modifier = Modifier.weight(1f),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (query.isBlank()) {
+                            Text(
+                                text = "搜索大相册",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.textSecondary,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlbumDirectoryRow(
+    album: AlbumSummaryUiModel,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .yingShiClickable(shape = RoundedCornerShape(radius.md), onClick = onClick),
+        shape = RoundedCornerShape(radius.md),
+        color = if (selected) colors.primaryContainer.copy(alpha = 0.54f) else colors.raisedSurface,
+        border = BorderStroke(
+            1.dp,
+            if (selected) colors.glassStroke.copy(alpha = 0.82f) else colors.dividerSoft.copy(alpha = 0.54f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                rowAlbums.forEach { album ->
-                    AlbumSwitchChip(
-                        album = album,
-                        selected = album.id == selectedAlbumId,
-                        onClick = { onSelectAlbum(album.id) },
-                    )
-                }
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brush.linearGradient(listOf(album.accent.start, album.accent.end))),
+            )
+            Text(
+                text = album.title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = colors.titleAccent,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
     }
@@ -473,50 +800,72 @@ private fun AlbumSwitchSection(
 private fun AlbumSwitchChip(
     album: AlbumSummaryUiModel,
     selected: Boolean,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(12.dp)
 
     Surface(
-        modifier = Modifier
-            .clip(shape)
-            .clickable(onClick = onClick),
+        modifier = modifier
+            .yingShiClickable(shape = shape, onClick = onClick),
         shape = shape,
         color = if (selected) {
-            album.accent.start.copy(alpha = 0.24f)
+            colors.selectedPillBg.copy(alpha = 0.68f)
         } else {
-            MaterialTheme.colorScheme.surface
+            colors.raisedSurface.copy(alpha = 0.96f)
         },
         border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) {
-                album.accent.accent.copy(alpha = 0.28f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
-            },
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) colors.glassStroke.copy(alpha = 0.86f) else colors.dividerSoft.copy(alpha = 0.50f),
         ),
+        shadowElevation = 0.dp,
     ) {
-        Text(
-            text = album.title,
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            ),
-            color = if (selected) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            maxLines = 1,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Brush.linearGradient(listOf(album.accent.start, album.accent.end))),
+            )
+            Text(
+                text = album.title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                ),
+                color = if (selected) colors.titleAccent else colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 @Composable
-private fun AlbumManageButton(onClick: () -> Unit) {
-    TextButton(onClick = onClick) {
-        Text(text = "管理")
+private fun AlbumInlineActionButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = Modifier.yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick),
+        shape = shape,
+        color = colors.softGreenContainer.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.softGreenAction,
+        )
     }
 }
 
@@ -527,13 +876,14 @@ private fun AlbumGridDensitySwitcher(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.md),
-        color = MaterialTheme.colorScheme.surface,
+        color = colors.sectionBackground.copy(alpha = 0.52f),
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+            color = colors.dividerSoft.copy(alpha = 0.62f),
         ),
     ) {
         Row(
@@ -551,7 +901,7 @@ private fun AlbumGridDensitySwitcher(
                         .clickable { onDensitySelected(density) },
                     shape = RoundedCornerShape(radius.capsule),
                     color = if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                        colors.primaryContainer.copy(alpha = 0.70f)
                     } else {
                         Color.Transparent
                     },
@@ -568,9 +918,9 @@ private fun AlbumGridDensitySwitcher(
                                 MaterialTheme.typography.labelMedium
                             },
                             color = if (selected) {
-                                MaterialTheme.colorScheme.primary
+                                colors.titleAccent
                             } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                                colors.textSecondary
                             },
                         )
                     }
@@ -589,6 +939,7 @@ private fun AlbumPostCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val innerPadding = when (density) {
         AlbumGridDensity.COZY_2 -> spacing.md
         AlbumGridDensity.COZY_3 -> spacing.sm
@@ -607,26 +958,33 @@ private fun AlbumPostCard(
         MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
     }
     val coverAspectRatio = when (density) {
-        AlbumGridDensity.COZY_2 -> post.coverAspectRatio.coerceIn(0.92f, 1.08f)
-        AlbumGridDensity.COZY_3 -> post.coverAspectRatio.coerceIn(0.98f, 1.10f)
-        AlbumGridDensity.COZY_4 -> post.coverAspectRatio.coerceIn(1.02f, 1.14f)
+        AlbumGridDensity.COZY_2 -> 1.72f
+        AlbumGridDensity.COZY_3 -> 1.56f
+        AlbumGridDensity.COZY_4 -> 1.32f
+    }
+    val secondPreviewPost = remember(post.id, post.albumId, post.albumIds) {
+        FakeAlbumRepository.getPosts()
+            .firstOrNull { candidate ->
+                candidate.id != post.id &&
+                    (candidate.albumId == post.albumId || candidate.albumIds.any { it in post.albumIds })
+            }
     }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(radius.lg))
-            .clickable(onClick = onClick),
+            .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surface,
+        color = colors.raisedSurface.copy(alpha = 0.96f),
         border = BorderStroke(
             width = if (isRecentlyUpdated) 1.5.dp else 1.dp,
             color = if (isRecentlyUpdated) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+                colors.memoryAccent.copy(alpha = 0.28f)
             } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+                colors.dividerSoft.copy(alpha = 0.54f)
             },
         ),
+        shadowElevation = 1.dp,
     ) {
         Column {
             Box(
@@ -634,14 +992,33 @@ private fun AlbumPostCard(
                     .fillMaxWidth()
                     .aspectRatio(coverAspectRatio)
             ) {
-                AppContentMediaThumbnail(
-                    mediaSource = post.coverMediaSource,
-                    mediaType = post.coverMediaType,
-                    palette = post.coverPalette,
+                Row(
                     modifier = Modifier.fillMaxSize(),
-                    contentDescription = post.title,
-                    requestSize = 384,
-                )
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    AppContentMediaThumbnail(
+                        mediaSource = post.coverMediaSource,
+                        mediaType = post.coverMediaType,
+                        palette = post.coverPalette,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize(),
+                        contentDescription = post.title,
+                        requestSize = 384,
+                        showLoadingIndicator = false,
+                    )
+                    AppContentMediaThumbnail(
+                        mediaSource = secondPreviewPost?.coverMediaSource ?: post.coverMediaSource,
+                        mediaType = secondPreviewPost?.coverMediaType ?: post.coverMediaType,
+                        palette = secondPreviewPost?.coverPalette ?: post.coverPalette,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize(),
+                        contentDescription = secondPreviewPost?.title ?: post.title,
+                        requestSize = 384,
+                        showLoadingIndicator = false,
+                    )
+                }
 
                 if (post.coverMediaType == AppMediaType.VIDEO) {
                     VideoMediaMarker(
@@ -651,37 +1028,19 @@ private fun AlbumPostCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = innerPadding, end = innerPadding)
-                        .size(if (density == AlbumGridDensity.COZY_4) 32.dp else 52.dp)
-                        .clip(CircleShape)
-                        .background(post.coverPalette.accent.copy(alpha = 0.14f)),
-                )
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = innerPadding, bottom = innerPadding)
-                        .fillMaxWidth(if (density == AlbumGridDensity.COZY_4) 0.42f else 0.48f)
-                        .height(if (density == AlbumGridDensity.COZY_4) 18.dp else 26.dp)
-                        .clip(RoundedCornerShape(radius.capsule))
-                        .background(Color.White.copy(alpha = 0.11f)),
-                )
-
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = spacing.xs, bottom = spacing.xs),
                     shape = RoundedCornerShape(radius.capsule),
-                    color = Color.Black.copy(alpha = 0.20f),
+                    color = colors.raisedSurface.copy(alpha = 0.82f),
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
                 ) {
                     Text(
                         text = mediaCountLabel,
                         modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                         style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.92f),
+                        color = colors.titleAccent,
                     )
                 }
 
@@ -695,19 +1054,20 @@ private fun AlbumPostCard(
                                     innerPadding + 28.dp
                                 } else {
                                     innerPadding
-                                },
-                            ),
-                        shape = RoundedCornerShape(radius.capsule),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
-                    ) {
-                        Text(
-                            text = "刚更新",
-                            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
+                        },
+                    ),
+                    shape = RoundedCornerShape(radius.capsule),
+                    color = colors.memoryContainer.copy(alpha = 0.94f),
+                    border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.20f)),
+                ) {
+                    Text(
+                        text = "刚更新",
+                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onMemoryContainer,
+                    )
                 }
+            }
             }
 
             Column(
@@ -717,7 +1077,7 @@ private fun AlbumPostCard(
                 Text(
                     text = post.title,
                     style = titleStyle,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -725,17 +1085,28 @@ private fun AlbumPostCard(
                     Text(
                         text = summary,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                         maxLines = summaryMaxLines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(
-                    text = formatAlbumPostTime(post.postDisplayTimeMillis),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
-                    maxLines = 1,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = formatAlbumPostTime(post.postDisplayTimeMillis),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textSecondary.copy(alpha = 0.82f),
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = mediaCountLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.goldAccent,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -749,11 +1120,12 @@ fun PostDetailPlaceholderScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -770,17 +1142,17 @@ fun PostDetailPlaceholderScreen(
                     .clip(CircleShape)
                     .clickable(onClick = onBack),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surface,
+                color = colors.sectionBackground.copy(alpha = 0.80f),
                 border = BorderStroke(
                     width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                    color = colors.dividerSoft.copy(alpha = 0.72f),
                 ),
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = "<",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.titleAccent,
                     )
                 }
             }
@@ -788,17 +1160,17 @@ fun PostDetailPlaceholderScreen(
             Text(
                 text = "小相册详情",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
 
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(radius.xl),
-            color = MaterialTheme.colorScheme.surface,
+            color = colors.raisedSurface.copy(alpha = 0.96f),
             border = BorderStroke(
                 width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f),
+                color = colors.dividerSoft.copy(alpha = 0.62f),
             ),
         ) {
             Column(
@@ -823,12 +1195,12 @@ fun PostDetailPlaceholderScreen(
                     Text(
                         text = route.title,
                         style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.titleAccent,
                     )
                     Text(
                         text = route.summary,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
 
@@ -840,26 +1212,6 @@ fun PostDetailPlaceholderScreen(
                     DetailMetaCapsule(text = "${route.mediaCount} 张媒体")
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(radius.lg),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
-                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                    ) {
-                        Text(
-                            text = "小相册详情入口已接通",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            text = "后续这里会接入顶部信息区、照片流式媒体区和小相册评论入口。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
             }
         }
     }
@@ -869,40 +1221,39 @@ fun PostDetailPlaceholderScreen(
 private fun DetailMetaCapsule(text: String) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.capsule),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.60f),
+        color = colors.sectionBackground.copy(alpha = 0.70f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
 
 private fun cardSpacing(density: AlbumGridDensity) = when (density) {
-    AlbumGridDensity.COZY_2 -> 14.dp
-    AlbumGridDensity.COZY_3 -> 10.dp
-    AlbumGridDensity.COZY_4 -> 8.dp
+    AlbumGridDensity.COZY_2 -> 10.dp
+    AlbumGridDensity.COZY_3 -> 8.dp
+    AlbumGridDensity.COZY_4 -> 6.dp
 }
 
-private fun buildAlbumChipRows(albums: List<AlbumSummaryUiModel>): List<List<AlbumSummaryUiModel>> {
-    if (albums.isEmpty()) return emptyList()
-    if (albums.size == 1) return listOf(albums)
-
-    val firstRow = mutableListOf<AlbumSummaryUiModel>()
-    val secondRow = mutableListOf<AlbumSummaryUiModel>()
-    albums.forEachIndexed { index, album ->
-        if (index % 2 == 0) {
-            firstRow += album
-        } else {
-            secondRow += album
-        }
+private fun preferredVisibleAlbums(
+    albums: List<AlbumSummaryUiModel>,
+    selectedAlbumId: String,
+): List<AlbumSummaryUiModel> {
+    if (albums.size <= 3) return albums
+    val firstThree = albums.take(3)
+    val selectedAlbum = albums.firstOrNull { it.id == selectedAlbumId }
+    if (selectedAlbum == null || firstThree.any { it.id == selectedAlbumId }) {
+        return firstThree
     }
-    return listOf(firstRow, secondRow).filter { it.isNotEmpty() }
+    return listOf(selectedAlbum) + firstThree.take(2)
 }
 
 private fun formatAlbumPostTime(timeMillis: Long): String {
@@ -917,7 +1268,8 @@ private fun AlbumPageScreenPreview() {
             albums = FakeAlbumRepository.getAlbums(),
             posts = FakeAlbumRepository.getPosts(),
             onOpenPost = { },
-            onManageAlbums = { },
+            onCreateLargeAlbum = { },
+            onCreateSmallAlbum = { },
             modifier = Modifier.padding(16.dp),
         )
     }

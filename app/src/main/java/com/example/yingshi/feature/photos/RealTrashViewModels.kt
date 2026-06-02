@@ -53,7 +53,7 @@ class RealTrashListViewModel(
                     _uiState.value = RealTrashListUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                            "需要先完成登录，请检查连接设置后重试。"
                         },
                     )
                     return@launch
@@ -253,7 +253,7 @@ class RealTrashDetailViewModel(
                     _uiState.value = RealTrashDetailUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                            "需要先完成登录，请检查连接设置后重试。"
                         },
                     )
                     return@launch

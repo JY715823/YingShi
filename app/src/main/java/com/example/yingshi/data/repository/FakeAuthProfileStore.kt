@@ -11,9 +11,9 @@ private const val DEMO_A_ACCOUNT = "demo.a@yingshi.local"
 private const val DEMO_B_ACCOUNT = "demo.b@yingshi.local"
 private const val FAKE_LIBRARY_ID = "fake-library-001"
 private const val FAKE_LIBRARY_NAME = "\u6211\u4eec\u7684\u5c0f\u7a7a\u95f4"
-private const val FAKE_BIO_DEFAULT = "\u672c\u5730\u6f14\u793a\u8d44\u6599\uff0c\u4e24\u4e2a\u4eba\u9ed8\u8ba4\u5171\u7528\u540c\u4e00\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002"
-private const val FAKE_DISPLAY_NAME_DEFAULT = "\u672c\u5730\u5360\u4f4d\u8d26\u53f7"
-private const val FAKE_DYNAMIC_BIO = "FAKE \u6a21\u5f0f\u4e2a\u4eba\u8d44\u6599\u5360\u4f4d\u5185\u5bb9\u3002"
+private const val FAKE_BIO_DEFAULT = "\u4e24\u4e2a\u4eba\u9ed8\u8ba4\u5171\u7528\u540c\u4e00\u5ea7\u5c0f\u5c0f\u76f8\u518c\u3002"
+private const val FAKE_DISPLAY_NAME_DEFAULT = "\u6620\u4e16\u7528\u6237"
+private const val FAKE_DYNAMIC_BIO = "\u4e00\u8d77\u628a\u65e5\u5e38\u6162\u6162\u7559\u4e0b\u6765\u3002"
 
 private val profilesByAccount: MutableMap<String, RemoteCurrentUser> = linkedMapOf(
     DEMO_A_ACCOUNT to RemoteCurrentUser(

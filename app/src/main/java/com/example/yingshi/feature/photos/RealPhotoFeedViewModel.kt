@@ -51,7 +51,7 @@ class RealPhotoFeedViewModel(
                     _uiState.value = RealPhotoFeedUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                            "需要先完成登录，请检查连接设置后重试。"
                         },
                     )
                     return@launch
@@ -89,7 +89,7 @@ class RealPhotoFeedViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = result.toBackendUiMessage("读取后端照片流失败。"),
+                            errorMessage = result.toBackendUiMessage("读取照片流失败。"),
                         )
                     }
                 }
@@ -196,7 +196,7 @@ class RealPhotoFeedViewModel(
         if (normalizedIds.isEmpty()) return
         if (!AuthSessionManager.isLoggedIn) {
             _uiState.update {
-                it.copy(errorMessage = "登录状态缺失，请先到联调诊断页重新登录。")
+                it.copy(errorMessage = "登录状态缺失，请重新登录。")
             }
             return
         }
@@ -235,7 +235,7 @@ class RealPhotoFeedViewModel(
                     },
                     statusMessage = when {
                         deletedIds.isNotEmpty() && firstFailure == null ->
-                            "已删除 ${deletedIds.size} 项媒体，并写入后端回收站。"
+                            "已删除 ${deletedIds.size} 项媒体，并写入回收站。"
                         deletedIds.isNotEmpty() ->
                             "已删除 ${deletedIds.size} 项媒体，但仍有部分失败。"
                         else -> null

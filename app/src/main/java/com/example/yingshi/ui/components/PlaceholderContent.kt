@@ -109,8 +109,8 @@ private fun PlaceholderCardPreview() {
         Column(modifier = Modifier.padding(20.dp)) {
             PlaceholderCard(
                 block = PlaceholderBlock(
-                    title = "页面骨架占位",
-                    summary = "用于 Stage 1 统一视觉基线和内容卡片层级。",
+                    title = "映世页面",
+                    summary = "记录照片、相册和两个人的日常。",
                 ),
             )
         }

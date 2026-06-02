@@ -40,9 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
-import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
@@ -83,109 +81,50 @@ fun BackendDiagnosticsScreen(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         BackendDiagnosticsTopBar(
-            source = route.source,
             onBack = onBack,
         )
 
         DiagnosticsSection(
-            title = "后端地址",
-            subtitle = "保存后会立即重建连接，并自动重试一次登录。",
+            title = "服务地址",
+            subtitle = "保存后会重新连接当前账号。",
         ) {
             OutlinedTextField(
                 value = baseUrlInput,
                 onValueChange = { baseUrlInput = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Base URL") },
+                label = { Text("服务地址") },
                 singleLine = true,
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                FilledTonalButton(
-                    onClick = {
-                        scope.launch {
-                            isRunning = true
-                            BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                            val outcome = BackendAutoLoginManager.loginDefault(
-                                force = true,
-                                reason = "save_base_url",
-                            )
-                            lastResult = outcome.message
-                            isRunning = false
-                        }
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("保存并重登")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        baseUrlInput = RemoteConfig.DEBUG_EMULATOR_BASE_URL
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("模拟器")
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        baseUrlInput = RemoteConfig.DEBUG_DEVICE_LOOPBACK_BASE_URL
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("本机")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        baseUrlInput = RemoteConfig.HTTPS_EXAMPLE_BASE_URL
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("HTTPS示例")
-                }
-            }
-
-            ValueCard(
-                title = "当前生效地址",
-                value = RemoteServiceFactory.currentBaseUrl(),
-                note = "这是当前真正发请求用的地址，不会再挤在一行里。",
-            )
-        }
-
-        DiagnosticsSection(
-            title = "数据模式",
-            subtitle = "离线模式只走本地假数据，真实模式才会访问后端。",
-        ) {
-            ModeRow(
-                selectedMode = settings.repositoryMode,
-                onSelected = { mode ->
-                    BackendDebugConfig.updateRepositoryMode(mode)
-                    lastResult = "数据模式已切换为 ${mode.displayLabel}"
+            FilledTonalButton(
+                onClick = {
+                    scope.launch {
+                        isRunning = true
+                        BackendDebugConfig.updateBaseUrl(baseUrlInput)
+                        val outcome = BackendAutoLoginManager.loginDefault(
+                            force = true,
+                            reason = "save_base_url",
+                        )
+                        lastResult = outcome.message
+                        isRunning = false
+                    }
                 },
-            )
+                enabled = !isBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("保存并连接")
+            }
+
             ValueCard(
-                title = "当前模式",
-                value = settings.repositoryMode.displayLabel,
-                note = "切到真实后，页面会继续保留刚才的后端地址。",
+                title = "当前服务地址",
+                value = RemoteServiceFactory.currentBaseUrl(),
+                note = "用于同步照片、通知和生活记录。",
             )
         }
 
         DiagnosticsSection(
             title = "登录状态",
-            subtitle = "保存地址或网络恢复后，应用会自动再试一次登录。",
+            subtitle = "网络恢复后，应用会自动再试一次登录。",
         ) {
             ValueCard(
                 title = "状态",
@@ -195,7 +134,7 @@ fun BackendDiagnosticsScreen(
             ValueCard(
                 title = "最近触发",
                 value = autoLoginState.lastReason.ifBlank { "未记录" },
-                note = "应用启动和网络恢复都会自动触发一次重试。",
+                note = "应用启动和网络恢复时会自动重试。",
             )
 
             Row(
@@ -217,63 +156,34 @@ fun BackendDiagnosticsScreen(
                     enabled = !isBusy,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("立即重试")
+                    Text("重新连接")
                 }
 
                 OutlinedButton(
                     onClick = {
                         AuthSessionManager.clearTokens()
-                        BackendAutoLoginManager.markLoggedOut("已清除登录缓存")
-                        lastResult = "已清除登录缓存。"
+                        BackendAutoLoginManager.markLoggedOut("已退出当前连接")
+                        lastResult = "已退出当前连接。"
                     },
                     enabled = !isBusy,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("清除登录")
+                    Text("退出连接")
                 }
             }
         }
 
         DiagnosticsSection(
-            title = "连通性",
-            subtitle = "只保留一个最小 health 检查，不再放那些没用的测试入口。",
-        ) {
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        isRunning = true
-                        lastResult = runCatching {
-                            healthSummary()
-                        }.fold(
-                            onSuccess = { "健康检查通过：$it" },
-                            onFailure = { "健康检查失败：${it.localizedMessage ?: it::class.java.simpleName}" },
-                        )
-                        isRunning = false
-                    }
-                },
-                enabled = !isBusy,
-            ) {
-                Text("检查健康")
-            }
-        }
-
-        DiagnosticsSection(
-            title = "最近结果",
-            subtitle = "这里只显示最后一次动作的结果。",
+            title = "操作结果",
+            subtitle = "这里只显示最后一次操作的结果。",
         ) {
             ResultBlock(text = lastResult)
         }
     }
 }
 
-private suspend fun healthSummary(): String {
-    val health = RemoteServiceFactory.healthApi.getHealth().data
-    return "health=${health.status}, app=${health.application}"
-}
-
 @Composable
 private fun BackendDiagnosticsTopBar(
-    source: String,
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -286,14 +196,9 @@ private fun BackendDiagnosticsTopBar(
         CircleIconButton(text = "‹", onClick = onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "后端联调",
+                text = "连接设置",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = source.toBackendDiagnosticsSourceLabel(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -373,55 +278,6 @@ private fun ValueCard(
 }
 
 @Composable
-private fun ModeRow(
-    selectedMode: RepositoryMode,
-    onSelected: (RepositoryMode) -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-    ) {
-        RepositoryMode.entries.forEach { mode ->
-            val selected = mode == selectedMode
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(radius.lg))
-                    .clickable { onSelected(mode) },
-                shape = RoundedCornerShape(radius.lg),
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
-                },
-                border = BorderStroke(
-                    1.dp,
-                    if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-                    } else {
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-                    },
-                ),
-            ) {
-                Box(
-                    modifier = Modifier.padding(vertical = spacing.sm),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = mode.displayLabel,
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun ResultBlock(text: String) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -465,12 +321,6 @@ private fun CircleIconButton(
     }
 }
 
-private val RepositoryMode.displayLabel: String
-    get() = when (this) {
-        RepositoryMode.FAKE -> "离线"
-        RepositoryMode.REAL -> "真实"
-    }
-
 private val com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.displayLabel: String
     get() = when (this) {
         com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Idle -> "未登录"
@@ -478,17 +328,6 @@ private val com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.displayLa
         com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Success -> "已登录"
         com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Failed -> "登录失败"
     }
-
-private fun String.toBackendDiagnosticsSourceLabel(): String {
-    return when (this) {
-        "notification-center" -> "来源：通知中心"
-        "notification-center-topbar" -> "来源：通知中心顶部"
-        "photos-home" -> "来源：照片页"
-        "my-page" -> "来源：我的页"
-        "settings" -> "来源：设置"
-        else -> "来源：$this"
-    }
-}
 
 @Preview(showBackground = true)
 @Composable

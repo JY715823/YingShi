@@ -29,6 +29,7 @@ fun SystemMediaUploadTaskPanel(
 ) {
     if (tasks.isEmpty()) return
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -46,6 +47,18 @@ fun SystemMediaUploadTaskPanel(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             tasks.takeLast(3).reversed().forEach { task ->
+                val statusColor = when (task.state) {
+                    UploadState.WAITING -> MaterialTheme.colorScheme.onSurfaceVariant
+                    UploadState.UPLOADING -> colors.memoryAccent
+                    UploadState.SUCCESS -> colors.memoryAccent
+                    UploadState.FAILURE -> MaterialTheme.colorScheme.error
+                    UploadState.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val trackColor = if (task.state == UploadState.FAILURE) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.16f)
+                } else {
+                    colors.memoryContainer.copy(alpha = 0.42f)
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -63,7 +76,7 @@ fun SystemMediaUploadTaskPanel(
                             Text(
                                 text = taskStateLabel(task),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = statusColor,
                             )
                         }
                         Row {
@@ -86,6 +99,8 @@ fun SystemMediaUploadTaskPanel(
                     LinearProgressIndicator(
                         progress = { task.progressPercent.coerceIn(0, 100) / 100f },
                         modifier = Modifier.fillMaxWidth(),
+                        color = statusColor,
+                        trackColor = trackColor,
                     )
                 }
             }

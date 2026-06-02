@@ -2,4 +2,220 @@
 <resources>
 
     <style name="Theme.YingShi" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="LifeConsoleWidgetCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:layout_rowWeight">1</item>
+        <item name="android:layout_margin">4dp</item>
+        <item name="android:background">#DFF4FC</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#183B4B</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFrame">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:layout_rowWeight">1</item>
+        <item name="android:layout_margin">4dp</item>
+        <item name="android:background">#FCFEFD</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">6dp</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFrameTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">18dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">#183B4B</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifeConsoleWidgetPreview">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginTop">0dp</item>
+        <item name="android:background">#EAF8FE</item>
+    </style>
+
+    <style name="LifeConsoleWidgetImage">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:scaleType">centerCrop</item>
+    </style>
+
+    <style name="LifeConsoleWidgetEmpty">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#5F7D89</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFrameActions">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">28dp</item>
+        <item name="android:layout_marginTop">5dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="LifeConsoleWidgetIconButton">
+        <item name="android:layout_width">26dp</item>
+        <item name="android:layout_height">26dp</item>
+        <item name="android:layout_marginStart">3dp</item>
+        <item name="android:background">#DFF4FC</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#176D90</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifeConsoleWidgetIconButtonDanger" parent="LifeConsoleWidgetIconButton">
+        <item name="android:textColor">#8A3A32</item>
+    </style>
+
+    <style name="LifeConsoleWidgetMeta">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">26dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">#5F7D89</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFooterButton">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:layout_marginStart">5dp</item>
+        <item name="android:background">#DFF4FC</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#176D90</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFooterButtonWide" parent="LifeConsoleWidgetFooterButton">
+        <item name="android:layout_width">58dp</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="LifeConsoleWidgetCompactFrame">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/widget_frame_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">7dp</item>
+    </style>
+
+    <style name="LifeConsoleWidgetMealFrame">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/widget_frame_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">6dp</item>
+    </style>
+
+    <style name="LifePeopleWidgetFrame">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/widget_frame_card</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">8dp</item>
+    </style>
+
+    <style name="LifePeopleWidgetFrameTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">22dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">#183B4B</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifePeopleWidgetPreview">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginTop">0dp</item>
+        <item name="android:background">@drawable/widget_preview_panel</item>
+    </style>
+
+    <style name="LifeConsoleWidgetOpenZone">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:background">#00000000</item>
+        <item name="android:textColor">#00000000</item>
+        <item name="android:textSize">1sp</item>
+    </style>
+
+    <style name="LifeConsoleWidgetEdgeButton">
+        <item name="android:layout_width">72dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:background">#00000000</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#F8FDFF</item>
+        <item name="android:textSize">32sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:shadowColor">#80000000</item>
+        <item name="android:shadowDx">0</item>
+        <item name="android:shadowDy">1</item>
+        <item name="android:shadowRadius">3</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFloatingMeta">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:layout_margin">7dp</item>
+        <item name="android:background">@drawable/widget_overlay_chip</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minWidth">38dp</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFloatingButton">
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:layout_margin">8dp</item>
+        <item name="android:background">@drawable/widget_control_dark</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="LifePeopleWidgetUploadButton" parent="LifeConsoleWidgetFloatingButton">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:textSize">26sp</item>
+    </style>
+
+    <style name="LifeConsoleWidgetFloatingDanger">
+        <item name="android:layout_width">38dp</item>
+        <item name="android:layout_height">34dp</item>
+        <item name="android:layout_margin">8dp</item>
+        <item name="android:background">@drawable/widget_danger_chip</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#8A2E24</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 </resources>

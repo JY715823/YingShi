@@ -165,7 +165,7 @@ fun TrashDetailScreen(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。REAL 模式下，媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
             confirmButton = {
@@ -240,7 +240,7 @@ private fun TrashMediaViewerDetailPagerScreen(
             val pageMedia = viewerEntries[page].mediaSnapshot
             if (pageMedia == null) {
                 TrashDetailEmptyCard(
-                    text = "当前媒体快照不存在，暂时无法展示删除态详情。",
+                    text = "当前媒体内容已不可查看。",
                     modifier = Modifier
                         .wrapContentSize(Alignment.Center)
                         .padding(YingShiThemeTokens.spacing.lg),
@@ -414,7 +414,7 @@ private fun TrashMediaViewerDetailScreen(
     ) {
         if (media == null) {
             TrashDetailEmptyCard(
-                text = "当前媒体快照不存在，暂时无法展示删除态详情。",
+                text = "当前媒体内容已不可查看。",
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(YingShiThemeTokens.spacing.lg),
@@ -531,7 +531,7 @@ private fun TrashMediaViewerDetailScreen(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。REAL 模式下，媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
             confirmButton = {
@@ -679,7 +679,7 @@ private fun TrashPostViewerDetailScreen(
             )
 
             if (snapshot == null) {
-                TrashDetailEmptyCard(text = "当前小相册快照不存在，暂时无法展示删除态详情。")
+                TrashDetailEmptyCard(text = "当前小相册内容已不可查看。")
             } else {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -752,7 +752,7 @@ private fun TrashPostViewerDetailScreen(
             onDismissRequest = { onShowPermanentDeleteConfirmChange(false) },
             title = { Text("永久删除该回收站项目？") },
             text = {
-                Text("确认后会删除回收站记录。REAL 模式下，媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。")
+                Text("确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。")
             },
             confirmButton = {
                 TextButton(
@@ -1065,7 +1065,7 @@ private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
 private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
     val snapshot = entry.postSnapshot
     if (snapshot == null) {
-        TrashDetailEmptyCard(text = "当前小相册快照不存在，暂时无法展示删除态详情。")
+        TrashDetailEmptyCard(text = "当前小相册内容已不可查看。")
         return
     }
 
@@ -1168,7 +1168,7 @@ private fun TrashDeletedMediaContent(
 ) {
     val media = entry.mediaSnapshot
     if (media == null) {
-        TrashDetailEmptyCard(text = "当前媒体快照不存在，暂时无法展示删除态详情。")
+        TrashDetailEmptyCard(text = "当前媒体内容已不可查看。")
         return
     }
 

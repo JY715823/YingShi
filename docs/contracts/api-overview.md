@@ -6,7 +6,7 @@ Updated: 2026-05-25
 
 - this document describes the Android-facing backend contract that is already usable in `REAL` mode
 - auth, photos, posts, comments, notifications, uploads, and trash are all connected enough for daily Android integration
-- the remaining gaps are now mostly ledger sequencing and later product redesign decisions, not missing core backend APIs
+- the remaining gaps are now mostly large offline sync polish, cache hydration details, and later product redesign decisions, not missing core backend APIs
 
 ## Common Rules
 
@@ -87,6 +87,10 @@ Authorization: Bearer <accessToken>
 - `GET /api/uploads/{uploadId}`
 - `POST /api/uploads/{uploadId}/confirm`
 - `POST /api/uploads/{uploadId}/cancel`
+- `GET /api/ledger/snapshot`
+- `PUT /api/ledger/snapshot`
+- `GET /api/chat/imported/snapshot`
+- `PUT /api/chat/imported/snapshot`
 
 ## Android Real Repository Coverage
 
@@ -98,8 +102,10 @@ Authorization: Bearer <accessToken>
 - `NotificationRepository`
 - `TrashRepository`
 - `UploadRepository`
+- `LedgerRepository` via snapshot sync bridge
+- `ImportedChatRepository` via snapshot sync bridge
 
 ## Current Gaps
 
-- ledger is intentionally still local-only because the user plans to redesign the life/ledger UI and may change the data model
+- ledger snapshot sync is now backed by `/api/ledger/snapshot`, and imported chat snapshot sync is backed by `/api/chat/imported/snapshot`
 - direct object-storage access, transcoding/CDN polish, and large offline sync are outside the current stage

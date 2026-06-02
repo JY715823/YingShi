@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
 
@@ -73,10 +74,10 @@ fun RealPhotoFeedPage(
         val selectedCount = selectionState.selectedCount
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除 App 媒体到回收站？") },
+            title = { Text("删除媒体到回收站？") },
             text = {
                 Text(
-                    "将从照片流删除已选 $selectedCount 项 App 媒体，并同步影响它们在相关小相册里的引用。REAL 模式会调用后端媒体删除接口，成功后写入后端回收站；失败项会保留并显示原因。",
+                    "将从照片流删除已选 $selectedCount 项媒体，并同步影响相关小相册里的引用。成功项会进入回收站，失败项会保留并显示原因。",
                 )
             },
             confirmButton = {
@@ -87,7 +88,7 @@ fun RealPhotoFeedPage(
                         onSelectionStateChange(selectionState.clear())
                     },
                 ) {
-                    Text("删除到 App 回收站")
+                    Text("删除到回收站")
                 }
             },
             dismissButton = {
@@ -166,8 +167,8 @@ fun RealPhotoFeedPage(
         when {
             uiState.tokenMissing -> {
                 BackendNoticeCard(
-                    title = "REAL 模式需要登录",
-                    text = uiState.errorMessage ?: "请先到后端联调诊断页完成登录。",
+                    title = "需要连接服务",
+                    text = uiState.errorMessage ?: "请先在连接设置完成登录。",
                     actionLabel = "重试",
                     onAction = viewModel::refresh,
                     modifier = Modifier.align(Alignment.Center),
@@ -176,7 +177,7 @@ fun RealPhotoFeedPage(
 
             uiState.isLoading && uiState.feedItems.isEmpty() -> {
                 BackendLoadingCard(
-                    text = "正在读取后端照片流…",
+                    text = "正在读取照片流…",
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
@@ -184,7 +185,7 @@ fun RealPhotoFeedPage(
             uiState.errorMessage != null && uiState.feedItems.isEmpty() -> {
                 BackendNoticeCard(
                     title = "读取照片流失败",
-                    text = uiState.errorMessage ?: "暂时无法读取后端媒体流。",
+                    text = uiState.errorMessage ?: "当前无法读取照片流。",
                     actionLabel = "重试",
                     onAction = viewModel::refresh,
                     modifier = Modifier.align(Alignment.Center),
@@ -193,8 +194,8 @@ fun RealPhotoFeedPage(
 
             uiState.feedItems.isEmpty() -> {
                 BackendNoticeCard(
-                    title = "还没有后端媒体",
-                    text = "当前空间的后端媒体流为空，可以先从系统媒体导入几张。",
+                    title = "还没有媒体",
+                    text = "当前空间的照片流为空，可以先从系统媒体导入几张。",
                     actionLabel = "刷新",
                     onAction = viewModel::refresh,
                     modifier = Modifier.align(Alignment.Center),
@@ -294,14 +295,19 @@ private fun RealFeedSelectionBarV2(
     onAddToPost: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val chipShape = androidx.compose.foundation.shape.RoundedCornerShape(radius.capsule)
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.md),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        shadowElevation = 2.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -309,27 +315,75 @@ private fun RealFeedSelectionBarV2(
                 text = if (selectedCount > 0) "已选中 $selectedCount 项" else "请选择媒体",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textPrimary,
             )
-            TextButton(
+            RealFeedSelectionChip(
+                text = "新建",
                 enabled = !isDeleting,
                 onClick = onCreatePost,
-            ) {
-                Text("新建小相册")
-            }
-            TextButton(
+                shape = chipShape,
+            )
+            RealFeedSelectionChip(
+                text = "加入",
                 enabled = !isDeleting,
                 onClick = onAddToPost,
-            ) {
-                Text("加入已有小相册")
-            }
-            TextButton(
+                shape = chipShape,
+            )
+            RealFeedSelectionChip(
+                text = if (isDeleting) "删除中…" else "回收站",
                 enabled = !isDeleting,
                 onClick = onDelete,
-            ) {
-                Text(if (isDeleting) "删除中…" else "删除到回收站")
-            }
+                shape = chipShape,
+                destructive = true,
+            )
         }
+    }
+}
+
+@Composable
+private fun RealFeedSelectionChip(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape,
+    destructive: Boolean = false,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = if (enabled) {
+            if (destructive) {
+                colors.memoryContainer.copy(alpha = 0.72f)
+            } else {
+                colors.primaryContainer.copy(alpha = 0.74f)
+            }
+        } else {
+            colors.sectionBackground.copy(alpha = 0.64f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (destructive) {
+                colors.memoryAccent.copy(alpha = 0.18f)
+            } else {
+                colors.glassStroke.copy(alpha = 0.70f)
+            },
+        ),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            ),
+            color = if (destructive) MaterialTheme.colorScheme.error else colors.titleAccent,
+        )
     }
 }
 

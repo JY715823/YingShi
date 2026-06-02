@@ -91,6 +91,7 @@ enum class LedgerRoute {
 @Composable
 fun LedgerScreen(
     modifier: Modifier = Modifier,
+    openHomeNonce: Int = 0,
     openAddNonce: Int = 0,
     onCloseLedger: () -> Unit = {},
     viewModel: LedgerViewModel = viewModel(
@@ -103,13 +104,21 @@ fun LedgerScreen(
     val context = LocalContext.current
     var route by rememberSaveable { mutableStateOf(LedgerRoute.HOME.name) }
     var editingTransactionId by rememberSaveable { mutableStateOf<String?>(null) }
-    var lastOpenAddNonce by rememberSaveable { mutableStateOf(openAddNonce) }
+    var lastOpenHomeNonce by rememberSaveable { mutableStateOf(0) }
+    var lastOpenAddNonce by rememberSaveable { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         viewModel.handleLedgerEntry()
     }
+    LaunchedEffect(openHomeNonce) {
+        if (openHomeNonce > 0 && openHomeNonce != lastOpenHomeNonce) {
+            lastOpenHomeNonce = openHomeNonce
+            editingTransactionId = null
+            route = LedgerRoute.HOME.name
+        }
+    }
     LaunchedEffect(openAddNonce) {
-        if (openAddNonce != lastOpenAddNonce) {
+        if (shouldOpenLedgerAdd(openAddNonce, lastOpenAddNonce)) {
             lastOpenAddNonce = openAddNonce
             editingTransactionId = null
             route = LedgerRoute.ADD.name
@@ -314,6 +323,10 @@ fun LedgerScreen(
             }
         }
     }
+}
+
+internal fun shouldOpenLedgerAdd(openAddNonce: Int, lastOpenAddNonce: Int): Boolean {
+    return openAddNonce > 0 && openAddNonce != lastOpenAddNonce
 }
 
 @Composable

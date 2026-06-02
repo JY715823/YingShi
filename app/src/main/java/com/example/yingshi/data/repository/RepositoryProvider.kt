@@ -59,4 +59,10 @@ object RepositoryProvider {
             RepositoryMode.FAKE -> FakeAuthRepositoryShell()
             RepositoryMode.REAL -> RealAuthRepository(RemoteServiceFactory.authApi)
         }
+
+    val lifeConsoleRepository: LifeConsoleRepository
+        get() = when (currentMode) {
+            RepositoryMode.FAKE -> FakeLifeConsoleRepositoryShell()
+            RepositoryMode.REAL -> RealLifeConsoleRepository(RemoteServiceFactory.lifeConsoleApi)
+        }
 }

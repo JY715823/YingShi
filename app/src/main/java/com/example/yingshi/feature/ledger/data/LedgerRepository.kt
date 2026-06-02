@@ -11,7 +11,11 @@ import java.util.UUID
 
 class LedgerRepository(
     private val dao: LedgerDao,
+    private val syncBridge: LedgerSyncBridge = NoOpLedgerSyncBridge,
 ) {
+    val shouldSeedDemoData: Boolean
+        get() = syncBridge.shouldSeedDemoData
+
     suspend fun ensureSeedData(nowMillis: Long = System.currentTimeMillis()) {
         LedgerSeedData.defaultBooks(nowMillis).forEach { book ->
             if (dao.getBook(book.id) == null) {
@@ -34,6 +38,28 @@ class LedgerRepository(
         if (dao.countTransactionsByBook(LedgerSeedData.DefaultBookId) == 0) {
             seedDemoTransactions(nowMillis)
         }
+    }
+
+    suspend fun hydrateFromBackendIfNeeded() {
+        syncBridge.hydrate(this)
+    }
+
+    suspend fun exportLocalSnapshot(): LedgerLocalSnapshot {
+        return LedgerLocalSnapshot(
+            books = dao.getAllBooks(),
+            categories = dao.getAllCategories(),
+            accounts = dao.getAllAccounts(),
+            transactions = dao.getAllTransactions(),
+            budgets = dao.getAllBudgets(),
+            categoryBudgets = dao.getAllCategoryBudgets(),
+            deletedItems = dao.getAllDeletedItems(),
+            recurringRules = dao.getAllRecurringRules(),
+            recurringOccurrences = dao.getAllRecurringOccurrences(),
+        )
+    }
+
+    suspend fun replaceLocalSnapshot(snapshot: LedgerLocalSnapshot) {
+        dao.replaceAllData(snapshot)
     }
 
     fun observeBooks(): Flow<List<LedgerBook>> = dao.observeBooks().map { rows ->
@@ -202,6 +228,7 @@ class LedgerRepository(
             )
             dao.insertCategories(LedgerSeedData.seedCategoriesForTemplate(bookId, template, now))
             dao.insertAccounts(LedgerSeedData.seedAccountsForTemplate(bookId, template, now))
+            syncBridge.afterMutation(this)
             bookId
         } else {
             dao.updateBook(
@@ -211,12 +238,14 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
+            syncBridge.afterMutation(this)
             existing.id
         }
     }
 
     suspend fun setBookArchived(bookId: String, archived: Boolean) {
         dao.setBookArchived(bookId, archived, System.currentTimeMillis())
+        syncBridge.afterMutation(this)
     }
 
     suspend fun reorderCategories(bookId: String, type: LedgerCategoryType, orderedIds: List<String>) {
@@ -235,6 +264,7 @@ class LedgerRepository(
                 )
             }
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun reorderAccounts(bookId: String, orderedIds: List<String>) {
@@ -292,6 +322,7 @@ class LedgerRepository(
         } else {
             dao.updateRecurringRule(entity)
         }
+        syncBridge.afterMutation(this)
         return entity.id
     }
 
@@ -303,17 +334,20 @@ class LedgerRepository(
                 updatedAtMillis = System.currentTimeMillis(),
             ),
         )
+        syncBridge.afterMutation(this)
     }
 
     suspend fun deleteRecurringRule(ruleId: String) {
         dao.deleteRecurringOccurrencesByRuleId(ruleId)
         dao.deleteRecurringRule(ruleId)
+        syncBridge.afterMutation(this)
     }
 
     suspend fun materializeDueRecurringTransactions(nowMillis: Long = System.currentTimeMillis()) {
         val dueRules = dao.getDueRecurringRules(nowMillis)
         dueRules.forEach { rule ->
             var cursor = rule
+            var changed = false
             while (cursor.enabled &&
                 cursor.nextOccurrenceAtMillis <= nowMillis &&
                 (cursor.endAtMillis == null || cursor.nextOccurrenceAtMillis <= cursor.endAtMillis)
@@ -331,6 +365,7 @@ class LedgerRepository(
                 val occurrenceExists = dao.getRecurringOccurrence(cursor.id, occurrenceAtMillis) != null
                 if (!occurrenceExists) {
                     dao.insertRecurringOccurrence(occurrence)
+                    changed = true
                 }
                 val transactionExists = dao.getTransaction(transactionId) != null
                 if (!transactionExists) {
@@ -350,6 +385,7 @@ class LedgerRepository(
                             updatedAtMillis = nowMillis,
                         ),
                     )
+                    changed = true
                 }
                 val next = LedgerRecurringScheduler.nextOccurrenceAfter(
                     occurrenceMillis = occurrenceAtMillis,
@@ -363,6 +399,10 @@ class LedgerRepository(
             }
             if (cursor.nextOccurrenceAtMillis != rule.nextOccurrenceAtMillis) {
                 dao.updateRecurringRule(cursor)
+                changed = true
+            }
+            if (changed) {
+                syncBridge.afterMutation(this)
             }
         }
     }
@@ -388,6 +428,7 @@ class LedgerRepository(
         } else {
             dao.updateTransaction(entity)
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun saveCategory(draft: LedgerCategoryDraft) {
@@ -415,10 +456,12 @@ class LedgerRepository(
         } else {
             dao.updateCategory(entity)
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun setCategoryHidden(categoryId: String, hidden: Boolean) {
         dao.setCategoryHidden(categoryId, hidden, System.currentTimeMillis())
+        syncBridge.afterMutation(this)
     }
 
     suspend fun saveAccount(draft: LedgerAccountDraft) {
@@ -457,10 +500,12 @@ class LedgerRepository(
         } else {
             dao.updateAccount(entity)
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun setAccountHidden(accountId: String, hidden: Boolean) {
         dao.setAccountHidden(accountId, hidden, System.currentTimeMillis())
+        syncBridge.afterMutation(this)
     }
 
     suspend fun defaultBookId(): String =
@@ -543,14 +588,17 @@ class LedgerRepository(
             deletedItemId = UUID.randomUUID().toString(),
             title = title,
         )
+        syncBridge.afterMutation(this)
     }
 
     suspend fun restoreTransaction(transactionId: String) {
         dao.restoreTransaction(transactionId, System.currentTimeMillis())
+        syncBridge.afterMutation(this)
     }
 
     suspend fun permanentlyDeleteTransaction(transactionId: String) {
         dao.permanentlyDeleteDeletedItem(transactionId)
+        syncBridge.afterMutation(this)
     }
 
     suspend fun deleteTransactions(transactionIds: List<String>) {
@@ -567,6 +615,7 @@ class LedgerRepository(
                 ),
             )
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun batchUpdateAccount(transactionIds: List<String>, accountId: String) {
@@ -580,6 +629,7 @@ class LedgerRepository(
                 ),
             )
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun batchUpdateTransferAccount(
@@ -598,6 +648,7 @@ class LedgerRepository(
                 ),
             )
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun upsertBudget(
@@ -630,6 +681,7 @@ class LedgerRepository(
                 ),
             )
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun upsertCategoryBudget(
@@ -669,15 +721,18 @@ class LedgerRepository(
                 ),
             )
         }
+        syncBridge.afterMutation(this)
     }
 
     suspend fun clearBudget(budgetId: String) {
         dao.deleteCategoryBudgetsByBudgetId(budgetId)
         dao.deleteBudget(budgetId)
+        syncBridge.afterMutation(this)
     }
 
     suspend fun clearCategoryBudget(budgetId: String, categoryId: String) {
         dao.deleteCategoryBudgetByCategory(budgetId, categoryId)
+        syncBridge.afterMutation(this)
     }
 
     private fun recurringOccurrenceId(ruleId: String, occurrenceAtMillis: Long): String =

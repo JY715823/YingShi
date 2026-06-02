@@ -16,6 +16,8 @@ Updated: 2026-05-29
   - [album-prd-v2.md](E:/Study/App/YingShi/docs/product/album-prd-v2.md)
 - 颜色系统文档：
   - [light-color-system-v1.md](E:/Study/App/YingShi/docs/design/light-color-system-v1.md)
+- 可调颜色系统工作台：
+  - [color-system-lab.html](E:/Study/App/YingShi/docs/design/ui/color-system-lab.html)
 - 当前真实前端能力说明：
   - [implemented-features.md](E:/Study/App/YingShi/docs/implementation/implemented-features.md)
 
@@ -34,7 +36,7 @@ Updated: 2026-05-29
 - 目标平台：中文 Android 移动端 app
 - 原型精度：中高保真，稍微精美一点，不做低保真线框
 - 设计工具默认对接：`即时设计`
-- 本轮只做文档，不改 Android 代码，不改现有 token 实现
+- 本轮颜色系统需同步文档、调色台和 Android Compose token
 - 页面原型必须贴当前 app 的真实功能范围，不能擅自扩成功能大改版
 - 登录页允许比当前实现更产品化，但不能反向定义新业务逻辑
 - 首版对外产品文案优先使用 `相册 / 小相册`，不走社交流“帖子流”语言
@@ -69,35 +71,40 @@ Updated: 2026-05-29
 本轮颜色方向已经收成一套首版可用系统，不再只停在模糊风格锚点：
 
 - 主文档见：[03-color-system-v1.1.md](E:/Study/App/YingShi/docs/design/ui/03-color-system-v1.1.md)
-- 首版主方案固定为：`奶雾天青 · 目录感增强版`
-- 允许受控发散，但不能离开这套浅蓝壳层 + 深蓝结构 + 浅绿辅助 + 少量金色点缀的系统骨架
+- 首版主方案固定为：`珍珠玉蓝 · 微玻璃流光版`
+- 允许受控发散，但不能离开这套珍珠浅蓝页面底 + 石墨结构 + 浅玉绿辅助 + 低频旧金点缀的系统骨架
 
 ### 4.1 主方案
 
 主方案继承 [light-color-system-v1.md](E:/Study/App/YingShi/docs/design/light-color-system-v1.md) 并在 [03-color-system-v1.1.md](E:/Study/App/YingShi/docs/design/ui/03-color-system-v1.1.md) 里进一步收口：
 
-- 浅蓝整页背景
-- 暖白卡片
-- 深蓝结构与主按钮
-- 浅绿辅助分区
-- 少量香槟金点缀
-- Viewer 使用雾夜蓝深色沉浸
+- 珍珠浅蓝整页背景
+- 珍珠白卡片
+- 石墨结构文字与图标
+- 浅蓝光面主按钮，使用石墨字
+- 浅玉绿辅助分区
+- 少量旧金点缀
+- Viewer 使用独立深色沉浸
 
 ### 4.2 两条可控发散
 
-本轮允许两条扩展，但都不能离开 `奶雾天青` 的品牌骨架：
+本轮允许三条扩展，但都不能离开 `珍珠玉蓝` 的品牌骨架：
 
-- `奶雾天青 · 显色层次版`
+- `月白冰蓝`
   - 首轮优先试图方向
-  - 蓝绿分区更可见
-  - 卡片层级更清楚
-  - 金色点缀稍微更容易被注意到
-  - 目标是让页面一眼看出有完整设计系统，但不能花
+  - 页面更轻、更亮、更透
+  - 浅蓝光面存在感更柔和
+  - 目标是测试亮度上限，同时避免结构发飘
 
-- `奶雾天青 · 轻透清亮版`
-  - 更亮、更轻、更透
-  - 更偏空气感和清透感
-  - 目标是测试页面亮度上限，同时避免结构发飘
+- `浅蓝石墨`
+  - 石墨结构更明确
+  - 浅蓝主操作更清楚
+  - 目标是让产品可读性更稳，避免浅色系统发虚
+
+- `Viewer 沉浸`
+  - 只强化 Viewer 深色 token
+  - 不改变浅色页面主系统
+  - 目标是检查看图沉浸态是否独立成立
 
 ### 4.3 发散边界
 

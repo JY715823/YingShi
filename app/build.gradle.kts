@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.example.yingshi"
     compileSdk {
@@ -90,6 +94,8 @@ dependencies {
     implementation(libs.androidx.media3.database)
     implementation(libs.androidx.media3.datasource)
     implementation(libs.androidx.media3.ui)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     implementation("com.github.xxinPro:SilkDecoder:1.0")
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

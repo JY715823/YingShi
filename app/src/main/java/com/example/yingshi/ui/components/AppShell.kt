@@ -1,5 +1,8 @@
 package com.example.yingshi.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,22 +21,31 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,9 +64,10 @@ fun AppShellScaffold(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = colors.appBackground,
         contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
             if (showBottomBar) {
@@ -85,6 +98,7 @@ fun ShellPage(
     content: @Composable (ColumnScope.() -> Unit)? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val scrollState = rememberScrollState()
 
     Column(
@@ -95,11 +109,24 @@ fun ShellPage(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         onBack?.let { handleBack ->
-            TextButton(
-                onClick = handleBack,
-                modifier = Modifier.align(Alignment.Start),
+            Surface(
+                modifier = Modifier
+                    .size(40.dp)
+                    .align(Alignment.Start)
+                    .yingShiClickable(shape = RoundedCornerShape(14.dp), pressedScale = 0.94f, onClick = handleBack),
+                shape = RoundedCornerShape(14.dp),
+                color = colors.sectionBackground.copy(alpha = 0.80f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+                shadowElevation = 0.dp,
             ) {
-                Text(text = "\u8fd4\u56de")
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.ArrowBack,
+                        contentDescription = "返回",
+                        tint = colors.titleAccent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
 
@@ -109,13 +136,14 @@ fun ShellPage(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineLarge,
+                        color = colors.titleAccent,
                     )
                 }
                 if (summary.isNotBlank()) {
                     Text(
                         text = summary,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -147,6 +175,7 @@ fun TitleTabs(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -156,9 +185,9 @@ fun TitleTabs(
         tabs.forEachIndexed { index, title ->
             val selected = index == selectedIndex
             val textColor = if (selected) {
-                MaterialTheme.colorScheme.primary
+                colors.titleAccent
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+                colors.textSecondary.copy(alpha = 0.72f)
             }
 
             Box(
@@ -194,96 +223,167 @@ private fun FloatingBottomBar(
     onDestinationSelected: (RootDestination) -> Unit,
     onCenterAction: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .background(colors.appBackground)
             .windowInsetsPadding(WindowInsets.navigationBars),
-        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(0.dp),
+        color = colors.appBackground.copy(alpha = 0.98f),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        border = BorderStroke(0.dp, Color.Transparent),
     ) {
-        NavigationBar(
-            modifier = Modifier.height(60.dp),
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
-        ) {
-            RootDestination.entries.take(2).forEach { destination ->
-                NavigationBarItem(
-                    selected = destination == selectedDestination,
-                    onClick = { onDestinationSelected(destination) },
-                    icon = {
-                        Text(
-                            text = destination.glyph,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = destination.label,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                )
-            }
-
-            NavigationBarItem(
-                selected = false,
-                onClick = onCenterAction,
-                icon = {
-                    Text(
-                        text = "+",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    )
-                },
-                label = {
-                    Text(
-                        text = "\u6dfb\u52a0",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                    unselectedIconColor = MaterialTheme.colorScheme.primary,
-                    unselectedTextColor = MaterialTheme.colorScheme.primary,
-                ),
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.dividerSoft.copy(alpha = 0.72f)),
             )
+            Row(
+                modifier = Modifier
+                    .height(62.dp)
+                    .fillMaxWidth()
+                    .background(colors.appBackground.copy(alpha = 0.98f))
+                    .padding(horizontal = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RootDestination.entries.take(2).forEach { destination ->
+                    BottomNavItem(
+                        destination = destination,
+                        selected = destination == selectedDestination,
+                        icon = bottomNavIcon(destination),
+                        modifier = Modifier.weight(1f),
+                        onClick = { onDestinationSelected(destination) },
+                    )
+                }
 
-            RootDestination.entries.drop(2).forEach { destination ->
-                NavigationBarItem(
-                    selected = destination == selectedDestination,
-                    onClick = { onDestinationSelected(destination) },
-                    icon = {
-                        Text(
-                            text = destination.glyph,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = destination.label,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                )
+                Box(modifier = Modifier.weight(0.78f), contentAlignment = Alignment.Center) {
+                    CenterAddButton(onClick = onCenterAction)
+                }
+
+                RootDestination.entries.drop(2).forEach { destination ->
+                    BottomNavItem(
+                        destination = destination,
+                        selected = destination == selectedDestination,
+                        icon = bottomNavIcon(destination),
+                        modifier = Modifier.weight(1f),
+                        onClick = { onDestinationSelected(destination) },
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun BottomNavItem(
+    destination: RootDestination,
+    selected: Boolean,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(16.dp)
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) colors.primaryContainer.copy(alpha = 0.82f) else Color.Transparent,
+        animationSpec = tween(durationMillis = 180),
+        label = "bottomNavContainer",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) colors.titleAccent else colors.textSecondary.copy(alpha = 0.82f),
+        animationSpec = tween(durationMillis = 180),
+        label = "bottomNavContent",
+    )
+    val itemScale by animateFloatAsState(
+        targetValue = if (selected) 1.04f else 1f,
+        animationSpec = tween(durationMillis = 180),
+        label = "bottomNavScale",
+    )
+
+    Surface(
+        modifier = modifier
+            .padding(horizontal = 2.dp, vertical = 5.dp)
+            .height(50.dp)
+            .yingShiClickable(shape = shape, onClick = onClick),
+        shape = shape,
+        color = containerColor,
+        border = if (selected) {
+            BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.58f))
+        } else {
+            null
+        },
+        shadowElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Box(
+                modifier = Modifier.size(27.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = destination.label,
+                    tint = contentColor,
+                    modifier = Modifier
+                        .size(21.dp)
+                        .graphicsLayer {
+                            scaleX = itemScale
+                            scaleY = itemScale
+                        },
+                )
+            }
+            Text(
+                text = destination.label,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                ),
+                color = contentColor,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CenterAddButton(onClick: () -> Unit) {
+    val colors = YingShiThemeTokens.colors
+
+    Surface(
+        modifier = Modifier
+            .size(44.dp)
+            .yingShiClickable(shape = RoundedCornerShape(16.dp), pressedScale = 0.94f, onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = colors.softGreenContainer,
+        border = BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.22f)),
+        shadowElevation = 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Rounded.Add,
+                contentDescription = "添加",
+                tint = colors.softGreenAction,
+                modifier = Modifier.size(28.dp),
+            )
+        }
+    }
+}
+
+private fun bottomNavIcon(destination: RootDestination): ImageVector {
+    return when (destination) {
+        RootDestination.HOME -> Icons.Rounded.Home
+        RootDestination.PHOTOS -> Icons.Rounded.Image
+        RootDestination.LIFE -> Icons.Rounded.Explore
+        RootDestination.ME -> Icons.Rounded.Person
     }
 }
 
@@ -294,7 +394,7 @@ private fun TitleTabsPreview() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(YingShiThemeTokens.colors.appBackground)
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

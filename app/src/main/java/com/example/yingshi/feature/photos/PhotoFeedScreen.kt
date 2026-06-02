@@ -73,6 +73,7 @@ import coil.imageLoader
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
@@ -124,7 +125,7 @@ fun PhotoFeedScreen(
 
     LaunchedEffect(Unit) {
         if (densityName == null) {
-            densityName = PhotoFeedDensity.DENSE_4.name
+            densityName = settingsState.defaultPhotoFeedDensity.name
         }
     }
 
@@ -448,7 +449,11 @@ fun PhotoFeedScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(YingShiThemeTokens.colors.appBackground),
+    ) {
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -479,8 +484,10 @@ fun PhotoFeedScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(sectionSpacing(density)),
                 contentPadding = PaddingValues(
-                    top = spacing.xs,
-                    bottom = spacing.xxl + bottomOverlayPadding,
+                    top = 0.dp,
+                    start = 0.dp,
+                    end = 0.dp,
+                    bottom = spacing.lg + bottomOverlayPadding,
                 ),
             ) {
                 items(
@@ -565,13 +572,13 @@ fun PhotoFeedScreen(
                 if (isLoadingMore) {
                     item(key = "photo-feed-loading-more", contentType = "loading-more") {
                         Text(
-                            text = "加载更多中...",
+                            text = "正在加载…",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 18.dp),
                             textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = YingShiThemeTokens.colors.textSecondary,
                         )
                     }
                 }
@@ -591,7 +598,7 @@ fun PhotoFeedScreen(
                                 .padding(vertical = 18.dp),
                             textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.70f),
+                            color = YingShiThemeTokens.colors.textSecondary.copy(alpha = 0.70f),
                         )
                     }
                 }
@@ -652,8 +659,8 @@ fun PhotoFeedScreen(
 private fun PrefetchPhotoFeedThumbnails(feedItems: List<PhotoFeedItem>) {
     PrefetchPhotoFeedThumbnails(
         feedItems = feedItems,
-        density = PhotoFeedDensity.DENSE_4,
-        requestSize = photoFeedThumbnailRequestSize(PhotoFeedDensity.DENSE_4),
+        density = PhotoFeedDensity.COMFORT_3,
+        requestSize = photoFeedThumbnailRequestSize(PhotoFeedDensity.COMFORT_3),
     )
 }
 
@@ -736,14 +743,14 @@ private fun PhotoFeedLoadMoreErrorRow(
         Text(
             text = message,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = YingShiThemeTokens.colors.textSecondary,
             maxLines = 2,
         )
         Text(
-            text = "重试",
-            modifier = Modifier.clickable(onClick = onRetry),
+            text = "\u91cd\u8bd5",
+            modifier = Modifier.yingShiClickable(onClick = onRetry),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary,
+            color = YingShiThemeTokens.colors.titleAccent,
         )
     }
 }
@@ -759,14 +766,15 @@ private fun PhotoFeedToolbar(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.capsule),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
         border = BorderStroke(
             width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+            color = colors.dividerSoft.copy(alpha = 0.72f),
         ),
     ) {
         Row(
@@ -776,13 +784,13 @@ private fun PhotoFeedToolbar(
         ) {
             Text(
                 text = if (selectedCount > 0) {
-                    "已选 $selectedCount"
+                    "\u5df2\u9009 $selectedCount"
                 } else {
-                    "$mediaCount 项"
+                    "$mediaCount \u9879"
                 },
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             PhotoFeedDensitySwitcher(
                 selectedDensity = selectedDensity,
@@ -801,6 +809,8 @@ private fun PhotoFeedDensitySwitcher(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    val chipShape = RoundedCornerShape(radius.capsule)
 
     Row(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -809,21 +819,25 @@ private fun PhotoFeedDensitySwitcher(
         PhotoFeedDensity.entries.forEach { density ->
             val selected = density == selectedDensity
             val backgroundColor = when {
-                !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
-                selected -> Color.White
-                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.62f)
+                !enabled -> colors.sectionBackground.copy(alpha = 0.48f)
+                selected -> colors.primaryContainer.copy(alpha = 0.86f)
+                else -> colors.sectionBackground.copy(alpha = 0.74f)
             }
             val textColor = when {
-                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.60f)
-                selected -> Color.Black
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                !enabled -> colors.textSecondary.copy(alpha = 0.60f)
+                selected -> colors.titleAccent
+                else -> colors.textSecondary
             }
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(radius.capsule))
+                    .yingShiClickable(
+                        enabled = enabled,
+                        shape = chipShape,
+                        pressedScale = 0.96f,
+                        onClick = { onDensitySelected(density) },
+                    )
                     .background(backgroundColor)
-                    .clickable(enabled = enabled) { onDensitySelected(density) }
                     .padding(horizontal = spacing.xs, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -848,6 +862,7 @@ private fun PhotoFeedTimeScrubber(
 ) {
     val density = LocalDensity.current
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val thumbWidth = 24.dp
     val thumbHeight = 78.dp
     val endMargin = 4.dp
@@ -886,7 +901,9 @@ private fun PhotoFeedTimeScrubber(
         ) {
             Surface(
                 shape = RoundedCornerShape(999.dp),
-                color = Color.White.copy(alpha = 0.96f),
+                color = colors.raisedSurface.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+                shadowElevation = 0.dp,
             ) {
                 Text(
                     text = label,
@@ -900,7 +917,7 @@ private fun PhotoFeedTimeScrubber(
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center,
-                    color = Color.Black,
+                    color = colors.titleAccent,
                 )
             }
         }
@@ -911,7 +928,12 @@ private fun PhotoFeedTimeScrubber(
                 .offset { IntOffset(x = -endMarginPx, y = thumbTopPx) }
                 .size(width = thumbWidth, height = thumbHeight)
                 .clip(RoundedCornerShape(999.dp))
-                .background(Color.White.copy(alpha = 0.96f))
+                .background(colors.raisedSurface.copy(alpha = 0.94f))
+                .border(
+                    width = 1.dp,
+                    color = colors.dividerSoft.copy(alpha = 0.58f),
+                    shape = RoundedCornerShape(999.dp),
+                )
                 .pointerInput(scrubberHeightPx) {
                     detectDragGestures(
                         onDragStart = {
@@ -956,7 +978,7 @@ private fun PhotoFeedTimeScrubber(
                     lineTo(w, h)
                     close()
                 }
-                drawPath(path, color = Color.Black.copy(alpha = 0.7f))
+                drawPath(path, color = colors.textPrimary.copy(alpha = 0.92f))
             }
 
             Box(
@@ -964,7 +986,7 @@ private fun PhotoFeedTimeScrubber(
                     .align(Alignment.Center)
                     .size(width = 14.dp, height = 6.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(Color.Gray.copy(alpha = 0.55f)),
+                    .background(colors.primaryContainer.copy(alpha = 0.42f)),
             )
 
             Canvas(
@@ -981,7 +1003,7 @@ private fun PhotoFeedTimeScrubber(
                     lineTo(w / 2f, h)
                     close()
                 }
-                drawPath(path, color = Color.Black.copy(alpha = 0.7f))
+                drawPath(path, color = colors.textPrimary.copy(alpha = 0.92f))
             }
         }
     }
@@ -989,25 +1011,27 @@ private fun PhotoFeedTimeScrubber(
 
 @Composable
 private fun PhotoFeedSectionHeaderRow(title: String) {
+    val colors = YingShiThemeTokens.colors
     Text(
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 28.dp, bottom = 10.dp),
-        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onBackground,
+            .padding(start = 2.dp, top = 2.dp, bottom = 0.dp),
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = colors.titleAccent,
     )
 }
 
 @Composable
 private fun PhotoFeedDayHeaderRow(title: String) {
+    val colors = YingShiThemeTokens.colors
     Text(
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 14.dp, bottom = 8.dp),
-        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            .padding(start = 2.dp, top = 0.dp, bottom = 0.dp),
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+        color = colors.textSecondary.copy(alpha = 0.86f),
     )
 }
 
@@ -1220,17 +1244,18 @@ private fun PhotoFeedItem.gridVideoBadgeDurationMillis(
 private fun NewImportedBadge(
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.46f)),
+        color = colors.memoryContainer.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.20f)),
     ) {
         Text(
             text = "新导入",
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White,
+            color = colors.onMemoryContainer,
             maxLines = 1,
         )
     }
@@ -1263,7 +1288,7 @@ private fun SelectionNumberFlashOverlay(
             modifier = modifier
                 .alpha(alpha.value)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF202124).copy(alpha = 0.72f))
+                .background(YingShiThemeTokens.colors.raisedSurface.copy(alpha = 0.92f))
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -1273,7 +1298,7 @@ private fun SelectionNumberFlashOverlay(
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                 ),
-                color = Color.White,
+                color = YingShiThemeTokens.colors.titleAccent,
             )
         }
     }
@@ -1287,7 +1312,7 @@ private fun TargetMediaHighlightOverlay(
 ) {
     if (!visible) return
     val alpha = remember(nonce) { Animatable(0f) }
-    val highlightColor = MaterialTheme.colorScheme.primary
+    val highlightColor = YingShiThemeTokens.colors.primaryContainer
     LaunchedEffect(nonce) {
         alpha.snapTo(0f)
         alpha.animateTo(
@@ -1304,10 +1329,10 @@ private fun TargetMediaHighlightOverlay(
     if (alpha.value > 0f) {
         Box(
             modifier = modifier
-                .background(highlightColor.copy(alpha = 0.22f * alpha.value))
+                .background(highlightColor.copy(alpha = 0.26f * alpha.value))
                 .border(
-                    width = 4.dp,
-                    color = highlightColor.copy(alpha = 0.92f * alpha.value),
+                    width = 3.dp,
+                    color = YingShiThemeTokens.colors.glassStroke.copy(alpha = 0.90f * alpha.value),
                 ),
         )
     }
@@ -1426,7 +1451,7 @@ private fun PhotoFeedItem.toScrubberLabel(): String {
 }
 
 private fun sectionSpacing(density: PhotoFeedDensity): Dp {
-    return rowSpacing(density)
+    return 0.dp
 }
 
 private fun rowSpacing(density: PhotoFeedDensity): Dp {

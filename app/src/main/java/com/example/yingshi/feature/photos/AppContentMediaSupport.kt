@@ -27,7 +27,7 @@ data class AppContentMediaSource(
     val createdAtMillis: Long? = null,
 )
 
-internal fun RemoteMedia.toAppContentMediaSource(): AppContentMediaSource {
+fun RemoteMedia.toAppContentMediaSource(): AppContentMediaSource {
     return AppContentMediaSource(
         thumbnailUrl = resolveBackendMediaUrl(thumbnailUrl ?: previewUrl),
         originalUrl = resolveBackendMediaUrl(originalUrl),
@@ -57,7 +57,7 @@ internal fun RemotePostMedia.toAppContentMediaSource(): AppContentMediaSource {
     )
 }
 
-internal fun resolveAppMediaType(
+fun resolveAppMediaType(
     rawType: String?,
     mimeType: String?,
     thumbnailUrl: String?,

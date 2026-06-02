@@ -11,6 +11,42 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatImportDao {
+    @Query("SELECT * FROM imported_participants ORDER BY chatId ASC, participantId ASC")
+    suspend fun getAllParticipants(): List<ImportedParticipantEntity>
+
+    @Query("SELECT * FROM imported_messages ORDER BY chatId ASC, timestamp ASC, messageLocalId ASC")
+    suspend fun getAllMessages(): List<ImportedMessageEntity>
+
+    @Query("SELECT * FROM imported_resources ORDER BY messageLocalId ASC, ordinal ASC, resourceLocalId ASC")
+    suspend fun getAllResources(): List<ImportedResourceEntity>
+
+    @Query("SELECT * FROM imported_message_search ORDER BY chatId ASC, messageLocalId ASC")
+    suspend fun getAllMessageSearchEntries(): List<ImportedMessageSearchEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChats(chats: List<ImportedChatEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertParticipants(participants: List<ImportedParticipantEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessages(messages: List<ImportedMessageEntity>)
+
+    @Query("DELETE FROM imported_message_search")
+    suspend fun clearMessageSearch()
+
+    @Query("DELETE FROM imported_resources")
+    suspend fun clearResources()
+
+    @Query("DELETE FROM imported_messages")
+    suspend fun clearMessages()
+
+    @Query("DELETE FROM imported_participants")
+    suspend fun clearParticipants()
+
+    @Query("DELETE FROM imported_chats")
+    suspend fun clearChats()
+
     @Query(
         """
         SELECT c.*, p.avatarLocalPath AS avatarLocalPath

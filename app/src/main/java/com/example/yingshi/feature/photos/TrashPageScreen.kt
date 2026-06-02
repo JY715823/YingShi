@@ -409,7 +409,7 @@ fun TrashPageScreen(
             title = { Text("清空当前分类？") },
             text = {
                 Text(
-                    "将永久删除当前「${selectedType.label}」分类中的 ${entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前「${selectedType.label}」分类中的 ${entries.size} 项。属于媒体删除的项目会同时删除原文件；只从小相册移除的项目不会影响其他位置仍在使用的照片或视频。",
                 )
             },
             confirmButton = {
@@ -471,7 +471,7 @@ fun TrashPageScreen(
             title = { Text("删除选中项？") },
             text = {
                 Text(
-                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前选中的 ${selectedEntries.size} 项。属于媒体删除的项目会同时删除原文件；只从小相册移除的项目不会影响其他位置仍在使用的照片或视频。",
                 )
             },
             confirmButton = {
@@ -930,7 +930,7 @@ private fun TrashEntryUiModel.primaryPreviewMedia(): TrashMediaSnapshot? {
 
 private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
     return when (entry.type) {
-        TrashEntryType.POST_DELETED -> "小相册整体进入 App 回收站"
+        TrashEntryType.POST_DELETED -> "小相册已进入回收站"
         TrashEntryType.MEDIA_REMOVED -> "只移除了当前小相册关联"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从照片流和相关小相册删除"
     }

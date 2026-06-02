@@ -127,7 +127,7 @@ object LocalSystemMediaBridgeRepository {
         override val mediaItems: List<SystemMediaItem>,
     ) : PendingOperationRequest {
         override val operationType: OperationType = OperationType.IMPORT_TO_APP
-        override val targetLabel: String = "Import to App"
+        override val targetLabel: String = "导入照片流"
     }
 
     private data class AddToExistingPostOperationRequest(
@@ -650,7 +650,7 @@ object LocalSystemMediaBridgeRepository {
             enqueueFakeUploadTask(
                 operationId = operationId,
                 mediaItem = item,
-                targetLabel = "导入 App",
+                targetLabel = "导入照片流",
                 onOperationSuccess = {
                     val importedCount = importSystemMediaToApp(mediaItems)
                     OperationResultEvent(
@@ -811,7 +811,7 @@ object LocalSystemMediaBridgeRepository {
                             previewUri = mediaItem.uri.toString(),
                             progressPercent = 0,
                             state = UploadState.FAILURE,
-                            statusMessage = "Upload failed",
+                            statusMessage = "上传失败",
                             errorMessage = tokenResult.message,
                             canRetry = true,
                         ),
@@ -834,7 +834,7 @@ object LocalSystemMediaBridgeRepository {
                     previewUri = mediaItem.uri.toString(),
                     progressPercent = 0,
                     state = UploadState.WAITING,
-                    statusMessage = "Waiting to upload",
+                    statusMessage = "等待上传",
                 ),
             )
             refreshOperationTaskMeta(operationId)
@@ -849,7 +849,7 @@ object LocalSystemMediaBridgeRepository {
                 uploadTasksState[currentIndex] = current.copy(
                     state = UploadState.UPLOADING,
                     progressPercent = progress,
-                    statusMessage = "濠殿喗绻愮徊钘夛耿椤忓懐鈻斿┑鐘辫兌閻?$progress%",
+                    statusMessage = "正在上传 $progress%",
                     canRetry = false,
                 )
             }
@@ -881,7 +881,7 @@ object LocalSystemMediaBridgeRepository {
                         taskId = uploadId,
                         state = UploadState.FAILURE,
                         progressPercent = 100,
-                        statusMessage = "Upload failed",
+                        statusMessage = "上传失败",
                         errorMessage = confirmResult.message,
                         canRetry = true,
                     )
@@ -903,7 +903,7 @@ object LocalSystemMediaBridgeRepository {
                 context = context,
                 operationId = operationId,
                 mediaItem = item,
-                targetLabel = "导入 App",
+                targetLabel = "导入照片流",
                 sourceItems = mediaItems,
                 finalizeAction = { uploadedMedia ->
                     finalizeImportToAppReal(uploadedMedia)
@@ -1072,7 +1072,7 @@ object LocalSystemMediaBridgeRepository {
                     }
                     val message = friendlyUploadError(
                         throwable = throwable,
-                        fallback = "Cannot read selected media. Please select again.",
+                        fallback = "无法读取所选媒体，请重新选择。",
                     )
                     addFailedUploadTask(
                         taskId = activeTaskId,
@@ -1082,7 +1082,7 @@ object LocalSystemMediaBridgeRepository {
                         targetLabel = targetLabel,
                         mediaType = mediaItem.type,
                         previewUri = mediaItem.uri.toString(),
-                        statusMessage = "Reading local media failed",
+                        statusMessage = "读取本地媒体失败",
                         errorMessage = message,
                     )
                     finalizeRealOperationIfReady(
@@ -1123,14 +1123,14 @@ object LocalSystemMediaBridgeRepository {
                 )
                 val tokenResult = runUploadApiWithTimeout(
                     timeoutMillis = CreateUploadTokenTimeoutMillis,
-                    timeoutMessage = "Create upload token timed out. Check server access.",
+                    timeoutMessage = "创建上传任务超时，请检查网络后重试。",
                 ) {
                     RepositoryProvider.uploadRepository.createUploadToken(tokenPayload)
                 }
                 val uploadId = when (tokenResult) {
                     is ApiResult.Success -> tokenResult.data.uploadId
                     is ApiResult.Error -> {
-                        val message = tokenResult.message.ifBlank { "Create upload token failed." }
+                        val message = tokenResult.message.ifBlank { "创建上传任务失败，请稍后重试。" }
                         addFailedUploadTask(
                             taskId = activeTaskId,
                             operationId = operationId,
@@ -1139,7 +1139,7 @@ object LocalSystemMediaBridgeRepository {
                             targetLabel = targetLabel,
                         mediaType = mediaItem.type,
                         previewUri = mediaItem.uri.toString(),
-                        statusMessage = "Create upload token failed",
+                        statusMessage = "创建上传任务失败",
                         errorMessage = message,
                     )
                     finalizeRealOperationIfReady(
@@ -1170,7 +1170,7 @@ object LocalSystemMediaBridgeRepository {
                     taskId = uploadId,
                     state = UploadState.UPLOADING,
                     progressPercent = 35,
-                    statusMessage = "濠殿喗绻愮徊钘夛耿椤忓懐鈻斿┑鐘辫兌閻?35%",
+                    statusMessage = "正在上传 35%",
                 )
 
                 updateUploadTask(
@@ -1182,7 +1182,7 @@ object LocalSystemMediaBridgeRepository {
 
                 val uploadResult = runUploadApiWithTimeout(
                     timeoutMillis = UploadFileTimeoutMillis,
-                    timeoutMessage = "Upload timed out. Check network or server and retry.",
+                    timeoutMessage = "上传超时，请检查网络后重试。",
                 ) {
                     RepositoryProvider.uploadRepository.uploadLocalStream(
                         uploadId = uploadId,
@@ -1191,7 +1191,7 @@ object LocalSystemMediaBridgeRepository {
                         fileSizeBytes = metadata.fileSizeBytes,
                         openInputStream = {
                             context.contentResolver.openInputStream(metadata.sourceUri)
-                                ?: error("Cannot open selected media stream.")
+                                ?: error("无法读取已选择的媒体。")
                         },
                         onProgressPercent = { progress ->
                             val mappedProgress = (35 + progress * 55 / 100).coerceIn(35, 90)
@@ -1221,12 +1221,12 @@ object LocalSystemMediaBridgeRepository {
                         )
                         val uploadedMediaId = uploadResult.data.mediaId
                         if (uploadedMediaId.isBlank()) {
-                            val message = "Server upload succeeded but returned no media ID."
+                            val message = "上传已完成，但服务器没有返回媒体编号。"
                             updateUploadTask(
                                 taskId = uploadId,
                                 state = UploadState.FAILURE,
                                 progressPercent = 95,
-                                statusMessage = "Upload failed",
+                                statusMessage = "上传失败",
                                 errorMessage = message,
                                 canRetry = true,
                             )
@@ -1277,12 +1277,12 @@ object LocalSystemMediaBridgeRepository {
                         if (uploadTasksState.firstOrNull { it.taskId == uploadId }?.state == UploadState.CANCELLED) {
                             return@launch
                         }
-                        val message = uploadResult.message.ifBlank { "Upload failed. Please retry." }
+                        val message = uploadResult.message.ifBlank { "上传失败，请稍后重试。" }
                         updateUploadTask(
                             taskId = uploadId,
                             state = UploadState.FAILURE,
                             progressPercent = 35,
-                            statusMessage = "Upload failed",
+                            statusMessage = "上传失败",
                             errorMessage = message,
                             canRetry = true,
                         )
@@ -1315,14 +1315,14 @@ object LocalSystemMediaBridgeRepository {
             } catch (throwable: Throwable) {
                 val message = friendlyUploadError(
                     throwable = throwable,
-                    fallback = "Upload task stopped unexpectedly. Please retry.",
+                    fallback = "上传任务异常中断，请稍后重试。",
                 )
                 if (uploadTasksState.any { it.taskId == activeTaskId }) {
                     updateUploadTask(
                         taskId = activeTaskId,
                         state = UploadState.FAILURE,
                         progressPercent = 0,
-                        statusMessage = "Upload failed",
+                        statusMessage = "上传失败",
                         errorMessage = message,
                         canRetry = true,
                     )
@@ -1335,7 +1335,7 @@ object LocalSystemMediaBridgeRepository {
                         targetLabel = targetLabel,
                         mediaType = mediaItem.type,
                         previewUri = mediaItem.uri.toString(),
-                        statusMessage = "Upload failed",
+                        statusMessage = "上传失败",
                         errorMessage = message,
                     )
                 }
@@ -1384,14 +1384,14 @@ object LocalSystemMediaBridgeRepository {
             is ApiResult.Error -> {
                 return ApiResult.Error(
                     code = result.code,
-                    message = result.message.ifBlank { "Failed to load albums; cannot create post now." },
+                    message = result.message.ifBlank { "读取相册失败，当前无法创建小相册。" },
                     throwable = result.throwable,
                 )
             }
             ApiResult.Loading -> {
                 return ApiResult.Error(
                     code = "ALBUMS_LOADING",
-                    message = "Albums are still loading. Please retry later.",
+                    message = "小相册列表还在读取中，请稍后重试。",
                 )
             }
         }
@@ -1902,7 +1902,7 @@ object LocalSystemMediaBridgeRepository {
         } catch (throwable: Throwable) {
             ApiResult.Error(
                 code = "UPLOAD_REQUEST_FAILED",
-                message = friendlyUploadError(throwable, "Upload request failed. Check network and server."),
+                message = friendlyUploadError(throwable, "上传请求失败，请检查网络后重试。"),
                 throwable = throwable,
             )
         }
@@ -1913,11 +1913,11 @@ object LocalSystemMediaBridgeRepository {
         fallback: String,
     ): String {
         return when (throwable) {
-            is TimeoutCancellationException -> "Operation timed out. Check network and server, then retry."
-            is SecurityException -> "No permission to read selected media. Grant access and retry."
-            is java.io.FileNotFoundException -> "Selected media no longer exists or cannot be accessed."
-            is java.net.ConnectException -> "Cannot connect to server. Check physical-device baseUrl and network."
-            is java.net.SocketTimeoutException -> "Network request timed out. Please retry."
+            is TimeoutCancellationException -> "操作超时，请检查网络后重试。"
+            is SecurityException -> "没有读取所选媒体的权限，请授权后重试。"
+            is java.io.FileNotFoundException -> "选中的媒体文件不存在或已被系统移除。"
+            is java.net.ConnectException -> "无法连接服务，请检查网络和服务地址。"
+            is java.net.SocketTimeoutException -> "网络请求超时，请稍后重试。"
             else -> throwable.message?.takeIf { it.isNotBlank() } ?: fallback
         }
     }
@@ -2039,6 +2039,7 @@ object LocalSystemMediaBridgeRepository {
         return when (targetLabel) {
             "Import to App",
             "\u5bfc\u5165 App",
+            "导入照片流",
             -> "\u4e0a\u4f20\u5b8c\u6210\uff0c\u6b63\u5728\u5237\u65b0\u7167\u7247\u6d41"
             "Add to post",
             "\u52a0\u5165\u5df2\u6709\u5e16\u5b50",
@@ -2576,7 +2577,7 @@ object LocalSystemMediaBridgeRepository {
             is ImportToAppOperationRequest -> {
                 OperationTaskMeta(
                     operationType = OperationType.IMPORT_TO_APP,
-                    targetLabel = "导入 App",
+                    targetLabel = "导入照片流",
                     operationTitle = "导入到照片流",
                     mediaCount = request.mediaItems.size,
                 )
@@ -2584,7 +2585,7 @@ object LocalSystemMediaBridgeRepository {
             null -> {
                 OperationTaskMeta(
                     operationType = OperationType.IMPORT_TO_APP,
-                    targetLabel = "导入 App",
+                    targetLabel = "导入照片流",
                     operationTitle = "传输任务",
                     mediaCount = uploadTasksState.count { it.operationId == operationId }.coerceAtLeast(1),
                 )

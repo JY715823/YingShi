@@ -1,44 +1,62 @@
 package com.example.yingshi.feature.home
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.yingshi.ui.components.PlaceholderBlock
-import com.example.yingshi.ui.components.PlaceholderPage
-import com.example.yingshi.ui.components.ShellPage
+import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.theme.YingShiTheme
-
-private val homeSections = listOf(
-    PlaceholderBlock(
-        title = "首页总览占位",
-        summary = "当前只保留结构入口，不承载真实业务数据。",
-    ),
-    PlaceholderBlock(
-        title = "共享记忆摘要",
-        summary = "后续再决定首页更偏聚合概览，还是更轻的欢迎页。",
-    ),
-    PlaceholderBlock(
-        title = "全局壳层稳定区",
-        summary = "现阶段首页主要承担一级导航中的稳定入口角色。",
-    ),
-)
+import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
-    ShellPage(
-        title = "主页",
-        summary = "用于承接后续总览与轻入口。当前重点是保持页面气质稳定、结构简洁。",
-        modifier = modifier.fillMaxSize(),
-        content = {
-            PlaceholderPage(
-                title = "主页壳层",
-                summary = "当前先维持统一视觉基线，不扩展真实业务逻辑。",
-                blocks = homeSections,
-                showHero = false,
-            )
-        },
-    )
+fun HomeScreen(
+    modifier: Modifier = Modifier,
+    onOpenPhotos: () -> Unit = {},
+    onOpenLife: () -> Unit = {},
+    onOpenMe: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+) {
+    val colors = YingShiThemeTokens.colors
+
+    YingShiMistBackground(modifier = modifier, showWaves = true) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 22.dp)
+                .padding(top = 24.dp, bottom = 104.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = "映世",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Text(
+                    text = "欢迎回来",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textSecondary,
+                )
+            }
+        }
+    }
 }
 
 @Preview(showBackground = true)

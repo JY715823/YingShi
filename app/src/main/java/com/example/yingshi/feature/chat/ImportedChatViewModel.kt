@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.chat.data.ChatImportProgress
 import com.example.yingshi.feature.chat.data.ChatReadingAnchor
 import com.example.yingshi.feature.chat.data.ImportedChatDetail
@@ -16,6 +18,8 @@ import com.example.yingshi.feature.chat.data.ImportedMessageSearchResult
 import com.example.yingshi.feature.chat.data.ImportedMessageWindow
 import com.example.yingshi.feature.chat.data.ImportedRenderableMessage
 import com.example.yingshi.feature.chat.data.MessageWindowAnchor
+import com.example.yingshi.feature.chat.data.NoOpChatSyncBridge
+import com.example.yingshi.feature.chat.data.RemoteChatSyncBridge
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,6 +124,11 @@ class ImportedChatViewModel(
 ) : AndroidViewModel(application) {
 
     init {
+        viewModelScope.launch {
+            runCatching {
+                repository.hydrateFromRemoteIfNeeded()
+            }
+        }
         viewModelScope.launch {
             runCatching {
                 repository.ensurePresentationMaintenance()
@@ -783,11 +792,26 @@ class ImportedChatViewModel(
     }
 
     companion object {
+        private fun createRepository(application: Application): ImportedChatRepository {
+            val syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                RemoteChatSyncBridge()
+            } else {
+                NoOpChatSyncBridge
+            }
+            return ImportedChatRepository(
+                appContext = application,
+                syncBridge = syncBridge,
+            )
+        }
+
         fun factory(application: Application): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return ImportedChatViewModel(application) as T
+                    return ImportedChatViewModel(
+                        application = application,
+                        repository = createRepository(application),
+                    ) as T
                 }
             }
         }

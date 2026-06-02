@@ -24,6 +24,7 @@ import com.example.yingshi.feature.ledger.data.LedgerRecurringRuleDraft
 import com.example.yingshi.feature.ledger.data.LedgerPeriodStats
 import com.example.yingshi.feature.ledger.data.LedgerPreferencesStore
 import com.example.yingshi.feature.ledger.data.LedgerRepository
+import com.example.yingshi.feature.ledger.data.RemoteLedgerSyncBridge
 import com.example.yingshi.feature.ledger.data.LedgerSearchFilter
 import com.example.yingshi.feature.ledger.data.LedgerSearchTransactionType
 import com.example.yingshi.feature.ledger.data.LedgerTransferAccountSide
@@ -31,6 +32,8 @@ import com.example.yingshi.feature.ledger.data.LedgerSeedData
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionDraft
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -97,9 +100,7 @@ data class LedgerUiState(
 
 class LedgerViewModel(
     application: Application,
-    private val repository: LedgerRepository = LedgerRepository(
-        LedgerDatabase.getInstance(application).ledgerDao(),
-    ),
+    private val repository: LedgerRepository = createLedgerRepository(application),
     private val preferencesStore: LedgerPreferencesStore = LedgerPreferencesStore(application),
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(LedgerUiState())
@@ -112,7 +113,10 @@ class LedgerViewModel(
     init {
         viewModelScope.launch {
             repository.ensureSeedData()
-            repository.ensureDemoData()
+            repository.hydrateFromBackendIfNeeded()
+            if (repository.shouldSeedDemoData) {
+                repository.ensureDemoData()
+            }
             observeCatalog()
         }
     }
@@ -991,6 +995,19 @@ class LedgerViewModel(
     }
 
     companion object {
+        private fun createLedgerRepository(application: Application): LedgerRepository {
+            val dao = LedgerDatabase.getInstance(application).ledgerDao()
+            val syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                RemoteLedgerSyncBridge()
+            } else {
+                com.example.yingshi.feature.ledger.data.NoOpLedgerSyncBridge
+            }
+            return LedgerRepository(
+                dao = dao,
+                syncBridge = syncBridge,
+            )
+        }
+
         fun factory(application: Application): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")

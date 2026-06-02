@@ -35,6 +35,7 @@ class ImportedChatRepository(
     private val database: ChatImportDatabase = ChatImportDatabase.getInstance(appContext),
     private val dao: ChatImportDao = database.chatImportDao(),
     private val gson: Gson = Gson(),
+    private val syncBridge: ChatSyncBridge = NoOpChatSyncBridge,
     baseDir: File? = null,
     tempDir: File? = null,
 ) {
@@ -48,6 +49,44 @@ class ImportedChatRepository(
     private var didEnsureMaintenance = false
     private val qFaceCatalog: QFaceCatalog? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         QFaceCatalogStore.getOrLoad(appContext)
+    }
+
+    suspend fun hydrateFromRemoteIfNeeded() {
+        syncBridge.hydrate(this)
+    }
+
+    suspend fun exportLocalSnapshot(): ChatLocalSnapshot {
+        return withContext(Dispatchers.IO) {
+            ChatLocalSnapshot(
+                chats = dao.getAllChats(),
+                participants = dao.getAllParticipants(),
+                messages = dao.getAllMessages(),
+                resources = dao.getAllResources(),
+                messageSearchEntries = dao.getAllMessageSearchEntries(),
+                readingAnchors = exportReadingAnchors(),
+            )
+        }
+    }
+
+    suspend fun replaceLocalSnapshot(snapshot: ChatLocalSnapshot) {
+        withContext(Dispatchers.IO) {
+            database.withTransaction {
+                dao.clearMessageSearch()
+                dao.clearResources()
+                dao.clearMessages()
+                dao.clearParticipants()
+                dao.clearChats()
+                if (snapshot.chats.isNotEmpty()) dao.insertChats(snapshot.chats)
+                if (snapshot.participants.isNotEmpty()) dao.insertParticipants(snapshot.participants)
+                if (snapshot.messages.isNotEmpty()) dao.insertMessages(snapshot.messages)
+                if (snapshot.resources.isNotEmpty()) dao.insertResources(snapshot.resources)
+                if (snapshot.messageSearchEntries.isNotEmpty()) {
+                    dao.replaceMessageSearchEntries(snapshot.messageSearchEntries)
+                }
+            }
+            replaceReadingAnchors(snapshot.readingAnchors)
+            Unit
+        }
     }
 
     fun observeChatSummaries(): Flow<List<ImportedChatSummary>> {
@@ -110,6 +149,7 @@ class ImportedChatRepository(
             }
             clearReadingAnchor(chatId)
             chatStorageDir(chat.chatStableKey).deleteRecursively()
+            syncBridge.afterMutation(this@ImportedChatRepository)
             true
         }
     }
@@ -360,6 +400,7 @@ class ImportedChatRepository(
             putInt("chat_${chatId}_offset", anchor.scrollOffset)
             putLong("chat_${chatId}_saved_at", anchor.savedAtMillis)
         }
+        syncBridge.afterMutation(this@ImportedChatRepository)
     }
 
     suspend fun loadReadingAnchor(chatId: Long): ChatReadingAnchor? = withContext(Dispatchers.IO) {
@@ -378,6 +419,7 @@ class ImportedChatRepository(
             remove("chat_${chatId}_offset")
             remove("chat_${chatId}_saved_at")
         }
+        syncBridge.afterMutation(this@ImportedChatRepository)
     }
 
     suspend fun resolveReplyTarget(
@@ -865,8 +907,8 @@ class ImportedChatRepository(
                 dao.updateChat(updatedChat)
             }
 
-            onProgress(ChatImportProgress("done", "导入完成", importedProgress, totalMessages))
-            ChatImportResult(
+            onProgress(ChatImportProgress("done", "??????", importedProgress, totalMessages))
+            val result = ChatImportResult(
                 chatId = chatId,
                 importedMessageCount = insertedCount,
                 mergedMessageCount = mergedCount,
@@ -877,8 +919,41 @@ class ImportedChatRepository(
                 failedAvatarCount = failedAvatarCount,
                 warnings = warnings.toList(),
             )
+            syncBridge.afterMutation(this@ImportedChatRepository)
+            result
         } finally {
             unzipDir.deleteRecursively()
+        }
+    }
+
+    private fun exportReadingAnchors(): List<StoredChatReadingAnchor> {
+        return readingAnchorPrefs.all.keys
+            .mapNotNull { key ->
+                if (!key.startsWith("chat_") || !key.endsWith("_message_id")) return@mapNotNull null
+                val chatId = key.removePrefix("chat_").removeSuffix("_message_id").toLongOrNull()
+                    ?: return@mapNotNull null
+                val messageLocalId = readingAnchorPrefs.getLong(key, -1L)
+                if (messageLocalId <= 0L) return@mapNotNull null
+                StoredChatReadingAnchor(
+                    chatId = chatId,
+                    messageLocalId = messageLocalId,
+                    scrollOffset = readingAnchorPrefs.getInt("chat_${chatId}_offset", 0),
+                    savedAtMillis = readingAnchorPrefs.getLong("chat_${chatId}_saved_at", 0L),
+                )
+            }
+            .sortedBy { it.chatId }
+    }
+
+    private fun replaceReadingAnchors(anchors: List<StoredChatReadingAnchor>) {
+        readingAnchorPrefs.edit {
+            readingAnchorPrefs.all.keys
+                .filter { it.startsWith("chat_") }
+                .forEach(::remove)
+            anchors.forEach { anchor ->
+                putLong("chat_${anchor.chatId}_message_id", anchor.messageLocalId)
+                putInt("chat_${anchor.chatId}_offset", anchor.scrollOffset)
+                putLong("chat_${anchor.chatId}_saved_at", anchor.savedAtMillis)
+            }
         }
     }
 

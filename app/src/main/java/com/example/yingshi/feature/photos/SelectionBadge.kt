@@ -14,23 +14,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
 fun AppMediaSelectionBadge(
     selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val blueColor = Color(0xFF3B82F6)
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = modifier
             .size(24.dp)
             .clip(CircleShape)
             .background(
-                if (selected) blueColor else Color.Black.copy(alpha = 0.10f),
+                if (selected) colors.primaryContainer else Color.Black.copy(alpha = 0.10f),
             )
             .border(
                 width = 1.5.dp,
-                color = if (selected) blueColor else Color.White.copy(alpha = 0.88f),
+                color = if (selected) colors.glassStroke else Color.White.copy(alpha = 0.88f),
                 shape = CircleShape,
             ),
         contentAlignment = Alignment.Center,
@@ -39,7 +40,7 @@ fun AppMediaSelectionBadge(
             Text(
                 text = "✓",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                color = Color.White,
+                color = colors.onPrimaryContainer,
             )
         }
     }

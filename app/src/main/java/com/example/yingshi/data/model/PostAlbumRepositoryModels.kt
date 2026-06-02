@@ -103,3 +103,8 @@ data class UpdatePostAlbumsPayload(
     val albumIds: List<String>
         get() = listOf(albumId)
 }
+
+data class CreateAlbumPayload(
+    val title: String,
+    val subtitle: String = "",
+)

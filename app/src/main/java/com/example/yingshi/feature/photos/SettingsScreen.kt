@@ -46,9 +46,9 @@ fun SettingsScreen(
     val settingsState = FakeSettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
     val loginStatusValue = if (AuthSessionManager.isLoggedIn) {
-        "诊断页已登录"
+        "已连接"
     } else {
-        "当前未登录真实后端"
+        "未连接"
     }
 
     Column(
@@ -67,23 +67,23 @@ fun SettingsScreen(
 
         SettingsSection(
             title = "账号与空间",
-            subtitle = "当前仍以轻量壳层为主，后续再接真实账号、共享空间和成员管理。",
+            subtitle = "管理当前账号和两个人的共享空间。",
         ) {
             SettingsInfoRow(
                 title = "共享空间",
-                subtitle = "这轮先保留结构位置，不展开真实空间切换。",
-                value = "占位",
+                subtitle = "映世双人空间",
+                value = "默认",
             )
             SettingsInfoRow(
                 title = "登录状态",
-                subtitle = "REAL 模式是否已拿到 token，会以后端联调诊断页的登录结果为准。",
+                subtitle = "用于同步相册、通知和生活记录。",
                 value = loginStatusValue,
             )
         }
 
         SettingsSection(
             title = "浏览偏好",
-            subtitle = "这些默认值影响重新进入页面时的初始状态，不强行覆盖你当前会话里的临时操作。",
+            subtitle = "重新进入页面时使用这些默认偏好。",
         ) {
             SettingsChoiceRow(
                 title = "照片页默认网格密度",
@@ -104,8 +104,8 @@ fun SettingsScreen(
         }
 
         SettingsSection(
-            title = "Viewer 偏好",
-            subtitle = "这里只保留当前阶段真正生效的浏览偏好，避免把设置页做成过重的播放控制面板。",
+            title = "查看器偏好",
+            subtitle = "控制全屏看图和视频切换时的行为。",
         ) {
             SettingsInfoRow(
                 title = "评论预览默认状态",
@@ -128,7 +128,7 @@ fun SettingsScreen(
 
         SettingsSection(
             title = "权限状态",
-            subtitle = "这里只展示当前阶段的说明，不在设置页里强行展开复杂授权流程。",
+            subtitle = "查看照片、通知和系统媒体相关状态。",
         ) {
             SettingsInfoRow(
                 title = "系统媒体访问",
@@ -137,28 +137,23 @@ fun SettingsScreen(
             )
             SettingsInfoRow(
                 title = "通知权限",
-                subtitle = "通知中心在 REAL 模式下已经接入后端通知接口；系统推送权限本身仍留到后续阶段。",
-                value = "已接后端",
+                subtitle = "通知中心会显示评论、内容更新和回收站变更。",
+                value = "可用",
             )
         }
 
         SettingsSection(
-            title = "关于与诊断",
-            subtitle = "先把构建信息和联调入口收好，避免它们继续散落在通知页或内容页里。",
+            title = "关于",
+            subtitle = "应用信息与服务连接。",
         ) {
             SettingsInfoRow(
                 title = "应用名称",
-                subtitle = "当前阶段的产品名。",
+                subtitle = "双人私密相册与生活记录。",
                 value = "映世",
             )
-            SettingsInfoRow(
-                title = "构建信息",
-                subtitle = "保持轻量说明，暂不做复杂诊断导出。",
-                value = "debug / local shell",
-            )
             SettingsEntryRow(
-                title = "后端联调诊断",
-                subtitle = "查看或修改 baseUrl，切换离线 / 真实模式，处理自动登录，并做最小 health 检查。",
+                title = "连接设置",
+                subtitle = "查看服务地址、登录状态和同步模式。",
                 onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
             )
         }
@@ -183,11 +178,6 @@ private fun SettingsTopBar(
                 text = "设置",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = "入口来源：${source.toSettingsSourceLabel()}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

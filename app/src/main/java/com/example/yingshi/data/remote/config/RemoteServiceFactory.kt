@@ -3,7 +3,10 @@ package com.example.yingshi.data.remote.config
 import com.example.yingshi.data.remote.api.AlbumApi
 import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
+import com.example.yingshi.data.remote.api.ChatApi
 import com.example.yingshi.data.remote.api.HealthApi
+import com.example.yingshi.data.remote.api.LedgerApi
+import com.example.yingshi.data.remote.api.LifeConsoleApi
 import com.example.yingshi.data.remote.api.MediaApi
 import com.example.yingshi.data.remote.api.NotificationApi
 import com.example.yingshi.data.remote.api.SmallAlbumApi
@@ -93,6 +96,8 @@ object RemoteServiceFactory {
         get() = createService()
     val healthApi: HealthApi
         get() = createService()
+    val ledgerApi: LedgerApi
+        get() = createService()
     val mediaApi: MediaApi
         get() = createService()
     val postApi: SmallAlbumApi
@@ -101,9 +106,13 @@ object RemoteServiceFactory {
         get() = createService()
     val commentApi: CommentApi
         get() = createService()
+    val chatApi: ChatApi
+        get() = createService()
     val notificationApi: NotificationApi
         get() = createService()
     val trashApi: TrashApi
+        get() = createService()
+    val lifeConsoleApi: LifeConsoleApi
         get() = createService()
     val uploadApi: UploadApi
         get() = createUploadService()

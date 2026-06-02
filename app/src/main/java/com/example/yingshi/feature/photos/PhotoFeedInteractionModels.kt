@@ -74,6 +74,7 @@ data class PhotoViewerRoute(
 data class PhotoViewerOverlayUiModel(
     val commentCountLabel: String,
     val timeLabel: String,
+    val pageLabel: String,
     val originalLoadState: OriginalLoadState,
     val showOriginalAction: Boolean,
     val relatedSmallAlbumsLabel: String?,

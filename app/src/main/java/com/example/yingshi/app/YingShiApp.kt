@@ -4,6 +4,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +44,9 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.auth.LoginScreen
 import com.example.yingshi.feature.chat.ImportedChatScreen
 import com.example.yingshi.feature.home.HomeScreen
+import com.example.yingshi.feature.life.LifeConsoleScreen
 import com.example.yingshi.feature.life.LifeScreen
+import com.example.yingshi.feature.life.push.PushTokenRegistrar
 import com.example.yingshi.feature.ledger.LedgerScreen
 import com.example.yingshi.feature.me.EditProfileRoute
 import com.example.yingshi.feature.me.EditProfileScreen
@@ -101,7 +108,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun YingShiApp() {
     var selectedDestinationName by rememberSaveable {
-        mutableStateOf(RootDestination.PHOTOS.name)
+        mutableStateOf(RootDestination.HOME.name)
     }
     var photosTopDestinationName by rememberSaveable {
         mutableStateOf(PhotosTopDestination.PHOTOS.name)
@@ -121,7 +128,13 @@ fun YingShiApp() {
     var chatViewerRouteActive by rememberSaveable {
         mutableStateOf(false)
     }
+    var lifeConsoleRouteActive by rememberSaveable {
+        mutableStateOf(false)
+    }
     var ledgerOpenAddNonce by rememberSaveable {
+        mutableIntStateOf(0)
+    }
+    var ledgerOpenHomeNonce by rememberSaveable {
         mutableIntStateOf(0)
     }
     var photoViewerRoute by remember {
@@ -190,6 +203,9 @@ fun YingShiApp() {
     val scope = rememberCoroutineScope()
     val authSessionVersion = AuthSessionManager.sessionVersion
     val backendSettings = BackendDebugConfig.settings
+    val openLifeConsoleNonce = AppNavigationRequests.openLifeConsoleNonce
+    val openLedgerRequestNonce = AppNavigationRequests.openLedgerNonce
+    val openLedgerAddRequestNonce = AppNavigationRequests.openLedgerAddNonce
     var currentUser by remember { mutableStateOf<RemoteCurrentUser?>(null) }
     var isCheckingAuth by remember { mutableStateOf(true) }
     var isLoggingOut by remember { mutableStateOf(false) }
@@ -205,6 +221,7 @@ fun YingShiApp() {
     fun clearProtectedUiRoutes() {
         ledgerRouteActive = false
         chatViewerRouteActive = false
+        lifeConsoleRouteActive = false
         photoViewerRoute = null
         systemMediaRoute = null
         systemMediaViewerRoute = null
@@ -230,11 +247,12 @@ fun YingShiApp() {
         profileRefreshMessage = null
         authNoticeMessage = message ?: "登录状态已失效，请重新登录。"
         clearProtectedUiRoutes()
-        selectedDestinationName = RootDestination.PHOTOS.name
+        selectedDestinationName = RootDestination.HOME.name
     }
 
     LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl, currentUser?.userId) {
         if (currentUser != null && AuthSessionManager.isLoggedIn) {
+            PushTokenRegistrar.registerCurrentTokenIfPossible(context)
             isCheckingAuth = false
             return@LaunchedEffect
         }
@@ -249,6 +267,7 @@ fun YingShiApp() {
         when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
             is ApiResult.Success -> {
                 currentUser = result.data
+                PushTokenRegistrar.registerCurrentTokenIfPossible(context)
                 authNoticeMessage = null
                 isCheckingAuth = false
             }
@@ -302,7 +321,7 @@ fun YingShiApp() {
                 authNoticeMessage = null
                 profileRefreshMessage = null
                 isCheckingAuth = false
-                selectedDestinationName = RootDestination.PHOTOS.name
+                selectedDestinationName = RootDestination.HOME.name
             },
         )
         return
@@ -312,6 +331,33 @@ fun YingShiApp() {
         BackHandler { editProfileRoute = null }
     } else if (personalProfileRoute != null) {
         BackHandler { personalProfileRoute = null }
+    }
+
+    LaunchedEffect(openLifeConsoleNonce) {
+        if (openLifeConsoleNonce <= 0) return@LaunchedEffect
+        selectedDestinationName = RootDestination.LIFE.name
+        ledgerRouteActive = false
+        chatViewerRouteActive = false
+        lifeConsoleRouteActive = true
+    }
+
+    LaunchedEffect(openLedgerRequestNonce) {
+        if (openLedgerRequestNonce <= 0) return@LaunchedEffect
+        selectedDestinationName = RootDestination.LIFE.name
+        lifeConsoleRouteActive = false
+        chatViewerRouteActive = false
+        ledgerOpenAddNonce = 0
+        ledgerOpenHomeNonce += 1
+        ledgerRouteActive = true
+    }
+
+    LaunchedEffect(openLedgerAddRequestNonce) {
+        if (openLedgerAddRequestNonce <= 0) return@LaunchedEffect
+        selectedDestinationName = RootDestination.LIFE.name
+        lifeConsoleRouteActive = false
+        chatViewerRouteActive = false
+        ledgerRouteActive = true
+        ledgerOpenAddNonce += 1
     }
 
     val isProfileFlowActive = personalProfileRoute != null || editProfileRoute != null
@@ -372,15 +418,15 @@ fun YingShiApp() {
                 "已定位到刚导入媒体"
             }
             GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = if (extraCount > 0) {
-                "已导入 ${validResultMediaIds.size} 项媒体，暂时没有在照片流中定位到目标"
+                "已导入 ${validResultMediaIds.size} 项媒体，照片流还在刷新定位"
             } else {
-                "已导入媒体，暂时没有在照片流中定位到目标"
+                "已导入媒体，照片流还在刷新定位"
             }
             if (hasRetryableItems) {
                 GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage =
                     "已定位到刚导入媒体，未完成项可在传输中心查看并重试。"
                 GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage =
-                    "成功项已导入，但暂时没有定位到目标；未完成项可在传输中心查看并重试。"
+                    "成功项已导入，照片流还在刷新定位；未完成项可在传输中心查看并重试。"
             }
         }
         photoViewerRoute = null
@@ -466,6 +512,16 @@ fun YingShiApp() {
     if (photoViewerRoute != null) {
         BackHandler {
             photoViewerRoute = null
+        }
+    }
+    if (lifeConsoleRouteActive) {
+        BackHandler {
+            lifeConsoleRouteActive = false
+        }
+    }
+    if (chatViewerRouteActive) {
+        BackHandler {
+            chatViewerRouteActive = false
         }
     }
     if (systemMediaViewerRoute != null) {
@@ -561,7 +617,8 @@ fun YingShiApp() {
                 cacheManagementRoute == null &&
                 !isProfileFlowActive &&
                 !ledgerRouteActive &&
-                !chatViewerRouteActive,
+                !chatViewerRouteActive &&
+                !lifeConsoleRouteActive,
         ) {
             when {
             backendDiagnosticsRoute != null -> {
@@ -618,7 +675,7 @@ fun YingShiApp() {
                                 !item.postId.isNullOrBlank() -> {
                                     notificationCenterRoute = null
                                     notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    selectedDestinationName = RootDestination.HOME.name
                                     photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                                     postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
                                         item.toNotificationPostRoute()
@@ -793,8 +850,32 @@ fun YingShiApp() {
 
             else -> {
                 Box(modifier = Modifier.fillMaxSize()) {
-                when (selectedDestination) {
-                    RootDestination.HOME -> HomeScreen()
+                AnimatedContent(
+                    targetState = selectedDestination,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(180)) togetherWith
+                            fadeOut(animationSpec = tween(120))
+                    },
+                    label = "rootDestinationTransition",
+                ) { destination ->
+                when (destination) {
+                    RootDestination.HOME -> HomeScreen(
+                        onOpenPhotos = {
+                            selectedDestinationName = RootDestination.PHOTOS.name
+                            photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+                        },
+                        onOpenLife = {
+                            selectedDestinationName = RootDestination.LIFE.name
+                            ledgerRouteActive = false
+                            chatViewerRouteActive = false
+                        },
+                        onOpenMe = {
+                            selectedDestinationName = RootDestination.ME.name
+                        },
+                        onOpenNotifications = {
+                            notificationCenterRoute = NotificationCenterRoute(source = "home-bell")
+                        },
+                    )
                     RootDestination.PHOTOS -> PhotosRootScreen(
                         selectedTopDestinationName = photosTopDestinationName,
                         onSelectedTopDestinationChange = { photosTopDestinationName = it },
@@ -826,9 +907,23 @@ fun YingShiApp() {
                     RootDestination.LIFE -> {
                         if (ledgerRouteActive) {
                             LedgerScreen(
+                                openHomeNonce = ledgerOpenHomeNonce,
                                 openAddNonce = ledgerOpenAddNonce,
                                 onCloseLedger = { ledgerRouteActive = false },
                                 modifier = Modifier.fillMaxSize(),
+                            )
+                        } else if (lifeConsoleRouteActive) {
+                            LifeConsoleScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                initialSlotKey = AppNavigationRequests.lifeConsoleSlotKey,
+                                initialMediaId = AppNavigationRequests.lifeConsoleMediaId,
+                                onBack = { lifeConsoleRouteActive = false },
+                                onOpenLedgerAdd = {
+                                    lifeConsoleRouteActive = false
+                                    chatViewerRouteActive = false
+                                    ledgerRouteActive = true
+                                    ledgerOpenAddNonce += 1
+                                },
                             )
                         } else if (chatViewerRouteActive) {
                             ImportedChatScreen(
@@ -837,13 +932,25 @@ fun YingShiApp() {
                             )
                         } else {
                             LifeScreen(
-                                onOpenLedger = {
+                                onOpenLifeConsole = {
+                                    ledgerRouteActive = false
                                     chatViewerRouteActive = false
+                                    lifeConsoleRouteActive = true
+                                },
+                                onOpenLedger = {
+                                    ledgerOpenAddNonce = 0
+                                    ledgerOpenHomeNonce += 1
+                                    chatViewerRouteActive = false
+                                    lifeConsoleRouteActive = false
                                     ledgerRouteActive = true
                                 },
                                 onOpenChatViewer = {
                                     ledgerRouteActive = false
+                                    lifeConsoleRouteActive = false
                                     chatViewerRouteActive = true
+                                },
+                                onOpenNotifications = {
+                                    notificationCenterRoute = NotificationCenterRoute(source = "life-bell")
                                 },
                             )
                         }
@@ -883,6 +990,9 @@ fun YingShiApp() {
                             onOpenProfile = {
                                 personalProfileRoute = PersonalProfileRoute(source = "my-page")
                             },
+                            onOpenNotifications = {
+                                notificationCenterRoute = NotificationCenterRoute(source = "my-bell")
+                            },
                             onLogout = {
                                 scope.launch {
                                     isLoggingOut = true
@@ -895,7 +1005,7 @@ fun YingShiApp() {
                                     profileRefreshMessage = null
                                     isRefreshingProfile = false
                                     clearProtectedUiRoutes()
-                                    selectedDestinationName = RootDestination.PHOTOS.name
+                                    selectedDestinationName = RootDestination.HOME.name
                                     isLoggingOut = false
                                 }
                             },
@@ -906,6 +1016,7 @@ fun YingShiApp() {
                         )
                         }
                     }
+                }
                 }
 
                 createPostRoute?.let { route ->

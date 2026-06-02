@@ -50,6 +50,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -59,6 +60,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -113,6 +118,7 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -121,10 +127,11 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val ViewerNightTop = Color(0xFF050608)
-private val ViewerNightBottom = Color(0xFF050608)
-private val ViewerNightMiddle = Color(0xFF050608)
-private val ViewerSurface = Color(0xFFFFFFFF)
+private val ViewerNightTop = Color(0xFF1D333C)
+private val ViewerNightBottom = Color(0xFF101F26)
+private val ViewerNightMiddle = Color(0xFF182B33)
+private val ViewerSurface = Color(0xFFF4FBFC)
+private val ViewerAccent = Color(0xFFBDEFFF)
 private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
@@ -392,7 +399,7 @@ internal fun ViewerStatusBarEffect(immersive: Boolean = false) {
 
         if (window != null) {
             val controller = WindowCompat.getInsetsController(window, view)
-            window.statusBarColor = android.graphics.Color.BLACK
+            window.statusBarColor = android.graphics.Color.rgb(0x18, 0x2A, 0x35)
             controller.isAppearanceLightStatusBars = false
         }
 
@@ -427,7 +434,7 @@ internal fun ViewerStatusBarEffect(immersive: Boolean = false) {
         val window = view.context.findActivity()?.window
         if (window != null) {
             val controller = WindowCompat.getInsetsController(window, view)
-            window.statusBarColor = android.graphics.Color.BLACK
+            window.statusBarColor = android.graphics.Color.rgb(0x10, 0x1F, 0x26)
             controller.isAppearanceLightStatusBars = false
         }
         applyViewerStatusBarVisibility(view, immersive)
@@ -562,6 +569,8 @@ fun PhotoViewerScreen(
     }
     val overlayUiModel = remember(
         currentItem,
+        currentIndex,
+        viewerItems.size,
         currentOriginalState,
         mediaComments.size,
         canOpenOriginal,
@@ -571,6 +580,7 @@ fun PhotoViewerScreen(
         PhotoViewerOverlayUiModel(
             commentCountLabel = mediaComments.size.toString(),
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
+            pageLabel = "${currentIndex + 1} / ${viewerItems.size}",
             originalLoadState = currentOriginalState,
             showOriginalAction = canOpenOriginal,
             relatedSmallAlbumsLabel = if (currentItem.smallAlbumIds.isNotEmpty()) {
@@ -663,10 +673,10 @@ fun PhotoViewerScreen(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(text = "删除当前 App 媒体到回收站？") },
+            title = { Text(text = "删除当前媒体到回收站？") },
             text = {
                 Text(
-                    text = "这是 App 媒体删除：当前媒体会从照片流消失，并影响所有引用它的小相册。删除后会进入 App 回收站，后续可在回收站中恢复。",
+                    text = "当前媒体会从照片流消失，并影响所有引用它的小相册。删除后会进入映世回收站，可以在回收站中恢复。",
                 )
             },
             confirmButton = {
@@ -686,7 +696,7 @@ fun PhotoViewerScreen(
                                         pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
                                     }
                                 }
-                                Toast.makeText(context, "已删除当前 App 媒体，并写入回收站。", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "已删除当前媒体，并写入回收站。", Toast.LENGTH_SHORT).show()
                             }
                             RepositoryMode.REAL -> {
                                 coroutineScope.launch {
@@ -707,7 +717,7 @@ fun PhotoViewerScreen(
                         }
                     },
                 ) {
-                    Text(text = "删除到 App 回收站")
+                    Text(text = "删除到回收站")
                 }
             },
             dismissButton = {
@@ -874,7 +884,7 @@ fun PhotoViewerScreen(
                 },
                 timeLabel = overlayUiModel.timeLabel,
                 onShare = {
-                    Toast.makeText(context, "分享功能先保留占位。", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "当前设备未提供可用分享入口。", Toast.LENGTH_SHORT).show()
                 },
                 onEditTime = { showTimeEditorSheet = true },
                 onDelete = { showDeleteConfirm = true },
@@ -1253,8 +1263,8 @@ private fun ViewerTopScrim(modifier: Modifier = Modifier) {
         modifier = modifier.background(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color.Black.copy(alpha = 0.30f),
-                    Color.Black.copy(alpha = 0.12f),
+                    ViewerNightBottom.copy(alpha = 0.62f),
+                    ViewerNightBottom.copy(alpha = 0.24f),
                     Color.Transparent,
                 ),
             ),
@@ -1269,8 +1279,8 @@ private fun ViewerBottomScrim(modifier: Modifier = Modifier) {
             brush = Brush.verticalGradient(
                 colors = listOf(
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.10f),
-                    Color.Black.copy(alpha = 0.28f),
+                    ViewerNightBottom.copy(alpha = 0.20f),
+                    ViewerNightBottom.copy(alpha = 0.58f),
                 ),
             ),
         ),
@@ -1321,38 +1331,43 @@ private fun PhotoViewerTopBar(
     Box(
         modifier = modifier.alpha(overlayAlpha),
     ) {
-        Box(
+        val topButtonShape = CircleShape
+        Surface(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .size(ViewerLayoutTuning.backButtonTouchSize)
-                .clip(CircleShape)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
+                .yingShiClickable(shape = topButtonShape, pressedScale = 0.94f, onClick = onBack),
+            shape = topButtonShape,
+            color = ViewerNightTop.copy(alpha = 0.56f),
+            border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
         ) {
-            Text(
-                text = "<",
-                style = MaterialTheme.typography.headlineSmall,
-                color = ViewerSurface.copy(alpha = 0.92f),
-            )
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = "<",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = ViewerSurface.copy(alpha = 0.94f),
+                )
+            }
         }
 
-        ViewerCapsule(
-            text = timeLabel,
-            emphasized = false,
-            modifier = Modifier.align(Alignment.TopCenter),
-            surfaceAlpha = 0.06f,
-            contentAlpha = 0.78f,
-            onClick = {},
-        )
-
-        Box(
+        Row(
             modifier = Modifier.align(Alignment.TopEnd),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            ViewerCapsule(
-                text = "≡",
-                emphasized = false,
-                surfaceAlpha = 0.08f,
-                contentAlpha = 0.80f,
+            ViewerIconCircle(
+                icon = Icons.Rounded.Download,
+                contentDescription = "分享",
+                onClick = onShare,
+            )
+            ViewerIconCircle(
+                icon = Icons.Rounded.Info,
+                contentDescription = "修改时间",
+                onClick = onEditTime,
+            )
+            ViewerIconCircle(
+                icon = Icons.Rounded.MoreHoriz,
+                contentDescription = "更多",
                 onClick = { menuExpanded = true },
             )
             DropdownMenu(
@@ -1395,6 +1410,32 @@ private fun PhotoViewerTopBar(
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ViewerIconCircle(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val shape = CircleShape
+    Surface(
+        modifier = Modifier
+            .size(46.dp)
+            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+        shape = shape,
+        color = ViewerNightTop.copy(alpha = 0.54f),
+        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = ViewerSurface.copy(alpha = 0.90f),
+                modifier = Modifier.size(23.dp),
+            )
         }
     }
 }
@@ -1511,13 +1552,18 @@ private fun PhotoViewerCanvas(
                         )
                     }
                     if (videoControlsVisible && videoPlaybackState != null) {
+                        val playButtonShape = CircleShape
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .clickable(onClick = onTogglePlayback),
-                            shape = CircleShape,
-                            color = Color.White.copy(alpha = if (videoPlaybackState.isPlaying) 0.14f else 0.18f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                                .yingShiClickable(
+                                    shape = playButtonShape,
+                                    pressedScale = 0.94f,
+                                    onClick = onTogglePlayback,
+                                ),
+                            shape = playButtonShape,
+                            color = ViewerNightTop.copy(alpha = if (videoPlaybackState.isPlaying) 0.62f else 0.70f),
+                            border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.26f)),
                         ) {
                             Box(
                                 modifier = Modifier
@@ -1566,7 +1612,7 @@ private fun PhotoViewerCanvas(
                         Surface(
                             modifier = Modifier.align(Alignment.Center),
                             shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                            color = Color.Black.copy(alpha = 0.32f),
+                            color = ViewerNightTop.copy(alpha = 0.82f),
                         ) {
                             Text(
                                 text = "暂无可用媒体预览",
@@ -1690,7 +1736,7 @@ private fun ViewerImageCanvas(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = spacing.md),
                 shape = RoundedCornerShape(radius.capsule),
-                color = Color.Black.copy(alpha = 0.34f),
+                color = ViewerNightTop.copy(alpha = 0.84f),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
@@ -1731,7 +1777,7 @@ private fun ViewerImageFallback(
     Surface(
         modifier = modifier.padding(spacing.lg),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = Color.Black.copy(alpha = 0.32f),
+        color = ViewerNightTop.copy(alpha = 0.82f),
     ) {
         Text(
             text = label,
@@ -1750,12 +1796,12 @@ private fun ViewerVideoPosterFallback(
     val spacing = YingShiThemeTokens.spacing
 
     Box(
-        modifier = modifier.background(Color(0xFF11151B)),
+        modifier = modifier.background(ViewerNightBottom),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = Color.Black.copy(alpha = 0.26f),
+            color = ViewerNightTop.copy(alpha = 0.68f),
             border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
         ) {
             Column(
@@ -2090,7 +2136,7 @@ internal fun ViewerVideoCanvas(
                     .align(Alignment.Center)
                     .padding(top = 96.dp),
                 shape = RoundedCornerShape(radius.capsule),
-                color = Color.Black.copy(alpha = 0.32f),
+                color = ViewerNightTop.copy(alpha = 0.82f),
                 border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
                 onClick = {
                     retryVersion += 1
@@ -2134,7 +2180,7 @@ internal fun ViewerVideoControls(
     Surface(
         modifier = modifier.widthIn(min = 240.dp, max = 420.dp),
         shape = RoundedCornerShape(radius.xl),
-        color = Color.Black.copy(alpha = 0.22f),
+        color = ViewerNightTop.copy(alpha = 0.76f),
         border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
     ) {
         Column(
@@ -2235,12 +2281,10 @@ private fun PhotoViewerEdgeActions(
     onOpenOriginal: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewerCommentEntry(
             commentCountLabel = overlayUiModel.commentCountLabel,
@@ -2248,18 +2292,27 @@ private fun PhotoViewerEdgeActions(
             onClick = onOpenComments,
         )
 
-        Column(
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            if (overlayUiModel.showOriginalAction) {
-                ViewerCapsule(
-                    text = overlayUiModel.originalLoadState.actionLabel(),
-                    emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
-                    enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
-                    onClick = onOpenOriginal,
-                )
-            }
+        ViewerCapsule(
+            text = "${overlayUiModel.pageLabel} · ${overlayUiModel.timeLabel}",
+            emphasized = false,
+            surfaceAlpha = 0.10f,
+            contentAlpha = 0.86f,
+        )
+
+        if (overlayUiModel.showOriginalAction) {
+            ViewerCapsule(
+                text = overlayUiModel.originalLoadState.actionLabel(),
+                emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
+                enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
+                onClick = onOpenOriginal,
+            )
+        } else {
+            ViewerCapsule(
+                text = "原图已保存",
+                emphasized = false,
+                surfaceAlpha = 0.08f,
+                contentAlpha = 0.78f,
+            )
         }
     }
 }
@@ -2275,14 +2328,18 @@ private fun ViewerCommentEntry(
 
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(radius.capsule))
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                shape = RoundedCornerShape(radius.capsule),
+                pressedScale = 0.96f,
+                onClick = onClick,
+            ),
         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Surface(
             shape = CircleShape,
-            color = ViewerSurface.copy(alpha = if (previewExpanded) 0.18f else 0.12f),
+            color = ViewerAccent.copy(alpha = if (previewExpanded) 0.24f else 0.14f),
+            border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
         ) {
             Text(
                 text = "评",
@@ -2318,19 +2375,18 @@ private fun ViewerCapsule(
 
     Surface(
         modifier = modifier
-            .clip(shape)
             .then(
                 if (onClick != null && enabled) {
-                    Modifier.clickable(onClick = onClick)
+                    Modifier.yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick)
                 } else {
                     Modifier
                 },
             ),
         shape = shape,
-        color = ViewerSurface.copy(alpha = if (enabled) surfaceAlpha else 0.07f),
+        color = ViewerNightTop.copy(alpha = if (enabled) surfaceAlpha + 0.26f else 0.22f),
         border = BorderStroke(
             width = 1.dp,
-            color = ViewerSurface.copy(alpha = if (enabled) surfaceAlpha + 0.04f else 0.08f),
+            color = ViewerAccent.copy(alpha = if (enabled) surfaceAlpha + 0.10f else 0.08f),
         ),
     ) {
         Text(
@@ -2362,7 +2418,7 @@ private fun ViewerCommentPreviewLayer(
             .widthIn(max = ViewerLayoutTuning.commentPreviewMaxWidth)
             .height(ViewerLayoutTuning.commentPreviewHeight)
             .clip(RoundedCornerShape(radius.lg))
-            .background(Color.Black.copy(alpha = 0.34f))
+            .background(ViewerNightTop.copy(alpha = 0.78f))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.md, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -2579,7 +2635,7 @@ private fun PhotoViewerCommentSheet(
             }
             if (selectedCommentId != null) {
                 Text(
-                    text = "已定位到预览评论，占位高亮如下",
+                    text = "已定位到这条评论",
                     style = MaterialTheme.typography.labelMedium,
                     color = ViewerSurface.copy(alpha = 0.58f),
                 )
@@ -2812,7 +2868,7 @@ private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<CommentUiModel
         "这张的光很温柔，像那天刚好慢下来了一点。",
         "我记得这里，当时风特别轻。",
         "这个角度好像比现场更安静。",
-        "先留一条占位评论，后面接真实媒体评论。",
+        "这张适合单独留一句。",
     )
     return List(media.commentCount.coerceAtMost(ViewerLayoutTuning.previewCommentsMaxCount)) { index ->
         CommentUiModel(
@@ -2939,7 +2995,7 @@ private fun deleteFakeViewerMedia(item: PhotoFeedItem) {
 
 private suspend fun deleteRealViewerMedia(mediaId: String): String? {
     if (!AuthSessionManager.isLoggedIn) {
-        return "请先到后端联调诊断页登录，再删除真实媒体。"
+        return "请先连接服务，再删除这项媒体。"
     }
     return when (val result = RepositoryProvider.mediaRepository.systemDeleteMedia(mediaId)) {
         is ApiResult.Success -> {

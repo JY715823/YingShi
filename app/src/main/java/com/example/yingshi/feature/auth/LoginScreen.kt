@@ -2,6 +2,7 @@ package com.example.yingshi.feature.auth
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,18 +10,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -38,28 +45,27 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
-import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiMistCard
+import com.example.yingshi.ui.components.YingShiPrimaryMistButton
+import com.example.yingshi.ui.components.YingShiTextField
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
 
-private const val APP_NAME = "\u6620\u4e16"
-private const val LOGIN_SUBTITLE = "\u767b\u5f55\u540e\u8fdb\u5165\u4e24\u4e2a\u4eba\u7684\u76f8\u518c\u7a7a\u95f4\u3002"
-private const val LABEL_EMAIL = "\u90ae\u7bb1"
-private const val LABEL_PASSWORD = "\u5bc6\u7801"
-private const val ACTION_LOGIN = "\u767b\u5f55"
-private const val ACTION_FILL_DEMO = "\u586b\u5165 demo"
-private const val ACTION_SAVE_BASE_URL = "\u4fdd\u5b58 baseUrl"
-private const val ERROR_LOGIN_FAILED = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002"
-private const val LABEL_CURRENT_MODE = "\u5f53\u524d\u6a21\u5f0f\uff1a"
-private const val LABEL_BASE_URL = "baseUrl"
-private const val TIP_REAL_PREFIX = "REAL \u6a21\u5f0f\u8bf7\u786e\u8ba4 baseUrl \u6307\u5411\u5f53\u524d\u540e\u7aef\uff1a"
-private const val TIP_FAKE =
-    "FAKE \u6a21\u5f0f\u4f1a\u4f7f\u7528\u672c\u5730\u5360\u4f4d\u8d26\u53f7\uff0c\u4e0d\u8bbf\u95ee\u540e\u7aef\u3002"
+private const val APP_NAME = "映世"
+private const val LOGIN_SUBTITLE = "和你一起，把日常留住"
+private const val LABEL_ACCOUNT = "账号"
+private const val LABEL_PASSWORD = "密码"
+private const val LABEL_ADVANCED = "连接设置"
+private const val LABEL_BACKEND_ADDRESS = "服务地址"
+private const val ACTION_LOGIN = "登录"
+private const val ACTION_SAVE_ADDRESS = "保存地址"
+private const val ERROR_LOGIN_FAILED = "登录失败，请重试。"
 
 @Composable
 fun LoginScreen(
@@ -69,217 +75,277 @@ fun LoginScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val settings = BackendDebugConfig.settings
     val scope = rememberCoroutineScope()
     var account by rememberSaveable { mutableStateOf(BackendAutoLoginManager.DEFAULT_DEMO_ACCOUNT) }
     var password by rememberSaveable { mutableStateOf(BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD) }
     var baseUrlInput by rememberSaveable(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
+    var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var advancedMessage by remember { mutableStateOf<String?>(null) }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(spacing.lg),
-        contentAlignment = Alignment.Center,
-    ) {
+    LaunchedEffect(Unit) {
+        if (account.isBlank()) {
+            account = BackendAutoLoginManager.DEFAULT_DEMO_ACCOUNT
+        }
+        if (password.isBlank()) {
+            password = BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD
+        }
+    }
+
+    YingShiMistBackground(modifier = modifier, showWaves = true) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(spacing.lg),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 44.dp)
+                .padding(top = 156.dp, bottom = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(
                     text = APP_NAME,
-                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = colors.titleAccent,
+                )
+            }
+
+            Column(
+                modifier = Modifier.padding(top = 64.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                YingShiTextField(
+                    value = account,
+                    onValueChange = {
+                        account = it
+                        errorMessage = null
+                    },
+                    placeholder = LABEL_ACCOUNT,
+                    icon = Icons.Rounded.Person,
+                    enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                YingShiTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        errorMessage = null
+                    },
+                    placeholder = LABEL_PASSWORD,
+                    icon = Icons.Rounded.Lock,
+                    enabled = !isLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                AdvancedRow(
+                    expanded = advancedExpanded,
+                    onClick = {
+                        advancedExpanded = !advancedExpanded
+                        advancedMessage = null
+                    },
+                )
+
+                if (advancedExpanded) {
+                    YingShiMistCard(
+                        shape = RoundedCornerShape(radius.lg),
+                        color = colors.raisedSurface.copy(alpha = 0.76f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            YingShiTextField(
+                                value = baseUrlInput,
+                                onValueChange = {
+                                    baseUrlInput = it
+                                    advancedMessage = null
+                                },
+                                placeholder = LABEL_BACKEND_ADDRESS,
+                                icon = Icons.Rounded.Settings,
+                                enabled = !isLoading,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isLoading) {
+                                        BackendDebugConfig.updateBaseUrl(baseUrlInput)
+                                        baseUrlInput = BackendDebugConfig.currentBaseUrl()
+                                        advancedMessage = "地址已保存"
+                                    },
+                                shape = RoundedCornerShape(radius.capsule),
+                                color = colors.sectionBackground.copy(alpha = 0.84f),
+                                border = BorderStroke(1.dp, colors.dividerSoft),
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = spacing.sm),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = ACTION_SAVE_ADDRESS,
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        color = colors.titleAccent,
+                                    )
+                                }
+                            }
+                            advancedMessage?.let { message ->
+                                Text(
+                                    text = message,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = colors.titleAccent,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                (errorMessage ?: sessionMessage)?.let { message ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(radius.lg),
+                        color = if (errorMessage != null) {
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.88f)
+                        } else {
+                            colors.memoryWash.copy(alpha = 0.90f)
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (errorMessage != null) {
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+                            } else {
+                                colors.memoryAccent.copy(alpha = 0.16f)
+                            },
+                        ),
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (errorMessage != null) {
+                                MaterialTheme.colorScheme.onErrorContainer
+                            } else {
+                                colors.onMemoryContainer
+                            },
+                        )
+                    }
+                }
+
+                YingShiPrimaryMistButton(
+                    text = ACTION_LOGIN,
+                    onClick = {
+                        scope.launch {
+                            isLoading = true
+                            errorMessage = null
+                            try {
+                                when (
+                                    val loginResult = RepositoryProvider.authRepository.login(
+                                        LoginRequestDto(
+                                            account = account.trim(),
+                                            password = password,
+                                        ),
+                                    )
+                                ) {
+                                    is ApiResult.Success -> {
+                                        val session: RemoteLoginSession = loginResult.data
+                                        onLoginSuccess(
+                                            RemoteCurrentUser(
+                                                userId = session.userId,
+                                                account = session.account,
+                                                displayName = session.displayName,
+                                                avatarUrl = session.avatarUrl,
+                                                libraryId = session.libraryId,
+                                                libraryDisplayName = session.libraryDisplayName,
+                                                bio = session.bio,
+                                                partner = session.partner,
+                                                createdAtMillis = session.createdAtMillis,
+                                                updatedAtMillis = session.updatedAtMillis,
+                                            ),
+                                        )
+                                    }
+                                    is ApiResult.Error -> {
+                                        errorMessage = loginResult.message
+                                    }
+                                    ApiResult.Loading -> Unit
+                                }
+                            } catch (throwable: Throwable) {
+                                errorMessage = throwable.message ?: ERROR_LOGIN_FAILED
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 38.dp),
+                    enabled = !isLoading && account.isNotBlank() && password.isNotBlank(),
+                    loading = isLoading,
                 )
                 Text(
                     text = LOGIN_SUBTITLE,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(radius.xl),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-            ) {
-                Column(
-                    modifier = Modifier.padding(spacing.lg),
-                    verticalArrangement = Arrangement.spacedBy(spacing.md),
-                ) {
-                    OutlinedTextField(
-                        value = account,
-                        onValueChange = { account = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(LABEL_EMAIL) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                        enabled = !isLoading,
-                    )
-                    OutlinedTextField(
-                        value = baseUrlInput,
-                        onValueChange = { baseUrlInput = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(LABEL_BASE_URL) },
-                        singleLine = true,
-                        enabled = !isLoading && settings.repositoryMode == RepositoryMode.REAL,
-                    )
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(LABEL_PASSWORD) },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        enabled = !isLoading,
-                    )
-
-                    (errorMessage ?: sessionMessage)?.let { message ->
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (errorMessage != null) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                isLoading = true
-                                errorMessage = null
-                                try {
-                                    when (
-                                        val loginResult = RepositoryProvider.authRepository.login(
-                                            LoginRequestDto(
-                                                account = account.trim(),
-                                                password = password,
-                                            ),
-                                        )
-                                    ) {
-                                        is ApiResult.Success -> {
-                                            val session: RemoteLoginSession = loginResult.data
-                                            onLoginSuccess(
-                                                RemoteCurrentUser(
-                                                    userId = session.userId,
-                                                    account = session.account,
-                                                    displayName = session.displayName,
-                                                    avatarUrl = session.avatarUrl,
-                                                    libraryId = session.libraryId,
-                                                    libraryDisplayName = session.libraryDisplayName,
-                                                    bio = session.bio,
-                                                    partner = session.partner,
-                                                    createdAtMillis = session.createdAtMillis,
-                                                    updatedAtMillis = session.updatedAtMillis,
-                                                ),
-                                            )
-                                        }
-                                        is ApiResult.Error -> {
-                                            errorMessage = loginResult.message
-                                        }
-                                        ApiResult.Loading -> Unit
-                                    }
-                                } catch (throwable: Throwable) {
-                                    errorMessage = throwable.message ?: ERROR_LOGIN_FAILED
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading && account.isNotBlank() && password.isNotBlank(),
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(vertical = 2.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        } else {
-                            Text(ACTION_LOGIN)
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                                baseUrlInput = BackendDebugConfig.currentBaseUrl()
-                                errorMessage = null
-                            },
-                            enabled = !isLoading && settings.repositoryMode == RepositoryMode.REAL,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(ACTION_SAVE_BASE_URL)
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                account = BackendAutoLoginManager.DEFAULT_DEMO_ACCOUNT
-                                password = BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD
-                                baseUrlInput = BackendDebugConfig.currentBaseUrl()
-                                errorMessage = null
-                            },
-                            enabled = !isLoading,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(ACTION_FILL_DEMO)
-                        }
-                    }
-                }
-            }
-
-            Surface(
-                shape = RoundedCornerShape(radius.lg),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-            ) {
-                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                    ) {
-                        Text(
-                            text = if (settings.repositoryMode == RepositoryMode.REAL) "R" else "F",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
-                        Text(
-                            text = LABEL_CURRENT_MODE + settings.repositoryMode.name,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = if (settings.repositoryMode == RepositoryMode.REAL) {
-                                TIP_REAL_PREFIX + RemoteServiceFactory.currentBaseUrl()
-                            } else {
-                                TIP_FAKE
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+                        .padding(top = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun AdvancedRow(
+    expanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    val spacing = YingShiThemeTokens.spacing
+
+    YingShiMistCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.raisedSurface.copy(alpha = 0.70f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = 0.18f))
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Settings,
+                contentDescription = null,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(28.dp),
+            )
+            Text(
+                text = LABEL_ADVANCED,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textSecondary,
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                contentDescription = null,
+                tint = colors.titleAccent,
+            )
         }
     }
 }

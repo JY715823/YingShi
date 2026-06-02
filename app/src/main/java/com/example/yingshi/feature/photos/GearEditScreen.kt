@@ -439,7 +439,7 @@ private fun RealGearEditScreen(
                 saveEnabled = false,
             )
             Text(
-                text = "正在读取后端小相册编辑信息…",
+                text = "正在读取小相册编辑信息…",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -513,7 +513,7 @@ private fun RealGearEditScreen(
 
         GearEditSection(
             title = "时间设置",
-            subtitle = "沿用新建小相册流程的发布时间检查，保存后同步到后端。",
+            subtitle = "保存后会同步到小相册。",
         ) {
             Text(
                 text = formatGearEditTime(uiState.displayTimeMillis),
@@ -585,7 +585,7 @@ private fun RealGearEditScreen(
         ) {
             GearEditEntryRow(
                 title = "删除整个小相册",
-                subtitle = "REAL 模式下会把小相册移入后端回收站。",
+                subtitle = "会把小相册移入回收站。",
                 danger = true,
                 onClick = { showDeletePostDialog = true },
             )
@@ -597,7 +597,7 @@ private fun RealGearEditScreen(
             onDismissRequest = { showDeletePostDialog = false },
             title = { Text("删除整个小相册") },
             text = {
-                Text("确认后会把当前小相册移入后端回收站，小相册详情、大相册页和回收站会同步刷新。")
+                Text("确认后会把当前小相册移入回收站，小相册详情、大相册页和回收站会同步刷新。")
             },
             confirmButton = {
                 TextButton(
@@ -854,7 +854,10 @@ private fun GearEditSaveRow(
             enabled = !isSaving,
             shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
+                containerColor = YingShiThemeTokens.colors.primaryContainer,
+                contentColor = YingShiThemeTokens.colors.onPrimaryContainer,
+                disabledContainerColor = YingShiThemeTokens.colors.sectionBackground,
+                disabledContentColor = YingShiThemeTokens.colors.textSecondary,
             ),
         ) {
             Text(if (isSaving) "保存中…" else "保存小相册")
@@ -1113,7 +1116,7 @@ private fun GearEditMissingState(
     ) {
         GearEditTopBar(onCancel = onBack, onSave = onBack)
         Text(
-            text = "当前小相册不存在，暂时无法进入 Gear Edit。",
+            text = "当前小相册不存在，无法编辑。",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

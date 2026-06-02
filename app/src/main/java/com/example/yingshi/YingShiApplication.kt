@@ -10,6 +10,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
+import com.example.yingshi.feature.life.push.PushTokenRegistrar
 
 class YingShiApplication : Application(), ImageLoaderFactory {
 
@@ -17,6 +18,7 @@ class YingShiApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         AuthSessionManager.init(applicationContext)
         BackendDebugConfig.init(applicationContext)
+        PushTokenRegistrar.registerCurrentTokenIfPossible(applicationContext)
     }
 
     override fun newImageLoader(): ImageLoader {

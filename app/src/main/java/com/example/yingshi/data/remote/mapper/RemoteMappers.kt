@@ -3,6 +3,12 @@ package com.example.yingshi.data.remote.mapper
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
+import com.example.yingshi.data.model.RemoteLifeConsoleToday
+import com.example.yingshi.data.model.RemoteLifeConsoleUser
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
@@ -16,6 +22,12 @@ import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
+import com.example.yingshi.data.remote.dto.LifeConsoleBowelMutationResponseDto
+import com.example.yingshi.data.remote.dto.LifeConsoleBowelSummaryDto
+import com.example.yingshi.data.remote.dto.LifeConsoleBowelUserSummaryDto
+import com.example.yingshi.data.remote.dto.LifeConsoleMediaSlotDto
+import com.example.yingshi.data.remote.dto.LifeConsoleTodayDto
+import com.example.yingshi.data.remote.dto.LifeConsoleUserDto
 import com.example.yingshi.data.remote.dto.MediaDto
 import com.example.yingshi.data.remote.dto.PostDetailDto
 import com.example.yingshi.data.remote.dto.PostMediaDto
@@ -50,6 +62,62 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         capturedAtMillis = capturedAtMillis,
         importedAtMillis = importedAtMillis,
         displayTimeSource = displayTimeSource,
+        recordOwnerUserId = recordOwnerUserId,
+        uploadedByUserId = uploadedByUserId,
+    )
+}
+
+fun LifeConsoleUserDto.toRemoteModel(): RemoteLifeConsoleUser {
+    return RemoteLifeConsoleUser(
+        userId = userId,
+        account = account,
+        displayName = displayName,
+        avatarUrl = avatarUrl,
+    )
+}
+
+fun LifeConsoleMediaSlotDto.toRemoteModel(): RemoteLifeConsoleMediaSlot {
+    return RemoteLifeConsoleMediaSlot(
+        category = category,
+        ownerUserId = ownerUserId,
+        editable = editable,
+        mediaItems = mediaItems.map(MediaDto::toRemoteModel),
+    )
+}
+
+fun LifeConsoleBowelUserSummaryDto.toRemoteModel(): RemoteLifeConsoleBowelUserSummary {
+    return RemoteLifeConsoleBowelUserSummary(
+        userId = userId,
+        count = count,
+        latestOccurredAtMillis = latestOccurredAtMillis,
+        eventTimesMillis = eventTimesMillis,
+    )
+}
+
+fun LifeConsoleBowelSummaryDto.toRemoteModel(): RemoteLifeConsoleBowelSummary {
+    return RemoteLifeConsoleBowelSummary(
+        users = users.map(LifeConsoleBowelUserSummaryDto::toRemoteModel),
+    )
+}
+
+fun LifeConsoleTodayDto.toRemoteModel(): RemoteLifeConsoleToday {
+    return RemoteLifeConsoleToday(
+        date = date,
+        zoneId = zoneId,
+        currentUser = currentUser.toRemoteModel(),
+        partner = partner?.toRemoteModel(),
+        personSelf = personSelf.toRemoteModel(),
+        personPartner = personPartner.toRemoteModel(),
+        mealSelf = mealSelf.toRemoteModel(),
+        mealPartner = mealPartner.toRemoteModel(),
+        bowel = bowel.toRemoteModel(),
+    )
+}
+
+fun LifeConsoleBowelMutationResponseDto.toRemoteModel(): RemoteLifeConsoleBowelMutation {
+    return RemoteLifeConsoleBowelMutation(
+        eventId = event?.bowelEventId,
+        bowel = bowel.toRemoteModel(),
     )
 }
 

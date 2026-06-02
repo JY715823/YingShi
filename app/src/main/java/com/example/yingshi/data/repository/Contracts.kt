@@ -2,6 +2,7 @@ package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
+import com.example.yingshi.data.model.CreateAlbumPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.NotificationMarkAllReadResult
@@ -10,6 +11,8 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
 import com.example.yingshi.data.model.RemoteNotification
@@ -51,6 +54,7 @@ interface MediaRepository {
 }
 
 interface AlbumRepository {
+    suspend fun createAlbum(payload: CreateAlbumPayload): ApiResult<RemoteAlbum>
     suspend fun getAlbums(): ApiResult<List<RemoteAlbum>>
     suspend fun getAlbumPosts(albumId: String): ApiResult<List<RemotePostSummary>>
     suspend fun updatePostAlbums(
@@ -204,4 +208,30 @@ interface AuthRepository {
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
     ): ApiResult<RemoteCurrentUser>
+}
+
+interface LifeConsoleRepository {
+    suspend fun getToday(
+        date: String? = null,
+        zoneId: String = "Asia/Shanghai",
+    ): ApiResult<RemoteLifeConsoleToday>
+
+    suspend fun addMedia(
+        category: String,
+        mediaIds: List<String>,
+    ): ApiResult<RemoteLifeConsoleToday>
+
+    suspend fun deleteMedia(
+        category: String,
+        mediaId: String,
+    ): ApiResult<RemoteTrashItem>
+
+    suspend fun addBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation>
+
+    suspend fun deleteLatestBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation>
+
+    suspend fun registerPushToken(
+        platform: String,
+        token: String,
+    ): ApiResult<Unit>
 }

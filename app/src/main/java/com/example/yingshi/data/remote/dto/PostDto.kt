@@ -10,6 +10,7 @@ data class PostSummaryDto(
     val eventEndedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val albumId: String,
+    val systemKey: String? = null,
     val coverMediaId: String? = null,
     val mediaCount: Int = 0,
 ) {
@@ -32,6 +33,7 @@ data class PostDetailDto(
     val eventEndedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val albumId: String,
+    val systemKey: String? = null,
     val coverMediaId: String? = null,
     val mediaCount: Int = 0,
     val mediaItems: List<PostMediaDto> = emptyList(),

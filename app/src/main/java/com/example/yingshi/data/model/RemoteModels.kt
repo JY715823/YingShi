@@ -21,6 +21,8 @@ data class RemoteMedia(
     val capturedAtMillis: Long? = null,
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
+    val recordOwnerUserId: String? = null,
+    val uploadedByUserId: String? = null,
 ) {
     val postIds: List<String>
         get() = smallAlbumIds

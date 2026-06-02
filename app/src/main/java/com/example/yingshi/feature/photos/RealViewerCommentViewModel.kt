@@ -113,7 +113,7 @@ class RealViewerCommentViewModel(
                 state.copy(
                     commentThreads = state.commentThreads + (
                         mediaId to state.commentThreads[mediaId].orEmpty().copy(
-                            errorMessage = "登录状态缺失，请先到联调诊断页重新登录。",
+                            errorMessage = "登录状态缺失，请重新登录。",
                         )
                     ),
                 )

@@ -319,7 +319,7 @@ fun SystemMediaViewerScreen(
                 title = { Text("移到系统相册回收站？") },
                 text = {
                     Text(
-                        "这是系统相册操作：当前媒体会交给 Android 系统回收站处理，不会进入 App 回收站，也不会删除后端 App 媒体记录；确认后还会出现 Android 系统确认框。",
+                        "当前媒体会交给 Android 系统回收站处理，不会进入映世回收站，也不会影响照片流中已经导入的内容；确认后还会出现 Android 系统确认框。",
                     )
                 },
                 confirmButton = {
@@ -438,9 +438,9 @@ fun SystemMediaViewerScreen(
                 Toast.makeText(
                     context,
                     if (queuedCount > 0) {
-                        "已加入导入 app 队列。"
+                        "已加入导入队列。"
                     } else {
-                        "当前媒体无法导入 app。"
+                        "当前媒体无法导入照片流。"
                     },
                     Toast.LENGTH_SHORT,
                 ).show()
@@ -1080,16 +1080,16 @@ private fun SystemMediaViewerMenuSheet(
             Text(
                 text = "媒体操作",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = YingShiThemeTokens.colors.titleAccent,
             )
             SystemMediaViewerMenuAction(
-                title = "导入app",
-                subtitle = "只导入到 app 照片流，不要求归属到小相册。",
+                title = "导入照片流",
+                subtitle = "只放进映世照片流，不要求归属到小相册。",
                 onClick = onImportToApp,
             )
             SystemMediaViewerMenuAction(
                 title = "新建小相册",
-                subtitle = "把当前系统媒体整理成一个新的 app 小相册。",
+                subtitle = "把当前系统媒体整理成一个新的小相册。",
                 onClick = onCreatePost,
             )
             SystemMediaViewerMenuAction(
@@ -1099,7 +1099,7 @@ private fun SystemMediaViewerMenuSheet(
             )
             SystemMediaViewerMenuAction(
                 title = "移到系统回收站",
-                subtitle = "系统相册操作：走 Android 系统确认流程，不进入 App 回收站。",
+                subtitle = "走 Android 系统确认流程，不进入映世回收站。",
                 danger = true,
                 onClick = onMoveToTrash,
             )
@@ -1114,13 +1114,14 @@ private fun SystemMediaViewerMenuAction(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
         color = if (danger) {
             MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
+            colors.sectionBackground.copy(alpha = 0.58f)
         },
         onClick = onClick,
     ) {
@@ -1131,12 +1132,12 @@ private fun SystemMediaViewerMenuAction(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                color = if (danger) MaterialTheme.colorScheme.error else colors.titleAccent,
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }

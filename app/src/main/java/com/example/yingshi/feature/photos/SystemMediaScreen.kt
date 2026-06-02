@@ -24,7 +24,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,16 +45,22 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -95,6 +100,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.util.Calendar
@@ -191,6 +197,7 @@ fun SystemMediaScreen(
     var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
     var pendingTargetRenderedCount by remember { mutableIntStateOf(-1) }
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
     val density = PhotoFeedDensity.valueOf(densityName)
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
@@ -619,24 +626,26 @@ fun SystemMediaScreen(
             title = { Text("移到系统相册回收站？") },
             text = {
                 Text(
-                    "将对已选 $trashCount 项系统相册媒体发起 Android 系统回收站操作。它们不会进入 App 回收站，也不会删除后端 App 媒体记录；确认后还会出现 Android 系统确认框。",
+                    "将对已选 $trashCount 项系统相册媒体发起 Android 系统回收站操作。它们不会进入映世回收站，也不会影响照片流中已经导入的内容；确认后还会出现 Android 系统确认框。",
                 )
             },
             confirmButton = {
-                TextButton(
+                SystemMediaActionChip(
+                    text = "继续",
+                    emphasized = true,
                     onClick = {
                         val items = pendingSystemTrashItems
                         pendingSystemTrashItems = emptyList()
                         launchSystemTrashRequest(items)
                     },
-                ) {
-                    Text("继续系统回收站")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { pendingSystemTrashItems = emptyList() }) {
-                    Text("取消")
-                }
+                SystemMediaActionChip(
+                    text = "取消",
+                    emphasized = false,
+                    onClick = { pendingSystemTrashItems = emptyList() },
+                )
             },
         )
     }
@@ -644,24 +653,25 @@ fun SystemMediaScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(colors.appBackground),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(top = spacing.md, bottom = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
+                .padding(top = 8.dp, bottom = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(spacing.md),
+                modifier = Modifier.padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SystemMediaTopBar(
                     selectedFilter = uiState.selectedFilter,
                     selectionMode = selectionMode,
                     selectedCount = selectedIds.size,
                     onBack = onBack,
+                    onFilterSelected = viewModel::onFilterSelected,
                     onRefresh = { viewModel.refresh(forceRefresh = true) },
                     onToggleSelectionMode = {
                         selectionMode = !selectionMode
@@ -669,11 +679,6 @@ fun SystemMediaScreen(
                             selectedIds = emptyList()
                         }
                     },
-                )
-
-                SystemMediaFilterRow(
-                    selectedFilter = uiState.selectedFilter,
-                    onFilterSelected = viewModel::onFilterSelected,
                 )
             }
 
@@ -745,7 +750,7 @@ fun SystemMediaScreen(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            contentPadding = PaddingValues(bottom = 112.dp),
+                            contentPadding = PaddingValues(top = 2.dp, bottom = 112.dp),
                         ) {
                             items(
                                 items = gridBlocks,
@@ -915,9 +920,9 @@ fun SystemMediaScreen(
                     Toast.makeText(
                         context,
                         if (importedCount > 0) {
-                            "已加入导入 app 队列，完成后会出现在照片流。"
+                            "已加入导入队列，完成后会出现在照片流。"
                         } else {
-                            "请先选择要导入 app 的媒体。"
+                            "请先选择要导入照片流的媒体。"
                         },
                         Toast.LENGTH_SHORT,
                     ).show()
@@ -964,14 +969,15 @@ private fun SystemMediaPermissionState(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.sectionBackground.copy(alpha = 0.64f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -981,15 +987,19 @@ private fun SystemMediaPermissionState(
                 Text(
                     text = "需要图片和视频权限才能显示系统媒体。",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onRequestPermission) {
-                        Text(text = "继续授权")
-                    }
-                    TextButton(onClick = onOpenSettings) {
-                        Text(text = "去设置")
-                    }
+                    SystemMediaActionChip(
+                        text = "继续授权",
+                        emphasized = true,
+                        onClick = onRequestPermission,
+                    )
+                    SystemMediaActionChip(
+                        text = "去设置",
+                        emphasized = false,
+                        onClick = onOpenSettings,
+                    )
                 }
             }
         }
@@ -1002,41 +1012,50 @@ private fun SystemMediaTopBar(
     selectionMode: Boolean,
     selectedCount: Int,
     onBack: () -> Unit,
+    onFilterSelected: (SystemMediaFilter) -> Unit,
     onRefresh: () -> Unit,
     onToggleSelectionMode: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SystemMediaCircleButton(
-            text = "<",
+        SystemMediaIconButton(
+            icon = Icons.Default.ArrowBack,
+            contentDescription = "返回",
             onClick = onBack,
         )
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "系统媒体",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
             )
             Text(
                 text = if (selectionMode) {
                     if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
                 } else {
-                    "筛选：${selectedFilter.label}"
+                    selectedFilter.label
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
 
-        SystemMediaActionChip(
-            text = "刷新",
-            emphasized = false,
+        if (!selectionMode) {
+            SystemMediaFilterMenuButton(
+                selectedFilter = selectedFilter,
+                onFilterSelected = onFilterSelected,
+            )
+        }
+        SystemMediaIconButton(
+            icon = Icons.Default.Refresh,
+            contentDescription = "刷新",
             onClick = onRefresh,
         )
         SystemMediaActionChip(
@@ -1048,24 +1067,78 @@ private fun SystemMediaTopBar(
 }
 
 @Composable
-private fun SystemMediaFilterRow(
+private fun SystemMediaFilterMenuButton(
     selectedFilter: SystemMediaFilter,
     onFilterSelected: (SystemMediaFilter) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    var expanded by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-    ) {
-        SystemMediaFilter.entries.forEach { filter ->
-            SystemMediaActionChip(
-                text = filter.label,
-                emphasized = filter == selectedFilter,
-                onClick = { onFilterSelected(filter) },
-            )
+    Box {
+        Surface(
+            modifier = Modifier
+                .size(42.dp)
+                .yingShiClickable(shape = RoundedCornerShape(14.dp), pressedScale = 0.94f) {
+                    expanded = true
+                },
+            shape = RoundedCornerShape(14.dp),
+            color = colors.primaryContainer.copy(alpha = 0.82f),
+            border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.76f)),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "系统媒体分类",
+                    tint = colors.onPrimaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            SystemMediaFilter.entries.forEach { filter ->
+                val selected = filter == selectedFilter
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (selected) colors.primaryContainer.copy(alpha = 0.52f) else Color.Transparent,
+                                    RoundedCornerShape(radius.md),
+                                )
+                                .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = filter.label,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                ),
+                                color = colors.titleAccent,
+                            )
+                            if (selected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = colors.titleAccent,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onFilterSelected(filter)
+                    },
+                )
+            }
         }
     }
 }
@@ -1090,6 +1163,7 @@ private fun SystemMediaCard(
     onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
 ) {
     val context = LocalContext.current
+    val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(0.dp)
     val videoThumbnail = if (item.type == SystemMediaType.VIDEO) {
         rememberSystemVideoThumbnail(context, item.uri)
@@ -1109,7 +1183,7 @@ private fun SystemMediaCard(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f))
+            .background(colors.sectionBackground.copy(alpha = 0.62f))
             .combinedClickable(
                 onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
                 onLongClick = onLongPress,
@@ -1142,33 +1216,6 @@ private fun SystemMediaCard(
                 playWhenReady = true,
                 modifier = Modifier.fillMaxSize(),
                 onPlaybackProgressChange = onInlineVideoProgressChange,
-            )
-        }
-
-        if (item.linkedPostIds.isNotEmpty()) {
-            SystemMediaBadge(
-                text = "已发帖",
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(6.dp),
-            )
-        }
-
-        if (!selectionMode && item.type != SystemMediaType.VIDEO) {
-            SystemMediaTypeBadge(
-                text = item.type.label,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp),
-            )
-        }
-
-        if (item.type == SystemMediaType.VIDEO && !supportsInlineVideo) {
-            SystemMediaBadge(
-                text = "视频",
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp),
             )
         }
 
@@ -1246,35 +1293,18 @@ private fun SystemMediaBadge(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        color = colors.raisedSurface.copy(alpha = 0.86f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.50f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-private fun SystemMediaTypeBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = Color.Black.copy(alpha = 0.20f),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White,
+            color = colors.titleAccent,
         )
     }
 }
@@ -1289,21 +1319,22 @@ private fun SystemMediaSelectionBar(
     onCancel: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Column(
-            modifier = Modifier.padding(spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             Text(
                 text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Column(
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -1313,7 +1344,7 @@ private fun SystemMediaSelectionBar(
                     horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 ) {
                     SystemMediaActionChip(
-                        text = "导入app",
+                        text = "导入照片流",
                         emphasized = true,
                         modifier = Modifier.weight(1f),
                         onClick = onImportToApp,
@@ -1360,57 +1391,62 @@ private fun SystemMediaActionChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = modifier,
+        modifier = modifier.yingShiClickable(
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (emphasized) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            colors.softGreenContainer.copy(alpha = 0.92f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+            colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             width = 1.dp,
             color = if (emphasized) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                colors.softGreenAction.copy(alpha = 0.28f)
             } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                colors.dividerSoft.copy(alpha = 0.62f)
             },
         ),
     ) {
-        TextButton(
-            onClick = onClick,
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                color = if (emphasized) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-        }
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = if (emphasized) {
+                colors.softGreenAction
+            } else {
+                colors.titleAccent
+            },
+        )
     }
 }
 
 @Composable
-private fun SystemMediaCircleButton(
-    text: String,
+private fun SystemMediaIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier
+            .size(40.dp)
+            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
-        onClick = onClick,
+        color = colors.sectionBackground.copy(alpha = 0.80f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -1421,17 +1457,17 @@ private fun SystemMediaSelectionBadge(
     selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val blueColor = Color(0xFF3B82F6)
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = modifier
             .size(24.dp)
             .clip(CircleShape)
             .background(
-                if (selected) blueColor else Color.Black.copy(alpha = 0.10f),
+                if (selected) colors.primaryContainer else colors.raisedSurface.copy(alpha = 0.74f),
             )
             .border(
                 width = 1.5.dp,
-                color = if (selected) blueColor else Color.White.copy(alpha = 0.88f),
+                color = if (selected) colors.glassStroke else colors.raisedSurface.copy(alpha = 0.94f),
                 shape = CircleShape,
             ),
         contentAlignment = Alignment.Center,
@@ -1440,7 +1476,7 @@ private fun SystemMediaSelectionBadge(
             Text(
                 text = "✓",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                color = Color.White,
+                color = colors.onPrimaryContainer,
             )
         }
     }
@@ -1461,11 +1497,17 @@ private fun SelectionNumberFlashOverlay(
     }
 
     if (alpha.value > 0f) {
+        val colors = YingShiThemeTokens.colors
         Box(
             modifier = modifier
                 .alpha(alpha.value)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF202124).copy(alpha = 0.72f))
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.raisedSurface.copy(alpha = 0.94f))
+                .border(
+                    width = 1.dp,
+                    color = colors.selectedPillBg.copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(12.dp),
+                )
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -1475,7 +1517,7 @@ private fun SelectionNumberFlashOverlay(
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                 ),
-                color = Color.White,
+                color = colors.titleAccent,
             )
         }
     }
@@ -1521,9 +1563,9 @@ private fun SystemMediaMonthHeaderRow(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 28.dp, bottom = 10.dp),
-        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onBackground,
+            .padding(start = 2.dp, top = 2.dp, bottom = 0.dp),
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = YingShiThemeTokens.colors.titleAccent,
     )
 }
 
@@ -1533,9 +1575,9 @@ private fun SystemMediaDayHeaderRow(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 14.dp, bottom = 8.dp),
-        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            .padding(start = 2.dp, top = 0.dp, bottom = 0.dp),
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+        color = YingShiThemeTokens.colors.textSecondary.copy(alpha = 0.86f),
     )
 }
 
@@ -1550,6 +1592,7 @@ private fun SystemMediaTimeScrubber(
 ) {
     val density = LocalDensity.current
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val thumbWidth = 22.dp
     val thumbHeight = 76.dp
     val endMargin = 8.dp
@@ -1588,7 +1631,8 @@ private fun SystemMediaTimeScrubber(
         ) {
             Surface(
                 shape = RoundedCornerShape(999.dp),
-                color = Color.White.copy(alpha = 0.96f),
+                color = colors.raisedSurface.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
             ) {
                 Text(
                     text = label,
@@ -1602,7 +1646,7 @@ private fun SystemMediaTimeScrubber(
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center,
-                    color = Color.Black,
+                    color = colors.titleAccent,
                 )
             }
         }
@@ -1613,7 +1657,12 @@ private fun SystemMediaTimeScrubber(
                 .offset { IntOffset(x = -endMarginPx, y = thumbTopPx) }
                 .size(width = thumbWidth, height = thumbHeight)
                 .clip(RoundedCornerShape(999.dp))
-                .background(Color.White.copy(alpha = 0.96f))
+                .background(colors.raisedSurface.copy(alpha = 0.96f))
+                .border(
+                    width = 1.dp,
+                    color = colors.dividerSoft.copy(alpha = 0.58f),
+                    shape = RoundedCornerShape(999.dp),
+                )
                 .pointerInput(scrubberHeightPx) {
                     detectDragGestures(
                         onDragStart = {
@@ -1658,7 +1707,7 @@ private fun SystemMediaTimeScrubber(
                     lineTo(w, h)
                     close()
                 }
-                drawPath(path, color = Color.Black.copy(alpha = 0.7f))
+                drawPath(path, color = colors.titleAccent.copy(alpha = 0.78f))
             }
 
             Box(
@@ -1666,7 +1715,7 @@ private fun SystemMediaTimeScrubber(
                     .align(Alignment.Center)
                     .size(width = 14.dp, height = 6.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(Color.Gray.copy(alpha = 0.55f)),
+                    .background(colors.dividerSoft.copy(alpha = 0.82f)),
             )
 
             Canvas(
@@ -1683,7 +1732,7 @@ private fun SystemMediaTimeScrubber(
                     lineTo(w / 2f, h)
                     close()
                 }
-                drawPath(path, color = Color.Black.copy(alpha = 0.7f))
+                drawPath(path, color = colors.titleAccent.copy(alpha = 0.78f))
             }
         }
     }
@@ -1693,6 +1742,7 @@ private fun SystemMediaTimeScrubber(
 private fun SystemMediaLoadingState(
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -1701,11 +1751,11 @@ private fun SystemMediaLoadingState(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(color = colors.primaryAction)
             Text(
                 text = "正在读取本地媒体…",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -1717,14 +1767,15 @@ private fun SystemMediaErrorState(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.sectionBackground.copy(alpha = 0.64f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
@@ -1734,11 +1785,13 @@ private fun SystemMediaErrorState(
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
-                TextButton(onClick = onRetry) {
-                    Text(text = "重试")
-                }
+                SystemMediaActionChip(
+                    text = "重试",
+                    emphasized = true,
+                    onClick = onRetry,
+                )
             }
         }
     }
@@ -1749,19 +1802,21 @@ private fun SystemMediaEmptyState(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            color = colors.sectionBackground.copy(alpha = 0.58f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
         ) {
             Text(
                 text = text,
                 modifier = Modifier.padding(20.dp),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }

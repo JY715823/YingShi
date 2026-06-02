@@ -15,11 +15,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +56,7 @@ fun NotificationDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
     val sessionKey = realBackendSessionKey("notification-detail-${route.notificationId}")
     var uiState by remember(sessionKey, route.notificationId) {
@@ -104,7 +107,7 @@ fun NotificationDetailScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -119,7 +122,6 @@ fun NotificationDetailScreen(
 
             uiState.item != null -> {
                 NotificationDetailPrimaryCard(item = requireNotNull(uiState.item))
-                NotificationDetailTargetCard(item = requireNotNull(uiState.item))
                 uiState.errorMessage?.let { message ->
                     NotificationDetailMessageCard(
                         message = message,
@@ -149,18 +151,19 @@ private fun NotificationDetailTopBar(
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        NotificationDetailCircleButton(text = "<", onClick = onBack)
+        NotificationDetailCircleButton(onClick = onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "通知详情",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
     }
@@ -172,11 +175,12 @@ private fun NotificationDetailPrimaryCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -189,103 +193,33 @@ private fun NotificationDetailPrimaryCard(
             ) {
                 Surface(
                     shape = RoundedCornerShape(radius.capsule),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                    color = colors.primaryContainer.copy(alpha = 0.58f),
+                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.42f)),
                 ) {
                     Text(
                         text = item.type.label,
                         modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = colors.titleAccent,
                     )
                 }
                 Text(
                     text = formatNotificationDetailTime(item.createdAtMillis),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Text(
                 text = item.body,
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
-    }
-}
-
-@Composable
-private fun NotificationDetailTargetCard(
-    item: NotificationCenterItemUiModel,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Surface(
-        shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = "通知目标",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = item.targetSummary,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            NotificationDetailMetaLine(
-                label = "目标类型",
-                value = item.targetType,
-            )
-            NotificationDetailMetaLine(
-                label = "小相册 ID",
-                value = item.postId,
-            )
-            NotificationDetailMetaLine(
-                label = "媒体 ID",
-                value = item.mediaId,
-            )
-            NotificationDetailMetaLine(
-                label = "回收站 ID",
-                value = item.trashItemId,
-            )
-        }
-    }
-}
-
-@Composable
-private fun NotificationDetailMetaLine(
-    label: String,
-    value: String?,
-) {
-    if (value.isNullOrBlank()) return
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
     }
 }
 
@@ -293,22 +227,27 @@ private fun NotificationDetailMetaLine(
 private fun NotificationDetailLoadingState() {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.4.dp)
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.4.dp,
+                color = colors.primaryAction,
+            )
             Text(
                 text = "正在读取通知详情…",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -322,11 +261,12 @@ private fun NotificationDetailMessageCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
@@ -335,14 +275,13 @@ private fun NotificationDetailMessageCard(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
-            TextButton(
+            NotificationDetailActionChip(
+                text = actionLabel,
                 modifier = Modifier.align(Alignment.End),
                 onClick = onAction,
-            ) {
-                Text(text = actionLabel)
-            }
+            )
         }
     }
 }
@@ -351,11 +290,12 @@ private fun NotificationDetailMessageCard(
 private fun NotificationDetailEmptyState() {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+        color = colors.sectionBackground.copy(alpha = 0.62f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
@@ -364,12 +304,12 @@ private fun NotificationDetailEmptyState() {
             Text(
                 text = "这条通知当前不可用",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Text(
                 text = "通知可能已经被替换，或者当前会话里已经找不到对应记录。",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -377,25 +317,51 @@ private fun NotificationDetailEmptyState() {
 
 @Composable
 private fun NotificationDetailCircleButton(
-    text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.sectionBackground.copy(alpha = 0.80f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(10.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                tint = colors.titleAccent,
+                modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun NotificationDetailActionChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        onClick = onClick,
+        shape = RoundedCornerShape(radius.capsule),
+        color = colors.softGreenContainer.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.24f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.softGreenAction,
+        )
     }
 }
 

@@ -263,11 +263,11 @@ fun LedgerSettingsScreen(
                     )
                     LedgerStaticSettingRow(
                         title = "自定义背景",
-                        subtitle = "保留入口，后续再补账本装扮能力。",
+                        subtitle = "选择一张喜欢的图，作为账本背景。",
                     )
                     LedgerStaticSettingRow(
                         title = "小组件",
-                        subtitle = "保留入口，后续再补桌面快捷展示。",
+                        subtitle = "在桌面快速查看这个月的小账。",
                     )
                 }
             }

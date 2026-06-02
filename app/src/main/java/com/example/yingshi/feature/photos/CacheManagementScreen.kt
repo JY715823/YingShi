@@ -70,20 +70,19 @@ fun CacheManagementScreen(
     ) {
         CacheTopBar(
             title = "缓存管理",
-            subtitle = "来源：${route.source.toCacheSourceLabel()}",
             onBack = onBack,
         )
 
         CacheSection(
             title = "当前缓存概览",
-            subtitle = "只统计 App 自己的缓存目录；不会扫描或删除系统相册源文件，也不会影响后端文件。",
+            subtitle = "只统计映世自己的缓存目录，不会扫描或删除系统相册源文件。",
         ) {
             CacheSummaryBlock(summary = currentSummary)
         }
 
         CacheSection(
             title = "缓存分类",
-            subtitle = "图片缩略图、视频封面主要在 Coil 图片缓存里；远程视频播放片段单独在 App 视频缓存里。",
+            subtitle = "按缩略图、封面、原图和视频片段分类。",
         ) {
             CacheInfoRow(title = "媒体缓存总量", value = currentSummary?.totalSizeLabel ?: "统计中")
             CacheInfoRow(title = "缩略图 / 视频封面", value = currentSummary?.thumbnailCoverSizeLabel ?: "统计中")
@@ -98,7 +97,7 @@ fun CacheManagementScreen(
 
         CacheSection(
             title = "清理入口",
-            subtitle = "清理只发生在 App 缓存目录和本地缓存状态里；清完后照片流会重新从后端加载 preview / cover。",
+            subtitle = "清理后需要重新加载对应媒体。",
         ) {
             CacheActionRow(
                 title = "清理缩略图 / 视频封面",
@@ -159,7 +158,6 @@ fun CacheManagementScreen(
 @Composable
 private fun CacheTopBar(
     title: String,
-    subtitle: String,
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -175,11 +173,6 @@ private fun CacheTopBar(
                 text = title,
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onBackground,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

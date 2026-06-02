@@ -2,6 +2,7 @@ package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
+import com.example.yingshi.data.model.CreateAlbumPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.NotificationMarkAllReadResult
@@ -9,6 +10,8 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
@@ -25,17 +28,21 @@ import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.api.AlbumApi
 import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
+import com.example.yingshi.data.remote.api.LifeConsoleApi
 import com.example.yingshi.data.remote.api.MediaApi
 import com.example.yingshi.data.remote.api.NotificationApi
 import com.example.yingshi.data.remote.api.SmallAlbumApi
 import com.example.yingshi.data.remote.api.TrashApi
 import com.example.yingshi.data.remote.api.UploadApi
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.dto.CreateAlbumRequestDto
 import com.example.yingshi.data.remote.dto.CreateCommentRequestDto
 import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
+import com.example.yingshi.data.remote.dto.LifeConsoleMediaRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
@@ -68,7 +75,7 @@ class RealMediaRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "MEDIA_FEED_REQUEST_FAILED",
-                    message = "Stage 11.4 real media feed request failed before backend is ready",
+                    message = backendRequestErrorMessage(it, "读取照片流失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -94,7 +101,7 @@ class RealMediaRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "MEDIA_FEED_PAGE_REQUEST_FAILED",
-                    message = "REAL media feed page request failed",
+                    message = backendRequestErrorMessage(it, "读取照片流失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -117,7 +124,7 @@ class RealMediaRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_MEDIA_DELETE_REQUEST_FAILED",
-                    message = "REAL small-album media delete request failed",
+                    message = backendRequestErrorMessage(it, "从小相册移除媒体失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -132,7 +139,7 @@ class RealMediaRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "MEDIA_DELETE_REQUEST_FAILED",
-                    message = "REAL media delete request failed",
+                    message = backendRequestErrorMessage(it, "删除媒体失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -151,7 +158,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_LIST_REQUEST_FAILED",
-                    message = "REAL post list request failed",
+                    message = backendRequestErrorMessage(it, "读取小相册列表失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -166,7 +173,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_DETAIL_REQUEST_FAILED",
-                    message = "REAL post detail request failed",
+                    message = backendRequestErrorMessage(it, "读取小相册详情失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -194,7 +201,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_CREATE_REQUEST_FAILED",
-                    message = "REAL post create request failed",
+                    message = backendRequestErrorMessage(it, "创建小相册失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -219,7 +226,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_ADD_MEDIA_REQUEST_FAILED",
-                    message = "REAL add-media-to-post request failed",
+                    message = backendRequestErrorMessage(it, "加入小相册失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -249,7 +256,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_UPDATE_REQUEST_FAILED",
-                    message = "REAL post basic-info update request failed",
+                    message = backendRequestErrorMessage(it, "保存小相册信息失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -270,7 +277,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_COVER_REQUEST_FAILED",
-                    message = "REAL post cover update request failed",
+                    message = backendRequestErrorMessage(it, "设置封面失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -291,7 +298,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_MEDIA_ORDER_REQUEST_FAILED",
-                    message = "REAL post media-order update request failed",
+                    message = backendRequestErrorMessage(it, "调整媒体顺序失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -306,7 +313,7 @@ class RealPostRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "POST_DELETE_REQUEST_FAILED",
-                    message = "REAL post delete request failed",
+                    message = backendRequestErrorMessage(it, "删除小相册失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -317,6 +324,26 @@ class RealPostRepository(
 class RealAlbumRepository(
     private val albumApi: AlbumApi,
 ) : AlbumRepository {
+    override suspend fun createAlbum(payload: CreateAlbumPayload): ApiResult<RemoteAlbum> {
+        return runCatching {
+            albumApi.createAlbum(
+                CreateAlbumRequestDto(
+                    title = payload.title,
+                    subtitle = payload.subtitle,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "ALBUM_CREATE_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "创建大相册失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
     override suspend fun getAlbums(): ApiResult<List<RemoteAlbum>> {
         return runCatching {
             albumApi.getAlbums().data.map { it.toRemoteModel() }
@@ -325,7 +352,7 @@ class RealAlbumRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "ALBUM_LIST_REQUEST_FAILED",
-                    message = "REAL album list request failed",
+                    message = backendRequestErrorMessage(it, "读取大相册列表失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -340,7 +367,7 @@ class RealAlbumRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "ALBUM_POSTS_REQUEST_FAILED",
-                    message = "REAL album small-albums request failed",
+                    message = backendRequestErrorMessage(it, "读取大相册内容失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -353,7 +380,7 @@ class RealAlbumRepository(
     ): ApiResult<RemotePostSummary> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",
-            message = "Current backend updates parent album through PATCH /api/small-albums/{smallAlbumId}",
+            message = "当前无法切换所属大相册，请稍后重试。",
         )
     }
 }
@@ -373,7 +400,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_LIST_REQUEST_FAILED",
-                    message = "REAL small-album comment list request failed",
+                    message = backendRequestErrorMessage(it, "读取评论失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -392,7 +419,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_LIST_REQUEST_FAILED",
-                    message = "REAL media comment list request failed",
+                    message = backendRequestErrorMessage(it, "读取评论失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -413,7 +440,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_CREATE_REQUEST_FAILED",
-                    message = "REAL small-album comment create request failed",
+                    message = backendRequestErrorMessage(it, "发布评论失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -434,7 +461,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_CREATE_REQUEST_FAILED",
-                    message = "REAL media comment create request failed",
+                    message = backendRequestErrorMessage(it, "发布评论失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -455,7 +482,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_UPDATE_REQUEST_FAILED",
-                    message = "REAL comment update request failed",
+                    message = backendRequestErrorMessage(it, "更新评论失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -471,7 +498,7 @@ class RealCommentRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "COMMENT_DELETE_REQUEST_FAILED",
-                    message = "REAL comment delete request failed",
+                    message = backendRequestErrorMessage(it, "删除评论失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -566,7 +593,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_LIST_REQUEST_FAILED",
-                    message = "REAL trash list request failed",
+                    message = backendRequestErrorMessage(it, "读取回收站失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -581,7 +608,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_DETAIL_REQUEST_FAILED",
-                    message = "REAL trash detail request failed",
+                    message = backendRequestErrorMessage(it, "读取回收站详情失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -596,7 +623,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_RESTORE_REQUEST_FAILED",
-                    message = "REAL trash restore request failed",
+                    message = backendRequestErrorMessage(it, "恢复回收站项目失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -611,7 +638,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_REMOVE_REQUEST_FAILED",
-                    message = "REAL remove-from-trash request failed",
+                    message = backendRequestErrorMessage(it, "移出回收站失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -626,7 +653,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_PURGE_REQUEST_FAILED",
-                    message = "REAL permanent trash delete request failed",
+                    message = backendRequestErrorMessage(it, "永久删除失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -641,7 +668,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_UNDO_REMOVE_REQUEST_FAILED",
-                    message = "REAL undo-remove request failed",
+                    message = backendRequestErrorMessage(it, "撤销移出失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -656,7 +683,7 @@ class RealTrashRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "TRASH_PENDING_REQUEST_FAILED",
-                    message = "REAL pending-cleanup request failed",
+                    message = backendRequestErrorMessage(it, "读取待处理项目失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -692,7 +719,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_TOKEN_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "Create upload token failed. Please retry."),
+                    message = uploadRequestErrorMessage(it, "准备上传失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -725,7 +752,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_FILE_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "Upload file failed. Please retry."),
+                    message = uploadRequestErrorMessage(it, "上传文件失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -760,7 +787,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_FILE_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "Upload file failed. Please retry."),
+                    message = uploadRequestErrorMessage(it, "上传文件失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -784,7 +811,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_CONFIRM_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "Confirm upload failed. Please retry."),
+                    message = uploadRequestErrorMessage(it, "确认上传失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -799,7 +826,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_CANCEL_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "Cancel upload failed. Please retry."),
+                    message = uploadRequestErrorMessage(it, "取消上传失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -814,7 +841,7 @@ class RealUploadRepository(
             onFailure = {
                 ApiResult.Error(
                     code = "UPLOAD_TASK_REQUEST_FAILED",
-                    message = uploadRequestErrorMessage(it, "Load upload task failed. Please retry."),
+                    message = uploadRequestErrorMessage(it, "读取上传任务失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -917,23 +944,140 @@ private fun backendRequestErrorMessage(
         return when (httpException.code()) {
             401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
             403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
-            404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u540e\u7aef\u8d44\u6e90\u3002"
-            in 500..599 -> "\u540e\u7aef\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+            404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d44\u6e90\u3002"
+            in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
             else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
         }
     }
     val message = throwable.message?.trim().orEmpty()
     if (message.contains("Unable to resolve host", ignoreCase = true)) {
-        return "\u65e0\u6cd5\u8fde\u63a5\u5230\u5f53\u524d\u540e\u7aef\uff0c\u8bf7\u68c0\u67e5 baseUrl \u548c\u5c40\u57df\u7f51\u8fde\u63a5\u3002"
+        return "\u65e0\u6cd5\u8fde\u63a5\u5230\u5f53\u524d\u670d\u52a1\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u548c\u5c40\u57df\u7f51\u8fde\u63a5\u3002"
     }
     if (
         message.contains("Failed to connect", ignoreCase = true) ||
         message.contains("Connection refused", ignoreCase = true) ||
         message.contains("timeout", ignoreCase = true)
     ) {
-        return "\u8bf7\u6c42\u540e\u7aef\u901a\u77e5\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5 baseUrl \u3001\u5c40\u57df\u7f51\u8fde\u63a5\u548c\u670d\u52a1\u72b6\u6001\u3002"
+        return "\u8bf7\u6c42\u901a\u77e5\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u3001\u5c40\u57df\u7f51\u8fde\u63a5\u548c\u670d\u52a1\u72b6\u6001\u3002"
     }
     return message.takeIf { it.isNotBlank() } ?: fallback
+}
+
+class RealLifeConsoleRepository(
+    private val lifeConsoleApi: LifeConsoleApi,
+) : LifeConsoleRepository {
+    override suspend fun getToday(
+        date: String?,
+        zoneId: String,
+    ): ApiResult<RemoteLifeConsoleToday> {
+        return runCatching {
+            lifeConsoleApi.getToday(date = date, zoneId = zoneId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_TODAY_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "读取今日痕迹失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun addMedia(
+        category: String,
+        mediaIds: List<String>,
+    ): ApiResult<RemoteLifeConsoleToday> {
+        return runCatching {
+            lifeConsoleApi.addMedia(
+                LifeConsoleMediaRequestDto(
+                    category = category,
+                    mediaIds = mediaIds,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_ADD_MEDIA_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "添加今日痕迹照片失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun deleteMedia(
+        category: String,
+        mediaId: String,
+    ): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            lifeConsoleApi.deleteMedia(mediaId = mediaId, category = category).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_DELETE_MEDIA_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "删除今日痕迹照片失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun addBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+        return runCatching {
+            lifeConsoleApi.addBowelEvent().data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_BOWEL_ADD_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "记录失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun deleteLatestBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+        return runCatching {
+            lifeConsoleApi.deleteLatestBowelEvent().data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_BOWEL_DELETE_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "撤销记录失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun registerPushToken(
+        platform: String,
+        token: String,
+    ): ApiResult<Unit> {
+        return runCatching {
+            lifeConsoleApi.registerPushToken(
+                RegisterPushTokenRequestDto(
+                    platform = platform,
+                    token = token,
+                ),
+            )
+            Unit
+        }.fold(
+            onSuccess = { ApiResult.Success(Unit) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "PUSH_TOKEN_REGISTER_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "通知同步失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
 }
 
 private fun uploadRequestErrorMessage(
@@ -946,9 +1090,9 @@ private fun uploadRequestErrorMessage(
             httpException.response()?.errorBody()?.string()
         }.getOrNull()?.takeIf { it.isNotBlank() }
         return if (errorBody == null) {
-            "Upload request failed ${httpException.code()}. Please retry."
+            "上传失败（${httpException.code()}），请稍后重试。"
         } else {
-            "Upload request failed ${httpException.code()}: ${errorBody.take(240)}"
+            "上传失败（${httpException.code()}）：${errorBody.take(240)}"
         }
     }
     return throwable.message?.takeIf { it.isNotBlank() } ?: fallback
@@ -971,7 +1115,7 @@ class RealAuthRepository(
                     code = "AUTH_LOGIN_REQUEST_FAILED",
                     message = authRequestErrorMessage(
                         throwable = it,
-                        fallback = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5 baseUrl\u3001\u5c40\u57df\u7f51\u8fde\u901a\u6027\u548c\u540e\u7aef\u670d\u52a1\u72b6\u6001\u3002",
+                        fallback = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u3001\u5c40\u57df\u7f51\u8fde\u901a\u6027\u548c\u670d\u52a1\u72b6\u6001\u3002",
                     ),
                     throwable = it,
                 )
@@ -1092,7 +1236,7 @@ class RealAuthRepository(
                     code = if (httpCode == 401) "AUTH_UNAUTHORIZED" else "AUTH_AVATAR_UPLOAD_REQUEST_FAILED",
                     message = authRequestErrorMessage(
                         throwable = it,
-                        fallback = "Upload avatar failed. Please retry.",
+                        fallback = "上传头像失败，请稍后重试。",
                     ),
                     throwable = it,
                 )
@@ -1112,20 +1256,20 @@ private fun authRequestErrorMessage(
             401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
             403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
             404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d26\u53f7\u63a5\u53e3\u3002"
-            in 500..599 -> "\u540e\u7aef\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+            in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
             else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
         }
     }
     val message = throwable.message?.trim().orEmpty()
     if (message.contains("Unable to resolve host", ignoreCase = true)) {
-        return "\u65e0\u6cd5\u8fde\u63a5\u5230\u5f53\u524d\u540e\u7aef\uff0c\u8bf7\u68c0\u67e5 baseUrl \u548c\u5c40\u57df\u7f51\u7f51\u7edc\u3002"
+        return "\u65e0\u6cd5\u8fde\u63a5\u5230\u5f53\u524d\u670d\u52a1\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u548c\u5c40\u57df\u7f51\u7f51\u7edc\u3002"
     }
     if (
         message.contains("Failed to connect", ignoreCase = true) ||
         message.contains("Connection refused", ignoreCase = true) ||
         message.contains("timeout", ignoreCase = true)
     ) {
-        return "\u767b\u5f55\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u5c40\u57df\u7f51\u8fde\u63a5\u3001baseUrl \u548c\u540e\u7aef\u670d\u52a1\u72b6\u6001\u3002"
+        return "\u767b\u5f55\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u5c40\u57df\u7f51\u8fde\u63a5\u3001\u670d\u52a1\u5730\u5740\u548c\u670d\u52a1\u72b6\u6001\u3002"
     }
     return message.takeIf { it.isNotBlank() } ?: fallback
 }

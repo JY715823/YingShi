@@ -36,7 +36,7 @@ object FakeAlbumRepository {
         val isCover: Boolean,
     )
 
-    private val albums = listOf(
+    private val albums = mutableStateListOf(
         AlbumSummaryUiModel(
             id = "album-spring-window",
             title = "春天窗边",
@@ -102,6 +102,22 @@ object FakeAlbumRepository {
         return posts.firstOrNull { it.id == postId }
     }
 
+    fun createAlbum(
+        title: String,
+        subtitle: String,
+    ): AlbumSummaryUiModel {
+        val trimmedTitle = title.trim().ifBlank { "新的大相册" }
+        val trimmedSubtitle = subtitle.trim().ifBlank { "刚创建，等你继续往里整理小相册" }
+        val album = AlbumSummaryUiModel(
+            id = "album-local-${System.currentTimeMillis()}-${albums.size + 1}",
+            title = trimmedTitle,
+            subtitle = trimmedSubtitle,
+            accent = realPaletteFor(trimmedTitle),
+        )
+        albums.add(0, album)
+        return album
+    }
+
     fun createPlaceholderPost(
         title: String,
         summary: String,
@@ -115,8 +131,8 @@ object FakeAlbumRepository {
             id = postId,
             albumId = primaryAlbum.id,
             albumIds = normalizedAlbumIds,
-            title = title.ifBlank { "本地占位小相册" },
-            summary = summary.ifBlank { "本地创建的小相册占位内容" },
+            title = title.ifBlank { "新的小相册" },
+            summary = summary.ifBlank { "从本地创建的小相册" },
             postDisplayTimeMillis = postDisplayTimeMillis,
             mediaCount = 1,
             coverPalette = primaryAlbum.accent,
@@ -151,7 +167,7 @@ object FakeAlbumRepository {
                 mediaCount = normalizedMedia.size,
                 displayTimeMillis = postTime,
             ),
-            summary = "从系统媒体工具区加入的本地占位小相册",
+            summary = "从系统媒体加入的小相册",
             postDisplayTimeMillis = postTime,
             mediaCount = normalizedMedia.size,
             coverPalette = coverMedia.palette,

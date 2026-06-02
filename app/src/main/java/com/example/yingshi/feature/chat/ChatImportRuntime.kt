@@ -3,9 +3,13 @@ package com.example.yingshi.feature.chat
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.chat.data.ChatImportProgress
 import com.example.yingshi.feature.chat.data.ChatImportResult
 import com.example.yingshi.feature.chat.data.ImportedChatRepository
+import com.example.yingshi.feature.chat.data.NoOpChatSyncBridge
+import com.example.yingshi.feature.chat.data.RemoteChatSyncBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,7 +58,16 @@ object ChatImportRuntime {
                     ),
                 )
                 runCatching {
-                    ImportedChatRepository(appContext).importFromZip(uri) { progress ->
+                    val repository = ImportedChatRepository(
+                        appContext = appContext,
+                        syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                            RemoteChatSyncBridge()
+                        } else {
+                            NoOpChatSyncBridge
+                        },
+                    )
+                    repository.hydrateFromRemoteIfNeeded()
+                    repository.importFromZip(uri) { progress ->
                         _state.value = _state.value.copy(
                             isRunning = true,
                             progress = progress,

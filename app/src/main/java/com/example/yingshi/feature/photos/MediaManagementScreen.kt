@@ -297,7 +297,7 @@ fun MediaManagementScreen(
                 if (mode == MediaManagementMode.NORMAL) {
                     MediaManagementEntryRow(
                         onAddMedia = {
-                            Toast.makeText(context, "添加媒体先保留占位，后续再接系统媒体选择", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "请回到系统媒体选择要加入的小相册媒体。", Toast.LENGTH_SHORT).show()
                         },
                         onDeleteMode = {
                             selectedForDelete = emptyList()
@@ -353,7 +353,7 @@ fun MediaManagementScreen(
                                 exitMode()
                             }
                             MediaManagementMode.EDIT_TIME -> {
-                                Toast.makeText(context, "修改媒体时间先保留入口占位，后续再接基础编辑", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "当前无法修改媒体时间。", Toast.LENGTH_SHORT).show()
                                 exitMode()
                             }
                         }
@@ -376,7 +376,7 @@ fun MediaManagementScreen(
             title = { Text("确认处理选中媒体？") },
             text = {
                 Text(
-                    "已选 $deleteCount 项媒体。\n\n“只从小相册移除”只解除这些媒体和当前小相册的关联，媒体仍保留在照片流和其他小相册中。\n\n“全局删除媒体”会从照片流删除媒体，并影响所有引用它们的小相册；删除项会进入 App 回收站。",
+                    "已选 $deleteCount 项媒体。\n\n“只从小相册移除”只解除这些媒体和当前小相册的关联，媒体仍保留在照片流和其他小相册中。\n\n“全局删除媒体”会从照片流删除媒体，并影响所有引用它们的小相册；删除项会进入回收站。",
                 )
             },
             confirmButton = {
@@ -541,8 +541,8 @@ private fun RealMediaManagementScreen(
                 )
                 Text(
                     text = when {
-                        uiState.tokenMissing -> "REAL 模式需要先登录，才能管理后端小相册媒体。"
-                        uiState.isLoading -> "正在读取后端媒体列表…"
+                        uiState.tokenMissing -> "请先连接服务，才能管理在线小相册媒体。"
+                        uiState.isLoading -> "正在读取媒体列表…"
                         uiState.errorMessage != null -> uiState.errorMessage ?: "读取媒体管理数据失败。"
                         uiState.statusMessage != null -> uiState.statusMessage ?: ""
                         else -> modeDescription(mode)
@@ -598,7 +598,7 @@ private fun RealMediaManagementScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "正在读取后端媒体列表…",
+                        text = "正在读取媒体列表…",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -647,11 +647,11 @@ private fun RealMediaManagementScreen(
                                         exitMode()
                                     }
                                     MediaManagementMode.EDIT_TIME -> {
-                                        Toast.makeText(
-                                            context,
-                                            "真实媒体时间编辑暂时还没接入，本轮先保留入口。",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
+                        Toast.makeText(
+                            context,
+                            "当前无法修改媒体时间。",
+                            Toast.LENGTH_SHORT,
+                        ).show()
                                         exitMode()
                                     }
                                 }
@@ -676,7 +676,7 @@ private fun RealMediaManagementScreen(
             title = { Text("确认处理选中媒体？") },
             text = {
                 Text(
-                    "已选 $deleteCount 项媒体。\n\n“仅从当前小相册移除”只删除当前小相册里的关联，媒体仍保留在照片流和其他小相册中。\n\n“全局删除媒体”会从整个 App 内容空间删除媒体，并写入后端回收站，照片流和相关小相册都会受到影响。",
+                    "已选 $deleteCount 项媒体。\n\n“仅从当前小相册移除”只删除当前小相册里的关联，媒体仍保留在照片流和其他小相册中。\n\n“全局删除媒体”会从整个 App 内容空间删除媒体，并写入回收站，照片流和相关小相册都会受到影响。",
                 )
             },
             confirmButton = {
@@ -830,7 +830,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                     onFinishMode = {},
                 )
                 Text(
-                    text = "正在读取后端媒体列表…",
+                    text = "正在读取媒体列表…",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1262,7 +1262,7 @@ private fun MediaManagementMissingState(
             onFinishMode = {},
         )
         Text(
-            text = "当前小相册不存在，暂时无法进入媒体管理。",
+            text = "当前小相册不存在，无法进入媒体管理。",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1271,11 +1271,11 @@ private fun MediaManagementMissingState(
 
 private fun modeDescription(mode: MediaManagementMode): String {
     return when (mode) {
-        MediaManagementMode.NORMAL -> "两列网格管理当前小相册的媒体。本轮已接入目录删 / 本地系统删、排序壳子和封面同步。"
+        MediaManagementMode.NORMAL -> "两列网格管理当前小相册的媒体。"
         MediaManagementMode.DELETE -> "删除模式支持多选；点击“删除（x）”后先选择目录删还是系统删，不直接删除。"
         MediaManagementMode.SORT -> "排序模式使用上移 / 下移完成本地调整；点击完成保存，点击取消恢复进入排序前的顺序。"
         MediaManagementMode.SET_COVER -> "点击某张媒体即可本地设为封面，并尽量同步到小相册详情页和大相册页。"
-        MediaManagementMode.EDIT_TIME -> "修改媒体时间继续保留入口占位，本轮不接复杂时间编辑器。"
+        MediaManagementMode.EDIT_TIME -> "当前无法修改媒体时间。"
     }
 }
 

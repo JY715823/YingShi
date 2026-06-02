@@ -2,6 +2,7 @@
 
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
+import com.example.yingshi.data.model.CreateAlbumPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.NotificationMarkAllReadResult
@@ -9,6 +10,12 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
+import com.example.yingshi.data.model.RemoteLifeConsoleToday
+import com.example.yingshi.data.model.RemoteLifeConsoleUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
@@ -110,6 +117,22 @@ class FakeMediaRepositoryShell : MediaRepository {
 }
 
 class FakeAlbumRepositoryShell : AlbumRepository {
+    override suspend fun createAlbum(payload: CreateAlbumPayload): ApiResult<RemoteAlbum> {
+        val album = FakeAlbumRepository.createAlbum(
+            title = payload.title,
+            subtitle = payload.subtitle,
+        )
+        return ApiResult.Success(
+            RemoteAlbum(
+                albumId = album.id,
+                title = album.title,
+                subtitle = album.subtitle,
+                coverMediaId = null,
+                smallAlbumCount = 0,
+            ),
+        )
+    }
+
     override suspend fun getAlbums(): ApiResult<List<RemoteAlbum>> {
         return ApiResult.Success(
             FakeAlbumRepository.getAlbums().map { album ->
@@ -629,6 +652,129 @@ class FakeAuthRepositoryShell : AuthRepository {
         val updatedProfile = fakeAuthUpdateAvatar(fakeAvatarUrl)
             ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
         return ApiResult.Success(updatedProfile)
+    }
+}
+
+class FakeLifeConsoleRepositoryShell : LifeConsoleRepository {
+    private val bowelTimesByUserId = linkedMapOf<String, MutableList<Long>>()
+
+    override suspend fun getToday(
+        date: String?,
+        zoneId: String,
+    ): ApiResult<RemoteLifeConsoleToday> {
+        return ApiResult.Success(fakeToday(date = date, zoneId = zoneId))
+    }
+
+    override suspend fun addMedia(
+        category: String,
+        mediaIds: List<String>,
+    ): ApiResult<RemoteLifeConsoleToday> {
+        return ApiResult.Success(fakeToday())
+    }
+
+    override suspend fun deleteMedia(
+        category: String,
+        mediaId: String,
+    ): ApiResult<RemoteTrashItem> {
+        return ApiResult.Error(
+            code = "NOT_IMPLEMENTED",
+            message = "当前无法删除这张今日痕迹照片。",
+        )
+    }
+
+    override suspend fun addBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+        val profile = fakeAuthCurrentProfile()
+            ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
+        val eventTime = System.currentTimeMillis()
+        bowelTimesByUserId.getOrPut(profile.userId) { mutableListOf() }.add(eventTime)
+        return ApiResult.Success(
+            RemoteLifeConsoleBowelMutation(
+                eventId = "fake-bowel-$eventTime",
+                bowel = fakeBowelSummary(profile),
+            ),
+        )
+    }
+
+    override suspend fun deleteLatestBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+        val profile = fakeAuthCurrentProfile()
+            ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
+        val events = bowelTimesByUserId.getOrPut(profile.userId) { mutableListOf() }
+        val removed = events.removeLastOrNull()
+        return ApiResult.Success(
+            RemoteLifeConsoleBowelMutation(
+                eventId = removed?.let { "fake-bowel-$it" },
+                bowel = fakeBowelSummary(profile),
+            ),
+        )
+    }
+
+    override suspend fun registerPushToken(
+        platform: String,
+        token: String,
+    ): ApiResult<Unit> = ApiResult.Success(Unit)
+
+    private fun fakeToday(
+        date: String? = null,
+        zoneId: String = "Asia/Shanghai",
+    ): RemoteLifeConsoleToday {
+        val profile = fakeAuthCurrentProfile() ?: fakeAuthLoginProfile("demo.a@yingshi.local")
+        val currentUser = profile.toLifeUser()
+        val partner = profile.partner?.let {
+            RemoteLifeConsoleUser(
+                userId = it.userId,
+                account = it.account,
+                displayName = it.displayName,
+                avatarUrl = it.avatarUrl,
+            )
+        }
+        return RemoteLifeConsoleToday(
+            date = date ?: java.time.LocalDate.now(java.time.ZoneId.of(zoneId)).toString(),
+            zoneId = zoneId,
+            currentUser = currentUser,
+            partner = partner,
+            personSelf = emptySlot("PERSON", currentUser.userId, editable = true),
+            personPartner = emptySlot("PERSON", partner?.userId, editable = false),
+            mealSelf = emptySlot("MEAL", currentUser.userId, editable = true),
+            mealPartner = emptySlot("MEAL", partner?.userId, editable = false),
+            bowel = fakeBowelSummary(profile),
+        )
+    }
+
+    private fun fakeBowelSummary(profile: RemoteCurrentUser): RemoteLifeConsoleBowelSummary {
+        val userIds = listOfNotNull(profile.userId, profile.partner?.userId)
+        return RemoteLifeConsoleBowelSummary(
+            users = userIds.map { userId ->
+                val times = bowelTimesByUserId[userId].orEmpty()
+                RemoteLifeConsoleBowelUserSummary(
+                    userId = userId,
+                    count = times.size,
+                    latestOccurredAtMillis = times.maxOrNull(),
+                    eventTimesMillis = times,
+                )
+            },
+        )
+    }
+
+    private fun emptySlot(
+        category: String,
+        ownerUserId: String?,
+        editable: Boolean,
+    ): RemoteLifeConsoleMediaSlot {
+        return RemoteLifeConsoleMediaSlot(
+            category = category,
+            ownerUserId = ownerUserId,
+            editable = editable,
+            mediaItems = emptyList(),
+        )
+    }
+
+    private fun RemoteCurrentUser.toLifeUser(): RemoteLifeConsoleUser {
+        return RemoteLifeConsoleUser(
+            userId = userId,
+            account = account,
+            displayName = displayName,
+            avatarUrl = avatarUrl,
+        )
     }
 }
 

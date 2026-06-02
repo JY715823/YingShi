@@ -72,7 +72,7 @@ class RealGearEditViewModel(
                     _uiState.value = RealGearEditUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                            "需要先完成登录，请检查连接设置后重试。"
                         },
                     )
                     return@launch
@@ -116,14 +116,14 @@ class RealGearEditViewModel(
                         draftLoaded = true,
                         hasChanges = false,
                         errorMessage = (albumsResult as? ApiResult.Error)
-                            ?.toBackendUiMessage("读取相册失败，暂时无法切换所属相册。"),
+                            ?.toBackendUiMessage("读取相册失败，当前无法切换所属相册。"),
                     )
                 }
                 is ApiResult.Error -> {
                     _uiState.value = RealGearEditUiState(
                         isLoading = false,
                         albums = albums,
-                        errorMessage = detailResult.toBackendUiMessage("读取后端小相册失败。"),
+                        errorMessage = detailResult.toBackendUiMessage("读取小相册失败。"),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -410,7 +410,7 @@ class RealMediaManagementViewModel(
                     _uiState.value = RealMediaManagementUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
-                            "REAL 模式需要先登录，请到后端联调页检查后端地址。"
+                            "需要先完成登录，请检查连接设置后重试。"
                         },
                     )
                     return@launch
@@ -610,7 +610,7 @@ class RealMediaManagementViewModel(
                     _uiState.update {
                         it.copy(
                             isMutating = false,
-                            errorMessage = result.toBackendUiMessage("后端操作失败。"),
+                            errorMessage = result.toBackendUiMessage("保存失败。"),
                         )
                     }
                 }

@@ -22,12 +22,18 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ModeComment
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -39,7 +45,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +68,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.util.Calendar
@@ -268,9 +274,9 @@ private fun RealPostDetailScreen(
             when {
                 uiState.tokenMissing -> {
                     PostDetailInfoState(
-                        title = "真实模式需要登录",
+                        title = "需要登录",
                         message = uiState.errorMessage
-                            ?: "请先到后端联调诊断页登录，再打开这个小相册。",
+                            ?: "请先连接服务，再打开这个小相册。",
                         onBack = onBack,
                         actionLabel = "重试",
                         onAction = viewModel::refresh,
@@ -287,9 +293,9 @@ private fun RealPostDetailScreen(
 
                 uiState.errorMessage != null && detail == null -> {
                     val errorMessage = uiState.errorMessage
-                        ?: "读取后端小相册详情失败。"
+                        ?: "读取小相册详情失败。"
                     PostDetailInfoState(
-                        title = "后端请求失败",
+                        title = "读取失败",
                         message = errorMessage,
                         onBack = onBack,
                         actionLabel = "重试",
@@ -395,14 +401,10 @@ private fun RealSmallAlbumDetailContent(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val hasMedia = detail.mediaItems.isNotEmpty()
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val feedItems = remember(detail.mediaItems) { detail.toSmallAlbumFeedItems() }
-    val pageStateStore = remember(detail.postId) { PhotoFeedPageStateStore() }
-    var detailScrollTrigger by remember(detail.postId) { mutableIntStateOf(0) }
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
     val feedbackKey = "${detail.postId}:$feedbackNonce"
     val highlightKey = remember(highlightMediaIds, feedbackNonce) {
@@ -422,11 +424,6 @@ private fun RealSmallAlbumDetailContent(
         if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
         val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
         if (targetIndex >= 0) {
-            pageStateStore.pendingScrollTargetMediaId = targetId
-            pageStateStore.pendingHighlightNonce = feedbackNonce
-            pageStateStore.pendingLocateSuccessMessage = null
-            pageStateStore.pendingLocateFailureMessage = null
-            detailScrollTrigger += 1
             val otherCount = highlightMediaIds.distinct().size - 1
             resultNotice = if (otherCount > 0) {
                 "已定位到刚加入媒体，另有 $otherCount 项新加入"
@@ -458,7 +455,7 @@ private fun RealSmallAlbumDetailContent(
             SmallAlbumDetailTopBar(
                 onBack = onBack,
                 onExport = {
-                    Toast.makeText(context, "导出能力暂时仍为占位。", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "当前设备未提供可用导出入口。", Toast.LENGTH_SHORT).show()
                 },
                 onEdit = onOpenGearEdit,
                 onOpenComments = onOpenSmallAlbumComments,
@@ -499,24 +496,11 @@ private fun RealSmallAlbumDetailContent(
             )
         },
         mediaSection = {
-            SmallAlbumPhotoFeedSection(
-                feedItems = feedItems,
-                pageStateStore = pageStateStore,
-                scrollTrigger = detailScrollTrigger,
+            SmallAlbumMediaGridSection(
+                mediaItems = detail.mediaItems,
+                highlightMediaIds = if (showNewAddedState) highlightMediaIds else emptyList(),
                 onOpenMediaViewer = onOpenMediaViewer,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        commentSummary = {
-            SmallAlbumCommentSummaryCard(
-                commentCount = uiState.postComments.comments.size,
-                isLoading = uiState.postComments.isLoading,
-                statusMessage = uiState.postComments.statusMessage,
-                errorMessage = uiState.postComments.errorMessage,
-                onOpenComments = onOpenSmallAlbumComments,
-                onRetry = onRetrySmallAlbumComments,
-                label = "小相册评论",
-                emptyText = "评论入口已经移到右上角，这里只保留当前状态提示。",
+                modifier = Modifier.fillMaxSize(),
             )
         },
     )
@@ -662,7 +646,7 @@ private fun RealCommentThreadContent(
         Text(
             text = state.statusMessage,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = YingShiThemeTokens.colors.titleAccent,
         )
     }
 
@@ -810,7 +794,7 @@ private fun PostDetailLoadingState(
 ) {
     PostDetailInfoState(
         title = "正在读取小相册详情",
-        message = "正在从后端获取小相册详情和评论…",
+        message = "正在读取小相册详情和评论…",
         onBack = onBack,
         modifier = modifier,
         loading = true,
@@ -948,9 +932,6 @@ private fun SmallAlbumDetailContent(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val feedItems = remember(detail.mediaItems) { detail.toSmallAlbumFeedItems() }
-    val pageStateStore = remember(detail.postId) { PhotoFeedPageStateStore() }
-    var detailScrollTrigger by remember(detail.postId) { mutableIntStateOf(0) }
     val postMediaIds = remember(detail.mediaItems) {
         detail.mediaItems.map { it.id }
     }
@@ -972,9 +953,6 @@ private fun SmallAlbumDetailContent(
         if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
         val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
         if (targetIndex >= 0) {
-            pageStateStore.pendingScrollTargetMediaId = targetId
-            pageStateStore.pendingHighlightNonce = feedbackNonce
-            detailScrollTrigger += 1
             val otherCount = highlightMediaIds.distinct().size - 1
             resultNotice = if (otherCount > 0) {
                 "已定位到刚加入媒体，另有 $otherCount 项新加入"
@@ -1004,7 +982,7 @@ private fun SmallAlbumDetailContent(
             SmallAlbumDetailTopBar(
                 onBack = onBack,
                 onExport = {
-                    Toast.makeText(context, "导出 / 保存将在后续阶段接入", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "当前设备未提供可用导出入口。", Toast.LENGTH_SHORT).show()
                 },
                 onEdit = onOpenGearEdit,
                 onOpenComments = onOpenSmallAlbumComments,
@@ -1029,24 +1007,11 @@ private fun SmallAlbumDetailContent(
             )
         },
         mediaSection = {
-            SmallAlbumPhotoFeedSection(
-                feedItems = feedItems,
-                pageStateStore = pageStateStore,
-                scrollTrigger = detailScrollTrigger,
+            SmallAlbumMediaGridSection(
+                mediaItems = detail.mediaItems,
+                highlightMediaIds = if (showNewAddedState) highlightMediaIds else emptyList(),
                 onOpenMediaViewer = onOpenMediaViewer,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        commentSummary = {
-            SmallAlbumCommentSummaryCard(
-                commentCount = detail.comments.size,
-                isLoading = false,
-                statusMessage = null,
-                errorMessage = null,
-                onOpenComments = onOpenSmallAlbumComments,
-                onRetry = null,
-                label = "小相册评论",
-                emptyText = "评论入口已经移到右上角，这里只保留当前状态提示。",
+                modifier = Modifier.fillMaxSize(),
             )
         },
     )
@@ -1062,8 +1027,18 @@ fun SmallAlbumDetailBodyLayout(
     commentSummary: @Composable () -> Unit = {},
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        colors.appBackground,
+                        colors.sectionBackground.copy(alpha = 0.54f),
+                        colors.appBackground,
+                    ),
+                ),
+            )
             .statusBarsPadding()
             .padding(horizontal = spacing.lg)
             .padding(top = spacing.xs, bottom = spacing.lg),
@@ -1121,6 +1096,7 @@ private fun SmallAlbumDetailTopBar(
     onOpenComments: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1131,32 +1107,62 @@ private fun SmallAlbumDetailTopBar(
         Text(
             text = "小相册详情",
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.titleAccent,
             maxLines = 1,
         )
-        PostActionChip(text = "导出/保存", onClick = onExport)
         SmallAlbumCommentButton(onClick = onOpenComments)
-        PostCircleButton(text = "齿", onClick = onEdit)
+        PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
+        PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
+    }
+}
+
+@Composable
+private fun PostIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = CircleShape
+    Surface(
+        modifier = Modifier
+            .size(48.dp)
+            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+        shape = shape,
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        shadowElevation = 1.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(25.dp),
+            )
+        }
     }
 }
 
 @Composable
 private fun SmallAlbumCommentButton(onClick: () -> Unit) {
+    val colors = YingShiThemeTokens.colors
+    val shape = CircleShape
     Surface(
         modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+            .size(48.dp)
+            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+        shape = shape,
+        color = colors.primaryContainer.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.78f)),
+        shadowElevation = 1.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Filled.ModeComment,
                 contentDescription = "打开小相册评论",
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = colors.titleAccent,
             )
         }
     }
@@ -1172,11 +1178,12 @@ fun PostMediaCard(
     onClick: () -> Unit,
 ) {
     val cardAspectRatio = media.displayAspectRatio()
+    val colors = YingShiThemeTokens.colors
 
     BoxWithConstraints(
         modifier = modifier
-            .clickable(onClick = onClick)
-            .background(Color.White),
+            .yingShiClickable(pressedScale = 0.985f, onClick = onClick)
+            .background(colors.raisedSurface),
     ) {
         val availableWidth = maxWidth
         val availableHeight = maxHeight
@@ -1224,13 +1231,14 @@ fun PostMediaCard(
                 Surface(
                     modifier = Modifier.align(Alignment.TopEnd),
                     shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.88f),
+                    color = YingShiThemeTokens.colors.selectedPillBg.copy(alpha = 0.92f),
+                    border = BorderStroke(1.dp, YingShiThemeTokens.colors.glassStroke.copy(alpha = 0.72f)),
                 ) {
                     Text(
                         text = "新加入",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = YingShiThemeTokens.colors.titleAccent,
                     )
                 }
             }
@@ -1287,61 +1295,94 @@ fun SmallAlbumInfoSection(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        shadowElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            Text(
-                text = detail.contributorLabel,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PostMetaCapsule(
+                    text = "${detail.contributorLabel} · 仅你们可见",
+                    containerColor = colors.softGreenContainer.copy(alpha = 0.76f),
+                )
+                Surface(
+                    modifier = Modifier.size(10.dp),
+                    shape = CircleShape,
+                    color = colors.goldAccent.copy(alpha = 0.84f),
+                ) {}
+            }
             Text(
                 text = detail.title,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(12.dp),
+                    shape = CircleShape,
+                    color = colors.goldAccent.copy(alpha = 0.84f),
+                ) {}
+                Text(
+                    text = formatPostTime(detail.postDisplayTimeMillis),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textSecondary,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                detail.albumChips.take(2).forEach { chip ->
+                    PostMetaCapsule(
+                        text = chip,
+                        containerColor = colors.primaryContainer.copy(alpha = 0.50f),
+                    )
+                }
+                PostMetaCapsule(
+                    text = "${detail.mediaItems.size} 张 · ${detail.comments.size} 条评论",
+                    containerColor = colors.softGreenContainer.copy(alpha = 0.58f),
+                )
+            }
             val summary = detail.summary.meaningfulPostSummaryOrNull()
             if (summary != null) {
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textSecondary,
                 )
             } else {
                 Text(
                     text = "还没有简介，内容可以慢慢补上。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f),
+                    color = colors.textSecondary.copy(alpha = 0.78f),
                 )
             }
-            Text(
-                text = formatPostTime(detail.postDisplayTimeMillis),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
-            )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                detail.albumChips.forEach { chip ->
-                    PostMetaCapsule(text = chip)
-                }
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PostActionChip(text = originalSummary.buttonLabel, onClick = onLoadAllOriginals)
+                PostActionChip(
+                    text = originalSummary.buttonLabel,
+                    onClick = onLoadAllOriginals,
+                    containerColor = colors.primaryContainer.copy(alpha = 0.70f),
+                )
             }
         }
     }
@@ -1642,11 +1683,12 @@ private fun SmallAlbumCommentSummaryCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.sectionBackground.copy(alpha = 0.70f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.58f)),
     ) {
         Row(
             modifier = Modifier
@@ -1659,7 +1701,7 @@ private fun SmallAlbumCommentSummaryCard(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = when {
@@ -1670,7 +1712,7 @@ private fun SmallAlbumCommentSummaryCard(
                         else -> emptyText
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             if (onRetry != null && !errorMessage.isNullOrBlank()) {
@@ -1709,7 +1751,7 @@ private fun MediaCommentPlaceholderSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "媒体评论占位",
+                        text = "媒体评论",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -1724,7 +1766,7 @@ private fun MediaCommentPlaceholderSheet(
 
             if (comments.isEmpty()) {
                 Text(
-                    text = "当前媒体暂无评论，后续接入真实媒体评论系统。",
+                    text = "当前媒体暂无评论。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1734,7 +1776,7 @@ private fun MediaCommentPlaceholderSheet(
                         Text(
                             text = "${comment.author} · ${formatPostTime(comment.createdAtMillis)}",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = YingShiThemeTokens.colors.titleAccent,
                         )
                         Text(
                             text = comment.content,
@@ -1745,7 +1787,7 @@ private fun MediaCommentPlaceholderSheet(
                 }
                 if (comments.size > 10) {
                     Text(
-                        text = "更多媒体评论后续接入分页 / 展开能力",
+                        text = "还有更多评论",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1756,7 +1798,7 @@ private fun MediaCommentPlaceholderSheet(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
                 ) {
                     Text(
-                        text = "写一条媒体评论，占位输入入口",
+                        text = "写一条媒体评论",
                         modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1772,20 +1814,21 @@ private fun PostCircleButton(
     text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = CircleShape
     Surface(
         modifier = Modifier
             .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+        shape = shape,
+        color = colors.raisedSurface.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
         }
     }
@@ -1795,41 +1838,47 @@ private fun PostCircleButton(
 private fun PostActionChip(
     text: String,
     onClick: () -> Unit,
+    containerColor: Color = YingShiThemeTokens.colors.primaryContainer.copy(alpha = 0.42f),
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(radius.capsule)
 
     Surface(
         modifier = Modifier
-            .clip(RoundedCornerShape(radius.capsule))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(radius.capsule),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+            .yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick),
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.62f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.titleAccent,
         )
     }
 }
 
 @Composable
-private fun PostMetaCapsule(text: String) {
+private fun PostMetaCapsule(
+    text: String,
+    containerColor: Color = YingShiThemeTokens.colors.softGreenContainer.copy(alpha = 0.58f),
+) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.capsule),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        color = containerColor,
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -1844,63 +1893,130 @@ private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
 }
 
 @Composable
-private fun SmallAlbumPhotoFeedSection(
-    feedItems: List<PhotoFeedItem>,
-    pageStateStore: PhotoFeedPageStateStore,
-    scrollTrigger: Int,
+private fun SmallAlbumMediaGridSection(
+    mediaItems: List<PostDetailMediaUiModel>,
+    highlightMediaIds: List<String>,
     onOpenMediaViewer: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val mediaPositionLookup = remember(feedItems) {
-        feedItems.mapIndexed { index, item -> item.mediaId to index }.toMap()
-    }
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
-        Text(
-            text = "媒体",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = if (feedItems.isEmpty()) {
-                "这个小相册里还没有媒体。标题和评论会先保留在这里，后续加入照片或视频就会展示出来。"
-            } else {
-                "按照片流样式浏览这个小相册里的媒体，支持时间分组、密度切换和时间 scrubber。"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(radius.xl),
+            color = colors.raisedSurface.copy(alpha = 0.94f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+            shadowElevation = 1.dp,
         ) {
-            if (feedItems.isEmpty()) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = spacing.md, vertical = spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "这一组照片",
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                        Text(
+                            text = if (mediaItems.isEmpty()) "还没有媒体" else "点开可进入 Viewer",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                        )
+                    }
+                    PostMetaCapsule(
+                        text = "${mediaItems.size} 张",
+                        containerColor = colors.primaryContainer.copy(alpha = 0.52f),
+                    )
+                }
+                if (mediaItems.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
                             text = "还没有媒体",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colors.textSecondary,
                         )
                     }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = spacing.md),
+                    ) {
+                        itemsIndexed(
+                            items = mediaItems,
+                            key = { _, media -> media.id },
+                        ) { index, media ->
+                            SmallAlbumGridMediaTile(
+                                media = media,
+                                highlighted = media.id in highlightMediaIds,
+                                onClick = { onOpenMediaViewer(index) },
+                            )
+                        }
+                    }
                 }
-            } else {
-                PhotoFeedScreen(
-                    feedItems = feedItems,
-                    pageStateStore = pageStateStore,
-                    modifier = Modifier.fillMaxSize(),
-                    selectionState = PhotoFeedSelectionState(),
-                    scrollTrigger = scrollTrigger,
-                    onOpenViewer = { route ->
-                        onOpenMediaViewer(route.initialIndex)
-                    },
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumGridMediaTile(
+    media: PostDetailMediaUiModel,
+    highlighted: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .yingShiClickable(shape = shape, pressedScale = 0.965f, onClick = onClick)
+            .background(colors.sectionBackground)
+            .clip(shape),
+    ) {
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = media.palette,
+            modifier = Modifier.fillMaxSize(),
+            contentDescription = media.id,
+            requestSize = 360,
+            contentScale = ContentScale.Crop,
+            showLoadingIndicator = false,
+        )
+        if (highlighted) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp),
+                shape = RoundedCornerShape(radius.capsule),
+                color = colors.memoryContainer.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.20f)),
+            ) {
+                Text(
+                    text = "新",
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.onMemoryContainer,
                 )
             }
         }

@@ -270,7 +270,7 @@ fun RealTrashPageScreen(
             when {
                 uiState.isLoading && uiState.entries.isEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        RealTrashSectionCard(title = "读取中", body = "正在从后端读取回收站列表…")
+                        RealTrashSectionCard(title = "读取中", body = "正在读取回收站列表…")
                     }
                 }
                 uiState.entries.isEmpty() -> {
@@ -355,7 +355,7 @@ fun RealTrashPageScreen(
             when {
                 uiState.isLoading && uiState.entries.isEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        RealTrashSectionCard(title = "读取中", body = "正在从后端读取回收站列表…")
+                        RealTrashSectionCard(title = "读取中", body = "正在读取回收站列表…")
                     }
                 }
                 uiState.entries.isEmpty() -> {
@@ -433,7 +433,7 @@ fun RealTrashPageScreen(
                     item {
                         RealTrashSectionCard(
                             title = "读取中",
-                            body = "正在从后端读取回收站列表…",
+                            body = "正在读取回收站列表…",
                         )
                     }
                 }
@@ -441,7 +441,7 @@ fun RealTrashPageScreen(
                     item {
                         RealTrashSectionCard(
                             title = "当前分类为空",
-                            body = "这一类回收站项目还没有内容，可以先在 REAL 照片流里删除一项媒体试试。",
+                            body = "这一类回收站项目还没有内容。",
                         )
                     }
                 }
@@ -488,7 +488,7 @@ fun RealTrashPageScreen(
             title = { Text("清空当前分类？") },
             text = {
                 Text(
-                    "将永久删除当前「${selectedType.label}」分类中的 ${uiState.entries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前「${selectedType.label}」分类中的 ${uiState.entries.size} 项。属于媒体删除的项目会同时删除原文件；只从小相册移除的项目不会影响其他位置仍在使用的照片或视频。",
                 )
             },
             confirmButton = {
@@ -561,7 +561,7 @@ fun RealTrashPageScreen(
             title = { Text("删除选中项？") },
             text = {
                 Text(
-                    "将永久删除当前选中的 ${selectedEntries.size} 项。媒体删除类会删除对应 Server local-storage 文件；小相册删除、媒体移除不会误删仍被其他地方引用的媒体文件。",
+                    "将永久删除当前选中的 ${selectedEntries.size} 项。属于媒体删除的项目会同时删除原文件；只从小相册移除的项目不会影响其他位置仍在使用的照片或视频。",
                 )
             },
             confirmButton = {
@@ -1143,7 +1143,7 @@ private fun TrashEntryUiModel.toTrashPostDetailUiModel(mediaIds: List<String>): 
     return PostDetailUiModel(
         postId = postId,
         title = title.ifBlank { "回收站小相册" },
-        summary = previewInfo.ifBlank { "后端没有返回额外说明。" },
+        summary = previewInfo.ifBlank { "暂无更多说明。" },
         contributorLabel = "回收站小相册",
         postDisplayTimeMillis = deletedAtMillis,
         albumIds = relatedPostIds.ifEmpty { listOf(postId) },
@@ -1390,20 +1390,20 @@ fun RealTrashDetailScreen(
         when {
             uiState.tokenMissing -> {
                 RealTrashSectionCard(
-                    title = "REAL 模式需要登录",
-                    body = uiState.errorMessage ?: "请先到联调诊断页完成登录。",
+                    title = "需要重新登录",
+                    body = uiState.errorMessage ?: "请先完成登录后再查看回收站。",
                 )
             }
             uiState.isLoading && detail == null -> {
                 RealTrashSectionCard(
                     title = "读取中",
-                    body = "正在从后端读取回收站详情…",
+                    body = "正在读取回收站详情…",
                 )
             }
             uiState.errorMessage != null && detail == null -> {
                 RealTrashSectionCard(
                     title = "读取失败",
-                    body = uiState.errorMessage ?: "暂时无法读取回收站详情。",
+                    body = uiState.errorMessage ?: "当前无法读取回收站详情。",
                 )
             }
             detail == null -> {
@@ -1783,7 +1783,7 @@ private fun RealTrashMediaViewerDetailPagerContent(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
             confirmButton = {
@@ -1963,7 +1963,7 @@ private fun RealTrashMediaViewerDetailContent(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
             confirmButton = {
@@ -2526,7 +2526,7 @@ private fun RealTrashPostViewerDetailContent(
             onDismissRequest = { showPermanentDeleteConfirm = false },
             title = { Text("永久删除该回收站项目？") },
             text = {
-                Text("确认后会删除回收站记录。媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。")
+                Text("确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。")
             },
             confirmButton = {
                 TextButton(
@@ -2879,7 +2879,7 @@ private fun RealTrashDetailContent(
 
     RealTrashSectionCard(
         title = item.title.ifBlank { "回收站项目" },
-        body = item.previewInfo.ifBlank { "后端没有返回额外说明。" },
+        body = item.previewInfo.ifBlank { "暂无更多说明。" },
     )
 
     RealTrashDeletedPreview(item = item)
@@ -2965,7 +2965,7 @@ private fun RealTrashDetailContent(
             title = { Text("永久删除该回收站项目？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。媒体删除项还会删除 Server local-storage 中该媒体明确归属的原文件、preview-v2 和 cover 文件，无法恢复。",
+                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
             confirmButton = {
@@ -3013,7 +3013,7 @@ private fun RealTrashDeletedPreview(
         type == TrashEntryType.POST_DELETED -> {
             RealTrashSectionCard(
                 title = "原小相册内容",
-                body = "当前后端删除项没有返回媒体快照，只能展示小相册标题和说明；后续可扩展更完整的小相册快照契约。",
+                body = "这个小相册的照片内容已不可查看，仅保留标题和说明。",
             )
         }
 

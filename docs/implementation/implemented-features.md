@@ -80,8 +80,9 @@ This document records the current truth of the Android codebase. If older PRDs o
   - ledger
   - chat viewer
 - the old anniversary entry is intentionally removed
-- ledger data is backed by local Room storage
+- ledger data uses local Room as the on-device cache and syncs with the backend snapshot API in REAL mode
 - chat viewer supports importing `QCE ZIP` and browsing conversations offline
+- imported chat snapshots hydrate from and sync back to `/api/chat/imported/snapshot` in `REAL` mode
 
 ## 10. Real Repository Coverage
 
@@ -93,8 +94,10 @@ This document records the current truth of the Android codebase. If older PRDs o
 - `RealNotificationRepository`: list, detail, mark-read, mark-all-read
 - `RealTrashRepository`: list, detail, restore, remove, purge, undo-remove, pending-cleanup
 - `RealUploadRepository`: upload token, multipart upload, getUploadTask, confirmUpload, cancelUpload
+- `LedgerRepository` + `LedgerSyncBridge`: shared-library snapshot pull/push
+- `ImportedChatRepository` + `ChatSyncBridge`: imported-chat snapshot pull/push
 
 ## 11. Intentional Gaps
 
-- ledger is still local-only and is intentionally not backended yet because the user plans a major UI and data-model redesign
+- ledger uses local Room as cache and syncs through `/api/ledger/snapshot` in `REAL` mode
 - large-scale offline sync and conflict handling are outside the current stage

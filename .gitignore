@@ -71,3 +71,7 @@ replay_pid*
 
 *.apk
 app/release/
+
+# Firebase local config, generated per Firebase project.
+google-services.json
+**/google-services.json

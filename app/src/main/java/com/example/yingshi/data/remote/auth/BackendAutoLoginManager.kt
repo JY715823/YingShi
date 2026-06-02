@@ -45,7 +45,7 @@ object BackendAutoLoginManager {
         reason: String = "app_start",
     ): BackendAutoLoginOutcome {
         if (reason.startsWith("real_")) {
-            val message = "REAL mode requires login first."
+            val message = "需要先完成登录，请检查连接设置后重试。"
             state.value = state.value.copy(
                 phase = BackendAutoLoginPhase.Failed,
                 message = message,
