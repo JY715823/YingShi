@@ -241,10 +241,6 @@ internal object LifeConsoleWidgetController {
 
     private fun RemoteViews.bindConsoleActions(context: Context) {
         setOnClickPendingIntent(
-            R.id.widget_open_console,
-            openMainIntent(context, AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE, LANE_CONSOLE, 10),
-        )
-        setOnClickPendingIntent(
             R.id.widget_ledger,
             openMainIntent(context, AppNavigationRequests.ACTION_OPEN_LEDGER, LANE_CONSOLE, 11),
         )
@@ -258,10 +254,6 @@ internal object LifeConsoleWidgetController {
     }
 
     private fun RemoteViews.bindPeopleActions(context: Context) {
-        setOnClickPendingIntent(
-            R.id.widget_open_console,
-            openMainIntent(context, AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE, LANE_PEOPLE, 20),
-        )
         setOnClickPendingIntent(R.id.widget_refresh, widgetBroadcast(context, LifePeopleWidgetProvider::class.java, LANE_PEOPLE, ACTION_REFRESH, 22))
         setOnClickPendingIntent(
             R.id.widget_person_self_upload,

@@ -9,9 +9,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+
+private const val YingShiTapMillis = 170
 
 fun Modifier.yingShiPressFeedback(
     enabled: Boolean = true,
@@ -21,7 +24,7 @@ fun Modifier.yingShiPressFeedback(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (enabled && pressed) pressedScale else 1f,
-        animationSpec = tween(durationMillis = 140),
+        animationSpec = tween(durationMillis = YingShiTapMillis),
         label = "yingShiPressScale",
     )
     graphicsLayer {
@@ -40,8 +43,17 @@ fun Modifier.yingShiClickable(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (enabled && pressed) pressedScale else 1f,
-        animationSpec = tween(durationMillis = 140),
+        animationSpec = tween(durationMillis = YingShiTapMillis),
         label = "yingShiClickableScale",
+    )
+    val contentAlpha by animateFloatAsState(
+        targetValue = when {
+            !enabled -> 0.52f
+            pressed -> 0.90f
+            else -> 1f
+        },
+        animationSpec = tween(durationMillis = YingShiTapMillis),
+        label = "yingShiClickableAlpha",
     )
     val shapeModifier = if (shape != null) Modifier.clip(shape) else Modifier
     this
@@ -50,6 +62,7 @@ fun Modifier.yingShiClickable(
             scaleX = scale
             scaleY = scale
         }
+        .alpha(contentAlpha)
         .clickable(
             enabled = enabled,
             interactionSource = interactionSource,

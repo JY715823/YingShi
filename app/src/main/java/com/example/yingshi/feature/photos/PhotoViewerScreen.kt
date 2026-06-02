@@ -56,7 +56,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -671,16 +670,28 @@ fun PhotoViewerScreen(
     ViewerStatusBarEffect(immersive = isImmersive)
 
     if (showDeleteConfirm) {
+        val dialogColors = YingShiThemeTokens.colors
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(text = "删除当前媒体到回收站？") },
+            containerColor = dialogColors.raisedSurface,
+            titleContentColor = dialogColors.titleAccent,
+            textContentColor = dialogColors.textSecondary,
+            title = {
+                Text(
+                    text = "删除当前媒体到回收站？",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+            },
             text = {
                 Text(
                     text = "当前媒体会从照片流消失，并影响所有引用它的小相册。删除后会进入映世回收站，可以在回收站中恢复。",
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "删除到回收站",
+                    danger = true,
                     onClick = {
                         showDeleteConfirm = false
                         val deletingItem = currentItem
@@ -716,14 +727,10 @@ fun PhotoViewerScreen(
                             }
                         }
                     },
-                ) {
-                    Text(text = "删除到回收站")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(text = "取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showDeleteConfirm = false })
             },
         )
     }
@@ -1302,9 +1309,7 @@ private fun EmptyPhotoViewerScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            TextButton(onClick = onBack) {
-                Text(text = "返回", color = ViewerSurface.copy(alpha = 0.90f))
-            }
+            ViewerSheetActionButton(text = "返回", onClick = onBack)
             Text(
                 text = "当前没有可查看的媒体",
                 style = MaterialTheme.typography.titleMedium,
@@ -2497,7 +2502,7 @@ private fun ViewerCacheActionSheet(
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
             Text(
-                text = "当前媒体 fake 缓存 ${cacheState.cacheSizeLabel} · 只做本地状态变化",
+                text = "当前媒体缓存 ${cacheState.cacheSizeLabel}",
                 style = MaterialTheme.typography.labelMedium,
                 color = ViewerSurface.copy(alpha = 0.62f),
             )
@@ -2524,15 +2529,14 @@ private fun ViewerCacheActionSheet(
             }
             ViewerCacheActionRow(
                 title = "打开全局缓存管理",
-                subtitle = "查看 fake 总量并清理全部预览 / 原图 / 视频缓存",
+                subtitle = "查看缓存占用并清理全部预览、原图和视频缓存",
                 onClick = onOpenGlobalCacheManagement,
             )
-            TextButton(
+            ViewerSheetActionButton(
+                text = "关闭",
                 onClick = onDismiss,
                 modifier = Modifier.align(Alignment.End),
-            ) {
-                Text(text = "关闭", color = ViewerSurface.copy(alpha = 0.88f))
-            }
+            )
         }
     }
 }
@@ -2564,6 +2568,37 @@ private fun ViewerCacheActionRow(
             text = subtitle,
             style = MaterialTheme.typography.bodySmall,
             color = ViewerSurface.copy(alpha = 0.62f),
+        )
+    }
+}
+
+@Composable
+private fun ViewerSheetActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        color = if (emphasized) {
+            ViewerSurface.copy(alpha = 0.16f)
+        } else {
+            ViewerSurface.copy(alpha = 0.08f)
+        },
+        border = BorderStroke(1.dp, ViewerSurface.copy(alpha = if (emphasized) 0.18f else 0.10f)),
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = if (enabled) ViewerSurface.copy(alpha = 0.90f) else ViewerSurface.copy(alpha = 0.38f),
         )
     }
 }
@@ -2648,9 +2683,7 @@ private fun PhotoViewerCommentSheet(
                         color = ViewerSurface.copy(alpha = 0.82f),
                     )
                     if (onRetry != null) {
-                        TextButton(onClick = onRetry) {
-                            Text(text = "重试", color = ViewerSurface.copy(alpha = 0.88f))
-                        }
+                        ViewerSheetActionButton(text = "重试", emphasized = true, onClick = onRetry)
                     }
                 }
             }
@@ -2755,14 +2788,10 @@ private fun PhotoViewerCommentSheet(
                 }
             }
             if (comments.hasHiddenComments(expanded)) {
-                TextButton(onClick = { expanded = true }) {
-                    Text(text = "展开更多评论", color = ViewerSurface.copy(alpha = 0.88f))
-                }
+                ViewerSheetActionButton(text = "展开更多评论", onClick = { expanded = true })
             }
             if (comments.canCollapseComments(expanded)) {
-                TextButton(onClick = { expanded = false }) {
-                    Text(text = "收起到最新 10 条", color = ViewerSurface.copy(alpha = 0.72f))
-                }
+                ViewerSheetActionButton(text = "收起到最新 10 条", onClick = { expanded = false })
             }
             if (isMutating) {
                 Text(
@@ -2850,13 +2879,11 @@ private fun ViewerRelatedPostsSheet(
                     }
                 }
             }
-            TextButton(onClick = onAddToExistingPost) {
-                Text(
-                    text = "加入已有小相册",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = ViewerSurface.copy(alpha = 0.92f),
-                )
-            }
+            ViewerSheetActionButton(
+                text = "加入已有小相册",
+                emphasized = true,
+                onClick = onAddToExistingPost,
+            )
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.example.yingshi.feature.ledger
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,7 +67,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -82,6 +83,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerAccount
 import com.example.yingshi.feature.ledger.data.LedgerAccountType
 import com.example.yingshi.feature.ledger.data.LedgerBook
@@ -90,14 +92,23 @@ import java.time.YearMonth
 
 val LedgerHeaderGreen = Color(0xFF26313A)
 val LedgerGreen = LedgerHeaderGreen
+val LedgerPrimaryAction = Color(0xFFBDEFFF)
+val LedgerPrimaryActionPressed = Color(0xFFA7E9FF)
+val LedgerOnPrimaryAction = Color(0xFF1F2933)
+val LedgerRaisedSurface = Color(0xFFFFFFFC)
 val LedgerGreenSoft = Color(0xFFD8F2E6)
-val LedgerIncomeGreen = Color(0xFF4CAF50)
-val LedgerExpenseRed = Color(0xFFF56B82)
+val LedgerIncomeGreen = Color(0xFF3F8067)
+val LedgerExpenseRed = Color(0xFFA94C42)
+val LedgerMemoryContainer = Color(0xFFFFE1DA)
+val LedgerMemoryWash = Color(0xFFFFF1EE)
+val LedgerGoldAccent = Color(0xFF9A6A2A)
 val LedgerPageBackground = Color(0xFFF1FBFD)
 val LedgerGroupedHeader = Color(0xFFDFF5F4)
 val LedgerDivider = Color(0xFFC7E6EC)
+val LedgerGlassStroke = Color(0xFFA9E5F2)
+val LedgerGlowWash = Color(0xFFE7FAFF)
 val LedgerMuted = Color(0xFF5E7580)
-val LedgerSubtleText = Color(0xFF6A8189)
+val LedgerSubtleText = Color(0xFF5E7580)
 
 fun ledgerColor(raw: Long): Color = Color(raw)
 
@@ -181,7 +192,7 @@ fun LedgerBottomSheetDialog(
                     .align(Alignment.BottomCenter)
                     .then(modifier),
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                color = Color.White,
+                color = LedgerRaisedSurface,
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -189,6 +200,49 @@ fun LedgerBottomSheetDialog(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun LedgerDialogActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+    danger: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    val container = when {
+        !enabled -> LedgerGroupedHeader.copy(alpha = 0.50f)
+        danger -> LedgerMemoryContainer.copy(alpha = 0.82f)
+        emphasized -> LedgerPrimaryAction.copy(alpha = 0.88f)
+        else -> LedgerRaisedSurface.copy(alpha = 0.94f)
+    }
+    val content = when {
+        !enabled -> LedgerMuted.copy(alpha = 0.62f)
+        danger -> LedgerExpenseRed
+        else -> LedgerHeaderGreen
+    }
+    Surface(
+        modifier = modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = container,
+        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.66f)),
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = content,
+            maxLines = 1,
+        )
     }
 }
 
@@ -323,9 +377,7 @@ fun LedgerMonthPickerSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text("取消", color = LedgerMuted, style = MaterialTheme.typography.bodyLarge)
-                }
+                LedgerDialogActionButton(text = "取消", onClick = onDismiss)
                 Text(
                     text = "年月选择",
                     modifier = Modifier.weight(1f),
@@ -333,9 +385,11 @@ fun LedgerMonthPickerSheet(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                TextButton(onClick = { onConfirm(YearMonth.of(selectedYear, selectedMonthValue)) }) {
-                    Text("确定", color = LedgerHeaderGreen, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                }
+                LedgerDialogActionButton(
+                    text = "确定",
+                    emphasized = true,
+                    onClick = { onConfirm(YearMonth.of(selectedYear, selectedMonthValue)) },
+                )
             }
             Row(
                 modifier = Modifier
@@ -391,9 +445,7 @@ fun LedgerAccountPickerSheet(
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text("取消", color = LedgerMuted, style = MaterialTheme.typography.bodyLarge)
-                }
+                LedgerDialogActionButton(text = "取消", onClick = onDismiss)
                 Text(
                     text = title,
                     modifier = Modifier.weight(1f),
@@ -478,9 +530,7 @@ fun LedgerTransactionsDetailSheet(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) {
-                    Text("取消", color = LedgerMuted, style = MaterialTheme.typography.bodyMedium)
-                }
+                LedgerDialogActionButton(text = "取消", onClick = onDismiss)
                 Text(
                     text = title,
                     modifier = Modifier.weight(1f),
@@ -553,16 +603,40 @@ fun LedgerTransactionsDetailSheet(
 fun LedgerSegmentChip(
     text: String,
     selected: Boolean,
-    selectedColor: Color = LedgerHeaderGreen,
+    selectedColor: Color = LedgerPrimaryAction,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val shape = RoundedCornerShape(22.dp)
+    val selectedContentColor = if (selectedColor == LedgerPrimaryAction) LedgerOnPrimaryAction else Color.White
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) selectedColor else LedgerRaisedSurface,
+        animationSpec = tween(durationMillis = 150),
+        label = "ledgerChipContainer",
+    )
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            !selected -> LedgerDivider
+            selectedColor == LedgerPrimaryAction -> LedgerGlassStroke
+            else -> selectedColor.copy(alpha = 0.78f)
+        },
+        animationSpec = tween(durationMillis = 150),
+        label = "ledgerChipBorder",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) selectedContentColor else LedgerMuted,
+        animationSpec = tween(durationMillis = 150),
+        label = "ledgerChipContent",
+    )
     Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick),
-        color = if (selected) selectedColor else Color.White,
-        border = BorderStroke(1.dp, if (selected) selectedColor else LedgerDivider),
+        modifier = modifier.yingShiClickable(
+            shape = shape,
+            pressedScale = 0.97f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -570,7 +644,7 @@ fun LedgerSegmentChip(
         ) {
             Text(
                 text = text,
-                color = if (selected) Color.White else LedgerMuted,
+                color = contentColor,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,

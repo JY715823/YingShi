@@ -20,13 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,6 +101,7 @@ fun CreatePostScreen(
     var displayTimeMillis by rememberSaveable(route.source, mediaKey) { mutableStateOf(System.currentTimeMillis()) }
     var localMessage by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val availableAppMediaItems by produceState(
         initialValue = emptyList<CreatePostAppMediaItem>(),
         mode,
@@ -324,7 +322,7 @@ fun CreatePostScreen(
 
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = colors.appBackground,
     ) {
         Column(
             modifier = Modifier
@@ -382,7 +380,6 @@ fun CreatePostScreen(
 
                     CreatePostSection(
                         title = "写下这条记忆",
-                        subtitle = "标题用于列表识别，简介可以写下当时的心情或补充说明。",
                     ) {
                         OutlinedTextField(
                             value = title,
@@ -443,26 +440,18 @@ fun CreatePostScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(
+                        CreatePostActionButton(
+                            text = "取消",
                             onClick = onBack,
                             enabled = !isSubmitting,
-                        ) {
-                            Text("取消")
-                        }
-                        Button(
+                        )
+                        CreatePostActionButton(
+                            text = publishButtonText,
                             onClick = ::submitDraft,
                             modifier = Modifier.weight(1f),
                             enabled = !isSubmitting && !seedState.tokenMissing,
-                            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = YingShiThemeTokens.colors.primaryContainer,
-                                contentColor = YingShiThemeTokens.colors.onPrimaryContainer,
-                                disabledContainerColor = YingShiThemeTokens.colors.sectionBackground,
-                                disabledContentColor = YingShiThemeTokens.colors.textSecondary,
-                            ),
-                        ) {
-                            Text(publishButtonText)
-                        }
+                            emphasized = true,
+                        )
                     }
                 }
             }
@@ -475,6 +464,7 @@ private fun CreatePostTopBar(
     mediaCount: Int,
     onBack: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
@@ -483,15 +473,15 @@ private fun CreatePostTopBar(
         Surface(
             modifier = Modifier.size(40.dp),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+            color = colors.sectionBackground.copy(alpha = 0.78f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
             onClick = onBack,
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = "<",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
             }
         }
@@ -499,16 +489,16 @@ private fun CreatePostTopBar(
             Text(
                 text = "写一条记忆",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
             Text(
                 text = if (mediaCount > 0) {
-                    "整理 $mediaCount 项媒体，生成一个小相册。"
+                    "整理 $mediaCount 项媒体"
                 } else {
-                    "先写下内容，发布后仍可继续补媒体。"
+                    "先写内容，之后可继续补媒体"
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -521,11 +511,12 @@ private fun CreatePostMemoryHeader(
     coverLabel: String,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+        color = colors.softGreenContainer.copy(alpha = 0.66f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -534,12 +525,7 @@ private fun CreatePostMemoryHeader(
             Text(
                 text = "准备创建",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "把选中的照片和视频整理成一个正式小相册，创建后会进入小相册详情。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.titleAccent,
             )
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -565,18 +551,19 @@ private fun CreatePostSection(
     subtitle: String? = null,
     content: @Composable () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         }
@@ -588,16 +575,17 @@ private fun CreatePostSection(
 private fun CreatePostInfoChip(
     text: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -608,20 +596,21 @@ private fun SelectableAlbumChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule)),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            colors.primaryContainer.copy(alpha = 0.72f)
         } else {
-            MaterialTheme.colorScheme.surface
+            colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             1.dp,
             if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                colors.glassStroke.copy(alpha = 0.82f)
             } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)
+                colors.dividerSoft.copy(alpha = 0.68f)
             },
         ),
         onClick = onClick,
@@ -630,7 +619,7 @@ private fun SelectableAlbumChip(
             text = title,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) colors.titleAccent else colors.textSecondary,
         )
     }
 }
@@ -643,12 +632,9 @@ private fun CreatePostMediaPreviewSection(
 ) {
     CreatePostSection(
         title = "媒体",
-        subtitle = if (items.isEmpty()) {
-            "当前没有预选媒体。"
-        } else {
-            "这里只预览前 4 项；排序、封面和删除在全部列表中管理。"
-        },
+        subtitle = if (items.isEmpty()) "当前没有预选媒体。" else null,
     ) {
+        val colors = YingShiThemeTokens.colors
         if (items.isEmpty()) {
             BackendInlineNotice(text = "当前没有媒体，创建后可在小相册设置中继续管理。")
             return@CreatePostSection
@@ -661,11 +647,9 @@ private fun CreatePostMediaPreviewSection(
             Text(
                 text = "已选 ${items.size} 项 · ${createPostCoverLabel(items, coverMediaId)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
-            TextButton(onClick = onOpenAll) {
-                Text("全部")
-            }
+            CreatePostActionButton(text = "全部", onClick = onOpenAll)
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items.take(4).chunked(2).forEach { rowItems ->
@@ -679,7 +663,7 @@ private fun CreatePostMediaPreviewSection(
                                 .weight(1f)
                                 .aspectRatio(1f)
                                 .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)),
+                                .background(colors.sectionBackground.copy(alpha = 0.62f)),
                         ) {
                             PostMediaListThumbnail(
                                 item = item,
@@ -692,7 +676,7 @@ private fun CreatePostMediaPreviewSection(
                                         .align(Alignment.TopStart)
                                         .padding(6.dp),
                                     shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                    color = colors.primaryAction.copy(alpha = 0.88f),
                                 ) {
                                     Text(
                                         text = "封面",
@@ -720,12 +704,13 @@ private fun CreatePostPublishSummary(
     albumTitles: List<String>,
     displayTimeMillis: Long,
 ) {
-    CreatePostSection(title = "发布前检查") {
+    CreatePostSection(title = "发布信息") {
+        val colors = YingShiThemeTokens.colors
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.raisedSurface.copy(alpha = 0.90f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
@@ -748,6 +733,7 @@ private fun CreatePostSummaryRow(
     label: String,
     value: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -757,14 +743,57 @@ private fun CreatePostSummaryRow(
             text = label,
             modifier = Modifier.width(48.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.titleAccent,
         )
         Text(
             text = value,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
+    }
+}
+
+@Composable
+private fun CreatePostActionButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        color = when {
+            !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
+            emphasized -> colors.primaryContainer.copy(alpha = 0.88f)
+            else -> colors.sectionBackground.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) colors.glassStroke.copy(alpha = 0.84f) else colors.dividerSoft.copy(alpha = 0.68f),
+        ),
+        shadowElevation = 0.dp,
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = when {
+                    !enabled -> colors.textSecondary.copy(alpha = 0.58f)
+                    emphasized -> colors.titleAccent
+                    else -> colors.textSecondary
+                },
+            )
+        }
     }
 }
 

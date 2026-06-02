@@ -1,5 +1,7 @@
 package com.example.yingshi.feature.ledger
 
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,7 +42,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,8 +58,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,10 +80,8 @@ import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
-import kotlin.math.cos
-import kotlin.math.min
-import kotlin.math.sin
 import androidx.compose.foundation.gestures.detectDragGestures
 
 @Composable
@@ -266,6 +267,8 @@ fun LedgerStatsScreen(
     onSelectCustomRange: (LocalDate, LocalDate) -> Unit,
     onEditTransaction: (LedgerTransaction) -> Unit,
 ) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     var selectedLineKeys by rememberSaveable { mutableStateOf(setOf("expense")) }
     var selectedCategoryType by rememberSaveable { mutableStateOf(LedgerCategoryType.EXPENSE.name) }
     var showBookSheet by rememberSaveable { mutableStateOf(false) }
@@ -300,7 +303,13 @@ fun LedgerStatsScreen(
             .background(LedgerPageBackground)
             .statusBarsPadding(),
     ) {
-        LedgerStatsTopBar(onBack = onBack)
+        LedgerStatsTopBar(
+            onBack = onBack,
+            onShare = {
+                clipboardManager.setText(AnnotatedString(ledgerStatsReportText(uiState)))
+                Toast.makeText(context, "统计报告已复制", Toast.LENGTH_SHORT).show()
+            },
+        )
         LedgerStatsModeTabs(
             selected = uiState.selectedStatsMode,
             onSelected = {
@@ -392,7 +401,10 @@ fun LedgerStatsScreen(
 }
 
 @Composable
-private fun LedgerStatsTopBar(onBack: () -> Unit) {
+private fun LedgerStatsTopBar(
+    onBack: () -> Unit,
+    onShare: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -409,7 +421,7 @@ private fun LedgerStatsTopBar(onBack: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
-        IconButton(onClick = {}, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Default.IosShare, contentDescription = "分享", modifier = Modifier.size(18.dp))
         }
     }
@@ -457,7 +469,7 @@ private fun StatsSummaryCard(
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(
-                    text = currentStatsLabel(uiState),
+                    text = ledgerStatsCurrentLabel(uiState),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -693,10 +705,7 @@ private fun LedgerDonutChart(
                 },
         ) {
             val stroke = 84f
-            val radius = size.minDimension / 2f - stroke / 2f - 2f
-            val center = Offset(size.width / 2f, size.height / 2f)
             var startAngle = rotation
-            val points = mutableListOf<Triple<Float, Float, LedgerCategoryStat>>() 
             categoryStats.forEach { stat ->
                 val sweep = stat.amountCents / total * 360f
                 drawArc(
@@ -706,47 +715,7 @@ private fun LedgerDonutChart(
                     useCenter = false,
                     style = Stroke(width = stroke, cap = StrokeCap.Butt),
                 )
-                val mid = startAngle + sweep / 2f
-                points += Triple(mid, sweep, stat)
                 startAngle += sweep
-            }
-
-            val labelPaint = android.graphics.Paint().apply {
-                isAntiAlias = true
-                textSize = 11.sp.toPx()
-                strokeWidth = 2f
-                style = android.graphics.Paint.Style.FILL
-            }
-            val linePaint = android.graphics.Paint().apply {
-                isAntiAlias = true
-                strokeWidth = 2.5f
-                style = android.graphics.Paint.Style.STROKE
-            }
-            points.forEach { (midAngle, _, stat) ->
-                val colorInt = ledgerColor(stat.category?.color ?: 0xFF8D99A6).toArgb()
-                linePaint.color = colorInt
-                labelPaint.color = colorInt
-                val radians = Math.toRadians(midAngle.toDouble())
-                val start = Offset(
-                    center.x + cos(radians).toFloat() * (radius - 4f),
-                    center.y + sin(radians).toFloat() * (radius - 4f),
-                )
-                val elbow = Offset(
-                    center.x + cos(radians).toFloat() * (radius + 20f),
-                    center.y + sin(radians).toFloat() * (radius + 20f),
-                )
-                val isRight = cos(radians) >= 0f
-                val textX = if (isRight) elbow.x + 18f else elbow.x - 18f
-                val textY = elbow.y + 4f
-                drawLine(color = ledgerColor(stat.category?.color ?: 0xFF8D99A6), start = start, end = elbow, strokeWidth = 2.5f)
-                drawLine(
-                    color = ledgerColor(stat.category?.color ?: 0xFF8D99A6),
-                    start = elbow,
-                    end = Offset(if (isRight) elbow.x + 16f else elbow.x - 16f, elbow.y),
-                    strokeWidth = 2.5f,
-                )
-                val labelText = "${stat.category?.name ?: "未分类"} ${String.format("%.2f", stat.percent * 100)}%"
-                drawContext.canvas.nativeCanvas.drawText(labelText, textX, textY, labelPaint.apply { textAlign = if (isRight) android.graphics.Paint.Align.LEFT else android.graphics.Paint.Align.RIGHT })
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -830,19 +799,26 @@ private fun LedgerCategoryStatRow(
 @Composable
 private fun StatsCompareCard(uiState: LedgerUiState) {
     val thisMonth = uiState.stats.expenseCents
-    val lastMonth = (thisMonth * 1.83f).toLong()
+    val lastMonth = ledgerComparablePreviousExpenseCents(uiState)
+    val currentLabel = ledgerStatsCurrentShortLabel(uiState)
+    val previousLabel = ledgerStatsPreviousShortLabel(uiState)
+    val delta = lastMonth?.let { thisMonth - it }
     Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
-                "当月较上月支出 ${if (thisMonth <= lastMonth) "减少" else "增加"}${formatAmountValue(kotlin.math.abs(thisMonth - lastMonth))}",
+                if (delta != null && previousLabel != null) {
+                    "$currentLabel 较$previousLabel 支出${if (delta <= 0) "减少" else "增加"}${formatAmountValue(kotlin.math.abs(delta))}"
+                } else {
+                    "全部时间暂无可比周期"
+                },
                 color = LedgerMuted,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(formatAmountValue(thisMonth), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            LedgerTag("当月", LedgerHeaderGreen)
-            Text(formatAmountValue(lastMonth), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            LedgerTag("上月", Color(0xFFF3F4FA))
+            LedgerTag(currentLabel, LedgerHeaderGreen)
+            Text(lastMonth?.let(::formatAmountValue) ?: "--", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            LedgerTag(previousLabel ?: "无可比", Color(0xFFF3F4FA))
         }
     }
 }
@@ -1021,13 +997,13 @@ fun LedgerBudgetScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
-                            TextButton(onClick = { showBudgetDialog = true }) {
-                                Text("设置", color = LedgerHeaderGreen, style = MaterialTheme.typography.bodySmall)
-                            }
+                            LedgerDialogActionButton(
+                                text = "设置",
+                                onClick = { showBudgetDialog = true },
+                                emphasized = true,
+                            )
                             if (uiState.budget != null) {
-                                TextButton(onClick = onClearBudget) {
-                                    Text("清空", color = LedgerExpenseRed, style = MaterialTheme.typography.bodySmall)
-                                }
+                                LedgerDialogActionButton(text = "清空", onClick = onClearBudget, danger = true)
                             }
                         }
                         val progress = if ((uiState.budget?.totalAmountCents ?: 0) > 0) {
@@ -1072,9 +1048,11 @@ fun LedgerBudgetScreen(
                             }
                             Text(categoryBudget?.amountCents?.let(::formatAmountValue) ?: "未设置", color = LedgerMuted, style = MaterialTheme.typography.bodySmall)
                             if (categoryBudget != null) {
-                                TextButton(onClick = { onClearCategoryBudget(category.id) }) {
-                                    Text("清空", color = LedgerExpenseRed, style = MaterialTheme.typography.bodySmall)
-                                }
+                                LedgerDialogActionButton(
+                                    text = "清空",
+                                    onClick = { onClearCategoryBudget(category.id) },
+                                    danger = true,
+                                )
                             }
                         }
                         val progress = if ((categoryBudget?.amountCents ?: 0L) > 0L) {
@@ -1147,12 +1125,14 @@ private fun AmountDialog(title: String, onDismiss: () -> Unit, onConfirm: (Long)
             )
         },
         confirmButton = {
-            TextButton(onClick = { value.toCentsOrNull()?.let(onConfirm) }) {
-                Text("确定")
-            }
+            LedgerDialogActionButton(
+                text = "确定",
+                onClick = { value.toCentsOrNull()?.let(onConfirm) },
+                emphasized = true,
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            LedgerDialogActionButton(text = "取消", onClick = onDismiss)
         },
     )
 }
@@ -1162,40 +1142,283 @@ fun LedgerCalendarScreen(
     uiState: LedgerUiState,
     onBack: () -> Unit,
     onSelectDate: (LocalDate) -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
     onAdd: () -> Unit,
+    onEditTransaction: (LedgerTransaction) -> Unit,
 ) {
-    LedgerPageScaffold(title = "日历补录", onBack = onBack) {
+    val calendarCells = remember(uiState.selectedMonth) {
+        ledgerCalendarCells(uiState.selectedMonth)
+    }
+    val selectedDayStart = remember(uiState.selectedDate) {
+        uiState.selectedDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+    val selectedTransactions = remember(uiState.transactions, selectedDayStart) {
+        uiState.transactions.filter { dayStart(it.occurredAtMillis) == selectedDayStart }
+    }
+    LedgerPageScaffold(title = uiState.bookName, onBack = onBack, action = {
+        IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
+            Icon(LedgerActionIcons.Add, contentDescription = "补记一笔", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
+        }
+    }) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .navigationBarsPadding(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                Text("当前月份 ${formatYearMonth(uiState.selectedMonth)}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    IconButton(onClick = { onSelectMonth(uiState.selectedMonth.minusMonths(1)) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.ChevronLeft, contentDescription = "上个月", tint = LedgerHeaderGreen)
+                    }
+                    Text(
+                        text = formatYearMonth(uiState.selectedMonth),
+                        modifier = Modifier.padding(horizontal = 18.dp),
+                        color = LedgerHeaderGreen,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    IconButton(onClick = { onSelectMonth(uiState.selectedMonth.plusMonths(1)) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.ChevronRight, contentDescription = "下个月", tint = LedgerHeaderGreen)
+                    }
+                }
             }
-            items((1..uiState.selectedMonth.lengthOfMonth()).toList()) { day ->
-                val date = uiState.selectedMonth.atDay(day)
+
+            item {
                 Surface(
-                    color = if (date == uiState.selectedDate) LedgerGreenSoft else Color.White,
-                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    color = LedgerRaisedSurface,
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            listOf("一", "二", "三", "四", "五", "六", "日").forEach { weekLabel ->
+                                Text(
+                                    text = weekLabel,
+                                    modifier = Modifier.weight(1f),
+                                    textAlign = TextAlign.Center,
+                                    color = LedgerSubtleText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                        calendarCells.chunked(7).forEach { week ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                week.forEach { cell ->
+                                    val dayTransactions = uiState.transactions.filter { dayStart(it.occurredAtMillis) == cell.dayStartMillis }
+                                    LedgerCalendarDayCell(
+                                        cell = cell,
+                                        selected = cell.date == uiState.selectedDate,
+                                        incomeCents = dayTransactions.filter { it.type == LedgerTransactionType.INCOME }.sumOf { it.amountCents },
+                                        expenseCents = dayTransactions.filter { it.type == LedgerTransactionType.EXPENSE }.sumOf { it.amountCents },
+                                        onClick = {
+                                            onSelectDate(cell.date)
+                                            if (!cell.inCurrentMonth) {
+                                                onSelectMonth(YearMonth.from(cell.date))
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                LedgerCalendarSelectedDayCard(
+                    date = uiState.selectedDate,
+                    transactions = selectedTransactions,
+                    currencySymbol = uiState.currencySymbol,
+                    onAdd = onAdd,
+                    onEditTransaction = onEditTransaction,
+                )
+            }
+
+            item {
+                LedgerSegmentChip(
+                    text = "为选中日期补记一笔",
+                    selected = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onAdd,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LedgerCalendarDayCell(
+    cell: LedgerCalendarCell,
+    selected: Boolean,
+    incomeCents: Long,
+    expenseCents: Long,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hasIncome = incomeCents > 0
+    val hasExpense = expenseCents > 0
+    val contentAlpha = if (cell.inCurrentMonth) 1f else 0.34f
+    Surface(
+        modifier = modifier
+            .height(76.dp)
+            .padding(2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        color = if (selected) LedgerGlowWash else Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+        border = if (selected) BorderStroke(1.dp, LedgerHeaderGreen.copy(alpha = 0.72f)) else null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(contentAlpha)
+                .padding(horizontal = 2.dp, vertical = 7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = if (cell.isToday) "今" else cell.date.dayOfMonth.toString(),
+                color = if (selected) LedgerHeaderGreen else MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+            if (hasExpense) {
+                Text(
+                    text = "-${formatAmountValue(expenseCents)}",
+                    color = LedgerExpenseRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+            }
+            if (hasIncome) {
+                Text(
+                    text = "+${formatAmountValue(incomeCents)}",
+                    color = LedgerIncomeGreen,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LedgerCalendarSelectedDayCard(
+    date: LocalDate,
+    transactions: List<LedgerTransaction>,
+    currencySymbol: String,
+    onAdd: () -> Unit,
+    onEditTransaction: (LedgerTransaction) -> Unit,
+) {
+    val income = transactions.filter { it.type == LedgerTransactionType.INCOME }.sumOf { it.amountCents }
+    val expense = transactions.filter { it.type == LedgerTransactionType.EXPENSE }.sumOf { it.amountCents }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = LedgerRaisedSurface,
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "%02d/%02d".format(date.monthValue, date.dayOfMonth),
+                        color = LedgerHeaderGreen,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "收 ${formatAmountValue(income)} · 支 ${formatAmountValue(expense)}",
+                        color = LedgerSubtleText,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelectDate(date) },
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(onClick = onAdd),
+                    color = LedgerPrimaryAction,
+                    border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.82f)),
                 ) {
                     Text(
-                        "${date.monthValue}/${date.dayOfMonth}",
-                        modifier = Modifier.padding(14.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        text = "补记",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        color = LedgerOnPrimaryAction,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
-            item {
-                LedgerSegmentChip(text = "为选中日期补记一笔", selected = true, modifier = Modifier.fillMaxWidth(), onClick = onAdd)
+            if (transactions.isEmpty()) {
+                Text(
+                    text = "暂无内容，赶紧记一笔吧~",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                    color = LedgerSubtleText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                transactions.take(4).forEach { transaction ->
+                    LedgerTransactionListRow(
+                        transaction = transaction,
+                        currencySymbol = currencySymbol,
+                        onClick = { onEditTransaction(transaction) },
+                    )
+                }
+                if (transactions.size > 4) {
+                    Text(
+                        text = "还有 ${transactions.size - 4} 笔",
+                        color = LedgerSubtleText,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
+    }
+}
+
+private data class LedgerCalendarCell(
+    val date: LocalDate,
+    val inCurrentMonth: Boolean,
+    val isToday: Boolean,
+    val dayStartMillis: Long,
+)
+
+private fun ledgerCalendarCells(month: YearMonth): List<LedgerCalendarCell> {
+    val firstDay = month.atDay(1)
+    val start = firstDay.minusDays((firstDay.dayOfWeek.value - 1).toLong())
+    val today = LocalDate.now()
+    return (0 until 42).map { offset ->
+        val date = start.plusDays(offset.toLong())
+        LedgerCalendarCell(
+            date = date,
+            inCurrentMonth = YearMonth.from(date) == month,
+            isToday = date == today,
+            dayStartMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+        )
     }
 }
 
@@ -1308,7 +1531,7 @@ fun LedgerSearchScreen(
                         ) {
                             Text("已选 ${selectedTransactions.size} 笔", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.weight(1f))
-                            TextButton(onClick = onClearSelection) { Text("清空选择") }
+                            LedgerDialogActionButton(text = "清空选择", onClick = onClearSelection, danger = true)
                         }
                     }
                 }
@@ -1338,7 +1561,8 @@ fun LedgerSearchScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth(),
-                    color = Color.White,
+                    color = LedgerRaisedSurface,
+                    border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.64f)),
                     shadowElevation = 10.dp,
                 ) {
                     Row(
@@ -1350,13 +1574,14 @@ fun LedgerSearchScreen(
                     ) {
                         Text("${selectedTransactions.size}项", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.weight(1f))
-                        TextButton(onClick = onDeleteSelected) {
-                            Text("删除", color = LedgerExpenseRed)
-                        }
-                        TextButton(onClick = { showBatchCategorySheet = true }, enabled = canBatchChangeCategory) {
-                            Text("改分类")
-                        }
-                        TextButton(
+                        LedgerDialogActionButton(text = "删除", onClick = onDeleteSelected, danger = true)
+                        LedgerDialogActionButton(
+                            text = "改分类",
+                            onClick = { showBatchCategorySheet = true },
+                            enabled = canBatchChangeCategory,
+                        )
+                        LedgerDialogActionButton(
+                            text = "改账户",
                             onClick = {
                                 if (isTransferOnly) {
                                     batchTransferSide = null
@@ -1367,9 +1592,7 @@ fun LedgerSearchScreen(
                                 }
                             },
                             enabled = canBatchChangeAccount,
-                        ) {
-                            Text("改账户")
-                        }
+                        )
                     }
                 }
             }
@@ -1498,7 +1721,6 @@ private fun SearchFilterChip(
     LedgerSegmentChip(
         text = text,
         selected = active,
-        selectedColor = LedgerHeaderGreen,
         onClick = onClick,
     )
 }
@@ -1738,8 +1960,8 @@ fun LedgerTrashScreen(
                                 Text(item.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
                                 Text("删除于 ${formatDateTime(item.deletedAtMillis)}", color = LedgerMuted, style = MaterialTheme.typography.bodySmall)
                             }
-                            TextButton(onClick = { onRestore(item.itemId) }) { Text("恢复") }
-                            TextButton(onClick = { onPermanentDelete(item.itemId) }) { Text("删除") }
+                            LedgerDialogActionButton(text = "恢复", onClick = { onRestore(item.itemId) }, emphasized = true)
+                            LedgerDialogActionButton(text = "删除", onClick = { onPermanentDelete(item.itemId) }, danger = true)
                         }
                     }
                 }
@@ -1776,36 +1998,20 @@ private fun CustomRangeDialog(
             }
         },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    val start = runCatching { LocalDate.parse(startText) }.getOrNull() ?: return@TextButton
-                    val end = runCatching { LocalDate.parse(endText) }.getOrNull() ?: return@TextButton
+            LedgerDialogActionButton(
+                text = "确定",
+                onClick = confirm@{
+                    val start = runCatching { LocalDate.parse(startText) }.getOrNull() ?: return@confirm
+                    val end = runCatching { LocalDate.parse(endText) }.getOrNull() ?: return@confirm
                     onConfirm(start, end)
                 },
-            ) {
-                Text("确定")
-            }
+                emphasized = true,
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            LedgerDialogActionButton(text = "取消", onClick = onDismiss)
         },
     )
-}
-
-private fun currentStatsLabel(uiState: LedgerUiState): String = when (uiState.selectedStatsMode) {
-    LedgerStatsMode.WEEK -> {
-        val start = uiState.selectedDate.minusDays((uiState.selectedDate.dayOfWeek.value - 1).toLong())
-        val end = start.plusDays(6)
-        "${start.monthValue}/${start.dayOfMonth}-${end.monthValue}/${end.dayOfMonth}"
-    }
-    LedgerStatsMode.MONTH -> formatYearMonth(uiState.selectedMonth)
-    LedgerStatsMode.YEAR -> uiState.selectedDate.year.toString()
-    LedgerStatsMode.TOTAL -> "全部时间"
-    LedgerStatsMode.CUSTOM -> {
-        val start = uiState.customStatsStartDate
-        val end = uiState.customStatsEndDate
-        "%02d/%02d-%02d/%02d".format(start.monthValue, start.dayOfMonth, end.monthValue, end.dayOfMonth)
-    }
 }
 
 private fun formatReportDate(dayStartMillis: Long): String {

@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -51,6 +52,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -72,18 +74,14 @@ import androidx.compose.material.icons.filled.South
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -107,6 +105,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -166,6 +165,7 @@ import com.example.yingshi.feature.chat.data.isMediaViewerResource
 import com.example.yingshi.feature.chat.data.isSilkAudio
 import com.example.yingshi.feature.chat.data.resolveImportedFaceLabel
 import com.example.yingshi.feature.chat.data.summarizeImportedUnsupportedMessage
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.io.File
 import java.io.FileOutputStream
@@ -189,11 +189,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import xyz.xxin.silkdecoder.SilkDecoder
 
-private val ChatListBackground = Color(0xFFF5F7FB)
-private val ChatDetailBackground = Color(0xFFEDE9DF)
-private val SelfBubbleColor = Color(0xFFB7EB8F)
-private val OtherBubbleColor = Color.White
-private val SystemBubbleColor = Color(0xFFF6F0D8)
+private val ChatListBackground = Color(0xFFF1FBFD)
+private val ChatDetailBackground = Color(0xFFEAF7F6)
+private val SelfBubbleColor = Color(0xFFD8F2E6)
+private val OtherBubbleColor = Color(0xFFFFFFFC)
+private val SystemBubbleColor = Color(0xFFFFF1D8)
 private val HighlightColor = Color(0xFFFFF0B3)
 private val ViewerScrim = Color(0xFF050608)
 private val DateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA)
@@ -560,19 +560,11 @@ fun ImportedChatScreen(
                         style = MaterialTheme.typography.titleMedium,
                     )
                     options.forEach { option ->
-                        TextButton(
+                        ChatSheetActionButton(
+                            label = option.label,
+                            icon = option.icon,
                             onClick = option.onClick,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(option.icon, contentDescription = null)
-                                Text(option.label)
-                            }
-                        }
+                        )
                     }
                 }
             }
@@ -628,15 +620,18 @@ fun ImportedChatScreen(
                             " 是否继续删除“$targetName”？",
                     )
                 },
+                containerColor = YingShiThemeTokens.colors.raisedSurface,
+                titleContentColor = YingShiThemeTokens.colors.titleAccent,
+                textContentColor = YingShiThemeTokens.colors.textSecondary,
                 confirmButton = {
-                    TextButton(onClick = { viewModel.deleteImportedChat(info.chatId) }) {
-                        Text("删除")
-                    }
+                    ChatDialogActionButton(
+                        text = "删除",
+                        danger = true,
+                        onClick = { viewModel.deleteImportedChat(info.chatId) },
+                    )
                 },
                 dismissButton = {
-                    TextButton(onClick = viewModel::hideDeleteConfirm) {
-                        Text("取消")
-                    }
+                    ChatDialogActionButton(text = "取消", onClick = viewModel::hideDeleteConfirm)
                 },
             )
         }
@@ -654,51 +649,53 @@ private fun ImportedChatListScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(ChatListBackground)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                }
-                Column(modifier = Modifier.weight(1f, fill = false)) {
-                    Text(
-                        text = "聊天记录查看器",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "导入 QCE ZIP 后会先在本机解压合并，再同步保存可用记录。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            ChatCircleButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
+            Spacer(modifier = Modifier.width(spacing.sm))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "聊天记录",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Text(
+                    text = if (chats.isEmpty()) "把旧对话放在这里" else "${chats.size} 个会话",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
             }
         }
 
-        FilledTonalButton(
+        ChatImportButton(
             onClick = onImportClick,
             modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(Icons.Default.Download, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("导入 QCE ZIP")
-        }
+        )
 
         if (uiState.isImporting) {
-            ElevatedCard(
-                shape = RoundedCornerShape(20.dp),
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(radius.lg),
+                color = colors.raisedSurface.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+                shadowElevation = 0.dp,
             ) {
                 Column(
                     modifier = Modifier.padding(spacing.md),
@@ -707,19 +704,26 @@ private fun ImportedChatListScreen(
                     Text(
                         text = uiState.importProgress?.message ?: "正在导入聊天记录",
                         style = MaterialTheme.typography.titleMedium,
+                        color = colors.titleAccent,
                     )
                     val progress = uiState.importProgress
                     if (progress == null || progress.total <= 0) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = colors.primaryActionPressed,
+                        )
                     } else {
                         LinearProgressIndicator(
                             progress = { progress.fraction.coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth(),
+                            color = colors.primaryActionPressed,
+                            trackColor = colors.sectionBackground.copy(alpha = 0.72f),
                         )
                         Text(
                             text = "${progress.current} / ${progress.total}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colors.textSecondary,
                         )
                     }
                 }
@@ -729,30 +733,28 @@ private fun ImportedChatListScreen(
         if (chats.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(radius.lg),
+                color = colors.sectionBackground.copy(alpha = 0.62f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(spacing.lg),
                     verticalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
                     Text(
                         text = "还没有导入聊天记录",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
                     )
                     Text(
-                        text = "请选择 QCE 导出的流式 JSONL ZIP。包内至少需要包含 manifest.json、chunks/*.jsonl，资源和 avatars.json 会自动识别。",
+                        text = "选择导出的聊天记录文件，导入后会保存在本机。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
-                    FilledTonalButton(
+                    ChatImportButton(
                         onClick = onImportClick,
                         modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Default.Download, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("选择 ZIP 并导入")
-                    }
+                    )
                 }
             }
         } else {
@@ -784,18 +786,22 @@ private fun ImportedChatSummaryCard(
     onLongPress: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val qFaceCatalog = rememberQFaceCatalog()
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(radius.lg))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress,
             ),
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(24.dp),
-        tonalElevation = 1.dp,
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        shape = RoundedCornerShape(radius.lg),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier.padding(spacing.md),
@@ -819,13 +825,14 @@ private fun ImportedChatSummaryCard(
                     Text(
                         text = chat.displayName.ifBlank { "未命名会话" },
                         style = MaterialTheme.typography.titleMedium,
+                        color = colors.titleAccent,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = formatListTime(chat.lastMessageAtMillis),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
                 InlineMessageText(
@@ -837,7 +844,7 @@ private fun ImportedChatSummaryCard(
                     },
                     qFaceCatalog = qFaceCatalog,
                     textStyle = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                     emojiScaleEm = 1.18f,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -850,15 +857,216 @@ private fun ImportedChatSummaryCard(
                     Text(
                         text = "${chat.messageCount} 条消息",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                     Text(
                         text = "上次导入 ${formatRelativeTime(chat.lastImportedAtMillis)}",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChatCircleButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier
+            .size(40.dp)
+            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+        shape = CircleShape,
+        color = colors.sectionBackground.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        shadowElevation = 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatImportButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = modifier.yingShiClickable(shape = shape, pressedScale = 0.965f, onClick = onClick),
+        shape = shape,
+        color = colors.primaryContainer.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.74f)),
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.FileUpload,
+                contentDescription = null,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(19.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "导入聊天记录",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatIconActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+    emphasized: Boolean = false,
+    danger: Boolean = false,
+    enabled: Boolean = true,
+) {
+    val colors = YingShiThemeTokens.colors
+    val containerColor = when {
+        !enabled -> colors.sectionBackground.copy(alpha = 0.54f)
+        danger -> colors.memoryContainer.copy(alpha = 0.78f)
+        emphasized -> colors.primaryContainer.copy(alpha = 0.84f)
+        else -> colors.raisedSurface.copy(alpha = 0.95f)
+    }
+    val contentColor = when {
+        !enabled -> colors.textSecondary.copy(alpha = 0.58f)
+        danger -> colors.memoryAccent
+        else -> colors.titleAccent
+    }
+    Surface(
+        modifier = modifier
+            .size(size)
+            .yingShiClickable(
+                enabled = enabled,
+                shape = CircleShape,
+                pressedScale = 0.94f,
+                onClick = onClick,
+            ),
+        shape = CircleShape,
+        color = containerColor,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
+        shadowElevation = 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = contentColor,
+                modifier = Modifier.size((size.value * 0.46f).dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatDialogActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
+    danger: Boolean = false,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val containerColor = when {
+        !enabled -> colors.sectionBackground.copy(alpha = 0.54f)
+        danger -> colors.memoryContainer.copy(alpha = 0.78f)
+        emphasized -> colors.primaryContainer.copy(alpha = 0.82f)
+        else -> colors.raisedSurface.copy(alpha = 0.96f)
+    }
+    val contentColor = when {
+        !enabled -> colors.textSecondary.copy(alpha = 0.58f)
+        danger -> colors.memoryAccent
+        else -> colors.titleAccent
+    }
+    Surface(
+        modifier = modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = contentColor,
+        )
+    }
+}
+
+@Composable
+private fun ChatSheetActionButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    danger: Boolean = false,
+) {
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    val spacing = YingShiThemeTokens.spacing
+    val shape = RoundedCornerShape(radius.lg)
+    val iconBg = if (danger) colors.memoryContainer.copy(alpha = 0.74f) else colors.primaryContainer.copy(alpha = 0.58f)
+    val contentColor = if (danger) colors.memoryAccent else colors.titleAccent
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .yingShiClickable(shape = shape, pressedScale = 0.97f, onClick = onClick),
+        shape = shape,
+        color = if (danger) colors.memoryWash.copy(alpha = 0.84f) else colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.64f)),
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = CircleShape, color = iconBg) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(18.dp),
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor,
+            )
         }
     }
 }
@@ -897,6 +1105,7 @@ private fun ImportedChatDetailScreen(
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val qFaceCatalog = rememberQFaceCatalog()
     val listState = rememberLazyListState()
     val participants = remember(detail?.participants) {
@@ -1172,7 +1381,7 @@ private fun ImportedChatDetailScreen(
                             Text(
                                 text = if (detail == null) "正在加载会话..." else "这个会话里还没有消息。",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = colors.textSecondary,
                             )
                         }
                     }
@@ -1270,23 +1479,23 @@ private fun ImportedChatDetailScreen(
                 horizontalAlignment = Alignment.End,
             ) {
                 if (uiState.returnAnchorAvailable) {
-                    FloatingActionButton(
+                    ChatIconActionButton(
+                        icon = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "返回刚才位置",
+                        emphasized = false,
                         onClick = onReturnToPreviousAnchor,
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "返回刚才位置")
-                    }
+                    )
                 }
                 if (uiState.showBackToLatest) {
-                    FloatingActionButton(
+                    ChatIconActionButton(
+                        icon = Icons.Default.South,
+                        contentDescription = "回到最新",
+                        emphasized = true,
                         onClick = {
                             onRememberReturnAnchor(currentVisibleAnchor())
                             onJumpToLatest()
                         },
-                    ) {
-                        Icon(Icons.Default.South, contentDescription = "回到最新")
-                    }
+                    )
                 }
             }
         }
@@ -1306,20 +1515,25 @@ private fun ImportedChatTopBar(
     onManage: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        shadowElevation = 1.dp,
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+        shadowElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = spacing.sm, vertical = spacing.sm),
+                .padding(horizontal = spacing.md, vertical = spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-            }
+            ChatIconActionButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                size = 38.dp,
+                onClick = onBack,
+            )
             AvatarBadge(
                 name = detail?.displayName.orEmpty(),
                 avatarLocalPath = resolveTitleAvatar(detail),
@@ -1328,7 +1542,8 @@ private fun ImportedChatTopBar(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = detail?.displayName?.ifBlank { "聊天记录" } ?: "聊天记录",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1339,12 +1554,15 @@ private fun ImportedChatTopBar(
                         else -> "本地会话"
                     },
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
-            IconButton(onClick = onManage) {
-                Icon(Icons.Default.Description, contentDescription = "会话管理")
-            }
+            ChatIconActionButton(
+                icon = Icons.Default.Description,
+                contentDescription = "会话管理",
+                size = 38.dp,
+                onClick = onManage,
+            )
         }
     }
 }
@@ -1357,6 +1575,8 @@ private fun ChatSearchBar(
     onPickDate: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1364,28 +1584,62 @@ private fun ChatSearchBar(
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
+        Surface(
             modifier = Modifier.weight(1f),
-            singleLine = true,
-            leadingIcon = {
-                Icon(Icons.Default.Search, contentDescription = null)
-            },
-            trailingIcon = {
+            shape = RoundedCornerShape(radius.capsule),
+            color = colors.raisedSurface.copy(alpha = 0.92f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
+            shadowElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = 11.dp),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(19.dp),
+                )
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textPrimary),
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (value.isBlank()) {
+                                Text(
+                                    text = "搜索消息",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colors.textSecondary.copy(alpha = 0.76f),
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
+                )
                 if (value.isNotBlank()) {
-                    IconButton(onClick = onClear) {
-                        Icon(Icons.Default.Close, contentDescription = "清空搜索")
-                    }
+                    ChatIconActionButton(
+                        icon = Icons.Default.Close,
+                        contentDescription = "清空搜索",
+                        size = 28.dp,
+                        onClick = onClear,
+                    )
                 }
-            },
-            placeholder = {
-                Text("搜索消息、回复、卡片摘要")
-            },
-        )
-        FilledTonalButton(onClick = onPickDate) {
-            Icon(Icons.Default.CalendarToday, contentDescription = null)
+            }
         }
+        ChatIconActionButton(
+            icon = Icons.Default.CalendarToday,
+            contentDescription = "选择日期",
+            size = 44.dp,
+            emphasized = true,
+            onClick = onPickDate,
+        )
     }
 }
 
@@ -1397,21 +1651,24 @@ private fun SearchResultsPanel(
     onResultClick: (Int, ImportedMessageSearchResult) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val qFaceCatalog = rememberQFaceCatalog()
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = spacing.md),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
     ) {
         if (results.isEmpty()) {
             Text(
-                text = "没有找到匹配结果。",
+                text = "没有找到匹配结果",
                 modifier = Modifier.padding(spacing.md),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         } else {
             Column(
@@ -1429,7 +1686,7 @@ private fun SearchResultsPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
-                                if (index == currentIndex) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent,
+                                if (index == currentIndex) colors.primaryContainer.copy(alpha = 0.42f) else Color.Transparent,
                                 RoundedCornerShape(16.dp),
                             )
                             .clickable { onResultClick(index, result) }
@@ -1443,11 +1700,12 @@ private fun SearchResultsPanel(
                             Text(
                                 text = result.senderDisplayName,
                                 style = MaterialTheme.typography.labelLarge,
+                                color = colors.titleAccent,
                             )
                             Text(
                                 text = formatTimelineTime(result.timestamp),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = colors.textSecondary,
                             )
                         }
                         InlineMessageText(
@@ -1459,7 +1717,7 @@ private fun SearchResultsPanel(
                             },
                             qFaceCatalog = qFaceCatalog,
                             textStyle = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colors.textSecondary,
                             emojiScaleEm = 1.18f,
                             highlightQuery = query,
                             maxLines = 2,
@@ -1480,12 +1738,15 @@ private fun SearchNavigationBar(
     onNext: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = spacing.md),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+        shadowElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier
@@ -1501,20 +1762,20 @@ private fun SearchNavigationBar(
                     "${(currentIndex.coerceAtLeast(0) + 1).coerceAtMost(resultCount)} / $resultCount"
                 },
                 style = MaterialTheme.typography.labelLarge,
+                color = colors.titleAccent,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
+            ChatDialogActionButton(
+                text = "上一条",
                 onClick = onPrevious,
                 enabled = resultCount > 0 && currentIndex > 0,
-            ) {
-                Text("上一条")
-            }
-            TextButton(
+            )
+            ChatDialogActionButton(
+                text = "下一条",
                 onClick = onNext,
                 enabled = resultCount > 0 && currentIndex in 0 until resultCount - 1,
-            ) {
-                Text("下一条")
-            }
+                emphasized = true,
+            )
         }
     }
 }
@@ -1526,21 +1787,23 @@ private fun ChatManagementSheet(
     onShowImportInfo: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = YingShiThemeTokens.spacing.md, vertical = YingShiThemeTokens.spacing.sm),
-        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            .padding(horizontal = YingShiThemeTokens.spacing.md, vertical = YingShiThemeTokens.spacing.md),
+        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
     ) {
         Text(
             text = chat.displayName.ifBlank { "会话管理" },
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.titleAccent,
         )
         Text(
             text = "${chat.messageCount} 条消息 · 上次导入 ${formatRelativeTime(chat.lastImportedAtMillis)}",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
         ManagementActionButton(
             label = "再次导入",
@@ -1548,13 +1811,14 @@ private fun ChatManagementSheet(
             onClick = onReimport,
         )
         ManagementActionButton(
-            label = "查看导入信息",
+            label = "会话详情",
             icon = Icons.Default.Description,
             onClick = onShowImportInfo,
         )
         ManagementActionButton(
             label = "删除会话",
             icon = Icons.Default.Close,
+            danger = true,
             onClick = onDelete,
         )
     }
@@ -1563,22 +1827,16 @@ private fun ChatManagementSheet(
 @Composable
 private fun ManagementActionButton(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
+    danger: Boolean = false,
     onClick: () -> Unit,
 ) {
-    TextButton(
+    ChatSheetActionButton(
+        label = label,
+        icon = icon,
+        danger = danger,
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(icon, contentDescription = null)
-            Text(label)
-        }
-    }
+    )
 }
 
 @Composable
@@ -1589,7 +1847,7 @@ private fun ImportInfoDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("导入信息") },
+        title = { Text("会话详情") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ImportInfoLine("来源文件", info.sourceFileName ?: "未知")
@@ -1597,15 +1855,16 @@ private fun ImportInfoDialog(
                 ImportInfoLine("当前消息数", "${info.messageCount} 条")
                 ImportInfoLine("最近新增", "${info.lastImportAddedMessageCount} 条")
                 ImportInfoLine("最近合并", "${info.lastImportMergedMessageCount} 条")
-                ImportInfoLine("最近资源复制", "${info.lastImportResourceCount} 个")
-                ImportInfoLine("最近头像复制", "${info.lastImportAvatarCount} 个")
+                ImportInfoLine("媒体文件", "${info.lastImportResourceCount} 个")
+                ImportInfoLine("头像文件", "${info.lastImportAvatarCount} 个")
                 ImportInfoLine("本地占用", formatStorageSize(context, info.storageBytes))
             }
         },
+        containerColor = YingShiThemeTokens.colors.raisedSurface,
+        titleContentColor = YingShiThemeTokens.colors.titleAccent,
+        textContentColor = YingShiThemeTokens.colors.textPrimary,
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("知道了")
-            }
+            ChatDialogActionButton(text = "知道了", emphasized = true, onClick = onDismiss)
         },
     )
 }
@@ -1615,34 +1874,38 @@ private fun ImportInfoLine(
     label: String,
     value: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
+            color = colors.textPrimary,
         )
     }
 }
 
 @Composable
 private fun DayHeaderRow(date: LocalDate) {
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             shape = RoundedCornerShape(999.dp),
-            color = Color.White.copy(alpha = 0.8f),
+            color = colors.raisedSurface.copy(alpha = 0.82f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
         ) {
             Text(
                 text = date.format(DateFormatter),
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -1650,6 +1913,7 @@ private fun DayHeaderRow(date: LocalDate) {
 
 @Composable
 private fun TimeHintRow(timestamp: Long) {
+    val colors = YingShiThemeTokens.colors
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
@@ -1657,7 +1921,7 @@ private fun TimeHintRow(timestamp: Long) {
         Text(
             text = formatTimelineTime(timestamp),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -1680,6 +1944,7 @@ private fun ChatMessageBubble(
 ) {
     val message = renderableMessage.message
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val isGroupIncoming = detail?.chatType == ImportedChatType.GROUP && !message.isSelf
     val bubbleColor = when {
         message.system || message.recalled -> SystemBubbleColor
@@ -1713,7 +1978,7 @@ private fun ChatMessageBubble(
                 Text(
                     text = participant?.displayName ?: message.senderDisplayName,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             Surface(
@@ -1776,12 +2041,13 @@ private fun ReplyPreviewCard(
     highlightQuery: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
-        color = Color.Black.copy(alpha = 0.08f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
         shape = RoundedCornerShape(12.dp),
     ) {
         Column(
@@ -1792,7 +2058,7 @@ private fun ReplyPreviewCard(
                 Text(
                     text = it,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.titleAccent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1803,7 +2069,7 @@ private fun ReplyPreviewCard(
                 },
                 qFaceCatalog = qFaceCatalog,
                 textStyle = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
                 emojiScaleEm = 1.24f,
                 highlightQuery = highlightQuery,
                 maxLines = 2,
@@ -1824,12 +2090,13 @@ private fun MessageContent(
     onLongPressResource: (ImportedResource) -> Unit,
 ) {
     val message = renderableMessage.message
+    val colors = YingShiThemeTokens.colors
     when {
         message.system -> {
             Text(
                 text = message.text.ifBlank { "系统消息" },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
 
@@ -1837,7 +2104,7 @@ private fun MessageContent(
             Text(
                 text = "${message.senderDisplayName} 撤回了一条消息",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
 
@@ -1980,6 +2247,7 @@ private fun InlineMessageSegments(
     qFaceCatalog: QFaceCatalog?,
     highlightQuery: String = "",
 ) {
+    val colors = YingShiThemeTokens.colors
     InlineMessageText(
         segments = remember(segments) {
             segments.mapNotNull { segment ->
@@ -2000,7 +2268,7 @@ private fun InlineMessageSegments(
         },
         qFaceCatalog = qFaceCatalog,
         textStyle = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = colors.textPrimary,
         emojiScaleEm = 1.45f,
         highlightQuery = highlightQuery,
     )
@@ -2127,6 +2395,7 @@ private fun MediaResourceCard(
 ) {
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val colors = YingShiThemeTokens.colors
     val displayKind = resource.effectiveRenderKind()
     val size = remember(resource.width, resource.height, displayKind) {
         calculateMediaDisplaySize(resource)
@@ -2136,7 +2405,7 @@ private fun MediaResourceCard(
             maxOf(size.width.roundToPx(), size.height.roundToPx()).coerceAtLeast(96.dp.roundToPx())
         }
     }
-    val background = Color.Black.copy(alpha = 0.06f)
+    val background = colors.sectionBackground.copy(alpha = 0.54f)
     val contentScale = if (resource.isAnimatedImage) ContentScale.Fit else ContentScale.Crop
     val previewRequest = remember(
         context,
@@ -2269,6 +2538,7 @@ private fun AudioMessageCard(
     audioPlayer: ChatAudioPlayerState,
     onLongPress: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     val statusText = when {
         audioPlayer.isDecoding(resource.localFilePath) -> "正在解码语音"
         audioPlayer.isPreparing(resource.localFilePath) -> "正在加载语音"
@@ -2284,7 +2554,7 @@ private fun AudioMessageCard(
                 onClick = { audioPlayer.toggle(resource) },
                 onLongClick = onLongPress,
             ),
-        color = Color.Black.copy(alpha = 0.06f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
         shape = RoundedCornerShape(16.dp),
     ) {
         Row(
@@ -2294,7 +2564,7 @@ private fun AudioMessageCard(
         ) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                color = colors.primaryContainer.copy(alpha = 0.66f),
             ) {
                 if (audioPlayer.isDecoding(resource.localFilePath) || audioPlayer.isPreparing(resource.localFilePath)) {
                     CircularProgressIndicator(
@@ -2302,13 +2572,14 @@ private fun AudioMessageCard(
                             .padding(10.dp)
                             .size(20.dp),
                         strokeWidth = 2.dp,
+                        color = colors.titleAccent,
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.padding(10.dp),
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = colors.titleAccent,
                     )
                 }
             }
@@ -2316,6 +2587,7 @@ private fun AudioMessageCard(
                 Text(
                     text = statusText,
                     style = MaterialTheme.typography.bodyLarge,
+                    color = colors.textPrimary,
                 )
                 Text(
                     text = buildString {
@@ -2327,7 +2599,7 @@ private fun AudioMessageCard(
                         }
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         }
@@ -2343,6 +2615,7 @@ private fun FileMessageCard(
 ) {
     val context = LocalContext.current
     val fileLabel = normalizeFileTypeLabel(resource)
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -2351,7 +2624,7 @@ private fun FileMessageCard(
                 onClick = onClick,
                 onLongClick = onLongPress,
             ),
-        color = Color.Black.copy(alpha = 0.06f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
         shape = RoundedCornerShape(16.dp),
     ) {
         Row(
@@ -2362,12 +2635,13 @@ private fun FileMessageCard(
             Icon(
                 imageVector = if (isPdfResource(resource)) Icons.Default.PictureAsPdf else Icons.AutoMirrored.Filled.InsertDriveFile,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = colors.titleAccent,
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = resource.originalFileName ?: resource.storedFileName,
                     style = MaterialTheme.typography.bodyLarge,
+                    color = colors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -2380,13 +2654,13 @@ private fun FileMessageCard(
                         }
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             Icon(
                 imageVector = Icons.Default.Description,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = colors.textSecondary,
             )
         }
     }
@@ -2397,9 +2671,10 @@ private fun JsonCardMessage(
     title: String?,
     summary: String?,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color.Black.copy(alpha = 0.06f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -2408,11 +2683,12 @@ private fun JsonCardMessage(
             Text(
                 text = title ?: "分享卡片",
                 style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary,
             )
             Text(
                 text = summary ?: "没有更多摘要信息",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -2422,9 +2698,10 @@ private fun JsonCardMessage(
 private fun CallSummaryMessage(
     summary: String?,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color.Black.copy(alpha = 0.06f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -2434,11 +2711,12 @@ private fun CallSummaryMessage(
             Icon(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = colors.titleAccent,
             )
             Text(
                 text = summary ?: "通话记录",
                 style = MaterialTheme.typography.bodyLarge,
+                color = colors.textPrimary,
             )
         }
     }
@@ -2448,15 +2726,16 @@ private fun CallSummaryMessage(
 private fun UnknownMessageCard(
     text: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = Color.Black.copy(alpha = 0.06f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -2497,6 +2776,7 @@ private fun AvatarBadge(
 
 @Composable
 private fun ChatTypeTag(type: ImportedChatType) {
+    val colors = YingShiThemeTokens.colors
     val label = when (type) {
         ImportedChatType.PRIVATE -> "私聊"
         ImportedChatType.GROUP -> "群聊"
@@ -2504,13 +2784,13 @@ private fun ChatTypeTag(type: ImportedChatType) {
     }
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        color = colors.primaryContainer.copy(alpha = 0.62f),
     ) {
         Text(
             text = label,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.titleAccent,
         )
     }
 }
@@ -2526,11 +2806,13 @@ private fun EdgePullIndicator(
 ) {
     val visible = isLoading || pullPx > 0f
     if (!visible) return
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = 0.92f),
-        tonalElevation = 2.dp,
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.64f)),
+        tonalElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -2541,18 +2823,21 @@ private fun EdgePullIndicator(
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
+                    color = colors.titleAccent,
                 )
             } else {
                 CircularProgressIndicator(
                     progress = { (pullPx / thresholdPx).coerceIn(0f, 1f) },
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
+                    color = colors.titleAccent,
+                    trackColor = colors.sectionBackground.copy(alpha = 0.72f),
                 )
             }
             Text(
-                text = if (isLoading) "正在加载..." else if (pullPx >= thresholdPx) readyLabel else idleLabel,
+                text = if (isLoading) "正在加载" else if (pullPx >= thresholdPx) readyLabel else idleLabel,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -2869,7 +3154,12 @@ private fun ViewerCapsuleButton(
     onClick: () -> Unit,
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.yingShiClickable(
+            enabled = enabled,
+            shape = RoundedCornerShape(999.dp),
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
         shape = RoundedCornerShape(999.dp),
         color = if (emphasized) {
             Color.White.copy(alpha = 0.18f)
@@ -2877,19 +3167,16 @@ private fun ViewerCapsuleButton(
             Color.Black.copy(alpha = 0.42f)
         },
     ) {
-        TextButton(
-            enabled = enabled,
-            onClick = onClick,
-        ) {
-            Text(
-                text = text,
-                color = if (enabled || emphasized) {
-                    Color.White.copy(alpha = 0.95f)
-                } else {
-                    Color.White.copy(alpha = 0.62f)
-                },
-            )
-        }
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = if (enabled || emphasized) {
+                Color.White.copy(alpha = 0.95f)
+            } else {
+                Color.White.copy(alpha = 0.62f)
+            },
+        )
     }
 }
 

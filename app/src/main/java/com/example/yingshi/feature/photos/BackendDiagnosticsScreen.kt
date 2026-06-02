@@ -2,7 +2,6 @@ package com.example.yingshi.feature.photos
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -41,6 +40,7 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
@@ -56,6 +56,7 @@ fun BackendDiagnosticsScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val settings = BackendDebugConfig.settings
     val scope = rememberCoroutineScope()
     val autoLoginState by BackendAutoLoginManager.uiState.collectAsState()
@@ -74,7 +75,7 @@ fun BackendDiagnosticsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -96,7 +97,8 @@ fun BackendDiagnosticsScreen(
                 singleLine = true,
             )
 
-            FilledTonalButton(
+            BackendConnectionActionButton(
+                text = "保存并连接",
                 onClick = {
                     scope.launch {
                         isRunning = true
@@ -111,9 +113,8 @@ fun BackendDiagnosticsScreen(
                 },
                 enabled = !isBusy,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("保存并连接")
-            }
+                emphasized = true,
+            )
 
             ValueCard(
                 title = "当前服务地址",
@@ -131,17 +132,13 @@ fun BackendDiagnosticsScreen(
                 value = autoLoginState.phase.displayLabel,
                 note = autoLoginState.message,
             )
-            ValueCard(
-                title = "最近触发",
-                value = autoLoginState.lastReason.ifBlank { "未记录" },
-                note = "应用启动和网络恢复时会自动重试。",
-            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
-                FilledTonalButton(
+                BackendConnectionActionButton(
+                    text = "重新连接",
                     onClick = {
                         scope.launch {
                             isRunning = true
@@ -155,11 +152,11 @@ fun BackendDiagnosticsScreen(
                     },
                     enabled = !isBusy,
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text("重新连接")
-                }
+                    emphasized = true,
+                )
 
-                OutlinedButton(
+                BackendConnectionActionButton(
+                    text = "退出连接",
                     onClick = {
                         AuthSessionManager.clearTokens()
                         BackendAutoLoginManager.markLoggedOut("已退出当前连接")
@@ -167,15 +164,13 @@ fun BackendDiagnosticsScreen(
                     },
                     enabled = !isBusy,
                     modifier = Modifier.weight(1f),
-                ) {
-                    Text("退出连接")
-                }
+                )
             }
         }
 
         DiagnosticsSection(
             title = "操作结果",
-            subtitle = "这里只显示最后一次操作的结果。",
+            subtitle = "最近一次连接结果。",
         ) {
             ResultBlock(text = lastResult)
         }
@@ -187,18 +182,19 @@ private fun BackendDiagnosticsTopBar(
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CircleIconButton(text = "‹", onClick = onBack)
+        CircleIconButton(onClick = onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "连接设置",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
     }
@@ -212,11 +208,13 @@ private fun DiagnosticsSection(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+        shadowElevation = 1.dp,
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -225,12 +223,7 @@ private fun DiagnosticsSection(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.titleAccent,
             )
             content()
         }
@@ -245,11 +238,13 @@ private fun ValueCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f),
+        color = colors.sectionBackground.copy(alpha = 0.44f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.44f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
@@ -258,20 +253,20 @@ private fun ValueCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             SelectionContainer {
                 Text(
                     text = value,
                     modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.textPrimary,
                 )
             }
             Text(
                 text = note,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -281,10 +276,12 @@ private fun ValueCard(
 private fun ResultBlock(text: String) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+        color = colors.softGreenContainer.copy(alpha = 0.46f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.44f)),
     ) {
         Text(
             text = text,
@@ -292,21 +289,39 @@ private fun ResultBlock(text: String) {
                 .fillMaxWidth()
                 .padding(horizontal = spacing.md, vertical = spacing.sm),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.textPrimary,
         )
     }
 }
 
 @Composable
-private fun CircleIconButton(
+private fun BackendConnectionActionButton(
     text: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        modifier = modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = when {
+            !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
+            emphasized -> colors.primaryContainer.copy(alpha = 0.86f)
+            else -> colors.sectionBackground.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) colors.glassStroke.copy(alpha = 0.78f) else colors.dividerSoft.copy(alpha = 0.66f),
+        ),
+        shadowElevation = 0.dp,
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -314,8 +329,36 @@ private fun CircleIconButton(
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = when {
+                    !enabled -> colors.textSecondary.copy(alpha = 0.56f)
+                    emphasized -> colors.titleAccent
+                    else -> colors.textSecondary
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CircleIconButton(
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier.yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+        shape = CircleShape,
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
+    ) {
+        Box(
+            modifier = Modifier.padding(10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                tint = colors.titleAccent,
             )
         }
     }

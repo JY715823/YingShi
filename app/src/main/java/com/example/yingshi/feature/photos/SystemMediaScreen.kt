@@ -1047,21 +1047,12 @@ private fun SystemMediaTopBar(
             )
         }
 
-        if (!selectionMode) {
-            SystemMediaFilterMenuButton(
-                selectedFilter = selectedFilter,
-                onFilterSelected = onFilterSelected,
-            )
-        }
-        SystemMediaIconButton(
-            icon = Icons.Default.Refresh,
-            contentDescription = "刷新",
-            onClick = onRefresh,
-        )
-        SystemMediaActionChip(
-            text = if (selectionMode) "取消多选" else "多选",
-            emphasized = selectionMode,
-            onClick = onToggleSelectionMode,
+        SystemMediaFilterMenuButton(
+            selectedFilter = selectedFilter,
+            selectionMode = selectionMode,
+            onFilterSelected = onFilterSelected,
+            onRefresh = onRefresh,
+            onToggleSelectionMode = onToggleSelectionMode,
         )
     }
 }
@@ -1069,7 +1060,10 @@ private fun SystemMediaTopBar(
 @Composable
 private fun SystemMediaFilterMenuButton(
     selectedFilter: SystemMediaFilter,
+    selectionMode: Boolean,
     onFilterSelected: (SystemMediaFilter) -> Unit,
+    onRefresh: () -> Unit,
+    onToggleSelectionMode: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -1090,7 +1084,7 @@ private fun SystemMediaFilterMenuButton(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.Menu,
-                    contentDescription = "系统媒体分类",
+                    contentDescription = "系统媒体菜单",
                     tint = colors.onPrimaryContainer,
                     modifier = Modifier.size(22.dp),
                 )
@@ -1139,6 +1133,72 @@ private fun SystemMediaFilterMenuButton(
                     },
                 )
             }
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                colors.sectionBackground.copy(alpha = 0.54f),
+                                RoundedCornerShape(radius.md),
+                            )
+                            .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "刷新媒体",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = colors.titleAccent,
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = colors.titleAccent,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onRefresh()
+                },
+            )
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (selectionMode) colors.softGreenContainer.copy(alpha = 0.62f) else colors.primaryContainer.copy(alpha = 0.42f),
+                                RoundedCornerShape(radius.md),
+                            )
+                            .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (selectionMode) "取消多选" else "进入多选",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                        if (selectionMode) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = colors.titleAccent,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                },
+                onClick = {
+                    expanded = false
+                    onToggleSelectionMode()
+                },
+            )
         }
     }
 }

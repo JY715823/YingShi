@@ -14,7 +14,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +73,9 @@ fun RealPhotoFeedPage(
         val selectedCount = selectionState.selectedCount
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             title = { Text("删除媒体到回收站？") },
             text = {
                 Text(
@@ -81,20 +83,18 @@ fun RealPhotoFeedPage(
                 )
             },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "删除到回收站",
+                    danger = true,
                     onClick = {
                         showDeleteConfirm = false
                         viewModel.deleteSelectedMedia(selectionState.selectedMediaIds)
                         onSelectionStateChange(selectionState.clear())
                     },
-                ) {
-                    Text("删除到回收站")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showDeleteConfirm = false })
             },
         )
     }
@@ -393,11 +393,12 @@ private fun RealFeedSelectionBar(
     isDeleting: Boolean,
     onDelete: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.md),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -408,14 +409,15 @@ private fun RealFeedSelectionBar(
                 text = if (selectedCount > 0) "已选中 $selectedCount 项" else "请选择媒体",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
-            TextButton(
+            RealFeedSelectionChip(
+                text = if (isDeleting) "删除中…" else "回收站",
                 enabled = !isDeleting,
                 onClick = onDelete,
-            ) {
-                Text(if (isDeleting) "删除中…" else "删除到回收站")
-            }
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                destructive = true,
+            )
         }
     }
 }

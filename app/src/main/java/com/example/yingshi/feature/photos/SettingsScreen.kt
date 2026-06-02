@@ -16,9 +16,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
@@ -43,6 +48,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val settingsState = FakeSettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
     val loginStatusValue = if (AuthSessionManager.isLoggedIn) {
@@ -54,7 +60,7 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -166,18 +172,19 @@ private fun SettingsTopBar(
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsCircleButton(text = "<", onClick = onBack)
+        SettingsCircleButton(onClick = onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "设置",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
     }
@@ -191,11 +198,13 @@ private fun SettingsSection(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+        shadowElevation = 1.dp,
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -204,12 +213,7 @@ private fun SettingsSection(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.titleAccent,
             )
             content()
         }
@@ -227,6 +231,7 @@ private fun <T> SettingsChoiceRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Column(
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -234,12 +239,12 @@ private fun <T> SettingsChoiceRow(
         Text(
             text = title,
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.textPrimary,
         )
         Text(
             text = subtitle,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
         Row(
             modifier = Modifier
@@ -252,19 +257,21 @@ private fun <T> SettingsChoiceRow(
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(radius.capsule))
-                        .clickable { onOptionSelected(option) },
+                        .yingShiClickable(shape = RoundedCornerShape(radius.capsule), pressedScale = 0.96f) {
+                            onOptionSelected(option)
+                        },
                     shape = RoundedCornerShape(radius.capsule),
                     color = if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                        colors.primaryContainer.copy(alpha = 0.68f)
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+                        colors.sectionBackground.copy(alpha = 0.50f)
                     },
                     border = BorderStroke(
                         width = 1.dp,
                         color = if (selected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.26f)
+                            colors.glassStroke.copy(alpha = 0.58f)
                         } else {
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)
+                            colors.dividerSoft.copy(alpha = 0.56f)
                         },
                     ),
                 ) {
@@ -277,9 +284,9 @@ private fun <T> SettingsChoiceRow(
                             MaterialTheme.typography.labelMedium
                         },
                         color = if (selected) {
-                            MaterialTheme.colorScheme.primary
+                            colors.titleAccent
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            colors.textSecondary
                         },
                     )
                 }
@@ -297,11 +304,13 @@ private fun SettingsSwitchRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        color = colors.sectionBackground.copy(alpha = 0.54f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.48f)),
     ) {
         Row(
             modifier = Modifier
@@ -317,17 +326,25 @@ private fun SettingsSwitchRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.textPrimary,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = colors.raisedSurface,
+                    checkedTrackColor = colors.softGreenAction,
+                    checkedBorderColor = colors.softGreenAction,
+                    uncheckedThumbColor = colors.raisedSurface,
+                    uncheckedTrackColor = colors.dividerSoft.copy(alpha = 0.72f),
+                    uncheckedBorderColor = colors.dividerSoft,
+                ),
             )
         }
     }
@@ -341,11 +358,13 @@ private fun SettingsInfoRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f),
+        color = colors.sectionBackground.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.44f)),
     ) {
         Row(
             modifier = Modifier
@@ -361,18 +380,18 @@ private fun SettingsInfoRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.textPrimary,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             Text(
                 text = value,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.softGreenAction,
             )
         }
     }
@@ -386,14 +405,15 @@ private fun SettingsEntryRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(radius.lg))
-            .clickable(onClick = onClick),
+            .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f),
+        color = colors.softGreenContainer.copy(alpha = 0.54f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.48f)),
     ) {
         Row(
             modifier = Modifier
@@ -409,18 +429,18 @@ private fun SettingsEntryRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.textPrimary,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             Text(
                 text = ">",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.softGreenAction,
             )
         }
     }
@@ -428,23 +448,23 @@ private fun SettingsEntryRow(
 
 @Composable
 private fun SettingsCircleButton(
-    text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(10.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                tint = colors.titleAccent,
             )
         }
     }

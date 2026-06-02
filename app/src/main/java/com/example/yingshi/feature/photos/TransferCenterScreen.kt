@@ -3,7 +3,6 @@ package com.example.yingshi.feature.photos
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +17,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +49,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
 import com.example.yingshi.data.model.UploadState
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
@@ -67,25 +71,31 @@ fun TransferCenterScreen(
     val completedGroups = operationGroups.count { group -> group.all { it.isTerminal } }
     val runningGroups = operationGroups.size - completedGroups
     var showClearCompletedDialog by rememberSaveable { mutableStateOf(false) }
+    val colors = YingShiThemeTokens.colors
 
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TransferCenterHeaderButton(text = "返回", onClick = onBack)
-            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            TransferCircleButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "传输中心",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = if (tasks.isEmpty()) {
@@ -94,16 +104,17 @@ fun TransferCenterScreen(
                         "进行中 $runningGroups · 已完成 $completedGroups"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             if (completedGroups > 0) {
-                TransferCenterHeaderButton(
-                    text = "清理完成记录",
+                TransferActionPill(
+                    text = "清理",
+                    icon = Icons.Default.Delete,
                     onClick = { showClearCompletedDialog = true },
                 )
             } else {
-                Box(modifier = Modifier.size(72.dp))
+                Box(modifier = Modifier.size(40.dp))
             }
         }
         if (showClearCompletedDialog) {
@@ -148,11 +159,12 @@ fun TransferCenterScreen(
 @Composable
 private fun TransferEmptyState() {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = colors.sectionBackground.copy(alpha = 0.62f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -161,12 +173,12 @@ private fun TransferEmptyState() {
             Text(
                 text = "没有传输任务",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Text(
-                text = "导入照片流、新建小相册、加入已有小相册后的进度和结果会显示在这里。",
+                text = "导入照片流、新建小相册、加入小相册后的进度会显示在这里。",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -182,6 +194,7 @@ private fun TransferOperationCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val primaryTask = tasks.first()
     val openTargetTask = tasks.openTargetTask()
     val canOpen = openTargetTask != null
@@ -214,11 +227,16 @@ private fun TransferOperationCard(
             .fillMaxWidth()
             .let { base ->
                 val target = openTargetTask
-                if (target != null) base.clickable { onOpen(target) } else base
+                if (target != null) {
+                    base.yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = { onOpen(target) })
+                } else {
+                    base
+                }
             },
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+        shadowElevation = 0.dp,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
             Row(
@@ -234,19 +252,19 @@ private fun TransferOperationCard(
                     Text(
                         text = primaryTask.operationType.label(),
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = colors.softGreenAction,
                     )
                     Text(
                         text = primaryTask.operationTitle ?: primaryTask.targetLabel,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.titleAccent,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = "媒体 $totalCount 项 · 成功 $successCount · 失败 $failureCount · 取消 $cancelledCount",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                         maxLines = 1,
                     )
                     Text(
@@ -257,12 +275,14 @@ private fun TransferOperationCard(
                             cancelledCount = cancelledCount,
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                         maxLines = 2,
                     )
                     LinearProgressIndicator(
                         progress = { averageProgress / 100f },
                         modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = colors.primaryActionPressed,
+                        trackColor = colors.sectionBackground.copy(alpha = 0.72f),
                     )
                 }
             }
@@ -278,16 +298,15 @@ private fun TransferOperationCard(
                     Text(
                         text = "还有 ${tasks.size - 3} 项媒体任务",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
                 if (problemTasks.isNotEmpty()) {
-                    TextButton(
+                    TransferActionPill(
+                        text = if (showFailureDetails) "收起详情" else "查看失败",
                         onClick = { showFailureDetails = !showFailureDetails },
                         modifier = Modifier.align(Alignment.End),
-                    ) {
-                        Text(if (showFailureDetails) "收起失败详情" else "查看失败详情")
-                    }
+                    )
                 }
                 if (showFailureDetails && problemTasks.isNotEmpty()) {
                     TransferFailureDetails(
@@ -302,7 +321,7 @@ private fun TransferOperationCard(
                     Text(
                         text = "清理记录只会移除这条传输记录，不会删除已导入媒体或小相册内容。",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -315,36 +334,37 @@ private fun TransferOperationCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 failedTasks.firstOrNull()?.let { task ->
-                    TextButton(onClick = {
+                    TransferActionPill(text = if (failedTasks.size > 1) "重试失败项" else "重试", onClick = {
                         showFailureDetails = false
                         onRetryTask(task.taskId)
-                    }) {
-                        Text(if (failedTasks.size > 1) "重试失败项" else "重试")
-                    }
+                    })
                 }
                 runningTasks.firstOrNull()?.let { task ->
-                    TextButton(onClick = { onCancelTask(task.taskId) }) {
-                        Text(if (runningTasks.size > 1) "取消当前项" else "取消")
-                    }
+                    TransferActionPill(
+                        text = if (runningTasks.size > 1) "取消当前项" else "取消",
+                        emphasized = false,
+                        onClick = { onCancelTask(task.taskId) },
+                    )
                 }
                 if (allTerminal) {
                     openTargetTask?.let { target ->
-                        TextButton(onClick = { onOpen(target) }) {
-                            Text(when (target.operationType) {
+                        TransferActionPill(
+                            text = when (target.operationType) {
                                 LocalSystemMediaBridgeRepository.OperationType.CREATE_POST -> "查看新小相册"
                                 LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST -> "查看目标小相册"
                                 LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP -> "查看照片"
-                            })
-                        }
+                            },
+                            onClick = { onOpen(target) },
+                        )
                     }
-                    TextButton(onClick = { showClearGroupDialog = true }) {
-                        Text("清理本组记录")
-                    }
+                    TransferActionPill(
+                        text = "清理",
+                        emphasized = false,
+                        onClick = { showClearGroupDialog = true },
+                    )
                 } else if (canOpen) {
                     openTargetTask?.let { target ->
-                        TextButton(onClick = { onOpen(target) }) {
-                            Text("查看结果")
-                        }
+                        TransferActionPill(text = "查看结果", onClick = { onOpen(target) })
                     }
                 }
             }
@@ -370,19 +390,29 @@ private fun TransferClearRecordsDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = title) },
-        text = { Text(text = body) },
+        containerColor = colors.raisedSurface,
+        titleContentColor = colors.titleAccent,
+        textContentColor = colors.textSecondary,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            )
+        },
+        text = {
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("清理记录")
-            }
+            TransferActionPill(text = "清理记录", onClick = onConfirm)
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
+            TransferActionPill(text = "取消", emphasized = false, onClick = onDismiss)
         },
     )
 }
@@ -397,14 +427,15 @@ private fun TransferFailureDetails(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val primaryTask = tasks.first()
     val resultTask = tasks.firstOrNull { it.resultPostRoute != null } ?: primaryTask
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.md),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.memoryWash.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.memoryContainer.copy(alpha = 0.80f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.md),
@@ -413,7 +444,7 @@ private fun TransferFailureDetails(
             Text(
                 text = "失败与重试",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.memoryAccent,
             )
             Text(
                 text = failureRetryExplanation(
@@ -423,7 +454,7 @@ private fun TransferFailureDetails(
                     cancelledCount = cancelledCount,
                 ),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             problemTasks.forEach { task ->
                 TransferFailureDetailLine(task = task)
@@ -435,6 +466,7 @@ private fun TransferFailureDetails(
 @Composable
 private fun TransferFailureDetailLine(task: SystemMediaUploadTaskUiModel) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spacing.xxs),
@@ -442,20 +474,20 @@ private fun TransferFailureDetailLine(task: SystemMediaUploadTaskUiModel) {
         Text(
             text = task.fileName,
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.titleAccent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = "${task.mediaType.transferLabel()} · ${failureCurrentStateLabel(task)}",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
             maxLines = 1,
         )
         Text(
             text = failureReasonLabel(task),
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -464,6 +496,7 @@ private fun TransferFailureDetailLine(task: SystemMediaUploadTaskUiModel) {
 
 @Composable
 private fun TransferTaskLine(task: SystemMediaUploadTaskUiModel) {
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -473,14 +506,14 @@ private fun TransferTaskLine(task: SystemMediaUploadTaskUiModel) {
             text = task.fileName,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.textPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = taskStateLabel(task),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
             maxLines = 1,
         )
     }
@@ -490,11 +523,12 @@ private fun TransferTaskLine(task: SystemMediaUploadTaskUiModel) {
 private fun TransferTaskThumbnail(task: SystemMediaUploadTaskUiModel) {
     val context = LocalContext.current
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val previewUri = task.previewUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
     val backgroundColor = if (task.mediaType == SystemMediaType.VIDEO) {
-        Color(0xFF52627A)
+        colors.sectionBackground.copy(alpha = 0.86f)
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        colors.sectionBackground.copy(alpha = 0.72f)
     }
 
     Box(
@@ -519,18 +553,30 @@ private fun TransferTaskThumbnail(task: SystemMediaUploadTaskUiModel) {
                 VideoBadge()
             }
         } else {
-            PlaceholderBadge(task = task)
+            PlaceholderBadge(isVideo = task.mediaType == SystemMediaType.VIDEO)
         }
     }
 }
 
 @Composable
-private fun PlaceholderBadge(task: SystemMediaUploadTaskUiModel) {
-    Text(
-        text = if (task.mediaType == SystemMediaType.VIDEO) "视频" else "图片",
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-        color = Color.White,
-    )
+private fun PlaceholderBadge(isVideo: Boolean) {
+    val colors = YingShiThemeTokens.colors
+    if (isVideo) {
+        Surface(
+            modifier = Modifier.size(28.dp),
+            shape = CircleShape,
+            color = colors.raisedSurface.copy(alpha = 0.72f),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = colors.titleAccent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -541,35 +587,91 @@ private fun VideoBadge() {
         color = Color.Black.copy(alpha = 0.38f),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = ">",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                color = Color.White,
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
             )
         }
     }
 }
 
 @Composable
-private fun TransferCenterHeaderButton(
-    text: String,
+private fun TransferCircleButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
-            .semantics { contentDescription = text }
-            .clip(RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+            .size(40.dp)
+            .semantics { this.contentDescription = contentDescription }
+            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+        shape = CircleShape,
+        color = colors.sectionBackground.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        shadowElevation = 0.dp,
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TransferActionPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    emphasized: Boolean = true,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = modifier
+            .semantics { contentDescription = text }
+            .yingShiClickable(enabled = enabled, shape = shape, pressedScale = 0.96f, onClick = onClick),
+        shape = shape,
+        color = when {
+            !enabled -> colors.sectionBackground.copy(alpha = 0.50f)
+            emphasized -> colors.primaryContainer.copy(alpha = 0.76f)
+            else -> colors.sectionBackground.copy(alpha = 0.70f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) colors.glassStroke.copy(alpha = 0.72f) else colors.dividerSoft.copy(alpha = 0.64f),
+        ),
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (emphasized) colors.titleAccent else colors.textSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = if (emphasized) colors.titleAccent else colors.textSecondary,
+            )
+        }
     }
 }
 

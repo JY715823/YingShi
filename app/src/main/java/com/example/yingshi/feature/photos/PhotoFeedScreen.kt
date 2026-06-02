@@ -1016,8 +1016,8 @@ private fun PhotoFeedSectionHeaderRow(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 2.dp, top = 2.dp, bottom = 0.dp),
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            .padding(start = 4.dp, top = 4.dp, bottom = 1.dp),
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
         color = colors.titleAccent,
     )
 }
@@ -1029,9 +1029,9 @@ private fun PhotoFeedDayHeaderRow(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 2.dp, top = 0.dp, bottom = 0.dp),
+            .padding(start = 4.dp, top = 0.dp, bottom = 1.dp),
         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-        color = colors.textSecondary.copy(alpha = 0.86f),
+        color = colors.textSecondary.copy(alpha = 0.72f),
     )
 }
 

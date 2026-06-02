@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -455,8 +454,9 @@ private fun LedgerRecurringRuleEditorSheet(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(onClick = onDismiss) { Text("取消", color = LedgerMuted) }
+                LedgerDialogActionButton(text = "取消", onClick = onDismiss)
                 Text(
                     text = if (initial == null) "新增周期规则" else "编辑周期规则",
                     modifier = Modifier.weight(1f),
@@ -464,16 +464,16 @@ private fun LedgerRecurringRuleEditorSheet(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
-                TextButton(
+                LedgerDialogActionButton(
+                    text = "保存",
                     onClick = {
                         onSave(
                             previewDraft,
                         )
                     },
                     enabled = canSave,
-                ) {
-                    Text("保存", color = if (canSave) LedgerHeaderGreen else LedgerMuted, fontWeight = FontWeight.Bold)
-                }
+                    emphasized = true,
+                )
             }
             LazyColumn(
                 modifier = Modifier

@@ -40,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -812,10 +811,11 @@ private fun PostDetailInfoState(
     loading: Boolean = false,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -829,8 +829,8 @@ private fun PostDetailInfoState(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.raisedSurface.copy(alpha = 0.94f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(spacing.lg),
@@ -839,20 +839,22 @@ private fun PostDetailInfoState(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
                 if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = colors.primaryAction,
+                    )
                 }
                 if (actionLabel != null && onAction != null) {
-                    TextButton(onClick = onAction) {
-                        Text(actionLabel)
-                    }
+                    PostDetailActionButton(text = actionLabel, onClick = onAction)
                 }
             }
         }
@@ -866,10 +868,12 @@ private fun PostInlineNotice(
     onAction: (() -> Unit)? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        color = colors.sectionBackground.copy(alpha = 0.64f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
@@ -878,14 +882,35 @@ private fun PostInlineNotice(
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             if (actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) {
-                    Text(actionLabel)
-                }
+                PostDetailActionButton(text = actionLabel, onClick = onAction)
             }
         }
+    }
+}
+
+@Composable
+private fun PostDetailActionButton(
+    text: String,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = Modifier.yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick),
+        shape = shape,
+        color = colors.primaryContainer.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.74f)),
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.titleAccent,
+        )
     }
 }
 

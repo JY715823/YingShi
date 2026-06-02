@@ -26,7 +26,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +46,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -91,6 +91,7 @@ fun MediaManagementScreen(
 
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val post = FakeAlbumRepository.getPost(route.postId)
     val repoMediaItems = FakeAlbumRepository.getManagedPostMedia(route.postId)
 
@@ -243,7 +244,7 @@ fun MediaManagementScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -277,8 +278,8 @@ fun MediaManagementScreen(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.raisedSurface.copy(alpha = 0.94f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(spacing.lg),
@@ -287,12 +288,12 @@ fun MediaManagementScreen(
                 Text(
                     text = post.title.ifBlank { "当前小相册" },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = modeDescription(mode),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
                 if (mode == MediaManagementMode.NORMAL) {
                     MediaManagementEntryRow(
@@ -441,6 +442,7 @@ private fun RealMediaManagementScreen(
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val sessionKey = realBackendSessionKey("real-media-management-${route.postId}")
     val viewModel: RealMediaManagementViewModel = viewModel(
         key = sessionKey,
@@ -499,7 +501,7 @@ private fun RealMediaManagementScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -527,8 +529,8 @@ private fun RealMediaManagementScreen(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.raisedSurface.copy(alpha = 0.94f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(spacing.lg),
@@ -537,7 +539,7 @@ private fun RealMediaManagementScreen(
                 Text(
                     text = uiState.postTitle.ifBlank { "当前小相册" },
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = when {
@@ -549,9 +551,9 @@ private fun RealMediaManagementScreen(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (uiState.errorMessage != null) {
-                        MaterialTheme.colorScheme.error
+                        colors.memoryAccent
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        colors.textSecondary
                     },
                 )
                 if (mode == MediaManagementMode.NORMAL && !uiState.tokenMissing && uiState.errorMessage == null) {
@@ -600,7 +602,7 @@ private fun RealMediaManagementScreen(
                     Text(
                         text = "正在读取媒体列表…",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -610,9 +612,9 @@ private fun RealMediaManagementScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "当前小相册还没有可管理的真实媒体。",
+                        text = "当前小相册还没有媒体。",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -813,10 +815,11 @@ private fun UnifiedRealPostMediaManagementScreen(
             MediaManagementMissingState(onBack = onBack, modifier = modifier)
         }
         uiState.isLoading && uiState.mediaItems.isEmpty() -> {
+            val colors = YingShiThemeTokens.colors
             Column(
                 modifier = modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
+                    .background(colors.appBackground)
                     .statusBarsPadding()
                     .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
                 verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
@@ -832,7 +835,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                 Text(
                     text = "正在读取媒体列表…",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         }
@@ -922,9 +925,11 @@ private fun MediaManagementTopBar(
     onCancelMode: () -> Unit,
     onFinishMode: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MediaManagementCircleButton(text = "<", onClick = onBack)
@@ -932,39 +937,27 @@ private fun MediaManagementTopBar(
             text = "媒体管理",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onBackground,
+            color = colors.titleAccent,
         )
         when (mode) {
             MediaManagementMode.NORMAL -> {
-                MediaManagementActionChip(text = "普通态", onClick = {})
+                MediaManagementActionChip(text = "整理", onClick = {})
             }
             MediaManagementMode.DELETE -> {
-                TextButton(onClick = onDelete, enabled = deleteCount > 0) {
-                    Text("删除（$deleteCount）")
-                }
-                TextButton(onClick = onCancelMode) {
-                    Text("取消")
-                }
+                MediaManagementActionChip(text = "删除 $deleteCount", enabled = deleteCount > 0, danger = true, onClick = onDelete)
+                MediaManagementActionChip(text = "取消", onClick = onCancelMode)
             }
             MediaManagementMode.SORT -> {
-                TextButton(onClick = onFinishMode) {
-                    Text("完成")
-                }
-                TextButton(onClick = onCancelMode) {
-                    Text("取消")
-                }
+                MediaManagementActionChip(text = "完成", emphasized = true, onClick = onFinishMode)
+                MediaManagementActionChip(text = "取消", onClick = onCancelMode)
             }
             MediaManagementMode.SET_COVER -> {
                 MediaManagementActionChip(text = "设为封面", onClick = {})
-                TextButton(onClick = onCancelMode) {
-                    Text("取消")
-                }
+                MediaManagementActionChip(text = "取消", onClick = onCancelMode)
             }
             MediaManagementMode.EDIT_TIME -> {
                 MediaManagementActionChip(text = "修改时间", onClick = {})
-                TextButton(onClick = onCancelMode) {
-                    Text("取消")
-                }
+                MediaManagementActionChip(text = "取消", onClick = onCancelMode)
             }
         }
     }
@@ -1012,20 +1005,23 @@ private fun MediaManagementCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    val stateHint = cardStateHint(mode = mode, isCover = media.isCover)
 
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(radius.lg))
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().yingShiClickable(
+            shape = RoundedCornerShape(radius.lg),
+            pressedScale = 0.985f,
+            onClick = onClick,
+        ),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surface,
+        color = colors.raisedSurface,
         border = BorderStroke(
             width = if (selected) 1.5.dp else 1.dp,
             color = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                colors.glassStroke.copy(alpha = 0.82f)
             } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+                colors.dividerSoft.copy(alpha = 0.62f)
             },
         ),
     ) {
@@ -1049,54 +1045,49 @@ private fun MediaManagementCard(
                         .align(Alignment.TopStart)
                         .padding(start = spacing.xs, top = spacing.xs),
                     shape = RoundedCornerShape(radius.capsule),
-                    color = Color.Black.copy(alpha = 0.18f),
+                    color = colors.primaryContainer.copy(alpha = 0.88f),
+                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
                 ) {
                     Text(
                         text = "封面",
                         modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White.copy(alpha = 0.94f),
+                        color = colors.titleAccent,
+                    )
+                }
+            }
+
+            if (stateHint.isNotBlank()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = spacing.xs, top = spacing.xs),
+                    shape = RoundedCornerShape(radius.capsule),
+                    color = colors.raisedSurface.copy(alpha = 0.90f),
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+                ) {
+                    Text(
+                        text = stateHint,
+                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.titleAccent,
                     )
                 }
             }
 
             Surface(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = spacing.xs, top = spacing.xs),
-                shape = RoundedCornerShape(radius.capsule),
-                color = Color.Black.copy(alpha = 0.16f),
-            ) {
-                Text(
-                    text = cardStateHint(mode = mode, isCover = media.isCover),
-                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.9f),
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = spacing.md, bottom = spacing.md)
-                    .fillMaxWidth(0.46f)
-                    .height(24.dp)
-                    .clip(RoundedCornerShape(radius.capsule))
-                    .background(Color.White.copy(alpha = 0.12f)),
-            )
-
-            Surface(
-                modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = spacing.xs, bottom = spacing.xs),
                 shape = RoundedCornerShape(radius.capsule),
-                color = Color.Black.copy(alpha = 0.16f),
+                color = colors.raisedSurface.copy(alpha = 0.90f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
             ) {
                 Text(
                     text = formatMediaManagementTime(media.displayTimeMillis),
                     modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.92f),
+                    color = colors.titleAccent,
                 )
             }
 
@@ -1138,16 +1129,22 @@ private fun SortControlChip(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
-        modifier = Modifier
-            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-            .clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
         color = if (enabled) {
-            Color.Black.copy(alpha = 0.18f)
+            colors.primaryContainer.copy(alpha = 0.84f)
         } else {
-            Color.Black.copy(alpha = 0.08f)
+            colors.sectionBackground.copy(alpha = 0.58f)
         },
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = if (enabled) 0.72f else 0.42f)),
     ) {
         Text(
             text = text,
@@ -1156,7 +1153,7 @@ private fun SortControlChip(
                 vertical = YingShiThemeTokens.spacing.xs,
             ),
             style = MaterialTheme.typography.labelSmall,
-            color = if (enabled) Color.White.copy(alpha = 0.94f) else Color.White.copy(alpha = 0.54f),
+            color = if (enabled) colors.titleAccent else colors.textSecondary,
         )
     }
 }
@@ -1166,22 +1163,23 @@ private fun SelectionDot(
     selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier.size(28.dp),
         shape = CircleShape,
         color = if (selected) {
-            MaterialTheme.colorScheme.primary
+            colors.primaryContainer.copy(alpha = 0.94f)
         } else {
-            Color.White.copy(alpha = 0.2f)
+            colors.raisedSurface.copy(alpha = 0.82f)
         },
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.8f)),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.86f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (selected) {
                 Text(
                     text = "✓",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
+                    color = colors.titleAccent,
                 )
             }
         }
@@ -1193,20 +1191,23 @@ private fun MediaManagementCircleButton(
     text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = CircleShape
     Surface(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        modifier = Modifier.size(40.dp).yingShiClickable(
+            shape = shape,
+            pressedScale = 0.94f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = colors.sectionBackground.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.76f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
         }
     }
@@ -1216,14 +1217,36 @@ private fun MediaManagementCircleButton(
 private fun MediaManagementActionChip(
     text: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
+    danger: Boolean = false,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val containerColor = when {
+        danger -> colors.memoryContainer.copy(alpha = if (enabled) 0.82f else 0.46f)
+        emphasized -> colors.primaryContainer.copy(alpha = if (enabled) 0.86f else 0.48f)
+        else -> colors.softGreenContainer.copy(alpha = if (enabled) 0.66f else 0.36f)
+    }
+    val borderColor = when {
+        danger -> colors.memoryAccent.copy(alpha = 0.18f)
+        emphasized -> colors.glassStroke.copy(alpha = 0.78f)
+        else -> colors.dividerSoft.copy(alpha = 0.72f)
+    }
+    val contentColor = when {
+        danger -> colors.onMemoryContainer
+        else -> colors.titleAccent
+    }
     Surface(
-        modifier = Modifier
-            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
     ) {
         Text(
             text = text,
@@ -1232,7 +1255,7 @@ private fun MediaManagementActionChip(
                 vertical = YingShiThemeTokens.spacing.xs,
             ),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.primary,
+            color = contentColor,
         )
     }
 }
@@ -1242,10 +1265,11 @@ private fun MediaManagementMissingState(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(
                 horizontal = YingShiThemeTokens.spacing.lg,
@@ -1262,19 +1286,19 @@ private fun MediaManagementMissingState(
             onFinishMode = {},
         )
         Text(
-            text = "当前小相册不存在，无法进入媒体管理。",
+            text = "没有找到这个小相册。",
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
 
 private fun modeDescription(mode: MediaManagementMode): String {
     return when (mode) {
-        MediaManagementMode.NORMAL -> "两列网格管理当前小相册的媒体。"
-        MediaManagementMode.DELETE -> "删除模式支持多选；点击“删除（x）”后先选择目录删还是系统删，不直接删除。"
-        MediaManagementMode.SORT -> "排序模式使用上移 / 下移完成本地调整；点击完成保存，点击取消恢复进入排序前的顺序。"
-        MediaManagementMode.SET_COVER -> "点击某张媒体即可本地设为封面，并尽量同步到小相册详情页和大相册页。"
+        MediaManagementMode.NORMAL -> "整理这个小相册里的照片和视频。"
+        MediaManagementMode.DELETE -> "选择要移除的媒体。"
+        MediaManagementMode.SORT -> "调整顺序后点完成保存。"
+        MediaManagementMode.SET_COVER -> "点一张媒体设为封面。"
         MediaManagementMode.EDIT_TIME -> "当前无法修改媒体时间。"
     }
 }
@@ -1284,11 +1308,11 @@ private fun cardStateHint(
     isCover: Boolean,
 ): String {
     return when (mode) {
-        MediaManagementMode.NORMAL -> if (isCover) "当前封面" else "普通态"
-        MediaManagementMode.DELETE -> "点击选择"
-        MediaManagementMode.SORT -> "调整顺序"
-        MediaManagementMode.SET_COVER -> if (isCover) "当前封面" else "点此设封面"
-        MediaManagementMode.EDIT_TIME -> "时间入口"
+        MediaManagementMode.NORMAL -> ""
+        MediaManagementMode.DELETE -> "选择"
+        MediaManagementMode.SORT -> "排序"
+        MediaManagementMode.SET_COVER -> if (isCover) "" else "设为封面"
+        MediaManagementMode.EDIT_TIME -> "时间"
     }
 }
 

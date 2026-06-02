@@ -1,5 +1,8 @@
 package com.example.yingshi.feature.ledger
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,9 +29,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.statusBarsPadding
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerCategory
 import com.example.yingshi.feature.ledger.data.LedgerCategoryType
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
@@ -65,6 +71,7 @@ private enum class LedgerAccountPickerTarget {
 fun LedgerAddTransactionScreen(
     uiState: LedgerUiState,
     initialTransaction: LedgerTransaction? = null,
+    initialOccurredAtMillis: Long? = null,
     onBack: () -> Unit,
     onSelectBook: (String) -> Unit,
     onSaveCategory: (String?, String, String, Long, LedgerCategoryType) -> Unit,
@@ -81,6 +88,7 @@ fun LedgerAddTransactionScreen(
         String,
         Boolean,
     ) -> Unit,
+    onDelete: (String) -> Unit,
 ) {
     var selectedType by rememberSaveable(initialTransaction?.id) { mutableStateOf((initialTransaction?.type ?: LedgerTransactionType.EXPENSE).name) }
     val type = LedgerTransactionType.valueOf(selectedType)
@@ -132,11 +140,15 @@ fun LedgerAddTransactionScreen(
     }
     var remark by rememberSaveable(initialTransaction?.id) { mutableStateOf(initialTransaction?.remark.orEmpty()) }
     var expression by rememberSaveable(initialTransaction?.id) { mutableStateOf(initialTransaction?.amountCents?.let(::formatAmountValue)?.replace(",", "") ?: "0") }
-    var occurredAtMillis by rememberSaveable(initialTransaction?.id) { mutableLongStateOf(initialTransaction?.occurredAtMillis ?: System.currentTimeMillis()) }
+    var occurredAtMillis by rememberSaveable(initialTransaction?.id, initialOccurredAtMillis) {
+        mutableLongStateOf(initialTransaction?.occurredAtMillis ?: initialOccurredAtMillis ?: System.currentTimeMillis())
+    }
     var showBookSheet by rememberSaveable { mutableStateOf(false) }
     var showDateSheet by rememberSaveable { mutableStateOf(false) }
     var showAccountSheet by rememberSaveable { mutableStateOf(false) }
     var showCategoryManager by rememberSaveable { mutableStateOf(false) }
+    var showRemarkDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
     val evaluatedExpression = LedgerCalculator.evaluate(expression)
     val amountCents = evaluatedExpression?.toCentsOrNull() ?: expression.toCentsOrNull() ?: 0L
     val amountDisplayText = evaluatedExpression?.let { formatAmountValue(it.toCentsOrNull() ?: 0L) } ?: expression
@@ -183,7 +195,7 @@ fun LedgerAddTransactionScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(LedgerPageBackground)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -248,53 +260,57 @@ fun LedgerAddTransactionScreen(
             LedgerAmountKeyboardPanel(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 type = type,
+                isEditing = initialTransaction != null,
                 amountText = amountDisplayText,
                 remark = remark,
                 dateLabel = formatLedgerPickerDate(occurredAtMillis),
                 accountLabel = accountOptions.firstOrNull { it.id == selectedAccountId }?.name ?: "请选择账户",
-                onRemarkChange = { remark = it },
+                onRemarkClick = { showRemarkDialog = true },
                 onDateClick = { showDateSheet = true },
-            onAccountClick = {
-                accountPickerTarget = LedgerAccountPickerTarget.PRIMARY.name
-                showAccountSheet = true
-            },
-            onKeyClick = { key ->
-                expression = when (key) {
-                    "⌫" -> expression.dropLast(1).ifBlank { "0" }
-                    "=" -> LedgerCalculator.evaluate(expression) ?: expression
-                    else -> appendKeyboardInput(expression, key)
-                }
-            },
-            onSaveContinue = {
-                onSave(
-                    initialTransaction?.id,
-                    type,
-                    amountCents,
-                    selectedCategoryId,
-                    selectedAccountId,
-                    selectedToAccountId,
-                    occurredAtMillis,
-                    remark,
-                    true,
-                )
-                expression = "0"
-                remark = ""
-            },
-            onDone = {
-                onSave(
-                    initialTransaction?.id,
-                    type,
-                    amountCents,
-                    selectedCategoryId,
-                    selectedAccountId,
-                    selectedToAccountId,
-                    occurredAtMillis,
-                    remark,
-                    false,
-                )
-            },
-            saveEnabled = isDraftValid(type, amountCents, selectedCategoryId, selectedAccountId, selectedToAccountId),
-        )
+                onAccountClick = {
+                    accountPickerTarget = LedgerAccountPickerTarget.PRIMARY.name
+                    showAccountSheet = true
+                },
+                onKeyClick = { key ->
+                    expression = when (key) {
+                        "⌫" -> expression.dropLast(1).ifBlank { "0" }
+                        "=" -> LedgerCalculator.evaluate(expression) ?: expression
+                        else -> appendKeyboardInput(expression, key)
+                    }
+                },
+                onSaveContinue = {
+                    onSave(
+                        initialTransaction?.id,
+                        type,
+                        amountCents,
+                        selectedCategoryId,
+                        selectedAccountId,
+                        selectedToAccountId,
+                        occurredAtMillis,
+                        remark,
+                        true,
+                    )
+                    expression = "0"
+                    remark = ""
+                },
+                onDeleteClick = {
+                    showDeleteDialog = true
+                },
+                onDone = {
+                    onSave(
+                        initialTransaction?.id,
+                        type,
+                        amountCents,
+                        selectedCategoryId,
+                        selectedAccountId,
+                        selectedToAccountId,
+                        occurredAtMillis,
+                        remark,
+                        false,
+                    )
+                },
+                saveEnabled = isDraftValid(type, amountCents, selectedCategoryId, selectedAccountId, selectedToAccountId),
+            )
     }
 
     if (showBookSheet) {
@@ -347,6 +363,49 @@ fun LedgerAddTransactionScreen(
             onReorderCategories = onReorderCategories,
         )
     }
+    if (showRemarkDialog) {
+        LedgerRemarkDialog(
+            initialRemark = remark,
+            onDismiss = { showRemarkDialog = false },
+            onConfirm = {
+                remark = it
+                showRemarkDialog = false
+            },
+        )
+    }
+    if (showDeleteDialog && initialTransaction != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            containerColor = LedgerRaisedSurface,
+            title = {
+                Text(
+                    text = "删除这笔账单？",
+                    color = LedgerHeaderGreen,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(
+                    text = "删除后会先进入回收站，可以在回收站恢复。",
+                    color = LedgerMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                LedgerDialogActionButton(
+                    text = "移入回收站",
+                    danger = true,
+                    onClick = {
+                        showDeleteDialog = false
+                        onDelete(initialTransaction.id)
+                    },
+                )
+            },
+            dismissButton = {
+                LedgerDialogActionButton(text = "取消", onClick = { showDeleteDialog = false })
+            },
+        )
+    }
 }
 
 @Composable
@@ -363,7 +422,7 @@ private fun LedgerAddTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack, modifier = Modifier.size(30.dp)) {
-            Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(16.dp))
+            Icon(LedgerActionIcons.Back, contentDescription = "返回", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
         }
         Row(
             modifier = Modifier
@@ -376,11 +435,12 @@ private fun LedgerAddTopBar(
                 text = bookName,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = LedgerHeaderGreen,
             )
-            Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", modifier = Modifier.size(13.dp))
+            Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(13.dp))
         }
         IconButton(onClick = onManageClick, modifier = Modifier.size(30.dp)) {
-            Icon(Icons.Default.Add, contentDescription = "分类管理", modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Add, contentDescription = "分类管理", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -417,7 +477,7 @@ private fun LedgerAddTypeTabs(
                         .width(40.dp)
                         .height(3.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(if (selected == type) LedgerHeaderGreen else Color.Transparent),
+                        .background(if (selected == type) LedgerPrimaryAction else Color.Transparent),
                 )
             }
         }
@@ -438,14 +498,14 @@ private fun LedgerCategoryGridItem(
         Box(
             modifier = Modifier
                 .size(54.dp)
-                .then(if (selected) Modifier.border(2.dp, LedgerHeaderGreen, CircleShape) else Modifier),
+                .then(if (selected) Modifier.border(2.dp, LedgerGlassStroke, CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(CircleShape)
-                    .background(ledgerColor(category.color).copy(alpha = 0.92f)),
+                    .background(ledgerColor(category.color).copy(alpha = 0.88f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(ledgerIcon(category.iconKey), contentDescription = category.name, tint = Color.White, modifier = Modifier.size(22.dp))
@@ -486,10 +546,11 @@ private fun LedgerTransferSelector(
         {
             Surface(
                 shape = CircleShape,
-                color = Color(0xFFF4F5F7),
+                color = LedgerPrimaryAction,
+                border = BorderStroke(1.dp, LedgerGlassStroke),
             ) {
                 IconButton(onClick = onSwapClick, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = "交换账户", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.SwapHoriz, contentDescription = "交换账户", tint = LedgerOnPrimaryAction, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -508,8 +569,9 @@ private fun TransferAccountBox(
             .fillMaxWidth()
             .height(76.dp)
             .clickable(onClick = onClick),
-        color = Color(0xFFF8F8F9),
+        color = LedgerRaisedSurface,
         shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -525,28 +587,31 @@ private fun TransferAccountBox(
 private fun LedgerAmountKeyboardPanel(
     modifier: Modifier = Modifier,
     type: LedgerTransactionType,
+    isEditing: Boolean,
     amountText: String,
     remark: String,
     dateLabel: String,
     accountLabel: String,
-    onRemarkChange: (String) -> Unit,
+    onRemarkClick: () -> Unit,
     onDateClick: () -> Unit,
     onAccountClick: () -> Unit,
     onKeyClick: (String) -> Unit,
     onSaveContinue: () -> Unit,
+    onDeleteClick: () -> Unit,
     onDone: () -> Unit,
     saveEnabled: Boolean,
 ) {
     val amountColor = when (type) {
         LedgerTransactionType.EXPENSE -> LedgerExpenseRed
-        LedgerTransactionType.INCOME -> LedgerHeaderGreen
+        LedgerTransactionType.INCOME -> LedgerIncomeGreen
         LedgerTransactionType.TRANSFER -> LedgerHeaderGreen
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = Color.White,
-        shadowElevation = 10.dp,
+        color = LedgerRaisedSurface,
+        shadowElevation = 0.dp,
         shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp),
+        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
     ) {
         Column {
             Row(
@@ -559,9 +624,11 @@ private fun LedgerAmountKeyboardPanel(
                     text = if (remark.isBlank()) "添加备注" else remark,
                     modifier = Modifier
                         .weight(1f)
-                    .clickable { onRemarkChange("") },
-                    color = if (remark.isBlank()) LedgerMuted else Color.Black,
+                        .clickable { onRemarkClick() },
+                    color = if (remark.isBlank()) LedgerMuted else LedgerHeaderGreen,
                     style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = amountText.ifBlank { "0.00" },
@@ -622,10 +689,18 @@ private fun LedgerAmountKeyboardPanel(
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 LedgerKeyboardKey(
-                    text = "保存再记",
+                    text = if (isEditing) "删除" else "保存再记",
                     modifier = Modifier.weight(1.25f),
                     textStyle = MaterialTheme.typography.bodyLarge,
-                    onClick = { if (saveEnabled) onSaveContinue() },
+                    danger = isEditing,
+                    enabled = isEditing || saveEnabled,
+                    onClick = {
+                        if (isEditing) {
+                            onDeleteClick()
+                        } else if (saveEnabled) {
+                            onSaveContinue()
+                        }
+                    },
                 )
                 LedgerKeyboardKey(text = "0", modifier = Modifier.weight(1f), onClick = { onKeyClick("0") })
                 LedgerKeyboardKey(text = ".", modifier = Modifier.weight(1f), onClick = { onKeyClick(".") })
@@ -634,6 +709,7 @@ private fun LedgerAmountKeyboardPanel(
                     text = "完成",
                     modifier = Modifier.weight(1.15f),
                     filled = true,
+                    enabled = saveEnabled,
                     onClick = { if (saveEnabled) onDone() },
                 )
             }
@@ -646,28 +722,97 @@ private fun LedgerKeyboardKey(
     text: String,
     modifier: Modifier = Modifier,
     filled: Boolean = false,
+    danger: Boolean = false,
+    enabled: Boolean = true,
     textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleLarge,
     onClick: () -> Unit,
- ) {
+) {
+    val background = when {
+        !enabled -> if (filled) LedgerPrimaryAction.copy(alpha = 0.42f) else LedgerDivider.copy(alpha = 0.28f)
+        filled -> LedgerPrimaryAction
+        danger -> LedgerMemoryWash
+        else -> LedgerRaisedSurface
+    }
+    val contentColor = when {
+        !enabled -> LedgerMuted.copy(alpha = 0.62f)
+        filled -> LedgerOnPrimaryAction
+        danger -> LedgerExpenseRed
+        else -> LedgerHeaderGreen
+    }
+    val animatedBackground by animateColorAsState(
+        targetValue = background,
+        animationSpec = tween(durationMillis = 150),
+        label = "ledgerKeyboardBackground",
+    )
+    val animatedContentColor by animateColorAsState(
+        targetValue = contentColor,
+        animationSpec = tween(durationMillis = 150),
+        label = "ledgerKeyboardContent",
+    )
     Box(
         modifier = modifier
             .height(56.dp)
-            .background(if (filled) LedgerHeaderGreen else Color.White)
-            .clickable(onClick = onClick),
+            .background(animatedBackground)
+            .yingShiClickable(
+                enabled = enabled,
+                pressedScale = 0.985f,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (text == "⌫") {
-            Icon(Icons.Default.Close, contentDescription = "删除", tint = Color.Black, modifier = Modifier.size(24.dp))
+            Icon(Icons.Default.Close, contentDescription = "删除", tint = animatedContentColor, modifier = Modifier.size(24.dp))
         } else {
             Text(
                 text = text,
                 style = textStyle,
                 fontWeight = FontWeight.Bold,
-                color = if (filled) Color.White else Color.Black,
+                color = animatedContentColor,
                 textAlign = TextAlign.Center,
             )
         }
     }
+}
+
+@Composable
+private fun LedgerRemarkDialog(
+    initialRemark: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var value by rememberSaveable(initialRemark) { mutableStateOf(initialRemark) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = LedgerRaisedSurface,
+        title = {
+            Text(
+                text = "账单备注",
+                color = LedgerHeaderGreen,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("备注") },
+                placeholder = { Text("写下这笔账的来处") },
+                singleLine = false,
+                minLines = 3,
+            )
+        },
+        confirmButton = {
+            LedgerDialogActionButton(
+                text = "保存",
+                emphasized = true,
+                onClick = { onConfirm(value.trim()) },
+            )
+        },
+        dismissButton = {
+            LedgerDialogActionButton(text = "取消", onClick = onDismiss)
+        },
+    )
 }
 
 private fun appendKeyboardInput(expression: String, key: String): String {

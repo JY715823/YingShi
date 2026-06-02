@@ -235,7 +235,7 @@
                     android:background="@drawable/widget_control_dark"
                     android:gravity="center"
                     android:text="+"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#26313A"
                     android:textSize="22sp"
                     android:textStyle="bold" />
 
@@ -303,7 +303,7 @@
         android:background="@drawable/widget_control_dark"
         android:gravity="center"
         android:text="账本"
-        android:textColor="#FFFFFF"
+        android:textColor="#26313A"
         android:textSize="15sp"
         android:textStyle="bold" />
 </LinearLayout>

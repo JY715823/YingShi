@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.photos
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,7 +18,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.getValue
@@ -71,18 +71,23 @@ fun SystemMediaPostDestinationDialog(
         posts.filter { post -> post.albumId == album.id }
             .sortedByDescending { it.postDisplayTimeMillis }
     }.orEmpty()
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
 
     AlertDialog(
         onDismissRequest = {
             if (!isSubmitting) onDismiss()
         },
+        containerColor = colors.raisedSurface,
+        titleContentColor = colors.titleAccent,
+        textContentColor = colors.textSecondary,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(text = if (selectedAlbum == null) "选择大相册" else "选择小相册")
                 Text(
                     text = selectedAlbum?.title ?: "先选择一个大相册，再选择目标小相册",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         },
@@ -116,12 +121,13 @@ fun SystemMediaPostDestinationDialog(
                         Text(
                             text = "按大相册选择",
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = colors.titleAccent,
                         )
                         albumCards.forEach { choice ->
                             Surface(
-                                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+                                shape = RoundedCornerShape(radius.lg),
+                                color = colors.sectionBackground.copy(alpha = 0.68f),
+                                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
                                 onClick = { selectedAlbumId = choice.album.id },
                                 enabled = !isSubmitting,
                             ) {
@@ -132,12 +138,12 @@ fun SystemMediaPostDestinationDialog(
                                     Text(
                                         text = choice.album.title,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        color = colors.textPrimary,
                                     )
                                     Text(
                                         text = "${choice.postCount} 个小相册",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = colors.textSecondary,
                                     )
                                 }
                             }
@@ -163,21 +169,19 @@ fun SystemMediaPostDestinationDialog(
         },
         confirmButton = {
             if (selectedAlbum != null) {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "返回上一级",
                     enabled = !isSubmitting,
                     onClick = { selectedAlbumId = null },
-                ) {
-                    Text(text = "返回上一级")
-                }
+                )
             }
         },
         dismissButton = {
-            TextButton(
+            TrashDialogActionButton(
+                text = "取消",
                 enabled = !isSubmitting,
                 onClick = onDismiss,
-            ) {
-                Text(text = "取消")
-            }
+            )
         },
     )
 }
@@ -190,11 +194,12 @@ private fun SystemMediaRecentPostsSection(
     pendingPostId: String?,
     onPostChosen: (AlbumPostCardUiModel) -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = "最近小相册",
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.titleAccent,
         )
         if (posts.isEmpty()) {
             SystemMediaPickerEmptyState(text = "还没有最近小相册，可从下方大相册选择。")
@@ -220,11 +225,13 @@ private fun SystemMediaPostChoiceCard(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     val albumLabel = albumTitleById[post.albumId].orEmpty()
         .ifBlank { "未归档相册" }
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+        color = colors.sectionBackground.copy(alpha = 0.62f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
         onClick = onClick,
         enabled = enabled,
     ) {
@@ -244,21 +251,7 @@ private fun SystemMediaPostChoiceCard(
                         ),
                         shape = RoundedCornerShape(14.dp),
                     ),
-                contentAlignment = Alignment.BottomEnd,
-            ) {
-                Text(
-                    text = if (post.coverMediaType == AppMediaType.VIDEO) "视频" else "封面",
-                    modifier = Modifier
-                        .padding(4.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-                            shape = RoundedCornerShape(6.dp),
-                        )
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -266,21 +259,21 @@ private fun SystemMediaPostChoiceCard(
                 Text(
                     text = post.title,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = post.summary.ifBlank { "还没有简介" },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = "$albumLabel · ${post.mediaCount} 项媒体 · ${formatSystemMediaPickerTime(post.postDisplayTimeMillis)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -297,9 +290,11 @@ private fun SystemMediaPostChoiceCard(
 
 @Composable
 private fun SystemMediaPickerLoadingState() {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        color = colors.sectionBackground.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Row(
             modifier = Modifier
@@ -312,11 +307,13 @@ private fun SystemMediaPickerLoadingState() {
             CircularProgressIndicator(
                 modifier = Modifier.size(22.dp),
                 strokeWidth = 2.dp,
+                color = colors.titleAccent,
+                trackColor = colors.sectionBackground,
             )
             Text(
-                text = "正在加载大相册和小相册...",
+                text = "正在加载相册…",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -326,9 +323,11 @@ private fun SystemMediaPickerLoadingState() {
 private fun SystemMediaPickerInlineNotice(
     text: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.md),
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
+        color = colors.memoryContainer.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.18f)),
     ) {
         Text(
             text = text,
@@ -336,7 +335,7 @@ private fun SystemMediaPickerInlineNotice(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onErrorContainer,
+            color = colors.onMemoryContainer,
         )
     }
 }
@@ -345,9 +344,11 @@ private fun SystemMediaPickerInlineNotice(
 private fun SystemMediaPickerEmptyState(
     text: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        color = colors.sectionBackground.copy(alpha = 0.54f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
     ) {
         Box(
             modifier = Modifier
@@ -359,7 +360,7 @@ private fun SystemMediaPickerEmptyState(
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }

@@ -32,7 +32,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -119,7 +119,7 @@ fun TrashDetailScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(YingShiThemeTokens.colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(
@@ -168,8 +168,13 @@ fun TrashDetailScreen(
                     "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "永久删除",
+                    danger = true,
                     onClick = {
                         showPermanentDeleteConfirm = false
                         if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
@@ -179,14 +184,10 @@ fun TrashDetailScreen(
                             onBack()
                         }
                     },
-                ) {
-                    Text("永久删除")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showPermanentDeleteConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showPermanentDeleteConfirm = false })
             },
         )
     }
@@ -336,8 +337,13 @@ private fun TrashMediaViewerDetailPagerScreen(
             onDismissRequest = { onShowPermanentDeleteConfirmChange(false) },
             title = { Text("永久删除该回收站项目？") },
             text = { Text("确认后会删除回收站记录，无法恢复。") },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "永久删除",
+                    danger = true,
                     onClick = {
                         onShowPermanentDeleteConfirmChange(false)
                         if (FakeTrashRepository.permanentlyDeleteEntry(currentEntry.id)) {
@@ -347,14 +353,10 @@ private fun TrashMediaViewerDetailPagerScreen(
                             onBack()
                         }
                     },
-                ) {
-                    Text("永久删除")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { onShowPermanentDeleteConfirmChange(false) }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { onShowPermanentDeleteConfirmChange(false) })
             },
         )
     }
@@ -364,8 +366,13 @@ private fun TrashMediaViewerDetailPagerScreen(
             onDismissRequest = { showRestoreConfirm = false },
             title = { Text("确认恢复？") },
             text = { Text("将恢复当前回收站媒体条目。") },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "恢复",
+                    emphasized = true,
                     onClick = {
                         showRestoreConfirm = false
                         val targetMediaIds = currentEntry.restoreTargetMediaIds()
@@ -375,14 +382,10 @@ private fun TrashMediaViewerDetailPagerScreen(
                             onEntryRestored(targetMediaIds)
                         }
                     },
-                ) {
-                    Text("恢复")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showRestoreConfirm = false })
             },
         )
     }
@@ -534,8 +537,13 @@ private fun TrashMediaViewerDetailScreen(
                     "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
                 )
             },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "永久删除",
+                    danger = true,
                     onClick = {
                         onShowPermanentDeleteConfirmChange(false)
                         if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
@@ -545,14 +553,10 @@ private fun TrashMediaViewerDetailScreen(
                             onBack()
                         }
                     },
-                ) {
-                    Text("永久删除")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { onShowPermanentDeleteConfirmChange(false) }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { onShowPermanentDeleteConfirmChange(false) })
             },
         )
     }
@@ -630,6 +634,7 @@ private fun TrashPostViewerDetailScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val colors = YingShiThemeTokens.colors
     val snapshot = entry.postSnapshot
     val postComments = remember(snapshot?.post?.id) {
         snapshot?.post?.id?.let(FakeCommentRepository::getPostComments).orEmpty()
@@ -662,7 +667,7 @@ private fun TrashPostViewerDetailScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(colors.appBackground)
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(
@@ -684,8 +689,8 @@ private fun TrashPostViewerDetailScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                    color = colors.raisedSurface,
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
                 ) {
                     Column(
                         modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
@@ -694,17 +699,17 @@ private fun TrashPostViewerDetailScreen(
                         Text(
                             text = snapshot.post.title.ifBlank { "未命名小相册" },
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = colors.titleAccent,
                         )
                         Text(
                             text = snapshot.post.summary.ifBlank { entry.previewInfo },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colors.textSecondary,
                         )
                         Text(
                             text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 小相册时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)} · ${snapshot.mediaSnapshots.size} 项媒体",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                            color = colors.textSecondary.copy(alpha = 0.84f),
                         )
                     }
                 }
@@ -754,8 +759,13 @@ private fun TrashPostViewerDetailScreen(
             text = {
                 Text("确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。")
             },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "永久删除",
+                    danger = true,
                     onClick = {
                         onShowPermanentDeleteConfirmChange(false)
                         if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
@@ -765,14 +775,10 @@ private fun TrashPostViewerDetailScreen(
                             onBack()
                         }
                     },
-                ) {
-                    Text("永久删除")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { onShowPermanentDeleteConfirmChange(false) }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { onShowPermanentDeleteConfirmChange(false) })
             },
         )
     }
@@ -782,20 +788,21 @@ private fun TrashPostViewerDetailScreen(
             onDismissRequest = { showRestoreConfirm = false },
             title = { Text("确认恢复？") },
             text = { Text("将恢复当前回收站小相册。") },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "恢复",
+                    emphasized = true,
                     onClick = {
                         showRestoreConfirm = false
                         restorePost()
                     },
-                ) {
-                    Text("恢复")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showRestoreConfirm = false })
             },
         )
     }
@@ -808,6 +815,8 @@ private fun TrashPostViewerTopBar(
     onRestore: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
@@ -818,12 +827,12 @@ private fun TrashPostViewerTopBar(
             Text(
                 text = entry.type.label,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.memoryAccent,
             )
             Text(
                 text = "回收站小相册查看",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
         TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
@@ -1002,6 +1011,7 @@ private fun TrashDetailTopBar(
     onRemove: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1013,12 +1023,12 @@ private fun TrashDetailTopBar(
             Text(
                 text = entry.type.label,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.memoryAccent,
             )
             Text(
-                text = "删除态详情",
+                text = "回收站详情",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
         TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
@@ -1032,11 +1042,13 @@ private fun TrashDetailTopBar(
 
 @Composable
 private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
+    val colors = YingShiThemeTokens.colors
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
         Column(
             modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
@@ -1045,17 +1057,17 @@ private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
             Text(
                 text = entry.title.ifBlank { "未命名删除项" },
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Text(
-                text = entry.previewInfo.ifBlank { "当前删除项将优先使用回收站快照展示。" },
+                text = entry.previewInfo.ifBlank { "使用删除前保存的内容展示。" },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             Text(
-                text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 当前仅支持只读查看、恢复和永久删除语义确认",
+                text = "删除于 ${formatTrashDetailTime(entry.deletedAtMillis)} · 可在这里查看、恢复或永久删除",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                color = colors.textSecondary.copy(alpha = 0.84f),
             )
         }
     }
@@ -1063,6 +1075,7 @@ private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
 
 @Composable
 private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
+    val colors = YingShiThemeTokens.colors
     val snapshot = entry.postSnapshot
     if (snapshot == null) {
         TrashDetailEmptyCard(text = "当前小相册内容已不可查看。")
@@ -1081,17 +1094,17 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
         Column(
             modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
             verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
         ) {
             Text(
-                text = "只读小相册浏览",
+                text = "小相册内容",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
 
             if (mediaSnapshots.isEmpty()) {
@@ -1113,14 +1126,14 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
                 Text(
                     text = "${currentPage + 1} / ${mediaSnapshots.size}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                color = colors.sectionBackground.copy(alpha = 0.58f),
             ) {
                 Column(
                     modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
@@ -1129,31 +1142,31 @@ private fun TrashDeletedPostContent(entry: TrashEntryUiModel) {
                     Text(
                         text = snapshot.post.title.ifBlank { "未命名小相册" },
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.titleAccent,
                     )
                     Text(
-                        text = snapshot.post.summary.ifBlank { "该删除态优先使用回收站中的小相册快照。正常列表里即使已经移除，也不会影响这里查看。" },
+                        text = snapshot.post.summary.ifBlank { "这是删除前保存的内容，恢复后会回到对应位置。" },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                     Text(
                         text = "小相册时间 ${formatTrashDetailTime(snapshot.post.postDisplayTimeMillis)}",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                     TrashMetaChipRows(items = albumChips)
                     currentMedia?.let { media ->
                         Text(
                             text = "当前媒体时间 ${formatTrashDetailTime(media.displayTimeMillis)}",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                            color = colors.textSecondary.copy(alpha = 0.84f),
                         )
                     }
                 }
             }
 
             TrashReadOnlyCommentCard(
-                title = "小相册评论（只读）",
+                title = "小相册评论",
                 emptyText = "当前小相册没有可展示的小相册评论。",
                 comments = comments,
             )
@@ -1166,6 +1179,7 @@ private fun TrashDeletedMediaContent(
     entry: TrashEntryUiModel,
     systemWide: Boolean,
 ) {
+    val colors = YingShiThemeTokens.colors
     val media = entry.mediaSnapshot
     if (media == null) {
         TrashDetailEmptyCard(text = "当前媒体内容已不可查看。")
@@ -1180,17 +1194,17 @@ private fun TrashDeletedMediaContent(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
         Column(
             modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
             verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
         ) {
             Text(
-                text = if (systemWide) "只读媒体浏览" else "只读移除态浏览",
+                text = "媒体内容",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
 
             TrashMediaCanvas(
@@ -1203,16 +1217,16 @@ private fun TrashDeletedMediaContent(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                color = colors.sectionBackground.copy(alpha = 0.58f),
             ) {
                 Column(
                     modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
                     verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
                 ) {
                     Text(
-                        text = if (systemWide) "媒体系统删说明" else "媒体移除说明",
+                        text = if (systemWide) "恢复后会怎样" else "小相册关系",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.titleAccent,
                     )
                     Text(
                         text = if (systemWide) {
@@ -1221,25 +1235,25 @@ private fun TrashDeletedMediaContent(
                             "本次只移除了当前小相册与该媒体的关系。媒体本体和媒体评论仍然保留，不影响其他小相册。"
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                     Text(
                         text = "媒体时间 ${formatTrashDetailTime(media.displayTimeMillis)}",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                     media.sourcePostTitle?.let { sourceTitle ->
                         Text(
                             text = "来源小相册 $sourceTitle",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                            color = colors.textSecondary.copy(alpha = 0.84f),
                         )
                     }
                     if (relatedPosts.isEmpty()) {
                         Text(
                             text = "当前没有可展示的小相册关系快照。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colors.textSecondary,
                         )
                     } else {
                         TrashMetaChipRows(
@@ -1252,7 +1266,7 @@ private fun TrashDeletedMediaContent(
             }
 
             TrashReadOnlyCommentCard(
-                title = "媒体评论（只读）",
+                title = "媒体评论",
                 emptyText = "当前媒体没有可展示的评论。",
                 comments = comments,
             )
@@ -1363,11 +1377,13 @@ private fun TrashReadOnlyCommentCard(
     emptyText: String,
     comments: List<CommentUiModel>,
 ) {
+    val colors = YingShiThemeTokens.colors
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
         Column(
             modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
@@ -1376,13 +1392,13 @@ private fun TrashReadOnlyCommentCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             if (comments.isEmpty()) {
                 Text(
                     text = emptyText,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             } else {
                 comments.take(10).forEach { comment ->
@@ -1390,20 +1406,20 @@ private fun TrashReadOnlyCommentCard(
                         Text(
                             text = "${comment.author} · ${formatTrashDetailTime(comment.createdAtMillis)}",
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = colors.memoryAccent,
                         )
                         Text(
                             text = comment.content,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = colors.titleAccent,
                         )
                     }
                 }
                 if (comments.size > 10) {
                     Text(
-                        text = "其余评论保留在本地状态中，当前删除态详情先展示最新 10 条。",
+                        text = "还有 ${comments.size - 10} 条评论未展开",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -1414,9 +1430,12 @@ private fun TrashReadOnlyCommentCard(
 
 @Composable
 private fun TrashMetaChip(text: String) {
+    val colors = YingShiThemeTokens.colors
+
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+        color = colors.primaryContainer.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
     ) {
         Text(
             text = text,
@@ -1425,7 +1444,7 @@ private fun TrashMetaChip(text: String) {
                 vertical = YingShiThemeTokens.spacing.xs,
             ),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.titleAccent,
         )
     }
 }
@@ -1452,20 +1471,26 @@ private fun TrashCircleButton(
     text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = CircleShape
+
     Surface(
         modifier = Modifier
             .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+            .yingShiClickable(
+                shape = shape,
+                pressedScale = 0.94f,
+                onClick = onClick,
+            ),
+        shape = shape,
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
         }
     }
@@ -1477,22 +1502,27 @@ private fun TrashActionChip(
     emphasized: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+
     Surface(
-        modifier = Modifier
-            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        modifier = Modifier.yingShiClickable(
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
         color = if (emphasized) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            colors.primaryContainer.copy(alpha = 0.78f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f)
+            colors.raisedSurface.copy(alpha = 0.94f)
         },
         border = BorderStroke(
             width = 1.dp,
             color = if (emphasized) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                colors.glassStroke.copy(alpha = 0.68f)
             } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                colors.dividerSoft.copy(alpha = 0.66f)
             },
         ),
     ) {
@@ -1503,7 +1533,7 @@ private fun TrashActionChip(
                 vertical = YingShiThemeTokens.spacing.xs,
             ),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (emphasized) colors.titleAccent else colors.textSecondary,
         )
     }
 }
@@ -1513,16 +1543,19 @@ private fun TrashDetailEmptyCard(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+        color = colors.sectionBackground.copy(alpha = 0.56f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -1532,10 +1565,12 @@ private fun TrashDetailMissingState(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(
                 horizontal = YingShiThemeTokens.spacing.lg,
@@ -1548,19 +1583,19 @@ private fun TrashDetailMissingState(
                 id = "missing",
                 type = TrashEntryType.POST_DELETED,
                 deletedAtMillis = System.currentTimeMillis(),
-                title = "删除态详情不可用",
+                title = "回收站项目不可用",
                 previewInfo = "当前删除项不存在。",
                 palette = PhotoThumbnailPalette(
-                    start = MaterialTheme.colorScheme.surfaceVariant,
-                    end = MaterialTheme.colorScheme.surface,
-                    accent = MaterialTheme.colorScheme.primary,
+                    start = colors.sectionBackground,
+                    end = colors.raisedSurface,
+                    accent = colors.primaryContainer,
                 ),
             ),
             onBack = onBack,
             onRestore = { },
             onRemove = { },
         )
-        TrashDetailEmptyCard(text = "该删除项不存在或已被移出回收站。若原始对象已经从正常列表移除，这里也不会再尝试去 active repository 强行取数。")
+        TrashDetailEmptyCard(text = "该项目不存在或已被移出回收站。")
     }
 }
 

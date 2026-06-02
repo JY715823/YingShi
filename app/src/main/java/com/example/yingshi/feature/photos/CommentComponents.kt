@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,7 +18,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -135,7 +135,8 @@ fun CommentInputBar(
             )
         }
 
-        TextButton(
+        CommentActionButton(
+            text = "发送",
             enabled = sendEnabled,
             onClick = {
                 val trimmed = value.trim()
@@ -144,17 +145,9 @@ fun CommentInputBar(
                     value = ""
                 }
             },
-        ) {
-            Text(
-                text = "发送",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (sendEnabled) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    placeholderColor
-                },
-            )
-        }
+            darkMode = darkMode,
+            emphasized = true,
+        )
     }
 }
 
@@ -266,22 +259,18 @@ fun CommentListItem(
                         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = onCancelEdit) {
-                            Text(text = "取消", color = metaColor)
-                        }
-                        TextButton(
+                        CommentActionButton(
+                            text = "取消",
+                            darkMode = darkMode,
+                            onClick = onCancelEdit,
+                        )
+                        CommentActionButton(
+                            text = "保存",
                             enabled = editingValue.trim().isNotEmpty(),
                             onClick = onSaveEdit,
-                        ) {
-                            Text(
-                                text = "保存",
-                                color = if (editingValue.trim().isNotEmpty()) {
-                                    if (darkMode) Color.White.copy(alpha = 0.92f) else MaterialTheme.colorScheme.primary
-                                } else {
-                                    metaColor
-                                },
-                            )
-                        }
+                            darkMode = darkMode,
+                            emphasized = true,
+                        )
                     }
                 }
 
@@ -432,13 +421,57 @@ private fun CommentSelectableText(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
-            TextButton(onClick = onCopySelection) {
-                Text(
-                    text = "复制",
-                    color = if (darkMode) Color.White.copy(alpha = 0.92f) else MaterialTheme.colorScheme.primary,
-                )
-            }
+            CommentActionButton(
+                text = "复制",
+                darkMode = darkMode,
+                emphasized = true,
+                onClick = onCopySelection,
+            )
         }
+    }
+}
+
+@Composable
+private fun CommentActionButton(
+    text: String,
+    enabled: Boolean = true,
+    darkMode: Boolean = false,
+    emphasized: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val containerColor = when {
+        darkMode && emphasized -> Color.White.copy(alpha = 0.16f)
+        darkMode -> Color.White.copy(alpha = 0.08f)
+        !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
+        emphasized -> colors.primaryContainer.copy(alpha = 0.86f)
+        else -> colors.sectionBackground.copy(alpha = 0.72f)
+    }
+    val contentColor = when {
+        !enabled && darkMode -> Color.White.copy(alpha = 0.36f)
+        !enabled -> colors.textSecondary.copy(alpha = 0.55f)
+        darkMode -> Color.White.copy(alpha = 0.92f)
+        emphasized -> colors.titleAccent
+        else -> colors.textSecondary
+    }
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(
+            1.dp,
+            if (darkMode) Color.White.copy(alpha = 0.10f) else colors.dividerSoft.copy(alpha = 0.68f),
+        ),
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = contentColor,
+        )
     }
 }
 

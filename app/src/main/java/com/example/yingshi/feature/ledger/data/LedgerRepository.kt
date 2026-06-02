@@ -431,6 +431,30 @@ class LedgerRepository(
         syncBridge.afterMutation(this)
     }
 
+    suspend fun saveTransactions(drafts: List<LedgerTransactionDraft>) {
+        if (drafts.isEmpty()) return
+        val now = System.currentTimeMillis()
+        dao.insertTransactions(
+            drafts.map { draft ->
+                LedgerTransactionEntity(
+                    id = draft.id ?: UUID.randomUUID().toString(),
+                    bookId = draft.bookId,
+                    categoryId = draft.categoryId,
+                    accountId = draft.accountId,
+                    toAccountId = draft.toAccountId,
+                    amountCents = draft.amountCents,
+                    type = draft.type,
+                    occurredAtMillis = draft.occurredAtMillis,
+                    remark = draft.remark.trim(),
+                    method = "import",
+                    createdAtMillis = now,
+                    updatedAtMillis = now,
+                )
+            },
+        )
+        syncBridge.afterMutation(this)
+    }
+
     suspend fun saveCategory(draft: LedgerCategoryDraft) {
         val now = System.currentTimeMillis()
         val existing = draft.id?.let { dao.getCategory(it) }

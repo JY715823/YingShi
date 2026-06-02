@@ -672,7 +672,7 @@ private fun PhotoTopBar(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhotoBrandTabs(
@@ -682,7 +682,7 @@ private fun PhotoTopBar(
         )
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PhotoCircleToolButton(
@@ -728,7 +728,7 @@ private fun PhotoBrandTabs(
     val colors = YingShiThemeTokens.colors
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhotosTopDestination.entries.forEachIndexed { index, destination ->
@@ -750,7 +750,7 @@ private fun PhotoBrandTabs(
             ) {
                 Text(
                     text = destination.label,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
@@ -836,7 +836,7 @@ private fun PhotoCircleToolButton(
 
     Surface(
         modifier = Modifier
-            .size(34.dp)
+            .size(32.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         shape = CircleShape,
@@ -855,7 +855,7 @@ private fun PhotoCircleToolButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = colors.titleAccent,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(18.dp),
             )
             if (!badgeText.isNullOrBlank()) {
                 Surface(

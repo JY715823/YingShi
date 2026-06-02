@@ -2,7 +2,6 @@
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.scrollBy
@@ -28,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -413,20 +412,18 @@ fun TrashPageScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "清空当前分类",
+                    danger = true,
                     enabled = entries.isNotEmpty(),
                     onClick = {
                         showClearConfirm = false
                         deleteEntries(entries, "已清空当前分类")
                     },
-                ) {
-                    Text("清空当前分类")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showClearConfirm = false })
             },
         )
     }
@@ -440,7 +437,9 @@ fun TrashPageScreen(
             title = { Text("确认恢复？") },
             text = { Text("将恢复 ${pendingRestoreEntries.size} 个回收站条目。恢复后会回到对应照片流或小相册关系。") },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "恢复",
+                    emphasized = true,
                     enabled = pendingRestoreEntries.isNotEmpty(),
                     onClick = {
                         val restoringEntries = pendingRestoreEntries
@@ -448,19 +447,16 @@ fun TrashPageScreen(
                         pendingRestoreEntries = emptyList()
                         restoreEntries(restoringEntries)
                     },
-                ) {
-                    Text("恢复")
-                }
+                )
             },
             dismissButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "取消",
                     onClick = {
                         showRestoreConfirm = false
                         pendingRestoreEntries = emptyList()
                     },
-                ) {
-                    Text("取消")
-                }
+                )
             },
         )
     }
@@ -475,20 +471,18 @@ fun TrashPageScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "删除选中项",
+                    danger = true,
                     enabled = selectedEntries.isNotEmpty(),
                     onClick = {
                         showDeleteSelectedConfirm = false
                         deleteEntries(selectedEntries, "已删除选中项")
                     },
-                ) {
-                    Text("删除选中项")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteSelectedConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showDeleteSelectedConfirm = false })
             },
         )
     }
@@ -508,6 +502,7 @@ private fun TrashCategoryActionRow(
     onRequestClearCurrent: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -521,12 +516,13 @@ private fun TrashCategoryActionRow(
             Text(
                 text = "已选 $selectedCount 项",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.titleAccent,
             )
         } else {
             Box {
                 TrashIconActionButton(
-                    text = "☰",
+                    text = "菜单",
+                    emphasized = true,
                     onClick = { onMenuExpandedChange(true) },
                 )
                 DropdownMenu(
@@ -541,9 +537,9 @@ private fun TrashCategoryActionRow(
                                         .fillMaxWidth()
                                         .background(
                                             if (type == selectedType) {
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                                                colors.primaryContainer.copy(alpha = 0.54f)
                                             } else {
-                                                MaterialTheme.colorScheme.surface
+                                                Color.Transparent
                                             },
                                             RoundedCornerShape(YingShiThemeTokens.radius.md),
                                         )
@@ -562,16 +558,16 @@ private fun TrashCategoryActionRow(
                                             },
                                         ),
                                         color = if (type == selectedType) {
-                                            MaterialTheme.colorScheme.primary
+                                            colors.titleAccent
                                         } else {
-                                            MaterialTheme.colorScheme.onSurface
+                                            colors.textPrimary
                                         },
                                     )
                                     if (type == selectedType) {
                                         Text(
                                             text = "✓",
                                             style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.primary,
+                                            color = colors.titleAccent,
                                         )
                                     }
                                 }
@@ -586,14 +582,15 @@ private fun TrashCategoryActionRow(
             }
         }
         Box(modifier = Modifier.weight(1f))
-        TextButton(
+        TrashIconActionButton(
+            text = "恢复",
+            emphasized = true,
             enabled = entryCount > 0 || selectionMode,
             onClick = onRestoreCurrent,
-        ) {
-            Text("↩")
-        }
+        )
         TrashIconActionButton(
-            text = "🗑",
+            text = "删除",
+            danger = true,
             enabled = entryCount > 0 || selectionMode,
             onClick = onRequestClearCurrent,
         )
@@ -604,39 +601,70 @@ private fun TrashCategoryActionRow(
 private fun TrashIconActionButton(
     text: String,
     enabled: Boolean = true,
+    emphasized: Boolean = false,
+    danger: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val containerColor = when {
+        !enabled -> colors.sectionBackground.copy(alpha = 0.52f)
+        danger -> colors.memoryContainer.copy(alpha = 0.78f)
+        emphasized -> colors.primaryContainer.copy(alpha = 0.78f)
+        else -> colors.raisedSurface.copy(alpha = 0.96f)
+    }
+    val contentColor = when {
+        !enabled -> colors.textSecondary.copy(alpha = 0.64f)
+        danger -> colors.memoryAccent
+        else -> colors.titleAccent
+    }
     Surface(
-        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (enabled) {
-            MaterialTheme.colorScheme.surface
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
-        },
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = if (enabled) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.52f)
-            },
+            color = contentColor,
         )
     }
 }
+
+@Composable
+internal fun TrashDialogActionButton(
+    text: String,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    TrashIconActionButton(
+        text = text,
+        enabled = enabled,
+        emphasized = emphasized,
+        danger = danger,
+        onClick = onClick,
+    )
+}
+
 @Composable
 private fun TrashSnackbarCard(message: String) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
         tonalElevation = 0.dp,
-        shadowElevation = 2.dp,
+        shadowElevation = 0.dp,
     ) {
         Text(
             text = message,
@@ -645,7 +673,7 @@ private fun TrashSnackbarCard(message: String) {
                 vertical = YingShiThemeTokens.spacing.sm,
             ),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.titleAccent,
         )
     }
 }
@@ -656,9 +684,9 @@ private fun TrashGridMonthHeader(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 8.dp),
-        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onBackground,
+            .padding(top = 6.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = YingShiThemeTokens.colors.titleAccent,
     )
 }
 
@@ -728,11 +756,12 @@ private fun TrashMediaGridCell(
         }
 
         if (showPostTitle) {
+            val colors = YingShiThemeTokens.colors
             Surface(
                 modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
                 shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+                color = colors.raisedSurface.copy(alpha = 0.86f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
             ) {
                 Text(
                     text = trashGridPostTitle(entry),
@@ -740,7 +769,7 @@ private fun TrashMediaGridCell(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         }
@@ -779,6 +808,7 @@ private fun TrashEntryRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier
@@ -788,8 +818,8 @@ private fun TrashEntryRow(
                 onLongClick = onLongClick,
             ),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.95f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
         Row(
             modifier = Modifier.padding(spacing.md),
@@ -818,34 +848,34 @@ private fun TrashEntryRow(
                 Text(
                     text = entry.type.label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.memoryAccent,
                 )
                 Text(
                     text = entry.title,
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = trashEntryTypeDescription(entry),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.titleAccent,
                 )
                 Text(
                     text = entry.previewInfo,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
                 Text(
                     text = "${trashEntrySourceLine(entry)} · ${formatTrashEntryTime(entry.deletedAtMillis)}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
+                    color = colors.textSecondary.copy(alpha = 0.82f),
                 )
             }
             if (!selectionMode) {
                 Text(
                     text = "查看",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.titleAccent,
                 )
             }
         }
@@ -910,13 +940,13 @@ private fun TrashEntryPreview(
                 .padding(YingShiThemeTokens.spacing.xs)
                 .align(Alignment.BottomStart),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            color = YingShiThemeTokens.colors.raisedSurface.copy(alpha = 0.84f),
         ) {
             Text(
                 text = label,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = YingShiThemeTokens.colors.titleAccent,
             )
         }
     }
@@ -960,16 +990,18 @@ private fun trashEntrySourceLine(entry: TrashEntryUiModel): String {
 
 @Composable
 private fun TrashEmptyCard(text: String) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+        color = colors.sectionBackground.copy(alpha = 0.56f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.60f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }

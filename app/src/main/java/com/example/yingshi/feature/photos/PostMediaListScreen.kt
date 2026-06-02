@@ -33,7 +33,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,6 +63,7 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -97,6 +97,7 @@ internal fun PostMediaListScreen(
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val initialKey = remember(initialItems, initialCoverMediaId) {
         initialItems.joinToString("|") { it.id } + "::" + initialCoverMediaId.orEmpty()
     }
@@ -287,7 +288,7 @@ internal fun PostMediaListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -321,7 +322,7 @@ internal fun PostMediaListScreen(
                 Text(
                     text = "当前没有媒体。",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         } else {
@@ -433,22 +434,23 @@ internal fun PostMediaListScreen(
     pendingSingleDeleteId?.let { mediaId ->
         AlertDialog(
             onDismissRequest = { pendingSingleDeleteId = null },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
             title = { Text("移除媒体？") },
             text = { Text("确认从当前小相册媒体列表中移除这项媒体。") },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "移除",
+                    danger = true,
                     onClick = {
                         pendingSingleDeleteId = null
                         removeIds(setOf(mediaId))
                     },
-                ) {
-                    Text("移除")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { pendingSingleDeleteId = null }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { pendingSingleDeleteId = null })
             },
         )
     }
@@ -456,10 +458,14 @@ internal fun PostMediaListScreen(
     if (showBatchDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showBatchDeleteConfirm = false },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
             title = { Text("批量移除媒体？") },
             text = { Text("确认从当前小相册媒体列表中移除已选 ${selectedIds.size} 项媒体。") },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "移除",
                     onClick = {
                         val deleteIds = selectedIds
                         showBatchDeleteConfirm = false
@@ -470,14 +476,11 @@ internal fun PostMediaListScreen(
                         }
                     },
                     enabled = selectedIds.isNotEmpty(),
-                ) {
-                    Text("移除")
-                }
+                    danger = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showBatchDeleteConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showBatchDeleteConfirm = false })
             },
         )
     }
@@ -485,12 +488,13 @@ internal fun PostMediaListScreen(
     if (showKeepOneMediaDialog) {
         AlertDialog(
             onDismissRequest = { showKeepOneMediaDialog = false },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
             title = { Text("至少保留一项媒体") },
             text = { Text("当前小相册媒体管理暂不允许把小相册媒体全部移除。") },
             confirmButton = {
-                TextButton(onClick = { showKeepOneMediaDialog = false }) {
-                    Text("知道了")
-                }
+                TrashDialogActionButton(text = "知道了", emphasized = true, onClick = { showKeepOneMediaDialog = false })
             },
         )
     }
@@ -504,19 +508,19 @@ private fun PostMediaListTopBar(
     onConfirm: () -> Unit,
     onBatchDelete: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onCancel) {
-            Text("取消")
-        }
+        PostMediaTopActionButton(text = "取消", onClick = onCancel)
         Text(
             text = "小相册媒体列表",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onBackground,
+            color = colors.titleAccent,
         )
         if (batchDeleteMode) {
             TrashIconButton(
@@ -524,10 +528,42 @@ private fun PostMediaListTopBar(
                 onClick = onBatchDelete,
             )
         } else {
-            TextButton(onClick = onConfirm) {
-                Text("确定")
-            }
+            PostMediaTopActionButton(text = "保存", emphasized = true, onClick = onConfirm)
         }
+    }
+}
+
+@Composable
+private fun PostMediaTopActionButton(
+    text: String,
+    emphasized: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = Modifier.yingShiClickable(
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = if (emphasized) {
+            colors.primaryContainer.copy(alpha = 0.86f)
+        } else {
+            colors.softGreenContainer.copy(alpha = 0.66f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) colors.glassStroke.copy(alpha = 0.78f) else colors.dividerSoft.copy(alpha = 0.72f),
+        ),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.titleAccent,
+        )
     }
 }
 
@@ -639,52 +675,65 @@ private fun PostMediaViewerScreen(
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                color = Color.Black.copy(alpha = 0.46f),
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("返回", color = Color.White)
-                }
-            }
+            PostMediaViewerActionButton(text = "返回", onClick = onBack)
             Box(modifier = Modifier.weight(1f))
-            Surface(
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                color = Color.Black.copy(alpha = if (isCover) 0.28f else 0.46f),
-            ) {
-                TextButton(
-                    enabled = !isCover,
-                    onClick = { showSetCoverConfirm = true },
-                ) {
-                    Text(
-                        text = "设为封面",
-                        color = if (isCover) Color.White.copy(alpha = 0.54f) else Color.White,
-                    )
-                }
-            }
+            PostMediaViewerActionButton(
+                text = if (isCover) "当前封面" else "设为封面",
+                enabled = !isCover,
+                onClick = { showSetCoverConfirm = true },
+            )
         }
     }
 
     if (showSetCoverConfirm) {
+        val colors = YingShiThemeTokens.colors
         AlertDialog(
             onDismissRequest = { showSetCoverConfirm = false },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
             title = { Text("设为封面？") },
             text = { Text("确认将这项媒体设为当前小相册的封面。") },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = "设为封面",
+                    emphasized = true,
                     onClick = {
                         showSetCoverConfirm = false
                         onConfirmSetCover()
                     },
-                ) {
-                    Text("设为封面")
-                }
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showSetCoverConfirm = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showSetCoverConfirm = false })
             },
+        )
+    }
+}
+
+@Composable
+private fun PostMediaViewerActionButton(
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = Color.Black.copy(alpha = if (enabled) 0.46f else 0.28f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = if (enabled) 0.18f else 0.08f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White.copy(alpha = if (enabled) 0.94f else 0.54f),
         )
     }
 }
@@ -708,13 +757,14 @@ private fun PostMediaListCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .offset { dragOffset.toIntOffset() },
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -782,11 +832,10 @@ private fun PostMediaListCard(
                         shape = RoundedCornerShape(radius.capsule),
                         color = Color.Black.copy(alpha = 0.36f),
                     ) {
-                        Text(
-                            text = "播放",
-                            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White,
+                        VideoGlyph(
+                            state = VideoGlyphState.PLAY,
+                            modifier = Modifier.padding(spacing.xs),
+                            tint = Color.White.copy(alpha = 0.92f),
                         )
                     }
                 }
@@ -821,6 +870,7 @@ private fun PostMediaDragOverlay(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val density = LocalDensity.current
     Surface(
         modifier = modifier
@@ -833,10 +883,10 @@ private fun PostMediaDragOverlay(
                 shadowElevation = 18f
                 scaleX = 1.035f
                 scaleY = 1.035f
-            },
+        },
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+        color = colors.raisedSurface,
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.76f)),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             PostMediaListThumbnail(
@@ -869,11 +919,10 @@ private fun PostMediaDragOverlay(
                     shape = RoundedCornerShape(radius.capsule),
                     color = Color.Black.copy(alpha = 0.36f),
                 ) {
-                    Text(
-                        text = "播放",
-                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White,
+                    VideoGlyph(
+                        state = VideoGlyphState.PLAY,
+                        modifier = Modifier.padding(spacing.xs),
+                        tint = Color.White.copy(alpha = 0.92f),
                     )
                 }
             }
@@ -964,26 +1013,27 @@ private fun TrashIconButton(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
             .size(40.dp)
             .combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
-            ),
+        ),
         shape = CircleShape,
         color = if (enabled) {
-            MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+            colors.memoryContainer.copy(alpha = 0.84f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            colors.sectionBackground.copy(alpha = 0.56f)
         },
         border = BorderStroke(
             1.dp,
-            if (enabled) MaterialTheme.colorScheme.error.copy(alpha = 0.2f) else Color.Transparent,
+            if (enabled) colors.memoryAccent.copy(alpha = 0.20f) else colors.dividerSoft.copy(alpha = 0.46f),
         ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
-            val color = if (enabled) Color(0xFFDC2626) else Color(0xFF9CA3AF)
+            val color = if (enabled) colors.memoryAccent else colors.textSecondary.copy(alpha = 0.62f)
             drawLine(color, Offset(size.width * 0.25f, size.height * 0.28f), Offset(size.width * 0.75f, size.height * 0.28f), strokeWidth = 2.2f, cap = StrokeCap.Round)
             drawLine(color, Offset(size.width * 0.42f, size.height * 0.14f), Offset(size.width * 0.58f, size.height * 0.14f), strokeWidth = 2.2f, cap = StrokeCap.Round)
             drawLine(color, Offset(size.width * 0.34f, size.height * 0.34f), Offset(size.width * 0.40f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)

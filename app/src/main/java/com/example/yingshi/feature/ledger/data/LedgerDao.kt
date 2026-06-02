@@ -357,6 +357,11 @@ interface LedgerDao {
     }
 
     @Transaction
+    suspend fun insertTransactions(transactions: List<LedgerTransactionEntity>) {
+        transactions.forEach { insertTransaction(it) }
+    }
+
+    @Transaction
     suspend fun updateTransaction(updated: LedgerTransactionEntity) {
         val previous = getTransaction(updated.id) ?: return insertTransaction(updated)
         if (previous.deletedAtMillis == null) {

@@ -502,6 +502,29 @@ class LedgerViewModel(
         }
     }
 
+    fun importTransactions(
+        preview: LedgerImportPreview,
+        onImported: () -> Unit = {},
+    ) {
+        val drafts = preview.validRows.mapNotNull { it.draft }
+        if (drafts.isEmpty()) {
+            _uiState.update { it.copy(message = "没有可导入的有效账单") }
+            return
+        }
+        viewModelScope.launch {
+            repository.saveTransactions(drafts)
+            _uiState.update {
+                it.copy(message = "已导入 ${drafts.size} 笔，跳过 ${preview.invalidCount} 行")
+            }
+            observe()
+            onImported()
+        }
+    }
+
+    fun exportCurrentBookTransactionsText(): String {
+        return exportLedgerTransactionsCsv(_uiState.value.allTransactions)
+    }
+
     fun saveCategory(
         categoryId: String? = null,
         name: String,

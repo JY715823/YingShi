@@ -197,7 +197,7 @@
         <item name="android:layout_margin">8dp</item>
         <item name="android:background">@drawable/widget_control_dark</item>
         <item name="android:gravity">center</item>
-        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textColor">#26313A</item>
         <item name="android:textSize">22sp</item>
         <item name="android:textStyle">bold</item>
     </style>

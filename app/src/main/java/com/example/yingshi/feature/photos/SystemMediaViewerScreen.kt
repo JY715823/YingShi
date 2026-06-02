@@ -38,7 +38,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -314,28 +313,35 @@ fun SystemMediaViewerScreen(
         }
 
         if (showSystemTrashConfirm) {
+            val dialogColors = YingShiThemeTokens.colors
             AlertDialog(
                 onDismissRequest = { showSystemTrashConfirm = false },
-                title = { Text("移到系统相册回收站？") },
+                containerColor = dialogColors.raisedSurface,
+                titleContentColor = dialogColors.titleAccent,
+                textContentColor = dialogColors.textSecondary,
+                title = {
+                    Text(
+                        text = "移到系统相册回收站？",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                },
                 text = {
                     Text(
                         "当前媒体会交给 Android 系统回收站处理，不会进入映世回收站，也不会影响照片流中已经导入的内容；确认后还会出现 Android 系统确认框。",
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 },
                 confirmButton = {
-                    TextButton(
+                    TrashDialogActionButton(
+                        text = "继续系统回收站",
                         onClick = {
                             showSystemTrashConfirm = false
                             launchSystemTrashRequest(item)
                         },
-                    ) {
-                        Text("继续系统回收站")
-                    }
+                    )
                 },
                 dismissButton = {
-                    TextButton(onClick = { showSystemTrashConfirm = false }) {
-                        Text("取消")
-                    }
+                    TrashDialogActionButton(text = "取消", onClick = { showSystemTrashConfirm = false })
                 },
             )
         }

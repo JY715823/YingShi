@@ -57,15 +57,15 @@ fun LifeScreen(
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(top = 12.dp, bottom = 92.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+                .padding(top = 10.dp, bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = "映世",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -76,16 +76,11 @@ fun LifeScreen(
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.titleAccent,
                     )
-                    Text(
-                        text = "账本、聊天和今日痕迹",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textSecondary,
-                    )
                 }
                 YingShiIconBubble(
                     icon = Icons.Rounded.Notifications,
                     contentDescription = "通知",
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(44.dp),
                     onClick = onOpenNotifications,
                 )
             }
@@ -96,20 +91,23 @@ fun LifeScreen(
                 title = "记账",
                 summary = "这个月的生活小账",
                 status = "打开账本",
+                accent = LifeEntryAccent.GREEN,
                 icon = Icons.Rounded.AccountBalanceWallet,
                 onClick = onOpenLedger,
             )
             LifeEntryCard(
                 title = "今日痕迹",
-                summary = "人物和吃饭记录",
+                summary = "照片和饭点记录",
                 status = "查看记录",
+                accent = LifeEntryAccent.BLUE,
                 icon = Icons.Rounded.DashboardCustomize,
                 onClick = onOpenLifeConsole,
             )
             LifeEntryCard(
-                title = "聊天记录查看器",
+                title = "聊天记录",
                 summary = "本地离线回看旧对话",
                 status = "打开",
+                accent = LifeEntryAccent.WARM,
                 icon = Icons.Rounded.ChatBubbleOutline,
                 onClick = onOpenChatViewer,
             )
@@ -135,7 +133,7 @@ private fun LifeOverviewCard(
     ) {
         Row(
             modifier = Modifier
-                .padding(13.dp)
+                .padding(12.dp)
                 .fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -151,13 +149,13 @@ private fun LifeOverviewCard(
                     contentDescription = null,
                     tint = colors.titleAccent,
                     modifier = Modifier
-                        .padding(9.dp)
-                        .size(22.dp),
+                        .padding(8.dp)
+                        .size(21.dp),
                 )
             }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = "这个月的生活小账",
@@ -166,7 +164,7 @@ private fun LifeOverviewCard(
                 )
                 Text(
                     text = "支出、预算和账单",
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -193,64 +191,84 @@ private fun LifeEntryCard(
     title: String,
     summary: String,
     status: String,
+    accent: LifeEntryAccent,
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
+    val accentContainer = when (accent) {
+        LifeEntryAccent.BLUE -> colors.primaryContainer.copy(alpha = 0.70f)
+        LifeEntryAccent.GREEN -> colors.softGreenContainer.copy(alpha = 0.88f)
+        LifeEntryAccent.WARM -> colors.memoryContainer.copy(alpha = 0.70f)
+    }
+    val accentContent = when (accent) {
+        LifeEntryAccent.BLUE -> colors.titleAccent
+        LifeEntryAccent.GREEN -> colors.softGreenAction
+        LifeEntryAccent.WARM -> colors.memoryAccent
+    }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
         shadowElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
                 shape = CircleShape,
-                color = colors.sectionBackground.copy(alpha = 0.82f),
+                color = accentContainer,
                 border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.64f)),
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = colors.titleAccent,
+                    tint = accentContent,
                     modifier = Modifier
-                        .padding(9.dp)
-                        .size(22.dp),
+                        .padding(8.dp)
+                        .size(21.dp),
                 )
             }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = status,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.softGreenAction,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Surface(
+                shape = RoundedCornerShape(radius.capsule),
+                color = accentContainer,
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.50f)),
+            ) {
+                Text(
+                    text = status,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = accentContent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Icon(
                 imageVector = Icons.Rounded.ChevronRight,
                 contentDescription = null,
@@ -259,6 +277,12 @@ private fun LifeEntryCard(
             )
         }
     }
+}
+
+private enum class LifeEntryAccent {
+    BLUE,
+    GREEN,
+    WARM,
 }
 
 @Preview(showBackground = true)

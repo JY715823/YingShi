@@ -478,7 +478,7 @@ private fun AlbumIconAction(
     val resolvedContentColor = contentColor ?: colors.titleAccent
     Surface(
         modifier = Modifier
-            .size(34.dp)
+            .size(32.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = containerColor ?: colors.sectionBackground.copy(alpha = 0.82f),
@@ -491,7 +491,7 @@ private fun AlbumIconAction(
                     imageVector = icon,
                     contentDescription = contentDescription,
                     tint = resolvedContentColor,
-                    modifier = Modifier.size(19.dp),
+                    modifier = Modifier.size(18.dp),
                 )
             } else {
                 Text(
@@ -562,13 +562,13 @@ private fun AlbumSwitchSection(
         border = null,
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 1.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(vertical = 0.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 visibleAlbums.forEach { album ->
@@ -822,13 +822,13 @@ private fun AlbumSwitchChip(
         shadowElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(9.dp)
+                    .size(8.dp)
                     .clip(RoundedCornerShape(3.dp))
                     .background(Brush.linearGradient(listOf(album.accent.start, album.accent.end))),
             )

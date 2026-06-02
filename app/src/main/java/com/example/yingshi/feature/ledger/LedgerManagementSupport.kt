@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -480,7 +479,8 @@ fun LedgerDateRangeDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            LedgerDialogActionButton(
+                text = "确定",
                 onClick = {
                     val start = startText.trim().takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: startText.trim().takeIf { it.isBlank() }?.let { null }
                     val end = endText.trim().takeIf { it.isNotBlank() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: endText.trim().takeIf { it.isBlank() }?.let { null }
@@ -488,12 +488,13 @@ fun LedgerDateRangeDialog(
                         onConfirm(start, end)
                     }
                 },
-            ) { Text("确定") }
+                emphasized = true,
+            )
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onClick = { onConfirm(null, null) }) { Text("清空") }
-                TextButton(onClick = onDismiss) { Text("取消") }
+                LedgerDialogActionButton(text = "清空", onClick = { onConfirm(null, null) }, danger = true)
+                LedgerDialogActionButton(text = "取消", onClick = onDismiss)
             }
         },
     )
@@ -528,7 +529,8 @@ fun LedgerAmountRangeDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            LedgerDialogActionButton(
+                text = "确定",
                 onClick = {
                     val min = minText.trim().takeIf { it.isNotBlank() }?.toCentsOrNull()
                     val max = maxText.trim().takeIf { it.isNotBlank() }?.toCentsOrNull()
@@ -536,12 +538,13 @@ fun LedgerAmountRangeDialog(
                         onConfirm(min, max)
                     }
                 },
-            ) { Text("确定") }
+                emphasized = true,
+            )
         },
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onClick = { onConfirm(null, null) }) { Text("清空") }
-                TextButton(onClick = onDismiss) { Text("取消") }
+                LedgerDialogActionButton(text = "清空", onClick = { onConfirm(null, null) }, danger = true)
+                LedgerDialogActionButton(text = "取消", onClick = onDismiss)
             }
         },
     )
@@ -590,15 +593,16 @@ private fun SheetHeader(
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        TextButton(onClick = onDismiss) { Text("取消", color = LedgerMuted) }
+        LedgerDialogActionButton(text = "取消", onClick = onDismiss)
         Text(
             text = title,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
-        TextButton(onClick = onConfirm) { Text("保存", color = LedgerHeaderGreen, fontWeight = FontWeight.Bold) }
+        LedgerDialogActionButton(text = "保存", onClick = onConfirm, emphasized = true)
     }
 }
 
@@ -607,8 +611,9 @@ private fun SheetTitleOnly(title: String, onDismiss: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        TextButton(onClick = onDismiss) { Text("取消", color = LedgerMuted) }
+        LedgerDialogActionButton(text = "取消", onClick = onDismiss)
         Text(
             text = title,
             modifier = Modifier.weight(1f),

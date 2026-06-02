@@ -22,13 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +71,7 @@ fun GearEditScreen(
     }
 
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val context = LocalContext.current
     val post = remember(route.postId) { FakeAlbumRepository.getPost(route.postId) }
     val initialDraft = remember(route.postId) {
@@ -209,7 +207,7 @@ fun GearEditScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -331,7 +329,15 @@ fun GearEditScreen(
     if (showDeletePostDialog) {
         AlertDialog(
             onDismissRequest = { showDeletePostDialog = false },
-            title = { Text("删除整个小相册") },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            title = {
+                Text(
+                    text = "删除整个小相册",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+            },
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
@@ -349,28 +355,25 @@ fun GearEditScreen(
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
-                    TextButton(
+                    TrashDialogActionButton(
+                        text = "仅删小相册",
                         onClick = {
                             showDeletePostDialog = false
                             onDeleteCurrentPost(route.postId, false)
                         },
-                    ) {
-                        Text("仅删小相册")
-                    }
-                    TextButton(
+                    )
+                    TrashDialogActionButton(
+                        text = "同时系统删媒体",
+                        danger = true,
                         onClick = {
                             showDeletePostDialog = false
                             onDeleteCurrentPost(route.postId, true)
                         },
-                    ) {
-                        Text("删小相册并系统删媒体")
-                    }
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeletePostDialog = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showDeletePostDialog = false })
             },
         )
     }
@@ -428,7 +431,7 @@ private fun RealGearEditScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(YingShiThemeTokens.colors.appBackground)
                 .statusBarsPadding()
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -441,7 +444,7 @@ private fun RealGearEditScreen(
             Text(
                 text = "正在读取小相册编辑信息…",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = YingShiThemeTokens.colors.textSecondary,
             )
         }
         return
@@ -458,7 +461,7 @@ private fun RealGearEditScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(YingShiThemeTokens.colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -593,27 +596,34 @@ private fun RealGearEditScreen(
     }
 
     if (showDeletePostDialog) {
+        val colors = YingShiThemeTokens.colors
         AlertDialog(
             onDismissRequest = { showDeletePostDialog = false },
-            title = { Text("删除整个小相册") },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            title = {
+                Text(
+                    text = "删除整个小相册",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+            },
             text = {
                 Text("确认后会把当前小相册移入回收站，小相册详情、大相册页和回收站会同步刷新。")
             },
             confirmButton = {
-                TextButton(
+                TrashDialogActionButton(
+                    text = if (uiState.isDeleting) "处理中…" else "确认删除",
                     onClick = {
                         showDeletePostDialog = false
                         viewModel.deletePost(onSuccess = onBack)
                     },
                     enabled = !uiState.isDeleting,
-                ) {
-                    Text(if (uiState.isDeleting) "处理中…" else "确认删除")
-                }
+                    danger = true,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showDeletePostDialog = false }) {
-                    Text("取消")
-                }
+                TrashDialogActionButton(text = "取消", onClick = { showDeletePostDialog = false })
             },
         )
     }
@@ -625,22 +635,19 @@ private fun GearEditTopBar(
     onSave: () -> Unit,
     saveEnabled: Boolean = true,
 ) {
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onCancel) {
-            Text("取消")
-        }
+        GearEditActionButton(text = "取消", onClick = onCancel)
         Text(
             text = "小相册编辑",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onBackground,
+            color = colors.titleAccent,
         )
-        TextButton(onClick = onSave, enabled = saveEnabled) {
-            Text("保存")
-        }
+        GearEditActionButton(text = "保存", onClick = onSave, enabled = saveEnabled, emphasized = true)
     }
 }
 
@@ -651,11 +658,12 @@ private fun GearEditMemoryHeader(
     coverLabel: String,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+        color = colors.softGreenContainer.copy(alpha = 0.66f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -664,12 +672,7 @@ private fun GearEditMemoryHeader(
             Text(
                 text = "编辑这条记忆",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "标题、简介、所属大相册、封面和媒体顺序会在保存后一起刷新到小相册详情。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.titleAccent,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -699,7 +702,6 @@ private fun GearEditTextSection(
 ) {
     GearEditSection(
         title = "写下这条记忆",
-        subtitle = "标题用于列表识别，简介可以保留当时的心情或补充说明。",
     ) {
         OutlinedTextField(
             value = title,
@@ -734,9 +736,10 @@ private fun GearEditMediaPreviewSection(
         subtitle = if (items.isEmpty()) {
             "当前小相册没有媒体。"
         } else {
-            "预览前 4 项；排序、封面和移除都在全部列表中管理。"
+            null
         },
     ) {
+        val colors = YingShiThemeTokens.colors
         if (items.isEmpty()) {
             BackendInlineNotice(text = "当前没有可管理的媒体。")
             return@GearEditSection
@@ -749,11 +752,9 @@ private fun GearEditMediaPreviewSection(
             Text(
                 text = "已选 ${items.size} 项 · ${gearEditCoverLabel(items, coverMediaId)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
-            TextButton(onClick = onOpenAll) {
-                Text("全部")
-            }
+            GearEditActionButton(text = "全部", onClick = onOpenAll)
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items.take(4).chunked(2).forEach { rowItems ->
@@ -767,7 +768,7 @@ private fun GearEditMediaPreviewSection(
                                 .weight(1f)
                                 .aspectRatio(1f)
                                 .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)),
+                                .background(colors.sectionBackground.copy(alpha = 0.62f)),
                         ) {
                             PostMediaListThumbnail(
                                 item = item,
@@ -780,7 +781,7 @@ private fun GearEditMediaPreviewSection(
                                         .align(Alignment.TopStart)
                                         .padding(6.dp),
                                     shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
+                                    color = colors.primaryAction.copy(alpha = 0.88f),
                                 ) {
                                     Text(
                                         text = "封面",
@@ -808,12 +809,13 @@ private fun GearEditPublishSummary(
     albumTitles: List<String>,
     displayTimeMillis: Long,
 ) {
-    GearEditSection(title = "保存前检查", subtitle = "确认后会刷新小相册详情和大相册卡片。") {
+    GearEditSection(title = "保存信息") {
+        val colors = YingShiThemeTokens.colors
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            color = colors.raisedSurface.copy(alpha = 0.90f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         ) {
             Column(
                 modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
@@ -842,41 +844,34 @@ private fun GearEditSaveRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(
+        GearEditActionButton(
+            text = "取消",
             onClick = onCancel,
             enabled = !isSaving,
-        ) {
-            Text("取消")
-        }
-        Button(
+        )
+        GearEditActionButton(
+            text = if (isSaving) "保存中…" else "保存小相册",
             onClick = onSave,
             modifier = Modifier.weight(1f),
             enabled = !isSaving,
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = YingShiThemeTokens.colors.primaryContainer,
-                contentColor = YingShiThemeTokens.colors.onPrimaryContainer,
-                disabledContainerColor = YingShiThemeTokens.colors.sectionBackground,
-                disabledContentColor = YingShiThemeTokens.colors.textSecondary,
-            ),
-        ) {
-            Text(if (isSaving) "保存中…" else "保存小相册")
-        }
+            emphasized = true,
+        )
     }
 }
 
 @Composable
 private fun GearEditInfoChip(text: String) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.74f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -886,6 +881,7 @@ private fun GearEditSummaryRow(
     label: String,
     value: String,
 ) {
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -895,13 +891,13 @@ private fun GearEditSummaryRow(
             text = label,
             modifier = Modifier.width(48.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.titleAccent,
         )
         Text(
             text = value,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -922,17 +918,18 @@ private fun gearEditCoverLabel(
 @Composable
 private fun GearEditSection(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.90f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -941,13 +938,15 @@ private fun GearEditSection(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
             content()
         }
     }
@@ -1001,11 +1000,12 @@ private fun GearEditChip(
     text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+        color = colors.primaryContainer.copy(alpha = 0.68f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.70f)),
     ) {
         Text(
             text = text,
@@ -1014,7 +1014,7 @@ private fun GearEditChip(
                 vertical = YingShiThemeTokens.spacing.xs,
             ),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.primary,
+            color = colors.titleAccent,
         )
     }
 }
@@ -1025,20 +1025,21 @@ private fun SelectableGearEditChip(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            colors.primaryContainer.copy(alpha = 0.72f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f)
+            colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             width = 1.dp,
             color = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                colors.glassStroke.copy(alpha = 0.82f)
             } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+                colors.dividerSoft.copy(alpha = 0.68f)
             },
         ),
     ) {
@@ -1052,9 +1053,9 @@ private fun SelectableGearEditChip(
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             ),
             color = if (selected) {
-                MaterialTheme.colorScheme.primary
+                colors.titleAccent
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
+                colors.textSecondary
             },
         )
     }
@@ -1071,6 +1072,7 @@ private fun GearEditEntryRow(
         return
     }
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1079,7 +1081,7 @@ private fun GearEditEntryRow(
         color = if (danger) {
             MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+            colors.sectionBackground.copy(alpha = 0.62f)
         },
     ) {
         Column(
@@ -1089,12 +1091,55 @@ private fun GearEditEntryRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                color = if (danger) MaterialTheme.colorScheme.error else colors.titleAccent,
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GearEditActionButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        color = when {
+            !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
+            emphasized -> colors.primaryContainer.copy(alpha = 0.88f)
+            else -> colors.sectionBackground.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) colors.glassStroke.copy(alpha = 0.84f) else colors.dividerSoft.copy(alpha = 0.68f),
+        ),
+        shadowElevation = 0.dp,
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = when {
+                    !enabled -> colors.textSecondary.copy(alpha = 0.58f)
+                    emphasized -> colors.titleAccent
+                    else -> colors.textSecondary
+                },
             )
         }
     }
@@ -1106,10 +1151,11 @@ private fun GearEditMissingState(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
@@ -1118,7 +1164,7 @@ private fun GearEditMissingState(
         Text(
             text = "当前小相册不存在，无法编辑。",
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }

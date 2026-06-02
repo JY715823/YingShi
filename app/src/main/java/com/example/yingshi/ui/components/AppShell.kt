@@ -357,22 +357,23 @@ private fun BottomNavItem(
 @Composable
 private fun CenterAddButton(onClick: () -> Unit) {
     val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(14.dp)
 
     Surface(
         modifier = Modifier
-            .size(44.dp)
-            .yingShiClickable(shape = RoundedCornerShape(16.dp), pressedScale = 0.94f, onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = colors.softGreenContainer,
-        border = BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.22f)),
+            .size(42.dp)
+            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+        shape = shape,
+        color = colors.softGreenContainer.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
         shadowElevation = 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "添加",
-                tint = colors.softGreenAction,
-                modifier = Modifier.size(28.dp),
+                tint = colors.titleAccent,
+                modifier = Modifier.size(25.dp),
             )
         }
     }

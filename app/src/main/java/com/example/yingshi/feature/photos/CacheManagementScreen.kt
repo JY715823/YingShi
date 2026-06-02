@@ -16,6 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +49,7 @@ fun CacheManagementScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var refreshVersion by rememberSaveable { mutableIntStateOf(0) }
@@ -62,7 +67,7 @@ fun CacheManagementScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.appBackground)
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
@@ -161,18 +166,19 @@ private fun CacheTopBar(
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CacheCircleButton(text = "<", onClick = onBack)
+        CacheCircleButton(onClick = onBack)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
+                color = colors.titleAccent,
             )
         }
     }
@@ -186,11 +192,13 @@ private fun CacheSection(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+        shadowElevation = 1.dp,
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -199,12 +207,7 @@ private fun CacheSection(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.titleAccent,
             )
             content()
         }
@@ -217,10 +220,12 @@ private fun CacheSummaryBlock(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+        color = colors.primaryContainer.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.36f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.md),
@@ -229,21 +234,21 @@ private fun CacheSummaryBlock(
             Text(
                 text = summary?.totalSizeLabel ?: "统计中",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Text(
                 text = summary?.let {
                     "缩略图 / 封面 ${it.thumbnailCoverSizeLabel} · 原图 / 原视频 ${it.originalMediaSizeLabel}"
                 } ?: "正在扫描 App 缓存目录",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             Text(
                 text = summary?.let {
                     "已登记 ${it.registeredPreviewCount} 项预览 · ${it.registeredOriginalCount} 项原图 · ${it.registeredVideoCount} 项视频状态"
                 } ?: " ",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.softGreenAction,
             )
         }
     }
@@ -256,11 +261,13 @@ private fun CacheInfoRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.lg),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        color = colors.sectionBackground.copy(alpha = 0.46f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.44f)),
     ) {
         Row(
             modifier = Modifier
@@ -272,12 +279,12 @@ private fun CacheInfoRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.textPrimary,
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.primary,
+                color = colors.softGreenAction,
             )
         }
     }
@@ -292,17 +299,22 @@ private fun CacheActionRow(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
         color = if (danger) {
-            MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
+            colors.memoryContainer.copy(alpha = 0.58f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f)
+            colors.softGreenContainer.copy(alpha = 0.50f)
         },
+        border = BorderStroke(
+            1.dp,
+            if (danger) colors.memoryAccent.copy(alpha = 0.26f) else colors.dividerSoft.copy(alpha = 0.48f),
+        ),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
@@ -311,12 +323,12 @@ private fun CacheActionRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                color = if (danger) colors.memoryAccent else colors.textPrimary,
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
     }
@@ -324,23 +336,23 @@ private fun CacheActionRow(
 
 @Composable
 private fun CacheCircleButton(
-    text: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(10.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                tint = colors.titleAccent,
             )
         }
     }

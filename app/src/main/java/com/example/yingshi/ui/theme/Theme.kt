@@ -29,11 +29,11 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = YingShiPrimaryAction,
+    primary = YingShiTitleAccent,
     onPrimary = YingShiRaisedSurface,
     primaryContainer = YingShiPrimaryContainer,
     onPrimaryContainer = YingShiOnPrimaryContainer,
-    secondary = YingShiSoftGreenAction,
+    secondary = YingShiTitleAccent,
     onSecondary = YingShiRaisedSurface,
     secondaryContainer = YingShiSoftGreenContainer,
     onSecondaryContainer = YingShiTextPrimary,
