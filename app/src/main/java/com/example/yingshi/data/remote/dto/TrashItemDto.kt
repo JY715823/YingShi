@@ -4,6 +4,7 @@ data class TrashItemDto(
     val trashItemId: String,
     val itemType: String,
     val state: String? = null,
+    val actorUserId: String? = null,
     val sourceSmallAlbumId: String? = null,
     val sourceMediaId: String? = null,
     val commentTargetMediaId: String? = null,

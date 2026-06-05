@@ -3,12 +3,16 @@
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -22,16 +26,22 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ModeComment
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
@@ -55,16 +65,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.yingShiClickable
@@ -124,6 +140,57 @@ fun PostDetailScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        SmallAlbumDetailContent(
+            detail = detail,
+            highlightMediaIds = route.highlightMediaIds,
+            focusMediaId = route.focusMediaId,
+            feedbackNonce = route.feedbackNonce,
+            onBack = onBack,
+            onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
+            onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
+            onOpenSmallAlbumComments = { showSmallAlbumComments = true },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        if (showSmallAlbumComments) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.18f))
+                    .clickable { showSmallAlbumComments = false },
+            )
+            FakeSmallAlbumCommentSheet(
+                postId = detail.postId,
+                onClose = { showSmallAlbumComments = false },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                    .padding(bottom = YingShiThemeTokens.spacing.lg),
+            )
+        }
+
+        mediaCommentPage?.let { page ->
+            val media = detail.mediaItems.getOrNull(page.coerceAtLeast(0))
+            if (media == null) {
+                mediaCommentPage = null
+                return@let
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.18f))
+                    .clickable { mediaCommentPage = null },
+            )
+            MediaCommentPlaceholderSheet(
+                media = media,
+                onClose = { mediaCommentPage = null },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                    .padding(bottom = YingShiThemeTokens.spacing.lg),
+            )
+        }
+
         val viewerInitialPage = inPostViewerInitialPage
         if (viewerInitialPage != null) {
             PhotoViewerScreen(
@@ -136,57 +203,6 @@ fun PostDetailScreen(
                 onOpenCacheManagement = onOpenCacheManagement,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            SmallAlbumDetailContent(
-                detail = detail,
-                highlightMediaIds = route.highlightMediaIds,
-                focusMediaId = route.focusMediaId,
-                feedbackNonce = route.feedbackNonce,
-                onBack = onBack,
-                onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
-                onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
-                onOpenSmallAlbumComments = { showSmallAlbumComments = true },
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            if (showSmallAlbumComments) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
-                        .clickable { showSmallAlbumComments = false },
-                )
-                FakeSmallAlbumCommentSheet(
-                    postId = detail.postId,
-                    onClose = { showSmallAlbumComments = false },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
-                        .padding(bottom = YingShiThemeTokens.spacing.lg),
-                )
-            }
-
-            mediaCommentPage?.let { page ->
-                val media = detail.mediaItems.getOrNull(page.coerceAtLeast(0))
-                if (media == null) {
-                    mediaCommentPage = null
-                    return@let
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
-                        .clickable { mediaCommentPage = null },
-                )
-                MediaCommentPlaceholderSheet(
-                    media = media,
-                    onClose = { mediaCommentPage = null },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
-                        .padding(bottom = YingShiThemeTokens.spacing.lg),
-                )
-            }
         }
     }
 }
@@ -257,124 +273,124 @@ private fun RealPostDetailScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        val viewerInitialPage = inPostViewerInitialPage
-        if (viewerInitialPage != null && detail != null) {
-            PhotoViewerScreen(
-                route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
-                onBack = { inPostViewerInitialPage = null },
-                onOpenPostDetail = {
-                    inPostViewerInitialPage = null
-                    onOpenPostDetail(it)
-                },
-                onOpenCacheManagement = onOpenCacheManagement,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            when {
-                uiState.tokenMissing -> {
-                    PostDetailInfoState(
-                        title = "需要登录",
-                        message = uiState.errorMessage
-                            ?: "请先连接服务，再打开这个小相册。",
-                        onBack = onBack,
-                        actionLabel = "重试",
-                        onAction = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                uiState.isLoading && detail == null -> {
-                    PostDetailLoadingState(
-                        onBack = onBack,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                uiState.errorMessage != null && detail == null -> {
-                    val errorMessage = uiState.errorMessage
-                        ?: "读取小相册详情失败。"
-                    PostDetailInfoState(
-                        title = "读取失败",
-                        message = errorMessage,
-                        onBack = onBack,
-                        actionLabel = "重试",
-                        onAction = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                detail == null -> {
-                    PostDetailMissingState(
-                        onBack = onBack,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                else -> {
-                    RealSmallAlbumDetailContent(
-                        detail = detail,
-                        uiState = uiState,
-                        highlightMediaIds = route.highlightMediaIds,
-                        focusMediaId = route.focusMediaId,
-                        feedbackNonce = route.feedbackNonce,
-                        onBack = onBack,
-                        onRefresh = viewModel::refresh,
-                        onOpenGearEdit = onOpenGearEdit,
-                        onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
-                        onOpenSmallAlbumComments = { showSmallAlbumComments = true },
-                        onRetrySmallAlbumComments = viewModel::retryPostComments,
-                        onCreatePostComment = viewModel::createPostComment,
-                        onUpdatePostComment = viewModel::updatePostComment,
-                        onDeletePostComment = viewModel::deletePostComment,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-
-            if (showSmallAlbumComments && detail != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
-                        .clickable { showSmallAlbumComments = false },
-                )
-                RealSmallAlbumCommentSheet(
-                    smallAlbumId = detail.postId,
-                    state = uiState.postComments,
-                    onClose = { showSmallAlbumComments = false },
-                    onRetry = viewModel::retryPostComments,
-                    onCreateComment = viewModel::createPostComment,
-                    onUpdateComment = viewModel::updatePostComment,
-                    onDeleteComment = viewModel::deletePostComment,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
-                        .padding(bottom = YingShiThemeTokens.spacing.lg),
+        when {
+            uiState.tokenMissing -> {
+                PostDetailInfoState(
+                    title = "需要登录",
+                    message = uiState.errorMessage
+                        ?: "请先连接服务，再打开这个小相册。",
+                    onBack = onBack,
+                    actionLabel = "重试",
+                    onAction = viewModel::refresh,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
-            selectedMedia?.let { media ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
-                        .clickable { mediaCommentPage = null },
+            uiState.isLoading && detail == null -> {
+                PostDetailLoadingState(
+                    onBack = onBack,
+                    modifier = Modifier.fillMaxSize(),
                 )
-                RealMediaCommentSheet(
-                    media = media,
-                    state = uiState.mediaComments[media.id] ?: RealCommentThreadUiState(isLoading = true),
-                    onClose = { mediaCommentPage = null },
-                    onRetry = { viewModel.retryMediaComments(media.id) },
-                    onCreateComment = { content -> viewModel.createMediaComment(media.id, content) },
-                    onUpdateComment = { commentId, content ->
-                        viewModel.updateMediaComment(media.id, commentId, content)
-                    },
-                    onDeleteComment = { commentId -> viewModel.deleteMediaComment(media.id, commentId) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = YingShiThemeTokens.spacing.lg)
-                        .padding(bottom = YingShiThemeTokens.spacing.lg),
+            }
+
+            uiState.errorMessage != null && detail == null -> {
+                val errorMessage = uiState.errorMessage
+                    ?: "读取小相册详情失败。"
+                PostDetailInfoState(
+                    title = "读取失败",
+                    message = errorMessage,
+                    onBack = onBack,
+                    actionLabel = "重试",
+                    onAction = viewModel::refresh,
+                    modifier = Modifier.fillMaxSize(),
                 )
+            }
+
+            detail == null -> {
+                PostDetailMissingState(
+                    onBack = onBack,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            else -> {
+                RealSmallAlbumDetailContent(
+                    detail = detail,
+                    uiState = uiState,
+                    highlightMediaIds = route.highlightMediaIds,
+                    focusMediaId = route.focusMediaId,
+                    feedbackNonce = route.feedbackNonce,
+                    onBack = onBack,
+                    onRefresh = viewModel::refresh,
+                    onOpenGearEdit = onOpenGearEdit,
+                    onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
+                    onOpenSmallAlbumComments = { showSmallAlbumComments = true },
+                    onRetrySmallAlbumComments = viewModel::retryPostComments,
+                    onCreatePostComment = viewModel::createPostComment,
+                    onUpdatePostComment = viewModel::updatePostComment,
+                    onDeletePostComment = viewModel::deletePostComment,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                if (showSmallAlbumComments) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.18f))
+                            .clickable { showSmallAlbumComments = false },
+                    )
+                    RealSmallAlbumCommentSheet(
+                        smallAlbumId = detail.postId,
+                        state = uiState.postComments,
+                        onClose = { showSmallAlbumComments = false },
+                        onRetry = viewModel::retryPostComments,
+                        onCreateComment = viewModel::createPostComment,
+                        onUpdateComment = viewModel::updatePostComment,
+                        onDeleteComment = viewModel::deletePostComment,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                            .padding(bottom = YingShiThemeTokens.spacing.lg),
+                    )
+                }
+
+                selectedMedia?.let { media ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.18f))
+                            .clickable { mediaCommentPage = null },
+                    )
+                    RealMediaCommentSheet(
+                        media = media,
+                        state = uiState.mediaComments[media.id] ?: RealCommentThreadUiState(isLoading = true),
+                        onClose = { mediaCommentPage = null },
+                        onRetry = { viewModel.retryMediaComments(media.id) },
+                        onCreateComment = { content -> viewModel.createMediaComment(media.id, content) },
+                        onUpdateComment = { commentId, content ->
+                            viewModel.updateMediaComment(media.id, commentId, content)
+                        },
+                        onDeleteComment = { commentId -> viewModel.deleteMediaComment(media.id, commentId) },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = YingShiThemeTokens.spacing.lg)
+                            .padding(bottom = YingShiThemeTokens.spacing.lg),
+                    )
+                }
+
+                val viewerInitialPage = inPostViewerInitialPage
+                if (viewerInitialPage != null) {
+                    PhotoViewerScreen(
+                        route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
+                        onBack = { inPostViewerInitialPage = null },
+                        onOpenPostDetail = {
+                            inPostViewerInitialPage = null
+                            onOpenPostDetail(it)
+                        },
+                        onOpenCacheManagement = onOpenCacheManagement,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
@@ -400,6 +416,9 @@ private fun RealSmallAlbumDetailContent(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    var showPhotoFeedPicker by rememberSaveable(detail.postId) {
+        mutableStateOf(false)
+    }
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
@@ -448,6 +467,42 @@ private fun RealSmallAlbumDetailContent(
         detail.mediaItems.map { it.toRealOriginalMediaTarget() }
     }
     val postOriginalSummary = RealOriginalLoadRepository.getPostSummaryForTargets(originalTargets)
+    if (showPhotoFeedPicker) {
+        AppPhotoFeedPickerScreen(
+            title = "照片流",
+            confirmLabel = "加入当前相册",
+            disabledMediaIds = detail.mediaItems.map { it.id }.toSet(),
+            disabledSelectionLabel = "已在相册中",
+            confirmBackWhenSelected = true,
+            onBack = { showPhotoFeedPicker = false },
+            onConfirm = { items ->
+                val mediaIds = items.map { it.mediaId }.distinct()
+                if (mediaIds.isEmpty()) {
+                    showPhotoFeedPicker = false
+                    return@AppPhotoFeedPickerScreen
+                }
+                coroutineScope.launch {
+                    when (val result = RepositoryProvider.postRepository.addMediaToPost(detail.postId, mediaIds)) {
+                        is ApiResult.Success -> {
+                            notifyRealBackendContentChanged(
+                                postIds = setOf(detail.postId),
+                                mediaIds = mediaIds.toSet(),
+                            )
+                            showPhotoFeedPicker = false
+                            onRefresh()
+                            Toast.makeText(context, "已加入当前相册", Toast.LENGTH_SHORT).show()
+                        }
+                        is ApiResult.Error -> {
+                            Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        }
+                        ApiResult.Loading -> Unit
+                    }
+                }
+            },
+            modifier = modifier,
+        )
+        return
+    }
     SmallAlbumDetailBodyLayout(
         modifier = modifier,
         topBar = {
@@ -479,6 +534,7 @@ private fun RealSmallAlbumDetailContent(
             SmallAlbumInfoSection(
                 detail = detail,
                 originalSummary = postOriginalSummary,
+                onOpenComments = onOpenSmallAlbumComments,
                 onLoadAllOriginals = {
                     Toast.makeText(context, "开始加载小相册原图", Toast.LENGTH_SHORT).show()
                     coroutineScope.launch {
@@ -496,9 +552,13 @@ private fun RealSmallAlbumDetailContent(
         },
         mediaSection = {
             SmallAlbumMediaGridSection(
+                postId = detail.postId,
                 mediaItems = detail.mediaItems,
                 highlightMediaIds = if (showNewAddedState) highlightMediaIds else emptyList(),
                 onOpenMediaViewer = onOpenMediaViewer,
+                onAddMedia = { showPhotoFeedPicker = true },
+                onRefreshRequest = onRefresh,
+                onEmptyAfterDelete = onBack,
                 modifier = Modifier.fillMaxSize(),
             )
         },
@@ -535,18 +595,12 @@ private fun RealMediaCommentSheet(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "媒体评论",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "这些评论只属于当前媒体 ${media.id.takeLast(6)}。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = "媒体评论",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 PostActionChip(text = "关闭", onClick = onClose)
             }
 
@@ -957,8 +1011,15 @@ private fun SmallAlbumDetailContent(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val postMediaIds = remember(detail.mediaItems) {
-        detail.mediaItems.map { it.id }
+    var displayDetail by remember(detail.postId) { mutableStateOf(detail) }
+    var showPhotoFeedPicker by rememberSaveable(detail.postId) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(detail) {
+        displayDetail = detail
+    }
+    val postMediaIds = remember(displayDetail.mediaItems) {
+        displayDetail.mediaItems.map { it.id }
     }
     val feedbackKey = "${detail.postId}:$feedbackNonce"
     val highlightKey = remember(highlightMediaIds, feedbackNonce) {
@@ -973,10 +1034,10 @@ private fun SmallAlbumDetailContent(
     var resultNotice by rememberSaveable(detail.postId, highlightKey, focusMediaId) {
         mutableStateOf<String?>(null)
     }
-    LaunchedEffect(detail.postId, postMediaIds, focusMediaId, highlightKey) {
+    LaunchedEffect(displayDetail.postId, postMediaIds, focusMediaId, highlightKey) {
         val targetId = focusMediaId ?: highlightMediaIds.firstOrNull()
-        if (targetId.isNullOrBlank() || detail.mediaItems.isEmpty()) return@LaunchedEffect
-        val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
+        if (targetId.isNullOrBlank() || displayDetail.mediaItems.isEmpty()) return@LaunchedEffect
+        val targetIndex = displayDetail.mediaItems.indexOfFirst { it.id == targetId }
         if (targetIndex >= 0) {
             val otherCount = highlightMediaIds.distinct().size - 1
             resultNotice = if (otherCount > 0) {
@@ -988,7 +1049,7 @@ private fun SmallAlbumDetailContent(
             resultNotice = "暂未在详情里找到刚处理的媒体，可稍后刷新再查看。"
         }
     }
-    LaunchedEffect(detail.postId, highlightKey) {
+    LaunchedEffect(displayDetail.postId, highlightKey) {
         if (highlightMediaIds.isEmpty()) return@LaunchedEffect
         delay(4500L)
         showNewAddedState = false
@@ -1000,6 +1061,30 @@ private fun SmallAlbumDetailContent(
         showEntryNotice = false
     }
     val postOriginalSummary = FakeOriginalLoadRepository.getPostSummary(postMediaIds)
+    if (showPhotoFeedPicker) {
+        AppPhotoFeedPickerScreen(
+            title = "照片流",
+            confirmLabel = "加入当前相册",
+            disabledMediaIds = displayDetail.mediaItems.map { it.id }.toSet(),
+            disabledSelectionLabel = "已在相册中",
+            confirmBackWhenSelected = true,
+            onBack = { showPhotoFeedPicker = false },
+            onConfirm = { items ->
+                val feedSelections = items
+                    .mapNotNull { selected -> FakePhotoFeedRepository.findPhotoFeedItem(selected.mediaId) }
+                val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(displayDetail.postId, feedSelections)
+                showPhotoFeedPicker = false
+                if (addedCount > 0) {
+                    displayDetail = FakeAlbumRepository.getPostDetail(displayDetail.toDetailRoute())
+                    Toast.makeText(context, "已加入当前相册", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "这些媒体已经在当前相册里", Toast.LENGTH_SHORT).show()
+                }
+            },
+            modifier = modifier,
+        )
+        return
+    }
 
     SmallAlbumDetailBodyLayout(
         modifier = modifier,
@@ -1023,8 +1108,9 @@ private fun SmallAlbumDetailContent(
         },
         infoSection = {
             SmallAlbumInfoSection(
-                detail = detail,
+                detail = displayDetail,
                 originalSummary = postOriginalSummary,
+                onOpenComments = onOpenSmallAlbumComments,
                 onLoadAllOriginals = {
                     FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
                     Toast.makeText(context, "开始加载小相册原图", Toast.LENGTH_SHORT).show()
@@ -1033,9 +1119,15 @@ private fun SmallAlbumDetailContent(
         },
         mediaSection = {
             SmallAlbumMediaGridSection(
-                mediaItems = detail.mediaItems,
+                postId = displayDetail.postId,
+                mediaItems = displayDetail.mediaItems,
                 highlightMediaIds = if (showNewAddedState) highlightMediaIds else emptyList(),
                 onOpenMediaViewer = onOpenMediaViewer,
+                onAddMedia = { showPhotoFeedPicker = true },
+                onRefreshRequest = {
+                    displayDetail = FakeAlbumRepository.getPostDetail(displayDetail.toDetailRoute())
+                },
+                onEmptyAfterDelete = onBack,
                 modifier = Modifier.fillMaxSize(),
             )
         },
@@ -1136,7 +1228,6 @@ private fun SmallAlbumDetailTopBar(
             color = colors.titleAccent,
             maxLines = 1,
         )
-        SmallAlbumCommentButton(onClick = onOpenComments)
         PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
         PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
     }
@@ -1147,11 +1238,12 @@ private fun PostIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = CircleShape
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .size(48.dp)
             .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
         shape = shape,
@@ -1316,97 +1408,93 @@ private fun PostMediaEmptyInfoRow() {
 fun SmallAlbumInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
+    onOpenComments: () -> Unit,
     onLoadAllOriginals: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
+    var summaryExpanded by rememberSaveable(detail.postId, detail.summary) { mutableStateOf(false) }
+    val summary = detail.summary.meaningfulPostSummaryOrNull()
+    val albumTitle = detail.albumChips.firstOrNull().orEmpty()
+    val albumPalette = remember(detail.albumIds) {
+        resolveLargeAlbumPalette(detail.albumIds.firstOrNull().orEmpty())
+    }
+    val metaLabel = buildString {
+        append(formatPostTime(detail.postDisplayTimeMillis))
+        append(" · ")
+        append(detail.mediaItems.size)
+        append(" 张")
+    }
 
-    Surface(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius.xl),
-        color = colors.raisedSurface.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-        shadowElevation = 1.dp,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.xl),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.Top,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PostMetaCapsule(
-                    text = "${detail.contributorLabel} · 仅你们可见",
-                    containerColor = colors.softGreenContainer.copy(alpha = 0.76f),
-                )
-                Surface(
-                    modifier = Modifier.size(10.dp),
-                    shape = CircleShape,
-                    color = colors.goldAccent.copy(alpha = 0.84f),
-                ) {}
-            }
             Text(
                 text = detail.title,
-                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 27.sp,
+                    lineHeight = 31.sp,
+                ),
                 color = colors.titleAccent,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    modifier = Modifier.size(12.dp),
-                    shape = CircleShape,
-                    color = colors.goldAccent.copy(alpha = 0.84f),
-                ) {}
-                Text(
-                    text = formatPostTime(detail.postDisplayTimeMillis),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colors.textSecondary,
-                )
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                detail.albumChips.take(2).forEach { chip ->
-                    PostMetaCapsule(
-                        text = chip,
-                        containerColor = colors.primaryContainer.copy(alpha = 0.50f),
-                    )
-                }
-                PostMetaCapsule(
-                    text = "${detail.mediaItems.size} 张 · ${detail.comments.size} 条评论",
-                    containerColor = colors.softGreenContainer.copy(alpha = 0.58f),
-                )
-            }
-            val summary = detail.summary.meaningfulPostSummaryOrNull()
-            if (summary != null) {
+            Text(
+                text = metaLabel,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                color = colors.textSecondary.copy(alpha = 0.78f),
+                maxLines = 1,
+            )
+        }
+        if (summary != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
+                    maxLines = if (summaryExpanded) Int.MAX_VALUE else 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (summary.length > 28) {
+                    PostActionChip(
+                        text = if (summaryExpanded) "收起" else "展开",
+                        onClick = { summaryExpanded = !summaryExpanded },
+                        containerColor = colors.sectionBackground.copy(alpha = 0.68f),
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (albumTitle.isNotBlank()) {
+                SmallAlbumBelongChip(
+                    text = albumTitle,
+                    palette = albumPalette,
                 )
             } else {
-                Text(
-                    text = "还没有简介，内容可以慢慢补上。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary.copy(alpha = 0.78f),
-                )
+                Spacer(modifier = Modifier.width(1.dp))
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalAlignment = Alignment.CenterVertically) {
                 PostActionChip(
                     text = originalSummary.buttonLabel,
                     onClick = onLoadAllOriginals,
                     containerColor = colors.primaryContainer.copy(alpha = 0.70f),
+                )
+                PostActionChip(
+                    text = if (detail.comments.isEmpty()) "评论" else "评论 ${detail.comments.size}",
+                    onClick = onOpenComments,
+                    containerColor = colors.softGreenContainer.copy(alpha = 0.78f),
                 )
             }
         }
@@ -1414,14 +1502,90 @@ fun SmallAlbumInfoSection(
 }
 
 @Composable
+private fun SmallAlbumBelongChip(
+    text: String,
+    palette: PhotoThumbnailPalette?,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    val accentColor = remember(palette, colors.primaryActionPressed) {
+        palette?.let { resolvedPalette ->
+            listOf(resolvedPalette.end, resolvedPalette.accent, resolvedPalette.start)
+                .minByOrNull { it.luminance() }
+        } ?: colors.primaryActionPressed
+    }
+    val barStartColor = palette?.start ?: colors.primaryContainer
+    val emphasizedColor = remember(accentColor, colors.titleAccent) {
+        if (accentColor.luminance() > 0.62f) {
+            lerp(accentColor, colors.titleAccent, 0.32f)
+        } else {
+            lerp(accentColor, colors.titleAccent, 0.12f)
+        }
+    }
+    val containerColor = remember(barStartColor, colors.raisedSurface) {
+        lerp(colors.raisedSurface, barStartColor, 0.22f)
+    }
+    val borderColor = remember(emphasizedColor) {
+        emphasizedColor.copy(alpha = 0.34f)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(radius.capsule),
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 5.dp, height = 16.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(barStartColor, emphasizedColor),
+                        ),
+                    ),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    lineHeight = 18.sp,
+                ),
+                color = emphasizedColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun resolveLargeAlbumPalette(albumId: String): PhotoThumbnailPalette? {
+    if (albumId.isBlank()) return null
+    return when (RepositoryProvider.currentMode) {
+        RepositoryMode.REAL -> realPaletteFor(albumId)
+        else -> FakeAlbumRepository.getAlbums().firstOrNull { it.id == albumId }?.accent
+            ?: realPaletteFor(albumId)
+    }
+}
+
+@Composable
 fun PostInfoSection(
     detail: PostDetailUiModel,
     originalSummary: PostOriginalLoadSummary,
+    onOpenComments: () -> Unit,
     onLoadAllOriginals: () -> Unit,
 ) {
     SmallAlbumInfoSection(
         detail = detail,
         originalSummary = originalSummary,
+        onOpenComments = onOpenComments,
         onLoadAllOriginals = onLoadAllOriginals,
     )
 }
@@ -1509,23 +1673,17 @@ private fun FakeSmallAlbumCommentSheet(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "小相册评论",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "这些评论属于当前小相册，不和媒体评论混在一起。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = "小相册评论",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 PostActionChip(text = "关闭", onClick = onClose)
             }
             if (visibleComments.isEmpty()) {
                 Text(
-                    text = "还没有评论。可以写下第一句，也可以先安静地留着。",
+                    text = "暂无评论",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1667,25 +1825,19 @@ private fun RealSmallAlbumCommentSheet(
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "小相册评论",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "这些评论只属于当前小相册 ${smallAlbumId.takeLast(6)}。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = "小相册评论",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
                 PostActionChip(text = "关闭", onClick = onClose)
             }
 
             RealCommentThreadContent(
                 state = state,
                 stateKeyPrefix = "real-small-album-comment-$smallAlbumId",
-                emptyText = "还没有评论。可以写下第一句，也可以先安静地留着。",
+                emptyText = "暂无评论",
                 onRetry = onRetry,
                 onCreateComment = onCreateComment,
                 onUpdateComment = onUpdateComment,
@@ -1890,20 +2042,23 @@ private fun PostActionChip(
 private fun PostMetaCapsule(
     text: String,
     containerColor: Color = YingShiThemeTokens.colors.softGreenContainer.copy(alpha = 0.58f),
+    contentColor: Color = YingShiThemeTokens.colors.textSecondary,
+    borderColor: Color? = null,
+    textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.labelMedium,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val colors = YingShiThemeTokens.colors
 
     Surface(
         shape = RoundedCornerShape(radius.capsule),
         color = containerColor,
+        border = borderColor?.let { BorderStroke(1.dp, it) },
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.textSecondary,
+            style = textStyle,
+            color = contentColor,
         )
     }
 }
@@ -1919,104 +2074,331 @@ private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
 
 @Composable
 private fun SmallAlbumMediaGridSection(
+    postId: String,
     mediaItems: List<PostDetailMediaUiModel>,
     highlightMediaIds: List<String>,
     onOpenMediaViewer: (Int) -> Unit,
+    onAddMedia: () -> Unit,
+    onRefreshRequest: () -> Unit,
+    onEmptyAfterDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    var densityName by rememberSaveable(postId) { mutableStateOf(PhotoFeedDensity.COMFORT_3.name) }
+    var selectionMode by rememberSaveable(postId) { mutableStateOf(false) }
+    var selectedIds by rememberSaveable(postId) { mutableStateOf(emptySet<String>()) }
+    var isMutating by rememberSaveable(postId) { mutableStateOf(false) }
+    val density = PhotoFeedDensity.valueOf(densityName)
+    val sortedMediaItems = remember(mediaItems) { mediaItems.sortedForSmallAlbumDisplay() }
+    val mediaById = remember(sortedMediaItems) { sortedMediaItems.associateBy { it.id } }
+    val mediaPositionLookup = remember(sortedMediaItems) {
+        sortedMediaItems.mapIndexed { index, item -> item.id to index }.toMap()
+    }
+    val currentMediaIdSet = remember(sortedMediaItems) { sortedMediaItems.map { it.id }.toSet() }
+    val feedItems = remember(sortedMediaItems, postId) { sortedMediaItems.toSmallAlbumFeedItems(postId) }
+    val blocks = remember(feedItems, density) {
+        buildPhotoFeedBlocks(items = feedItems, density = density)
+    }
+    val listState = rememberLazyListState()
+    val densityScope = LocalDensity.current
+    val gridSpacing = smallAlbumRowSpacing(density)
+    val rowKeyToMediaIds = remember(blocks) {
+        buildMap {
+            blocks.filterIsInstance<PhotoFeedGridRow>().forEach { row ->
+                put(row.key, row.items.map { it.mediaId })
+            }
+        }
+    }
+    val rowKeys = remember(blocks) {
+        blocks.filterIsInstance<PhotoFeedGridRow>().map { it.key }
+    }
+    val rowKeyToIndex = remember(rowKeys) {
+        rowKeys.mapIndexed { index, rowKey -> rowKey to index }.toMap()
+    }
+    val spacingPx = with(densityScope) { gridSpacing.toPx() }
+    val edgePaddingPx = with(densityScope) { gridSpacing.toPx() }
+    val hitTestAdapter = remember(
+        listState,
+        blocks,
+        density,
+        rowKeyToMediaIds,
+        rowKeys,
+        rowKeyToIndex,
+        spacingPx,
+        edgePaddingPx,
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(radius.xl),
-            color = colors.raisedSurface.copy(alpha = 0.94f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-            shadowElevation = 1.dp,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = spacing.md, vertical = spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(spacing.md),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "这一组照片",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.titleAccent,
-                        )
-                        Text(
-                            text = if (mediaItems.isEmpty()) "还没有媒体" else "点开可进入 Viewer",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textSecondary,
-                        )
-                    }
-                    PostMetaCapsule(
-                        text = "${mediaItems.size} 张",
-                        containerColor = colors.primaryContainer.copy(alpha = 0.52f),
+        MultiSelectHitTestAdapter(
+            hitTest = { touchPos ->
+                val layout = listState.layoutInfo
+                val ty = touchPos.y.toInt()
+                val tx = (touchPos.x - edgePaddingPx).toInt()
+                val viewportW = layout.viewportSize.width.coerceAtLeast(1)
+                val contentW = (viewportW - edgePaddingPx * 2f).coerceAtLeast(1f)
+                val totalSpacing = (density.columns - 1) * spacingPx
+                val cellWidth = ((contentW - totalSpacing) / density.columns).coerceAtLeast(1f)
+                val segmentWidth = cellWidth + spacingPx
+                for (item in layout.visibleItemsInfo) {
+                    val itemEndY = item.offset + item.size
+                    if (ty !in item.offset until itemEndY) continue
+                    val block = blocks.getOrNull(item.index) as? PhotoFeedGridRow ?: return@MultiSelectHitTestAdapter null
+                    val colIndex = (tx / segmentWidth).toInt().coerceIn(0, density.columns - 1)
+                    val mediaItem = block.items.getOrNull(colIndex) ?: return@MultiSelectHitTestAdapter null
+                    return@MultiSelectHitTestAdapter MultiSelectHitResult(
+                        mediaId = mediaItem.mediaId,
+                        rowKey = block.key,
+                        rowIndex = rowKeyToIndex[block.key] ?: -1,
+                        isSelectable = true,
+                        colIndex = colIndex,
+                        columnsInRow = block.items.size,
                     )
                 }
-                if (mediaItems.isEmpty()) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "还没有媒体",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.textSecondary,
-                        )
+                null
+            },
+            mediaIdsInRow = { rowKey -> rowKeyToMediaIds[rowKey].orEmpty() },
+            rowKeyAtIndex = { rowIndex -> rowKeys.getOrNull(rowIndex) },
+        )
+    }
+
+    LaunchedEffect(currentMediaIdSet) {
+        selectedIds = selectedIds.intersect(currentMediaIdSet)
+        if (selectedIds.isEmpty()) {
+            selectionMode = false
+        }
+    }
+    val liveSelectedIds = remember { mutableStateOf(selectedIds) }
+    LaunchedEffect(selectedIds) {
+        liveSelectedIds.value = selectedIds
+    }
+
+    fun deleteSelectedMedia() {
+        val pendingIds = selectedIds.toSet()
+        if (pendingIds.isEmpty()) return
+        if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
+            FakeAlbumRepository.applyMediaDelete(
+                postId = postId,
+                mediaIds = pendingIds,
+                semantic = FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY,
+            )
+            selectedIds = emptySet()
+            selectionMode = false
+            if (FakeAlbumRepository.getPost(postId) == null) {
+                onEmptyAfterDelete()
+            } else {
+                onRefreshRequest()
+            }
+            Toast.makeText(context, "已移出当前小相册", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            isMutating = true
+            var successCount = 0
+            pendingIds.forEach { mediaId ->
+                when (val result = RepositoryProvider.mediaRepository.deleteMediaFromPost(
+                    smallAlbumId = postId,
+                    mediaId = mediaId,
+                    deleteMode = "DIRECTORY_ONLY",
+                )) {
+                    is com.example.yingshi.data.remote.result.ApiResult.Success -> successCount += 1
+                    is com.example.yingshi.data.remote.result.ApiResult.Error -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
                     }
+                    com.example.yingshi.data.remote.result.ApiResult.Loading -> Unit
+                }
+            }
+            if (successCount > 0) {
+                notifyRealBackendContentChanged(
+                    postIds = setOf(postId),
+                    mediaIds = pendingIds,
+                )
+                selectedIds = emptySet()
+                selectionMode = false
+                if (pendingIds.size >= currentMediaIdSet.size) {
+                    onEmptyAfterDelete()
                 } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(bottom = spacing.md),
-                    ) {
-                        itemsIndexed(
-                            items = mediaItems,
-                            key = { _, media -> media.id },
-                        ) { index, media ->
-                            SmallAlbumGridMediaTile(
-                                media = media,
-                                highlighted = media.id in highlightMediaIds,
-                                onClick = { onOpenMediaViewer(index) },
-                            )
+                    onRefreshRequest()
+                }
+                Toast.makeText(context, "已移出当前小相册", Toast.LENGTH_SHORT).show()
+            }
+            isMutating = false
+        }
+    }
+
+    BackHandler(enabled = selectionMode) {
+        selectionMode = false
+        selectedIds = emptySet()
+    }
+
+    Column(
+        modifier = modifier
+            .discreteZoomLevelGesture(
+                enabled = !selectionMode,
+                levels = listOf(
+                    PhotoFeedDensity.COMFORT_2,
+                    PhotoFeedDensity.COMFORT_3,
+                    PhotoFeedDensity.DENSE_4,
+                ),
+                currentLevel = density,
+                onLevelChange = { densityName = it.name },
+            )
+            .multiSelectSwipeGesture(
+                enabled = selectionMode,
+                hitTestAdapter = hitTestAdapter,
+                selectedIds = liveSelectedIds.value,
+                onSelectionChange = { selectedIds = it },
+                onAutoScroll = { delta -> listState.scrollBy(delta) },
+            ),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+    ) {
+        if (selectionMode) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "已选 ${selectedIds.size} 项",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    PostActionChip(
+                        text = "取消",
+                        onClick = {
+                            selectionMode = false
+                            selectedIds = emptySet()
+                        },
+                        containerColor = colors.sectionBackground.copy(alpha = 0.72f),
+                    )
+                    PostIconButton(
+                        icon = Icons.Filled.Delete,
+                        contentDescription = "移出选中媒体",
+                        onClick = { if (!isMutating) deleteSelectedMedia() },
+                    )
+                }
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (mediaItems.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "还没有媒体",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.textSecondary.copy(alpha = 0.76f),
+                    )
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(smallAlbumSectionSpacing(density)),
+                    contentPadding = PaddingValues(
+                        start = gridSpacing,
+                        end = gridSpacing,
+                        bottom = spacing.md,
+                    ),
+                ) {
+                    lazyItems(
+                        items = blocks,
+                        key = { it.key },
+                    ) { block ->
+                        when (block) {
+                            is PhotoFeedSectionHeader -> SmallAlbumMonthHeaderRow(title = block.title)
+                            is PhotoFeedDayHeader -> SmallAlbumDayHeaderRow(title = block.title)
+                            is PhotoFeedTimeBucketHeader,
+                            is PhotoFeedCollaboratorHeader,
+                            is PhotoFeedCollaboratorDivider -> Unit
+                            is PhotoFeedGridRow -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                                ) {
+                                    block.items.forEach { item ->
+                                        val media = mediaById[item.mediaId] ?: return@forEach
+                                        val mediaIndex = mediaPositionLookup[item.mediaId] ?: 0
+                                        SmallAlbumGridMediaTile(
+                                            media = media,
+                                            highlighted = item.mediaId in highlightMediaIds,
+                                            selected = item.mediaId in selectedIds,
+                                            selectionMode = selectionMode,
+                                            density = density,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                if (selectionMode) {
+                                                    selectedIds = if (selectedIds.contains(item.mediaId)) {
+                                                        selectedIds - item.mediaId
+                                                    } else {
+                                                        selectedIds + item.mediaId
+                                                    }
+                                                } else {
+                                                    onOpenMediaViewer(mediaIndex)
+                                                }
+                                            },
+                                            onOpenMedia = {
+                                                if (mediaIndex >= 0) {
+                                                    onOpenMediaViewer(mediaIndex)
+                                                }
+                                            },
+                                            onLongClick = {
+                                                selectionMode = true
+                                                selectedIds = setOf(item.mediaId)
+                                            },
+                                        )
+                                    }
+                                    repeat(density.columns - block.items.size) {
+                                        Spacer(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .aspectRatio(1f),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
+            if (!selectionMode && mediaItems.isNotEmpty()) {
+                PostIconButton(
+                    icon = Icons.Rounded.Add,
+                    contentDescription = "从照片流加入媒体",
+                    onClick = { if (!isMutating) onAddMedia() },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = gridSpacing, bottom = 18.dp),
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SmallAlbumGridMediaTile(
     media: PostDetailMediaUiModel,
     highlighted: Boolean,
+    selected: Boolean,
+    selectionMode: Boolean,
+    density: PhotoFeedDensity,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    onOpenMedia: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
-    val colors = YingShiThemeTokens.colors
-    val radius = YingShiThemeTokens.radius
-    val shape = RoundedCornerShape(10.dp)
+    val selectionHotspotOnly = selectionMode && density.columns in 2..4
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
-            .yingShiClickable(shape = shape, pressedScale = 0.965f, onClick = onClick)
-            .background(colors.sectionBackground)
-            .clip(shape),
+            .background(Color.Transparent)
+            .combinedClickable(
+                onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
+                onLongClick = onLongClick,
+            ),
     ) {
         AppContentMediaThumbnail(
             mediaSource = media.mediaSource,
@@ -2024,28 +2406,118 @@ private fun SmallAlbumGridMediaTile(
             palette = media.palette,
             modifier = Modifier.fillMaxSize(),
             contentDescription = media.id,
-            requestSize = 360,
+            requestSize = smallAlbumThumbnailRequestSize(density),
             contentScale = ContentScale.Crop,
             showLoadingIndicator = false,
         )
         if (highlighted) {
-            Surface(
+            SmallAlbumNewBadge(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.TopStart)
                     .padding(6.dp),
-                shape = RoundedCornerShape(radius.capsule),
-                color = colors.memoryContainer.copy(alpha = 0.96f),
-                border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.20f)),
-            ) {
-                Text(
-                    text = "新",
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.onMemoryContainer,
+            )
+        }
+        if (selectionMode) {
+            if (selectionHotspotOnly) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(46.dp)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    AppMediaSelectionBadge(
+                        selected = selected,
+                        modifier = Modifier.padding(end = 2.dp, bottom = 2.dp),
+                    )
+                }
+            } else {
+                AppMediaSelectionBadge(
+                    selected = selected,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 2.dp, bottom = 2.dp),
                 )
             }
         }
     }
+}
+
+@Composable
+private fun SmallAlbumNewBadge(
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(999.dp),
+        color = colors.memoryContainer.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.20f)),
+    ) {
+        Text(
+            text = "新加入",
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.onMemoryContainer,
+            maxLines = 1,
+        )
+    }
+}
+
+private fun smallAlbumSectionSpacing(density: PhotoFeedDensity): Dp {
+    return smallAlbumRowSpacing(density)
+}
+
+private fun smallAlbumRowSpacing(density: PhotoFeedDensity): Dp {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 5.dp
+        PhotoFeedDensity.COMFORT_3 -> 4.dp
+        PhotoFeedDensity.DENSE_4 -> 4.dp
+        PhotoFeedDensity.OVERVIEW_8 -> 2.dp
+        PhotoFeedDensity.OVERVIEW_16 -> 2.dp
+    }
+}
+
+private fun smallAlbumThumbnailRequestSize(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 960
+        PhotoFeedDensity.COMFORT_3 -> 720
+        PhotoFeedDensity.DENSE_4 -> 512
+        PhotoFeedDensity.OVERVIEW_8 -> 256
+        PhotoFeedDensity.OVERVIEW_16 -> 160
+    }
+}
+
+@Composable
+private fun SmallAlbumMonthHeaderRow(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.headlineSmall.copy(
+            fontSize = 32.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.ExtraBold,
+        ),
+        color = YingShiThemeTokens.colors.titleAccent,
+    )
+}
+
+@Composable
+private fun SmallAlbumDayHeaderRow(title: String) {
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
+        style = MaterialTheme.typography.titleLarge.copy(
+            fontSize = 24.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.Bold,
+        ),
+        color = YingShiThemeTokens.colors.textPrimary.copy(alpha = 0.88f),
+    )
 }
 
 internal fun String?.meaningfulPostSummaryOrNull(): String? {
@@ -2056,7 +2528,11 @@ internal fun String?.meaningfulPostSummaryOrNull(): String? {
 }
 
 private fun PostDetailUiModel.toSmallAlbumFeedItems(): List<PhotoFeedItem> {
-    return mediaItems.map { media ->
+    return mediaItems.toSmallAlbumFeedItems(postId)
+}
+
+private fun List<PostDetailMediaUiModel>.toSmallAlbumFeedItems(postId: String): List<PhotoFeedItem> {
+    return map { media ->
         val parts = postViewerDateParts(media.displayTimeMillis)
         PhotoFeedItem(
             mediaId = media.id,
@@ -2066,6 +2542,7 @@ private fun PostDetailUiModel.toSmallAlbumFeedItems(): List<PhotoFeedItem> {
             displayDay = parts.day,
             commentCount = media.commentCount,
             smallAlbumIds = listOf(postId),
+            uploadedByUserId = media.uploadedByUserId,
             palette = media.palette,
             mediaType = media.mediaType,
             aspectRatio = media.aspectRatio,
@@ -2077,9 +2554,25 @@ private fun PostDetailUiModel.toSmallAlbumFeedItems(): List<PhotoFeedItem> {
     }
 }
 
+private fun PostDetailUiModel.toDetailRoute(): PostDetailPlaceholderRoute {
+    return PostDetailPlaceholderRoute(
+        postId = postId,
+        albumId = albumIds.firstOrNull().orEmpty(),
+        albumIds = albumIds,
+        title = title,
+        summary = summary,
+        postDisplayTimeMillis = postDisplayTimeMillis,
+        mediaCount = mediaItems.size,
+        coverPalette = mediaItems.firstOrNull()?.palette ?: realPaletteFor(postId),
+        coverMediaType = mediaItems.firstOrNull()?.mediaType ?: AppMediaType.IMAGE,
+        coverAspectRatio = mediaItems.firstOrNull()?.displayAspectRatio() ?: 1f,
+    )
+}
+
 private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewerRoute {
+    val sortedMediaItems = mediaItems.sortedForSmallAlbumDisplay()
     return PhotoViewerRoute(
-        mediaItems = toSmallAlbumFeedItems(),
+        mediaItems = sortedMediaItems.toSmallAlbumFeedItems(postId),
         initialIndex = initialIndex,
         sourceLabel = title,
         showSmallAlbumSegments = true,
@@ -2095,6 +2588,13 @@ private fun PostDetailUiModel.toInPostViewerRoute(initialIndex: Int): PhotoViewe
             coverMediaType = mediaItems.firstOrNull()?.mediaType ?: AppMediaType.IMAGE,
             coverAspectRatio = mediaItems.firstOrNull()?.displayAspectRatio() ?: 1f,
         ),
+    )
+}
+
+private fun List<PostDetailMediaUiModel>.sortedForSmallAlbumDisplay(): List<PostDetailMediaUiModel> {
+    return sortedWith(
+        compareByDescending<PostDetailMediaUiModel> { it.displayTimeMillis }
+            .thenByDescending { it.id },
     )
 }
 

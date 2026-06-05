@@ -1,6 +1,8 @@
 package com.example.yingshi.feature.photos
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -18,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -156,6 +159,12 @@ fun AppContentMediaThumbnail(
     val showImage = directPosterBitmap != null ||
         (showVideoPosterImage || previewRequest != null || showOriginalImage) &&
         activeState !is AsyncImagePainter.State.Error
+    val motion = YingShiThemeTokens.motion
+    val imageAlpha = animateFloatAsState(
+        targetValue = if (showImage) 1f else 0f,
+        animationSpec = tween(motion.mediaFadeMillis, easing = motion.easing),
+        label = "appContentThumbnailFade",
+    )
 
     Box(
         modifier = modifier.background(
@@ -178,14 +187,18 @@ fun AppContentMediaThumbnail(
             Image(
                 bitmap = directPosterBitmap.asImageBitmap(),
                 contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(imageAlpha.value),
                 contentScale = contentScale,
             )
         } else if (showImage) {
             Image(
                 painter = activePainter,
                 contentDescription = contentDescription,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(imageAlpha.value),
                 contentScale = contentScale,
             )
         }

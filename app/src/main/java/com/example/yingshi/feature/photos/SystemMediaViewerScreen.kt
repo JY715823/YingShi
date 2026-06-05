@@ -451,15 +451,6 @@ fun SystemMediaViewerScreen(
                     Toast.LENGTH_SHORT,
                 ).show()
             },
-            onCreatePost = {
-                showMenuSheet = false
-                onOpenCreatePost(
-                    CreatePostRoute(
-                        source = "system-media-viewer",
-                        initialMediaItems = listOf(currentItem),
-                    ),
-                )
-            },
             onAddToPost = {
                 addToPostError = null
                 showMenuSheet = false
@@ -1064,7 +1055,6 @@ private fun SystemMediaVideoControls(
 private fun SystemMediaViewerMenuSheet(
     onDismiss: () -> Unit,
     onImportToApp: () -> Unit,
-    onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
     onMoveToTrash: () -> Unit,
 ) {
@@ -1090,22 +1080,14 @@ private fun SystemMediaViewerMenuSheet(
             )
             SystemMediaViewerMenuAction(
                 title = "导入照片流",
-                subtitle = "只放进映世照片流，不要求归属到小相册。",
                 onClick = onImportToApp,
             )
             SystemMediaViewerMenuAction(
-                title = "新建小相册",
-                subtitle = "把当前系统媒体整理成一个新的小相册。",
-                onClick = onCreatePost,
-            )
-            SystemMediaViewerMenuAction(
                 title = "加入已有小相册",
-                subtitle = "选择已有大相册和小相册，把当前媒体加入进去。",
                 onClick = onAddToPost,
             )
             SystemMediaViewerMenuAction(
                 title = "移到系统回收站",
-                subtitle = "走 Android 系统确认流程，不进入映世回收站。",
                 danger = true,
                 onClick = onMoveToTrash,
             )
@@ -1116,7 +1098,6 @@ private fun SystemMediaViewerMenuSheet(
 @Composable
 private fun SystemMediaViewerMenuAction(
     title: String,
-    subtitle: String,
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
@@ -1139,11 +1120,6 @@ private fun SystemMediaViewerMenuAction(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = if (danger) MaterialTheme.colorScheme.error else colors.titleAccent,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary,
             )
         }
     }

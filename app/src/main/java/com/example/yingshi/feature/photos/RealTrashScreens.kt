@@ -36,9 +36,14 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,6 +66,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -105,6 +111,10 @@ fun RealTrashPageScreen(
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
     val spacing = YingShiThemeTokens.spacing
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
+    val allCollaboratorUserIds = remember(collaboratorDirectory) {
+        collaboratorDirectory.all.mapTo(linkedSetOf()) { it.userId }
+    }
     var showCategoryMenu by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
     var showDeleteSelectedConfirm by remember { mutableStateOf(false) }
@@ -112,7 +122,39 @@ fun RealTrashPageScreen(
     var pendingRestoreEntries by remember { mutableStateOf(emptyList<TrashEntryUiModel>()) }
     var selectionMode by remember { mutableStateOf(false) }
     var selectedEntryIds by remember { mutableStateOf(emptySet<String>()) }
-    val selectedEntries = uiState.entries.filter { it.id in selectedEntryIds }
+    var savedSelectedCollaboratorUserIds by remember(selectedTypeName) { mutableStateOf(emptyList<String>()) }
+    var collaboratorSelectionInitialized by remember(selectedTypeName) { mutableStateOf(false) }
+    LaunchedEffect(allCollaboratorUserIds) {
+        if (allCollaboratorUserIds.isEmpty()) return@LaunchedEffect
+        savedSelectedCollaboratorUserIds = if (!collaboratorSelectionInitialized) {
+            defaultCollaboratorSelection(allCollaboratorUserIds).toList()
+        } else {
+            normalizeCollaboratorSelectionKeepingEmpty(
+                selectedUserIds = savedSelectedCollaboratorUserIds.toSet(),
+                allUserIds = allCollaboratorUserIds,
+            ).toList()
+        }
+        collaboratorSelectionInitialized = true
+    }
+    val selectedCollaboratorUserIds = remember(savedSelectedCollaboratorUserIds, allCollaboratorUserIds) {
+        normalizeCollaboratorSelectionKeepingEmpty(
+            selectedUserIds = savedSelectedCollaboratorUserIds.toSet(),
+            allUserIds = allCollaboratorUserIds,
+        )
+    }
+    val entries = remember(uiState.entries, selectedCollaboratorUserIds, allCollaboratorUserIds) {
+        filterTrashEntriesByCollaborator(
+            entries = uiState.entries,
+            directory = collaboratorDirectory,
+            selectedUserIds = selectedCollaboratorUserIds,
+            allUserIds = allCollaboratorUserIds,
+        )
+    }
+    val showActorBadge = isAllCollaboratorsSelected(
+        selectedUserIds = selectedCollaboratorUserIds,
+        allUserIds = allCollaboratorUserIds,
+    )
+    val selectedEntries = entries.filter { it.id in selectedEntryIds }
 
     fun toggleSelection(entry: TrashEntryUiModel) {
         selectionMode = true
@@ -132,7 +174,7 @@ fun RealTrashPageScreen(
                 showRestoreConfirm = true
             }
         } else {
-            pendingRestoreEntries = uiState.entries
+            pendingRestoreEntries = entries
             showRestoreConfirm = true
         }
     }
@@ -175,7 +217,7 @@ fun RealTrashPageScreen(
     }
 
     if (selectedType.isRealMediaTrashType()) {
-        val mediaEntries = uiState.entries.sortedByDescending { it.deletedAtMillis }
+        val mediaEntries = entries.sortedByDescending { it.deletedAtMillis }
         val mediaGridState = rememberLazyGridState()
         val mediaGridColumns = 3
         val rowItems = remember(mediaEntries) {
@@ -245,11 +287,20 @@ fun RealTrashPageScreen(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 RealTrashCategoryActionRow(
                     selectedType = selectedType,
-                    entryCount = uiState.entries.size,
+                    entryCount = entries.size,
+                    directory = collaboratorDirectory,
+                    selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     isMutating = uiState.isMutating,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onToggleCollaborator = { userId ->
+                        savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                            currentSelection = selectedCollaboratorUserIds,
+                            toggledUserId = userId,
+                            allUserIds = allCollaboratorUserIds,
+                        ).toList()
+                    },
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
@@ -259,11 +310,6 @@ fun RealTrashPageScreen(
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
                 )
-            }
-            uiState.statusMessage?.let { message ->
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    RealTrashSectionCard(title = "操作结果", body = message, emphasized = true)
-                }
             }
             uiState.errorMessage?.let { message ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -276,9 +322,15 @@ fun RealTrashPageScreen(
                         RealTrashSectionCard(title = "读取中", body = "正在读取回收站列表…")
                     }
                 }
-                uiState.entries.isEmpty() -> {
+                entries.isEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        RealTrashSectionCard(title = "当前分类为空", body = "这一类回收站项目还没有内容。")
+                        RealTrashCenteredEmptyState(
+                            text = if (selectedCollaboratorUserIds.isEmpty()) {
+                                "未选中任何账号，当前不展示条目"
+                            } else {
+                                "当前分类为空"
+                            },
+                        )
                     }
                 }
                 else -> {
@@ -297,6 +349,8 @@ fun RealTrashPageScreen(
                                     showPostTitle = selectedType == TrashEntryType.MEDIA_REMOVED,
                                     selected = entry.id in selectedEntryIds,
                                     selectionMode = selectionMode,
+                                    actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
+                                    showActorBadge = showActorBadge,
                                     modifier = Modifier.weight(1f),
                                     onClick = {
                                         if (selectionMode) {
@@ -330,11 +384,20 @@ fun RealTrashPageScreen(
             item(span = { GridItemSpan(maxLineSpan) }) {
                 RealTrashCategoryActionRow(
                     selectedType = selectedType,
-                    entryCount = uiState.entries.size,
+                    entryCount = entries.size,
+                    directory = collaboratorDirectory,
+                    selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     isMutating = uiState.isMutating,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onToggleCollaborator = { userId ->
+                        savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                            currentSelection = selectedCollaboratorUserIds,
+                            toggledUserId = userId,
+                            allUserIds = allCollaboratorUserIds,
+                        ).toList()
+                    },
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
@@ -344,11 +407,6 @@ fun RealTrashPageScreen(
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
                 )
-            }
-            uiState.statusMessage?.let { message ->
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    RealTrashSectionCard(title = "操作结果", body = message, emphasized = true)
-                }
             }
             uiState.errorMessage?.let { message ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -361,20 +419,28 @@ fun RealTrashPageScreen(
                         RealTrashSectionCard(title = "读取中", body = "正在读取回收站列表…")
                     }
                 }
-                uiState.entries.isEmpty() -> {
+                entries.isEmpty() -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        RealTrashSectionCard(title = "当前分类为空", body = "这一类回收站项目还没有内容。")
+                        RealTrashCenteredEmptyState(
+                            text = if (selectedCollaboratorUserIds.isEmpty()) {
+                                "未选中任何账号，当前不展示条目"
+                            } else {
+                                "当前分类为空"
+                            },
+                        )
                     }
                 }
                 else -> {
                     gridItems(
-                        items = uiState.entries.sortedByDescending { it.deletedAtMillis },
+                        items = entries.sortedByDescending { it.deletedAtMillis },
                         key = { it.id },
                     ) { entry ->
                         RealTrashPostGridCard(
                             entry = entry,
                             selected = entry.id in selectedEntryIds,
                             selectionMode = selectionMode,
+                            actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
+                            showActorBadge = showActorBadge,
                             onClick = {
                                 if (selectionMode) {
                                     toggleSelection(entry)
@@ -396,11 +462,20 @@ fun RealTrashPageScreen(
             item {
                 RealTrashCategoryActionRow(
                     selectedType = selectedType,
-                    entryCount = uiState.entries.size,
+                    entryCount = entries.size,
+                    directory = collaboratorDirectory,
+                    selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     isMutating = uiState.isMutating,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onToggleCollaborator = { userId ->
+                        savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                            currentSelection = selectedCollaboratorUserIds,
+                            toggledUserId = userId,
+                            allUserIds = allCollaboratorUserIds,
+                        ).toList()
+                    },
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
@@ -410,16 +485,6 @@ fun RealTrashPageScreen(
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
                 )
-            }
-
-            if (uiState.statusMessage != null) {
-                item {
-                    RealTrashSectionCard(
-                        title = "操作结果",
-                        body = uiState.statusMessage ?: "",
-                        emphasized = true,
-                    )
-                }
             }
 
             if (uiState.errorMessage != null) {
@@ -440,23 +505,28 @@ fun RealTrashPageScreen(
                         )
                     }
                 }
-                uiState.entries.isEmpty() -> {
+                entries.isEmpty() -> {
                     item {
-                        RealTrashSectionCard(
-                            title = "当前分类为空",
-                            body = "这一类回收站项目还没有内容。",
+                        RealTrashCenteredEmptyState(
+                            text = if (selectedCollaboratorUserIds.isEmpty()) {
+                                "未选中任何账号，当前不展示条目"
+                            } else {
+                                "当前分类为空"
+                            },
                         )
                     }
                 }
                 else -> {
                     items(
-                        items = uiState.entries,
+                        items = entries,
                         key = { it.id },
                     ) { entry ->
                         RealTrashEntryRow(
                             entry = entry,
                             selected = entry.id in selectedEntryIds,
                             selectionMode = selectionMode,
+                            actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
+                            showActorBadge = showActorBadge,
                             onClick = {
                                 if (selectionMode) {
                                     toggleSelection(entry)
@@ -505,7 +575,7 @@ fun RealTrashPageScreen(
                     onClick = {
                         showClearConfirm = false
                         viewModel.purgeEntries(
-                            entries = uiState.entries,
+                            entries = entries,
                             selectedType = selectedType,
                         )
                     },
@@ -602,6 +672,8 @@ private fun RealTrashEntryRow(
     entry: TrashEntryUiModel,
     selected: Boolean = false,
     selectionMode: Boolean = false,
+    actorIdentity: CollaboratorIdentityUiModel? = null,
+    showActorBadge: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
@@ -629,12 +701,25 @@ private fun RealTrashEntryRow(
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RealTrashEntryPreview(
-                entry = entry,
+            Box(
                 modifier = Modifier
                     .weight(0.26f)
                     .aspectRatio(1f),
-            )
+            ) {
+                RealTrashEntryPreview(
+                    entry = entry,
+                    modifier = Modifier.matchParentSize(),
+                )
+                if (showActorBadge && actorIdentity != null) {
+                    CollaboratorMarkerBadge(
+                        identity = actorIdentity,
+                        size = 20.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                    )
+                }
+            }
             Column(
                 modifier = Modifier.weight(0.74f),
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -676,10 +761,13 @@ private fun RealTrashEntryRow(
 private fun RealTrashCategoryActionRow(
     selectedType: TrashEntryType,
     entryCount: Int,
+    directory: CollaboratorDirectorySnapshot,
+    selectedCollaboratorUserIds: Set<String>,
     menuExpanded: Boolean,
     isMutating: Boolean,
     onMenuExpandedChange: (Boolean) -> Unit,
     onTypeSelected: (TrashEntryType) -> Unit,
+    onToggleCollaborator: (String) -> Unit,
     selectionMode: Boolean,
     selectedCount: Int,
     onCancelSelection: () -> Unit,
@@ -706,7 +794,8 @@ private fun RealTrashCategoryActionRow(
         } else {
             Box {
                 RealTrashIconActionButton(
-                    text = "☰",
+                    text = "菜单",
+                    icon = Icons.Filled.Menu,
                     enabled = !isMutating,
                     onClick = { onMenuExpandedChange(true) },
                 )
@@ -769,14 +858,24 @@ private fun RealTrashCategoryActionRow(
             }
         }
         Box(modifier = Modifier.weight(1f))
+        if (!selectionMode && directory.all.isNotEmpty()) {
+            CollaboratorFilterChipRow(
+                directory = directory,
+                selectedUserIds = selectedCollaboratorUserIds,
+                onToggleCollaborator = onToggleCollaborator,
+                modifier = Modifier.padding(end = spacing.xxs),
+            )
+        }
         RealTrashIconActionButton(
             text = if (isMutating) "处理中" else "恢复",
+            icon = Icons.AutoMirrored.Filled.Undo,
             enabled = (entryCount > 0 || selectionMode) && !isMutating,
             onClick = onRestoreCurrent,
             emphasized = true,
         )
         RealTrashIconActionButton(
             text = "删除",
+            icon = Icons.Filled.Delete,
             enabled = (entryCount > 0 || selectionMode) && !isMutating,
             onClick = onRequestClearCurrent,
             danger = true,
@@ -828,6 +927,7 @@ private fun RealTrashSelectionActionRow(
 @Composable
 private fun RealTrashIconActionButton(
     text: String,
+    icon: ImageVector? = null,
     enabled: Boolean = true,
     emphasized: Boolean = false,
     danger: Boolean = false,
@@ -847,21 +947,54 @@ private fun RealTrashIconActionButton(
         else -> colors.titleAccent
     }
     Surface(
-        modifier = Modifier.yingShiClickable(
-            enabled = enabled,
-            shape = shape,
-            pressedScale = 0.96f,
-            onClick = onClick,
-        ),
+        modifier = (if (icon != null) Modifier.size(48.dp) else Modifier)
+            .yingShiClickable(
+                enabled = enabled,
+                shape = shape,
+                pressedScale = 0.96f,
+                onClick = onClick,
+            ),
         shape = shape,
         color = containerColor,
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
+        if (icon != null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = text,
+                    modifier = Modifier.size(25.dp),
+                    tint = contentColor,
+                )
+            }
+        } else {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RealTrashCenteredEmptyState(
+    text: String = "当前分类为空",
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(320.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = contentColor,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+            color = YingShiThemeTokens.colors.textSecondary.copy(alpha = 0.46f),
         )
     }
 }
@@ -926,6 +1059,8 @@ private fun RealTrashMediaGridCell(
     showPostTitle: Boolean,
     selected: Boolean,
     selectionMode: Boolean,
+    actorIdentity: CollaboratorIdentityUiModel? = null,
+    showActorBadge: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -982,6 +1117,15 @@ private fun RealTrashMediaGridCell(
                 visible = selectionMode,
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
+            if (showActorBadge && actorIdentity != null) {
+                CollaboratorMarkerBadge(
+                    identity = actorIdentity,
+                    size = 22.dp,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                )
+            }
         }
         if (showPostTitle) {
             RealTrashPostTitleChip(text = realTrashGridPostTitle(entry))
@@ -1014,6 +1158,8 @@ private fun RealTrashPostGridCard(
     entry: TrashEntryUiModel,
     selected: Boolean,
     selectionMode: Boolean,
+    actorIdentity: CollaboratorIdentityUiModel? = null,
+    showActorBadge: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -1080,6 +1226,15 @@ private fun RealTrashPostGridCard(
                     visible = selectionMode,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
+                if (showActorBadge && actorIdentity != null) {
+                    CollaboratorMarkerBadge(
+                        identity = actorIdentity,
+                        size = 22.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                    )
+                }
             }
             Text(
                 text = entry.title,
@@ -1188,6 +1343,7 @@ private fun TrashEntryUiModel.toTrashPostDetailUiModel(mediaIds: List<String>): 
 @Composable
 private fun RealTrashPostDetailTopBar(
     detail: RemoteTrashDetail,
+    actorIdentity: CollaboratorIdentityUiModel?,
     isMutating: Boolean,
     onBack: () -> Unit,
     onRestore: () -> Unit,
@@ -1199,13 +1355,25 @@ private fun RealTrashPostDetailTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RealTrashIconActionButton(text = "<", enabled = !isMutating, onClick = onBack)
-        Text(
-            text = "小相册详情",
+        Row(
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-        )
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "小相册详情",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+            )
+            actorIdentity?.let {
+                CollaboratorMarkerBadge(
+                    identity = it,
+                    size = 18.dp,
+                )
+            }
+        }
         if (detail.canRestore) {
             RealTrashPostTopIconButton(
                 icon = RealTrashPostTopIcon.Restore,
@@ -1333,6 +1501,7 @@ fun RealTrashDetailScreen(
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val detail = uiState.detail
     val spacing = YingShiThemeTokens.spacing
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
 
     LaunchedEffect(backendMutationEvent.version) {
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsTrash()) {
@@ -1353,6 +1522,7 @@ fun RealTrashDetailScreen(
         }
         RealTrashMediaViewerDetailPagerContent(
             detail = detail,
+            directory = collaboratorDirectory,
             entries = sameTypeEntries,
             statusMessage = uiState.statusMessage,
             errorMessage = uiState.errorMessage,
@@ -1372,6 +1542,7 @@ fun RealTrashDetailScreen(
     if (detail != null && mediaDetailEntry?.type == TrashEntryType.POST_DELETED) {
         RealTrashPostViewerDetailContent(
             detail = detail,
+            directory = collaboratorDirectory,
             statusMessage = uiState.statusMessage,
             errorMessage = uiState.errorMessage,
             isMutating = uiState.isMutating,
@@ -1394,17 +1565,32 @@ fun RealTrashDetailScreen(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
+        val actorIdentity = detail?.item?.toTrashEntryUiModel()?.let {
+            resolveTrashActorIdentity(it, collaboratorDirectory)
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RealTrashIconActionButton(text = "返回", onClick = onBack)
-            Text(
-                text = "回收站详情",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "回收站详情",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                actorIdentity?.let {
+                    CollaboratorMarkerBadge(
+                        identity = it,
+                        size = 18.dp,
+                    )
+                }
+            }
         }
 
         when {
@@ -1435,6 +1621,7 @@ fun RealTrashDetailScreen(
             else -> {
                 RealTrashDetailContent(
                     detail = detail,
+                    actorIdentity = actorIdentity,
                     statusMessage = uiState.statusMessage,
                     errorMessage = uiState.errorMessage,
                     isMutating = uiState.isMutating,
@@ -1455,6 +1642,7 @@ fun RealTrashDetailScreen(
 @Composable
 private fun RealTrashMediaViewerDetailPagerContent(
     detail: RemoteTrashDetail,
+    directory: CollaboratorDirectorySnapshot,
     entries: List<TrashEntryUiModel>,
     statusMessage: String?,
     errorMessage: String?,
@@ -1480,6 +1668,7 @@ private fun RealTrashMediaViewerDetailPagerContent(
     )
     val currentEntry = viewerEntries[pagerState.currentPage.coerceIn(0, viewerEntries.lastIndex)]
     val currentMedia = currentEntry.mediaSnapshot
+    val actorIdentity = resolveTrashActorIdentity(currentEntry, directory)
     val currentCommentMediaId = currentEntry.commentMediaId()
     val commentBindings = currentCommentMediaId?.let { rememberViewerCommentBindings(it) }
     val target = currentMedia?.let {
@@ -1675,6 +1864,7 @@ private fun RealTrashMediaViewerDetailPagerContent(
             RealTrashViewerTopBar(
                 timeLabel = currentMedia?.displayTimeMillis?.let(::realFormatTrashEntryTime)
                     ?: realFormatTrashEntryTime(currentEntry.deletedAtMillis),
+                actorIdentity = actorIdentity,
                 isMutating = isMutating,
                 canRestore = detail.canRestore,
                 canRemove = detail.canMoveOutOfTrash,
@@ -2170,6 +2360,7 @@ private fun TrashViewerMediaCanvas(
 @Composable
 private fun RealTrashViewerTopBar(
     timeLabel: String,
+    actorIdentity: CollaboratorIdentityUiModel?,
     isMutating: Boolean,
     canRestore: Boolean,
     canRemove: Boolean,
@@ -2196,10 +2387,21 @@ private fun RealTrashViewerTopBar(
         RealTrashViewerCapsule(
             text = timeLabel,
             emphasized = false,
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(end = if (actorIdentity != null) 30.dp else 0.dp),
             surfaceAlpha = 0.06f,
             contentAlpha = 0.78f,
         )
+        actorIdentity?.let {
+            CollaboratorMarkerBadge(
+                identity = it,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(start = 112.dp),
+                size = 18.dp,
+            )
+        }
         Row(
             modifier = Modifier.align(Alignment.TopEnd),
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
@@ -2395,6 +2597,7 @@ private fun RealTrashViewerCommentPreview(
 @Composable
 private fun RealTrashPostViewerDetailContent(
     detail: RemoteTrashDetail,
+    directory: CollaboratorDirectorySnapshot,
     statusMessage: String?,
     errorMessage: String?,
     isMutating: Boolean,
@@ -2405,6 +2608,9 @@ private fun RealTrashPostViewerDetailContent(
 ) {
     val item = detail.item
     val entry = item.toTrashEntryUiModel()
+    val actorIdentity = remember(entry, directory) {
+        resolveTrashActorIdentity(entry, directory)
+    }
     var showPermanentDeleteConfirm by remember(item.trashItemId) {
         mutableStateOf(false)
     }
@@ -2453,6 +2659,7 @@ private fun RealTrashPostViewerDetailContent(
     if (selectedMediaId != null) {
         RealTrashPostMediaViewerOverlay(
             entry = entry,
+            actorIdentity = actorIdentity,
             mediaId = selectedMediaId,
             isMutating = isMutating,
             onBack = { selectedMediaId = null },
@@ -2466,6 +2673,7 @@ private fun RealTrashPostViewerDetailContent(
             topBar = {
                 RealTrashPostDetailTopBar(
                     detail = detail,
+                    actorIdentity = actorIdentity,
                     isMutating = isMutating,
                     onBack = onBack,
                     onRestore = { showRestoreConfirm = true },
@@ -2528,6 +2736,7 @@ private fun RealTrashPostViewerDetailContent(
                     PostInfoSection(
                         detail = postDetail,
                         originalSummary = originalSummary,
+                        onOpenComments = {},
                         onLoadAllOriginals = {
                             originalTargets.forEach { RealOriginalLoadRepository.setState(it, OriginalLoadState.Loaded) }
                         },
@@ -2675,6 +2884,7 @@ private fun RealTrashReadOnlyCommentCard(
 @Composable
 private fun RealTrashPostMediaViewerOverlay(
     entry: TrashEntryUiModel,
+    actorIdentity: CollaboratorIdentityUiModel?,
     mediaId: String?,
     isMutating: Boolean,
     onBack: () -> Unit,
@@ -2772,6 +2982,12 @@ private fun RealTrashPostMediaViewerOverlay(
             ) {
                 RealTrashViewerOverlayButton(text = "<", onClick = onBack)
                 Box(modifier = Modifier.weight(1f))
+                actorIdentity?.let {
+                    CollaboratorMarkerBadge(
+                        identity = it,
+                        size = 18.dp,
+                    )
+                }
                 RealTrashViewerOverlayButton(text = if (isMutating) "…" else "↩", onClick = onRestorePost)
                 RealTrashViewerOverlayButton(
                     text = if (isMutating) "…" else "🗑",
@@ -2875,6 +3091,7 @@ private fun RealTrashDeletedMediaPlaceholder(
 @Composable
 private fun RealTrashDetailContent(
     detail: RemoteTrashDetail,
+    actorIdentity: CollaboratorIdentityUiModel?,
     statusMessage: String?,
     errorMessage: String?,
     isMutating: Boolean,
@@ -2930,6 +3147,22 @@ private fun RealTrashDetailContent(
             modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
+            actorIdentity?.let {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CollaboratorMarkerBadge(
+                        identity = it,
+                        size = 18.dp,
+                    )
+                    Text(
+                        text = if (it.isCurrentUser) "由我移入回收站" else "由对方移入回收站",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                }
+            }
             Text(
                 text = "类型：${entryType.label}",
                 style = MaterialTheme.typography.bodyMedium,

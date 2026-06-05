@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.remote.auth.AuthSessionManager
@@ -19,7 +20,7 @@ internal object LifeConsoleWidgetStore {
     private const val KEY_SNAPSHOT_JSON = "snapshot_json"
     private const val KEY_STATUS = "status"
     private const val KEY_INDEX_PREFIX = "index_"
-    private const val THUMB_TARGET_PX = 360
+    private const val THUMB_TARGET_PX = 720
 
     private val gson = Gson()
 
@@ -80,6 +81,39 @@ internal object LifeConsoleWidgetStore {
         saveSnapshot(context, snapshot)
     }
 
+    fun updateBowelOptimistically(context: Context, delta: Int): RemoteLifeConsoleToday? {
+        val snapshot = loadSnapshot(context) ?: return null
+        val userId = snapshot.currentUser.userId
+        val nowMillis = System.currentTimeMillis()
+        val users = snapshot.bowel.users.toMutableList()
+        val userIndex = users.indexOfFirst { it.userId == userId }
+        val current = users.getOrNull(userIndex) ?: RemoteLifeConsoleBowelUserSummary(
+            userId = userId,
+            count = 0,
+            latestOccurredAtMillis = null,
+            eventTimesMillis = emptyList(),
+        )
+        if (delta < 0 && current.count <= 0) return null
+        val nextCount = (current.count + delta).coerceAtLeast(0)
+        val nextTimes = if (delta > 0) {
+            current.eventTimesMillis + nowMillis
+        } else {
+            current.eventTimesMillis.dropLast(1)
+        }
+        val nextUser = current.copy(
+            count = nextCount,
+            latestOccurredAtMillis = nextTimes.lastOrNull(),
+            eventTimesMillis = nextTimes,
+        )
+        if (userIndex >= 0) {
+            users[userIndex] = nextUser
+        } else {
+            users += nextUser
+        }
+        saveSnapshot(context, snapshot.copy(bowel = snapshot.bowel.copy(users = users)))
+        return snapshot
+    }
+
     fun cachedBitmapFor(context: Context, media: RemoteMedia): Bitmap? {
         val file = thumbnailFile(context, media)
         if (!file.exists() || file.length() <= 0L) return null
@@ -102,11 +136,7 @@ internal object LifeConsoleWidgetStore {
     private fun ensureThumbnailCached(context: Context, media: RemoteMedia): File? {
         val file = thumbnailFile(context, media)
         if (file.exists() && file.length() > 0L) return file
-        val rawUrl = media.thumbnailUrl
-            ?: media.previewUrl
-            ?: media.coverUrl
-            ?: media.mediaUrl
-            ?: media.originalUrl
+        val rawUrl = media.widgetCacheUrl()
             ?: return null
         val url = resolvedUrl(rawUrl)
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -141,7 +171,7 @@ internal object LifeConsoleWidgetStore {
 
     private fun thumbnailFile(context: Context, media: RemoteMedia): File {
         val safeId = media.mediaId.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        return File(context.cacheDir, "life-console-widget/$safeId.thumb")
+        return File(context.cacheDir, "life-console-widget/$safeId.original-thumb")
     }
 
     private fun decodeSampledBitmap(file: File): Bitmap? {
@@ -182,6 +212,32 @@ internal object LifeConsoleWidgetStore {
 
     private fun Int.floorMod(modulus: Int): Int {
         return ((this % modulus) + modulus) % modulus
+    }
+
+    private fun RemoteMedia.widgetCacheUrl(): String? {
+        return if (isVideo()) {
+            firstImageUrl(coverUrl, thumbnailUrl, previewUrl, mediaUrl, originalUrl)
+        } else {
+            firstImageUrl(originalUrl, mediaUrl, previewUrl, thumbnailUrl, coverUrl)
+        }
+    }
+
+    private fun RemoteMedia.isVideo(): Boolean {
+        return mediaType.equals("video", ignoreCase = true) ||
+            mimeType?.startsWith("video/", ignoreCase = true) == true ||
+            !videoUrl.isNullOrBlank()
+    }
+
+    private fun firstImageUrl(vararg urls: String?): String? {
+        return urls.firstOrNull { url ->
+            val normalized = url?.trim()
+            !normalized.isNullOrBlank() && !looksLikeVideoUrl(normalized)
+        }?.trim()
+    }
+
+    private fun looksLikeVideoUrl(url: String): Boolean {
+        val lower = url.substringBefore('?').lowercase()
+        return listOf(".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv").any(lower::endsWith)
     }
 }
 

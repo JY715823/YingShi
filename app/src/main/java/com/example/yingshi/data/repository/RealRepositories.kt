@@ -11,6 +11,7 @@ import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleHistory
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
@@ -587,7 +588,20 @@ class RealTrashRepository(
 ) : TrashRepository {
     override suspend fun getTrashItems(type: String?): ApiResult<List<RemoteTrashItem>> {
         return runCatching {
-            trashApi.getTrashItems(itemType = type).data.items.map { it.toRemoteModel() }
+            val aggregated = mutableListOf<RemoteTrashItem>()
+            var page = 1
+            var hasMore = true
+            while (hasMore) {
+                val response = trashApi.getTrashItems(
+                    itemType = type,
+                    page = page,
+                    size = 100,
+                ).data
+                aggregated += response.items.map { it.toRemoteModel() }
+                hasMore = response.hasMore && response.items.isNotEmpty()
+                page += 1
+            }
+            aggregated.distinctBy { it.trashItemId }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -933,7 +947,7 @@ private class ProgressInputStreamRequestBody(
     }
 }
 
-private const val UploadProgressChunkBytes = 64 * 1024
+private const val UploadProgressChunkBytes = 512 * 1024
 
 private fun backendRequestErrorMessage(
     throwable: Throwable,
@@ -978,6 +992,27 @@ class RealLifeConsoleRepository(
                 ApiResult.Error(
                     code = "LIFE_CONSOLE_TODAY_REQUEST_FAILED",
                     message = backendRequestErrorMessage(it, "读取今日痕迹失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getHistory(
+        zoneId: String,
+        limitDays: Int,
+    ): ApiResult<RemoteLifeConsoleHistory> {
+        return runCatching {
+            lifeConsoleApi.getHistory(
+                zoneId = zoneId,
+                limitDays = limitDays,
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_HISTORY_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "读取痕迹历史失败，请稍后重试。"),
                     throwable = it,
                 )
             },

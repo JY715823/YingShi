@@ -33,6 +33,7 @@ data class TrashEntryUiModel(
     val deletedAtMillis: Long,
     val title: String,
     val previewInfo: String,
+    val actorUserId: String? = null,
     val sourcePostId: String? = null,
     val sourceMediaId: String? = null,
     val commentTargetMediaId: String? = null,

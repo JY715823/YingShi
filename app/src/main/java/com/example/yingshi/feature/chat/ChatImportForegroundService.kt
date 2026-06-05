@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.yingshi.MainActivity
@@ -34,12 +35,18 @@ class ChatImportForegroundService : Service() {
         observeJob = scope.launch {
             ChatImportRuntime.state.collectLatest { state ->
                 if (state.isRunning) {
-                    startForeground(NOTIFICATION_ID, buildNotification(state))
+                    runCatching {
+                        startForeground(NOTIFICATION_ID, buildNotification(state))
+                    }.onFailure { throwable ->
+                        Log.w(TAG, "Unable to promote chat import to foreground", throwable)
+                    }
                 } else if (state.result != null || state.error != null) {
                     val manager = getSystemService(NotificationManager::class.java)
                     manager.notify(NOTIFICATION_ID, buildNotification(state))
                     releaseWakeLock()
-                    stopForeground(STOP_FOREGROUND_DETACH)
+                    runCatching {
+                        stopForeground(STOP_FOREGROUND_DETACH)
+                    }
                     stopSelf()
                 }
             }
@@ -51,15 +58,19 @@ class ChatImportForegroundService : Service() {
             val uri = intent.getStringExtra(EXTRA_URI)?.let(Uri::parse)
             val expectedChatId = intent.getLongExtra(EXTRA_EXPECTED_CHAT_ID, -1L).takeIf { it > 0L }
             if (uri != null) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    buildNotification(
-                        ChatImportRuntimeState(
-                            isRunning = true,
-                            progress = null,
+                runCatching {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification(
+                            ChatImportRuntimeState(
+                                isRunning = true,
+                                progress = null,
+                            ),
                         ),
-                    ),
-                )
+                    )
+                }.onFailure { throwable ->
+                    Log.w(TAG, "Unable to start chat import foreground notification", throwable)
+                }
                 acquireWakeLock()
                 ChatImportRuntime.startImport(
                     context = applicationContext,
@@ -157,6 +168,7 @@ class ChatImportForegroundService : Service() {
         const val EXTRA_EXPECTED_CHAT_ID = "extra_expected_chat_id"
         private const val CHANNEL_ID = "chat_imports"
         private const val NOTIFICATION_ID = 32001
+        private const val TAG = "ChatImportService"
 
         fun start(
             context: Context,

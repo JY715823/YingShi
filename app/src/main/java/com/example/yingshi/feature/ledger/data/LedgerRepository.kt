@@ -12,14 +12,26 @@ import java.util.UUID
 class LedgerRepository(
     private val dao: LedgerDao,
     private val syncBridge: LedgerSyncBridge = NoOpLedgerSyncBridge,
+    private val currentUserIdProvider: () -> String? = { null },
 ) {
     val shouldSeedDemoData: Boolean
         get() = syncBridge.shouldSeedDemoData
 
     suspend fun ensureSeedData(nowMillis: Long = System.currentTimeMillis()) {
-        LedgerSeedData.defaultBooks(nowMillis).forEach { book ->
+        val currentUserId = currentUserIdProvider()?.takeIf { it.isNotBlank() }
+        LedgerSeedData.defaultBooks(
+            nowMillis = nowMillis,
+            creatorUserId = currentUserId,
+        ).forEach { book ->
             if (dao.getBook(book.id) == null) {
                 dao.insertBook(book)
+            }
+        }
+        if (currentUserId != null) {
+            dao.getAllBooks().forEach { book ->
+                if (book.creatorUserId.isNullOrBlank()) {
+                    dao.updateBook(book.copy(creatorUserId = currentUserId, updatedAtMillis = nowMillis))
+                }
             }
         }
         LedgerSeedData.defaultAccounts(nowMillis).forEach { account ->
@@ -32,6 +44,7 @@ class LedgerRepository(
                 dao.insertCategory(category)
             }
         }
+        backfillMissingBookCreatorUserIds(nowMillis)
     }
 
     suspend fun ensureDemoData(nowMillis: Long = System.currentTimeMillis()) {
@@ -42,6 +55,7 @@ class LedgerRepository(
 
     suspend fun hydrateFromBackendIfNeeded() {
         syncBridge.hydrate(this)
+        backfillMissingBookCreatorUserIds()
     }
 
     suspend fun exportLocalSnapshot(): LedgerLocalSnapshot {
@@ -60,6 +74,17 @@ class LedgerRepository(
 
     suspend fun replaceLocalSnapshot(snapshot: LedgerLocalSnapshot) {
         dao.replaceAllData(snapshot)
+    }
+
+    suspend fun backfillMissingBookCreatorUserIds(
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
+        val currentUserId = currentUserIdProvider()?.takeIf { it.isNotBlank() } ?: return
+        dao.getAllBooks().forEach { book ->
+            if (book.creatorUserId.isNullOrBlank()) {
+                dao.updateBook(book.copy(creatorUserId = currentUserId, updatedAtMillis = nowMillis))
+            }
+        }
     }
 
     fun observeBooks(): Flow<List<LedgerBook>> = dao.observeBooks().map { rows ->
@@ -213,10 +238,12 @@ class LedgerRepository(
             val bookId = UUID.randomUUID().toString()
             val nextSortOrder = dao.observeAllBooks().first().maxOfOrNull { it.sortOrder }?.plus(1) ?: 0
             val template = draft.template.ifBlank { LedgerBookTemplateDaily }
+            val creatorUserId = draft.creatorUserId ?: currentUserIdProvider()
             dao.insertBook(
                 LedgerBookEntity(
                     id = bookId,
                     name = normalizedName,
+                    creatorUserId = creatorUserId,
                     template = template,
                     currencyCode = "CNY",
                     currencySymbol = "¥",
@@ -776,6 +803,8 @@ class LedgerRepository(
             LedgerTransaction(
                 id = transaction.id,
                 bookId = transaction.bookId,
+                accountId = transaction.accountId,
+                toAccountId = transaction.toAccountId,
                 category = transaction.categoryId?.let { categoriesById[it]?.toDomain() },
                 account = accountsById[transaction.accountId]?.toDomain(),
                 toAccount = transaction.toAccountId?.let { accountsById[it]?.toDomain() },

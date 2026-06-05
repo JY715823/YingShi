@@ -19,6 +19,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 @Composable
 fun AppMediaSelectionBadge(
     selected: Boolean,
+    disabled: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -27,11 +28,19 @@ fun AppMediaSelectionBadge(
             .size(24.dp)
             .clip(CircleShape)
             .background(
-                if (selected) colors.primaryContainer else Color.Black.copy(alpha = 0.10f),
+                when {
+                    disabled -> Color.White.copy(alpha = 0.24f)
+                    selected -> colors.primaryContainer
+                    else -> Color.Black.copy(alpha = 0.10f)
+                },
             )
             .border(
                 width = 1.5.dp,
-                color = if (selected) colors.glassStroke else Color.White.copy(alpha = 0.88f),
+                color = when {
+                    disabled -> Color.White.copy(alpha = 0.54f)
+                    selected -> colors.glassStroke
+                    else -> Color.White.copy(alpha = 0.88f)
+                },
                 shape = CircleShape,
             ),
         contentAlignment = Alignment.Center,
@@ -41,6 +50,12 @@ fun AppMediaSelectionBadge(
                 text = "✓",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
                 color = colors.onPrimaryContainer,
+            )
+        } else if (disabled) {
+            Text(
+                text = "·",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
+                color = Color.White.copy(alpha = 0.92f),
             )
         }
     }

@@ -1,10 +1,13 @@
 package com.example.yingshi.feature.ledger
 
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.RadioButtonChecked
@@ -43,9 +47,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -78,12 +85,24 @@ import com.example.yingshi.feature.ledger.data.LedgerSearchTransactionType
 import com.example.yingshi.feature.ledger.data.LedgerTransferAccountSide
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
+import com.example.yingshi.feature.ledger.data.belongsToLedgerAccount
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import androidx.compose.foundation.gestures.detectDragGestures
+import kotlinx.coroutines.launch
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
+private enum class LedgerAssetScope(val label: String) {
+    ALL("全部"),
+    MINE("我的"),
+    PARTNER("女朋友的"),
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LedgerAssetsScreen(
     uiState: LedgerUiState,
@@ -104,18 +123,49 @@ fun LedgerAssetsScreen(
     var editingAccount by remember { mutableStateOf<LedgerAccount?>(null) }
     var actionAccount by remember { mutableStateOf<LedgerAccount?>(null) }
     var showCreateAccountSheet by rememberSaveable { mutableStateOf(false) }
+    var selectedScopeName by rememberSaveable { mutableStateOf(LedgerAssetScope.ALL.name) }
+    val assetScopes = LedgerAssetScope.entries
+    val selectedScope = LedgerAssetScope.valueOf(selectedScopeName)
+    val pagerState = rememberPagerState(
+        initialPage = assetScopes.indexOf(selectedScope).coerceAtLeast(0),
+        pageCount = { assetScopes.size },
+    )
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(selectedScopeName) {
+        val targetPage = assetScopes.indexOf(LedgerAssetScope.valueOf(selectedScopeName))
+        if (targetPage >= 0 && targetPage != pagerState.currentPage) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+    LaunchedEffect(pagerState.currentPage) {
+        val pageScope = assetScopes.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
+        if (pageScope.name != selectedScopeName) {
+            selectedScopeName = pageScope.name
+        }
+    }
 
     LedgerPageScaffold(
         title = "资产管理",
         onBack = onBack,
         action = {
-            Text(
-                text = "+",
-                modifier = Modifier.clickable { showCreateAccountSheet = true },
-                color = LedgerHeaderGreen,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
+            Surface(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clickable { showCreateAccountSheet = true },
+                shape = CircleShape,
+                color = LedgerPrimaryAction,
+                border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.88f)),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "新增账户",
+                        tint = LedgerHeaderGreen,
+                        modifier = Modifier.size(25.dp),
+                    )
+                }
+            }
         },
     ) {
         Column(
@@ -125,35 +175,41 @@ fun LedgerAssetsScreen(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Surface(
-                color = LedgerHeaderGreen,
-                shape = RoundedCornerShape(24.dp),
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("净资产", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        formatAmountValue(uiState.netAssetCents),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                assetScopes.forEach { scope ->
+                    LedgerSegmentChip(
+                        text = scope.label,
+                        selected = selectedScope == scope,
+                        modifier = Modifier.weight(1f),
+                        horizontalPadding = 14.dp,
+                        verticalPadding = 8.dp,
+                        largeText = true,
+                        onClick = {
+                            selectedScopeName = scope.name
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(assetScopes.indexOf(scope))
+                            }
+                        },
                     )
                 }
             }
-            LedgerLongPressReorderList(
-                items = uiState.allAccounts,
-                keyOf = { it.id },
+
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier.weight(1f),
-                onOrderCommitted = onReorderAccounts,
-                itemHeight = 72.dp,
-            ) { account, _ ->
-                AccountRow(
-                    account = account,
-                    onClick = { showAccountDetail = account },
-                    onMoreClick = { actionAccount = account },
+                key = { page -> assetScopes[page].name },
+            ) { page ->
+                val pageScope = assetScopes[page]
+                val visibleAccounts = uiState.allAccounts.filter { account -> account.matchesAssetScope(pageScope) }
+                LedgerAssetsScopePage(
+                    allAccounts = uiState.allAccounts,
+                    visibleAccounts = visibleAccounts,
+                    onReorderAccounts = onReorderAccounts,
+                    onOpenAccount = { showAccountDetail = it },
+                    onMoreAccount = { actionAccount = it },
                 )
             }
         }
@@ -161,8 +217,10 @@ fun LedgerAssetsScreen(
 
     showAccountDetail?.let { account ->
         LedgerTransactionsDetailSheet(
-            title = "账单明细",
-            transactions = uiState.allTransactions.filter { it.account?.id == account.id || it.toAccount?.id == account.id },
+            title = "${account.name}账单",
+            transactions = uiState.allTransactions
+                .filter { transaction -> transaction.belongsToLedgerAccount(account.id) }
+                .sortedByDescending { it.occurredAtMillis },
             currencySymbol = uiState.currencySymbol,
             onDismiss = { showAccountDetail = null },
             onTransactionClick = {
@@ -203,6 +261,64 @@ fun LedgerAssetsScreen(
                 editingAccount = null
             },
         )
+    }
+}
+
+@Composable
+private fun LedgerAssetsScopePage(
+    allAccounts: List<LedgerAccount>,
+    visibleAccounts: List<LedgerAccount>,
+    onReorderAccounts: (List<String>) -> Unit,
+    onOpenAccount: (LedgerAccount) -> Unit,
+    onMoreAccount: (LedgerAccount) -> Unit,
+) {
+    val scopedNetAssetCents = remember(visibleAccounts) {
+        visibleAccounts.filter { it.includeInTotal && !it.hidden }.sumOf { it.balanceCents }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            color = LedgerHeaderGreen,
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("净资产", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    formatAmountValue(scopedNetAssetCents),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+        LedgerLongPressReorderList(
+            items = visibleAccounts,
+            keyOf = { it.id },
+            modifier = Modifier.weight(1f),
+            onOrderCommitted = { orderedVisibleIds ->
+                onReorderAccounts(
+                    mergeScopedAccountOrder(
+                        allAccounts = allAccounts,
+                        scopedAccountIds = visibleAccounts.map { it.id }.toSet(),
+                        orderedScopedIds = orderedVisibleIds,
+                    ),
+                )
+            },
+            itemHeight = 72.dp,
+        ) { account, _ ->
+            AccountRow(
+                account = account,
+                onClick = { onOpenAccount(account) },
+                onMoreClick = { onMoreAccount(account) },
+            )
+        }
     }
 }
 
@@ -255,6 +371,54 @@ private fun AccountRow(
             )
         }
     }
+}
+
+private fun LedgerAccount.matchesAssetScope(scope: LedgerAssetScope): Boolean {
+    val isPartner = listOf(name, note).any { text ->
+        text.contains("女朋友") ||
+            text.contains("女友") ||
+            text.contains("对象") ||
+            text.contains("另一半") ||
+            text.contains("她的") ||
+            text.contains("partner", ignoreCase = true)
+    }
+    return when (scope) {
+        LedgerAssetScope.ALL -> true
+        LedgerAssetScope.MINE -> !isPartner
+        LedgerAssetScope.PARTNER -> isPartner
+    }
+}
+
+private fun mergeScopedAccountOrder(
+    allAccounts: List<LedgerAccount>,
+    scopedAccountIds: Set<String>,
+    orderedScopedIds: List<String>,
+): List<String> {
+    if (scopedAccountIds.size == allAccounts.size) return orderedScopedIds
+    val scopedIterator = orderedScopedIds.iterator()
+    return allAccounts.map { account ->
+        if (account.id in scopedAccountIds && scopedIterator.hasNext()) {
+            scopedIterator.next()
+        } else {
+            account.id
+        }
+    }
+}
+
+private fun pointerAngleDegrees(position: Offset, center: Offset): Float {
+    return Math.toDegrees(
+        atan2(
+            (position.y - center.y).toDouble(),
+            (position.x - center.x).toDouble(),
+        ),
+    ).toFloat()
+}
+
+private fun shortestAngleDelta(current: Float, previous: Float): Float {
+    var delta = current - previous
+    while (delta > 180f) delta -= 360f
+    while (delta < -180f) delta += 360f
+    return delta
 }
 
 @Composable
@@ -482,7 +646,14 @@ private fun StatsSummaryCard(
                     modifier = Modifier.clickable(onClick = onBookClick),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(uiState.bookName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    LedgerBookTitleWithCreator(
+                        title = uiState.bookName,
+                        creatorUserId = uiState.bookCreatorUserId,
+                        textStyle = MaterialTheme.typography.bodyLarge,
+                        textColor = Color.Unspecified,
+                        fontWeight = FontWeight.Bold,
+                        avatarSize = 16.dp,
+                    )
                     Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", modifier = Modifier.size(16.dp))
                 }
             }
@@ -687,34 +858,103 @@ private fun LedgerDonutChart(
     onCategoryTypeChange: (LedgerCategoryType) -> Unit,
 ) {
     var rotation by rememberSaveable { mutableStateOf(-110f) }
+    var dragAngle by remember { mutableStateOf<Float?>(null) }
     val total = categoryStats.sumOf { it.amountCents }.coerceAtLeast(1L).toFloat()
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(254.dp),
+            .height(306.dp),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(
             modifier = Modifier
-                .size(230.dp)
+                .size(300.dp)
                 .pointerInput(categoryStats) {
-                    detectDragGestures { change, dragAmount ->
+                    val center = Offset(150.dp.toPx(), 150.dp.toPx())
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            dragAngle = pointerAngleDegrees(offset, center)
+                        },
+                        onDragCancel = { dragAngle = null },
+                        onDragEnd = { dragAngle = null },
+                    ) { change, _ ->
+                        val currentAngle = pointerAngleDegrees(change.position, center)
+                        dragAngle?.let { previousAngle ->
+                            rotation += shortestAngleDelta(currentAngle, previousAngle)
+                        }
+                        dragAngle = currentAngle
                         change.consume()
-                        rotation += dragAmount.x * 0.55f
                     }
                 },
         ) {
-            val stroke = 84f
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val arcDiameter = 178.dp.toPx()
+            val stroke = 62.dp.toPx()
+            val arcTopLeft = Offset(center.x - arcDiameter / 2f, center.y - arcDiameter / 2f)
+            val outerRadius = arcDiameter / 2f + stroke / 2f
+            val labelLineLength = 16.dp.toPx()
+            val labelOffset = 18.dp.toPx()
+            val textPaint = android.graphics.Paint().apply {
+                isAntiAlias = true
+                textSize = 10.sp.toPx()
+                color = android.graphics.Color.parseColor("#426E70")
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            }
             var startAngle = rotation
             categoryStats.forEach { stat ->
                 val sweep = stat.amountCents / total * 360f
+                val color = ledgerColor(stat.category?.color ?: 0xFF8D99A6)
                 drawArc(
-                    color = ledgerColor(stat.category?.color ?: 0xFF8D99A6),
+                    color = color,
                     startAngle = startAngle,
                     sweepAngle = sweep,
                     useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = Size(arcDiameter, arcDiameter),
                     style = Stroke(width = stroke, cap = StrokeCap.Butt),
                 )
+                val midAngle = Math.toRadians((startAngle + sweep / 2f).toDouble())
+                val directionX = cos(midAngle).toFloat()
+                val directionY = sin(midAngle).toFloat()
+                val lineStart = Offset(
+                    x = center.x + directionX * (outerRadius - 3.dp.toPx()),
+                    y = center.y + directionY * (outerRadius - 3.dp.toPx()),
+                )
+                val lineBend = Offset(
+                    x = center.x + directionX * (outerRadius + labelLineLength),
+                    y = center.y + directionY * (outerRadius + labelLineLength),
+                )
+                val labelSide = if (directionX >= 0f) 1f else -1f
+                val labelX = (lineBend.x + labelSide * labelOffset)
+                    .coerceIn(18.dp.toPx(), size.width - 18.dp.toPx())
+                val labelEnd = Offset(labelX - labelSide * 4.dp.toPx(), lineBend.y)
+                drawLine(
+                    color = color.copy(alpha = 0.72f),
+                    start = lineStart,
+                    end = lineBend,
+                    strokeWidth = 1.5.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = color.copy(alpha = 0.72f),
+                    start = lineBend,
+                    end = labelEnd,
+                    strokeWidth = 1.5.dp.toPx(),
+                    cap = StrokeCap.Round,
+                )
+                drawContext.canvas.nativeCanvas.apply {
+                    textPaint.textAlign = if (labelSide > 0f) {
+                        android.graphics.Paint.Align.LEFT
+                    } else {
+                        android.graphics.Paint.Align.RIGHT
+                    }
+                    drawText(
+                        "${String.format("%.1f", stat.percent * 100)}%",
+                        labelX,
+                        lineBend.y + 4.dp.toPx(),
+                        textPaint,
+                    )
+                }
                 startAngle += sweep
             }
         }
@@ -955,7 +1195,14 @@ fun LedgerBudgetScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(uiState.bookName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                LedgerBookTitleWithCreator(
+                    title = uiState.bookName,
+                    creatorUserId = uiState.bookCreatorUserId,
+                    textStyle = MaterialTheme.typography.titleMedium,
+                    textColor = Color.Unspecified,
+                    fontWeight = FontWeight.Bold,
+                    avatarSize = 16.dp,
+                )
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", modifier = Modifier.size(14.dp))
             }
             Box(modifier = Modifier.width(32.dp))
@@ -1155,7 +1402,7 @@ fun LedgerCalendarScreen(
     val selectedTransactions = remember(uiState.transactions, selectedDayStart) {
         uiState.transactions.filter { dayStart(it.occurredAtMillis) == selectedDayStart }
     }
-    LedgerPageScaffold(title = uiState.bookName, onBack = onBack, action = {
+    LedgerPageScaffold(title = uiState.bookName, creatorUserId = uiState.bookCreatorUserId, onBack = onBack, action = {
         IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
             Icon(LedgerActionIcons.Add, contentDescription = "补记一笔", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
         }

@@ -77,6 +77,7 @@ fun TrashDetailScreen(
     }
 
     val context = LocalContext.current
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     val entry = FakeTrashRepository.resolveDetailEntry(route)
     var showPermanentDeleteConfirm by rememberSaveable(entry?.id) {
         mutableStateOf(false)
@@ -93,6 +94,7 @@ fun TrashDetailScreen(
     if (entry.type == TrashEntryType.MEDIA_SYSTEM_DELETED || entry.type == TrashEntryType.MEDIA_REMOVED) {
         TrashMediaViewerDetailPagerScreen(
             entry = entry,
+            directory = collaboratorDirectory,
             showPermanentDeleteConfirm = showPermanentDeleteConfirm,
             onShowPermanentDeleteConfirmChange = { showPermanentDeleteConfirm = it },
             onBack = onBack,
@@ -106,6 +108,7 @@ fun TrashDetailScreen(
     if (entry.type == TrashEntryType.POST_DELETED) {
         TrashPostViewerDetailScreen(
             entry = entry,
+            directory = collaboratorDirectory,
             showPermanentDeleteConfirm = showPermanentDeleteConfirm,
             onShowPermanentDeleteConfirmChange = { showPermanentDeleteConfirm = it },
             onBack = onBack,
@@ -130,6 +133,7 @@ fun TrashDetailScreen(
     ) {
         TrashDetailTopBar(
             entry = entry,
+            actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
             onBack = onBack,
             onRestore = {
                 val targetMediaIds = entry.restoreTargetMediaIds()
@@ -196,6 +200,7 @@ fun TrashDetailScreen(
 @Composable
 private fun TrashMediaViewerDetailPagerScreen(
     entry: TrashEntryUiModel,
+    directory: CollaboratorDirectorySnapshot,
     showPermanentDeleteConfirm: Boolean,
     onShowPermanentDeleteConfirmChange: (Boolean) -> Unit,
     onBack: () -> Unit,
@@ -217,6 +222,7 @@ private fun TrashMediaViewerDetailPagerScreen(
     )
     val currentEntry = viewerEntries[pagerState.currentPage.coerceIn(0, viewerEntries.lastIndex)]
     val currentMedia = currentEntry.mediaSnapshot
+    val currentActorIdentity = resolveTrashActorIdentity(currentEntry, directory)
     val comments = remember(currentMedia?.mediaId) {
         currentMedia?.mediaId?.let(FakeCommentRepository::getMediaComments).orEmpty()
     }
@@ -274,6 +280,12 @@ private fun TrashMediaViewerDetailPagerScreen(
         ) {
             TrashViewerOverlayButton(text = "<", onClick = onBack)
             Box(modifier = Modifier.weight(1f))
+            currentActorIdentity?.let { actorIdentity ->
+                CollaboratorMarkerBadge(
+                    identity = actorIdentity,
+                    size = 18.dp,
+                )
+            }
             TrashViewerOverlayButton(
                 text = "↩",
                 onClick = { showRestoreConfirm = true },
@@ -394,6 +406,7 @@ private fun TrashMediaViewerDetailPagerScreen(
 @Composable
 private fun TrashMediaViewerDetailScreen(
     entry: TrashEntryUiModel,
+    directory: CollaboratorDirectorySnapshot,
     showPermanentDeleteConfirm: Boolean,
     onShowPermanentDeleteConfirmChange: (Boolean) -> Unit,
     onBack: () -> Unit,
@@ -403,6 +416,7 @@ private fun TrashMediaViewerDetailScreen(
 ) {
     val context = LocalContext.current
     val media = entry.mediaSnapshot
+    val actorIdentity = resolveTrashActorIdentity(entry, directory)
     val comments = remember(media?.mediaId) {
         media?.mediaId?.let(FakeCommentRepository::getMediaComments).orEmpty()
     }
@@ -463,6 +477,12 @@ private fun TrashMediaViewerDetailScreen(
         ) {
             TrashViewerOverlayButton(text = "<", onClick = onBack)
             Box(modifier = Modifier.weight(1f))
+            actorIdentity?.let {
+                CollaboratorMarkerBadge(
+                    identity = it,
+                    size = 18.dp,
+                )
+            }
             TrashViewerOverlayButton(
                 text = "↩",
                 onClick = {
@@ -626,6 +646,7 @@ private fun TrashViewerCommentPreview(
 @Composable
 private fun TrashPostViewerDetailScreen(
     entry: TrashEntryUiModel,
+    directory: CollaboratorDirectorySnapshot,
     showPermanentDeleteConfirm: Boolean,
     onShowPermanentDeleteConfirmChange: (Boolean) -> Unit,
     onBack: () -> Unit,
@@ -636,6 +657,7 @@ private fun TrashPostViewerDetailScreen(
     val context = LocalContext.current
     val colors = YingShiThemeTokens.colors
     val snapshot = entry.postSnapshot
+    val actorIdentity = resolveTrashActorIdentity(entry, directory)
     val postComments = remember(snapshot?.post?.id) {
         snapshot?.post?.id?.let(FakeCommentRepository::getPostComments).orEmpty()
     }
@@ -658,6 +680,7 @@ private fun TrashPostViewerDetailScreen(
     if (selectedMedia != null) {
         TrashPostMediaViewerOverlay(
             entry = entry,
+            actorIdentity = actorIdentity,
             media = selectedMedia,
             onBack = { selectedMedia = null },
             onRestorePost = { showRestoreConfirm = true },
@@ -678,6 +701,7 @@ private fun TrashPostViewerDetailScreen(
         ) {
             TrashPostViewerTopBar(
                 entry = entry,
+                actorIdentity = actorIdentity,
                 onBack = onBack,
                 onRestore = { showRestoreConfirm = true },
                 onRemove = { onShowPermanentDeleteConfirmChange(true) },
@@ -811,6 +835,7 @@ private fun TrashPostViewerDetailScreen(
 @Composable
 private fun TrashPostViewerTopBar(
     entry: TrashEntryUiModel,
+    actorIdentity: CollaboratorIdentityUiModel?,
     onBack: () -> Unit,
     onRestore: () -> Unit,
     onRemove: () -> Unit,
@@ -823,17 +848,29 @@ private fun TrashPostViewerTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TrashCircleButton(text = "<", onClick = onBack)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = entry.type.label,
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.memoryAccent,
-            )
-            Text(
-                text = "回收站小相册查看",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.type.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.memoryAccent,
+                )
+                Text(
+                    text = "回收站小相册查看",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+            }
+            actorIdentity?.let {
+                CollaboratorMarkerBadge(
+                    identity = it,
+                    size = 18.dp,
+                )
+            }
         }
         TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
         TrashActionChip(text = "删除", emphasized = false, onClick = onRemove)
@@ -882,6 +919,7 @@ private fun TrashPostMediaGridTile(
 @Composable
 private fun TrashPostMediaViewerOverlay(
     entry: TrashEntryUiModel,
+    actorIdentity: CollaboratorIdentityUiModel?,
     media: TrashMediaSnapshot?,
     onBack: () -> Unit,
     onRestorePost: () -> Unit,
@@ -941,6 +979,12 @@ private fun TrashPostMediaViewerOverlay(
         ) {
             TrashViewerOverlayButton(text = "<", onClick = onBack)
             Box(modifier = Modifier.weight(1f))
+            actorIdentity?.let {
+                CollaboratorMarkerBadge(
+                    identity = it,
+                    size = 18.dp,
+                )
+            }
             TrashViewerOverlayButton(text = "↩", onClick = onRestorePost)
             TrashViewerOverlayButton(text = "删", destructive = true, onClick = onRequestDeletePost)
         }
@@ -1006,6 +1050,7 @@ private fun TrashDeletedMediaOverlay(
 @Composable
 private fun TrashDetailTopBar(
     entry: TrashEntryUiModel,
+    actorIdentity: CollaboratorIdentityUiModel?,
     onBack: () -> Unit,
     onRestore: () -> Unit,
     onRemove: () -> Unit,
@@ -1019,17 +1064,29 @@ private fun TrashDetailTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TrashCircleButton(text = "<", onClick = onBack)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = entry.type.label,
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.memoryAccent,
-            )
-            Text(
-                text = "回收站详情",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.type.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.memoryAccent,
+                )
+                Text(
+                    text = "回收站详情",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+            }
+            actorIdentity?.let {
+                CollaboratorMarkerBadge(
+                    identity = it,
+                    size = 18.dp,
+                )
+            }
         }
         TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
         TrashActionChip(
@@ -1591,6 +1648,7 @@ private fun TrashDetailMissingState(
                     accent = colors.primaryContainer,
                 ),
             ),
+            actorIdentity = null,
             onBack = onBack,
             onRestore = { },
             onRemove = { },

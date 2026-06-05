@@ -11,7 +11,13 @@ import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,6 +45,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -61,7 +68,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -117,7 +123,10 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.ui.components.yingShiMediaEnterMotion
+import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -162,6 +171,13 @@ private object ViewerLayoutTuning {
 
 private data class ViewerCommentPanelState(
     val selectedCommentId: String? = null,
+)
+
+private data class ViewerNotice(
+    val mediaId: String,
+    val message: String,
+    val emphasized: Boolean = false,
+    val nonce: Int,
 )
 
 private class ViewerZoomState {
@@ -468,6 +484,7 @@ fun PhotoViewerScreen(
     val context = LocalContext.current
     val view = LocalView.current
     val spacing = YingShiThemeTokens.spacing
+    val motion = YingShiThemeTokens.motion
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val sessionVersion = AuthSessionManager.sessionVersion
@@ -475,6 +492,7 @@ fun PhotoViewerScreen(
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
     val settingsState = FakeSettingsRepository.getSettingsState()
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     var viewerItems by remember(route) {
         mutableStateOf(route.mediaItems)
     }
@@ -484,12 +502,11 @@ fun PhotoViewerScreen(
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
-    var showAddToExistingPostPicker by remember { mutableStateOf(false) }
-    var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
-    var addToPostPendingPostId by rememberSaveable { mutableStateOf<String?>(null) }
     var openCommentComposerOnSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showTimeEditorSheet by remember { mutableStateOf(false) }
+    var viewerNotice by remember { mutableStateOf<ViewerNotice?>(null) }
+    var viewerNoticeNonce by remember { mutableIntStateOf(0) }
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
@@ -521,6 +538,9 @@ fun PhotoViewerScreen(
         mediaId = currentItem.mediaId,
         mediaType = currentItem.mediaType,
     )
+    val uploaderIdentity = remember(collaboratorDirectory, currentItem.uploadedByUserId) {
+        collaboratorDirectory.resolve(currentItem.uploadedByUserId)
+    }
     val commentBindings = rememberViewerCommentBindings(currentItem.mediaId)
     val mediaComments = commentBindings.comments
     val previewComments = mediaComments.take(ViewerLayoutTuning.previewCommentsMaxCount)
@@ -547,6 +567,15 @@ fun PhotoViewerScreen(
     var lastNotifiedOriginalState by remember(currentItem.mediaId) {
         mutableStateOf<OriginalLoadState?>(null)
     }
+    fun showViewerNotice(message: String, emphasized: Boolean = false) {
+        viewerNoticeNonce += 1
+        viewerNotice = ViewerNotice(
+            mediaId = currentItem.mediaId,
+            message = message,
+            emphasized = emphasized,
+            nonce = viewerNoticeNonce,
+        )
+    }
     LaunchedEffect(currentItem.mediaId, currentOriginalState) {
         if (RepositoryProvider.currentMode != RepositoryMode.REAL || currentItem.mediaType != AppMediaType.IMAGE) {
             lastNotifiedOriginalState = currentOriginalState
@@ -554,9 +583,9 @@ fun PhotoViewerScreen(
         }
         val previousState = lastNotifiedOriginalState
         if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Loaded) {
-            Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+            showViewerNotice("原图加载完毕", emphasized = true)
         } else if (previousState == OriginalLoadState.Loading && currentOriginalState == OriginalLoadState.Failed) {
-            Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+            showViewerNotice("原图加载失败，已保留预览")
         }
         lastNotifiedOriginalState = currentOriginalState
     }
@@ -579,7 +608,7 @@ fun PhotoViewerScreen(
         PhotoViewerOverlayUiModel(
             commentCountLabel = mediaComments.size.toString(),
             timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
-            pageLabel = "${currentIndex + 1} / ${viewerItems.size}",
+            pageLabel = "",
             originalLoadState = currentOriginalState,
             showOriginalAction = canOpenOriginal,
             relatedSmallAlbumsLabel = if (currentItem.smallAlbumIds.isNotEmpty()) {
@@ -607,6 +636,7 @@ fun PhotoViewerScreen(
         commentPanelState = null
         showRelatedPostsSheet = false
         showTimeEditorSheet = false
+        viewerNotice = null
         openCommentComposerOnSheet = false
         videoPlaybackState = ViewerVideoPlaybackState(
             mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
@@ -642,7 +672,6 @@ fun PhotoViewerScreen(
             commentPanelState = null
             showRelatedPostsSheet = false
             showTimeEditorSheet = false
-            showAddToExistingPostPicker = false
             videoControlsVisible = false
         }
     }
@@ -763,6 +792,12 @@ fun PhotoViewerScreen(
                 }
             },
     ) {
+        ViewerAtmosphereLayer(
+            modifier = Modifier
+                .matchParentSize()
+                .alpha(if (isImmersive) 0.42f else 1f),
+        )
+
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -850,10 +885,10 @@ fun PhotoViewerScreen(
                                 if (mediaId == currentItem.mediaId) {
                                     when (state) {
                                         OriginalLoadState.Loaded -> {
-                                            Toast.makeText(context, "原图加载完毕", Toast.LENGTH_SHORT).show()
+                                            showViewerNotice("原图加载完毕", emphasized = true)
                                         }
                                         OriginalLoadState.Failed -> {
-                                            Toast.makeText(context, "原图加载失败，已保留预览", Toast.LENGTH_SHORT).show()
+                                            showViewerNotice("原图加载失败，已保留预览")
                                         }
                                         else -> Unit
                                     }
@@ -884,29 +919,35 @@ fun PhotoViewerScreen(
             )
         }
 
-        if (!isImmersive) {
+        AnimatedVisibility(
+            visible = !isImmersive,
+            enter = fadeIn(tween(motion.floatingMillis, easing = motion.easing)) +
+                slideInVertically(
+                    animationSpec = tween(motion.floatingMillis, easing = motion.easing),
+                    initialOffsetY = { -it / 4 },
+                ),
+            exit = fadeOut(tween(motion.stateMillis, easing = motion.easing)) +
+                slideOutVertically(
+                    animationSpec = tween(motion.stateMillis, easing = motion.easing),
+                    targetOffsetY = { -it / 5 },
+                ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth(),
+        ) {
             PhotoViewerTopBar(
                 onBack = {
                     onBack()
                 },
                 timeLabel = overlayUiModel.timeLabel,
+                uploaderIdentity = uploaderIdentity,
                 onShare = {
-                    Toast.makeText(context, "当前设备未提供可用分享入口。", Toast.LENGTH_SHORT).show()
+                    showViewerNotice("当前设备未提供可用分享入口")
                 },
                 onEditTime = { showTimeEditorSheet = true },
                 onDelete = { showDeleteConfirm = true },
                 onOpenRelatedPosts = { showRelatedPostsSheet = true },
-                onCreatePost = {
-                    onOpenCreatePost(
-                        CreatePostRoute(
-                            source = "photo-viewer-menu",
-                            initialAppMediaIds = listOf(currentItem.mediaId),
-                            initialAppMediaItems = listOf(currentItem.toCreatePostAppMediaItem()),
-                        ),
-                    )
-                },
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .statusBarsPadding()
                     .padding(
@@ -919,7 +960,26 @@ fun PhotoViewerScreen(
         }
 
         if (appOverlaysVisible) {
-            if (showCommentPreview) {
+            AnimatedVisibility(
+                visible = showCommentPreview,
+                enter = fadeIn(tween(motion.floatingMillis, easing = motion.easing)) +
+                    slideInVertically(
+                        animationSpec = tween(motion.floatingMillis, easing = motion.easing),
+                        initialOffsetY = { it / 5 },
+                    ),
+                exit = fadeOut(tween(motion.stateMillis, easing = motion.easing)) +
+                    slideOutVertically(
+                        animationSpec = tween(motion.stateMillis, easing = motion.easing),
+                        targetOffsetY = { it / 6 },
+                    ),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(
+                        start = spacing.lg,
+                        bottom = edgeActionsBottomPadding + 64.dp,
+                    ),
+            ) {
                 ViewerCommentPreviewLayer(
                     comments = overlayUiModel.previewComments,
                     onOpenComment = { commentId ->
@@ -930,21 +990,30 @@ fun PhotoViewerScreen(
                         openCommentComposerOnSheet = true
                         commentPanelState = ViewerCommentPanelState()
                     },
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .navigationBarsPadding()
-                        .padding(
-                            start = spacing.lg,
-                            bottom = edgeActionsBottomPadding + 64.dp,
-                        ),
                 )
             }
+        }
 
+        AnimatedVisibility(
+            visible = appOverlaysVisible,
+            enter = fadeIn(tween(motion.floatingMillis, easing = motion.easing)) +
+                slideInVertically(
+                    animationSpec = tween(motion.floatingMillis, easing = motion.easing),
+                    initialOffsetY = { it / 4 },
+                ),
+            exit = fadeOut(tween(motion.stateMillis, easing = motion.easing)) +
+                slideOutVertically(
+                    animationSpec = tween(motion.stateMillis, easing = motion.easing),
+                    targetOffsetY = { it / 5 },
+                ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
+        ) {
             PhotoViewerEdgeActions(
                 overlayUiModel = overlayUiModel,
                 showCommentPreview = showCommentPreview,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .padding(
@@ -966,22 +1035,22 @@ fun PhotoViewerScreen(
                         when {
                             currentItem.mediaType != AppMediaType.IMAGE ||
                                 !currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType) -> {
-                                Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("当前媒体没有独立原图")
                             }
 
                             currentOriginalState == OriginalLoadState.Loading -> {
-                                Toast.makeText(context, "原图加载中...", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("原图加载中")
                             }
 
                             currentOriginalState == OriginalLoadState.Loaded -> {
-                                Toast.makeText(context, "已加载原图", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("已加载原图", emphasized = true)
                             }
 
                             else -> {
                                 if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, viewerAccessToken)) {
-                                    Toast.makeText(context, "开始加载原图", Toast.LENGTH_SHORT).show()
+                                    showViewerNotice("开始加载原图")
                                 } else {
-                                    Toast.makeText(context, "当前媒体没有独立原图", Toast.LENGTH_SHORT).show()
+                                    showViewerNotice("当前媒体没有独立原图")
                                 }
                             }
                         }
@@ -989,20 +1058,20 @@ fun PhotoViewerScreen(
                         when (currentOriginalState) {
                             OriginalLoadState.NotLoaded -> {
                                 FakeOriginalLoadRepository.loadOriginal(currentItem.mediaId)
-                                Toast.makeText(context, "\u5f00\u59cb\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("开始加载原图")
                             }
 
                             OriginalLoadState.Loading -> {
-                                Toast.makeText(context, "\u539f\u56fe\u52a0\u8f7d\u4e2d...", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("原图加载中")
                             }
 
                             OriginalLoadState.Loaded -> {
-                                Toast.makeText(context, "\u5df2\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("已加载原图", emphasized = true)
                             }
 
                             OriginalLoadState.Failed -> {
                                 FakeOriginalLoadRepository.retryOriginal(currentItem.mediaId)
-                                Toast.makeText(context, "\u91cd\u8bd5\u52a0\u8f7d\u539f\u56fe", Toast.LENGTH_SHORT).show()
+                                showViewerNotice("重试加载原图")
                             }
                         }
                     }
@@ -1010,26 +1079,19 @@ fun PhotoViewerScreen(
             )
         }
 
-        if (route.showPostSegments && !isImmersive) {
-            ViewerPostSegmentIndicator(
-                currentIndex = currentIndex,
-                total = route.mediaItems.size,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(
-                        start = spacing.xl,
-                        end = spacing.xl,
-                        bottom = ViewerLayoutTuning.postSegmentBottomOffset,
-                    ),
-                alpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
-                    ViewerLayoutTuning.zoomedOverlayAlpha
-                } else {
-                    0.92f
-                },
-            )
-        }
+        ViewerNoticeHost(
+            notice = viewerNotice,
+            currentMediaId = currentItem.mediaId,
+            onExpired = { nonce ->
+                if (viewerNotice?.nonce == nonce) {
+                    viewerNotice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 58.dp),
+        )
 
         commentPanelState?.let { panelState ->
             PhotoViewerCommentSheet(
@@ -1056,79 +1118,7 @@ fun PhotoViewerScreen(
                     showRelatedPostsSheet = false
                     onOpenPostDetail(post.route)
                 },
-                onAddToExistingPost = {
-                    showRelatedPostsSheet = false
-                    showAddToExistingPostPicker = true
-                },
                 onDismiss = { showRelatedPostsSheet = false },
-            )
-        }
-
-        if (showAddToExistingPostPicker) {
-            val destinationUiState by rememberSystemMediaDestinationUiState()
-            SystemMediaPostDestinationDialog(
-                albums = destinationUiState.albums,
-                posts = destinationUiState.posts,
-                isLoading = destinationUiState.isLoading,
-                isSubmitting = addToPostPendingPostId != null,
-                pendingPostId = addToPostPendingPostId,
-                errorMessage = addToPostError ?: destinationUiState.errorMessage,
-                onDismiss = {
-                    showAddToExistingPostPicker = false
-                    addToPostError = null
-                    addToPostPendingPostId = null
-                },
-                onPostSelected = { postId ->
-                    addToPostError = null
-                    addToPostPendingPostId = postId
-                    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
-                        val mediaItem = currentItem
-                        val addedCount = FakeAlbumRepository.appendPhotoFeedItemsToPost(
-                            postId = postId,
-                            mediaItems = listOf(mediaItem),
-                        )
-                        if (addedCount <= 0) {
-                            addToPostPendingPostId = null
-                            addToPostError = "该媒体已在目标小相册中。"
-                            return@SystemMediaPostDestinationDialog
-                        }
-                        showAddToExistingPostPicker = false
-                        addToPostPendingPostId = null
-                        FakeAlbumRepository.getPost(postId)
-                            ?.let(FakeAlbumRepository::toPostDetailRoute)
-                            ?.let(onOpenPostDetail)
-                    } else {
-                        coroutineScope.launch {
-                            when (val result = RepositoryProvider.postRepository.addMediaToPost(
-                                postId = postId,
-                                mediaIds = listOf(currentItem.mediaId),
-                            )) {
-                                is ApiResult.Success -> {
-                                    notifyRealBackendContentChanged(
-                                        postIds = setOf(postId),
-                                        mediaIds = setOf(currentItem.mediaId),
-                                    )
-                                    showAddToExistingPostPicker = false
-                                    addToPostPendingPostId = null
-                                    addToPostError = null
-                                    onOpenPostDetail(
-                                        result.data.toPostDetailPlaceholderRoute(
-                                            selectedAlbumId = result.data.albumIds.firstOrNull()
-                                                ?: destinationUiState.posts.firstOrNull { it.id == postId }?.albumId.orEmpty(),
-                                        ),
-                                    )
-                                }
-                                is ApiResult.Error -> {
-                                    addToPostPendingPostId = null
-                                    addToPostError = result.toBackendUiMessage("加入失败，请重试。")
-                                }
-                                ApiResult.Loading -> {
-                                    addToPostPendingPostId = null
-                                }
-                            }
-                        }
-                    }
-                },
             )
         }
 
@@ -1295,6 +1285,112 @@ private fun ViewerBottomScrim(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun ViewerNoticeHost(
+    notice: ViewerNotice?,
+    currentMediaId: String,
+    onExpired: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val motion = YingShiThemeTokens.motion
+    val spacing = YingShiThemeTokens.spacing
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val visibleNotice = notice?.takeIf { it.mediaId == currentMediaId }
+
+    LaunchedEffect(visibleNotice?.nonce) {
+        val activeNotice = visibleNotice ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(motion.viewerNoticeVisibleMillis.toLong())
+        onExpired(activeNotice.nonce)
+    }
+
+    AnimatedVisibility(
+        visible = visibleNotice != null,
+        enter = fadeIn(tween(if (motionEnabled) motion.viewerNoticeMillis else 0, easing = motion.easing)) +
+            slideInVertically(
+                animationSpec = tween(if (motionEnabled) motion.viewerNoticeMillis else 0, easing = motion.easing),
+                initialOffsetY = { -it / 5 },
+            ),
+        exit = fadeOut(tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing)) +
+            slideOutVertically(
+                animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
+                targetOffsetY = { -it / 6 },
+            ),
+        modifier = modifier,
+    ) {
+        val activeNotice = visibleNotice ?: return@AnimatedVisibility
+        Surface(
+            modifier = Modifier
+                .yingShiSoftReveal(visible = true, motionEnabled = motionEnabled)
+                .widthIn(max = 320.dp),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            color = ViewerNightTop.copy(alpha = if (activeNotice.emphasized) 0.82f else 0.76f),
+            border = BorderStroke(
+                width = 1.dp,
+                color = ViewerAccent.copy(alpha = if (activeNotice.emphasized) 0.34f else 0.20f),
+            ),
+        ) {
+            Text(
+                text = activeNotice.message,
+                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = if (activeNotice.emphasized) FontWeight.SemiBold else FontWeight.Medium,
+                ),
+                color = ViewerSurface.copy(alpha = 0.94f),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ViewerAtmosphereLayer(modifier: Modifier = Modifier) {
+    Box(modifier = modifier.background(ViewerNightBottom)) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            ViewerAccent.copy(alpha = 0.16f),
+                            ViewerNightMiddle.copy(alpha = 0.16f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(0f, 0f),
+                        radius = 980f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            ViewerAccent.copy(alpha = 0.10f),
+                            ViewerNightTop.copy(alpha = 0.18f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(1200f, 2200f),
+                        radius = 860f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            ViewerNightTop.copy(alpha = 0.12f),
+                            Color.Transparent,
+                            ViewerNightBottom.copy(alpha = 0.34f),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
 private fun EmptyPhotoViewerScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1323,11 +1419,11 @@ private fun EmptyPhotoViewerScreen(
 private fun PhotoViewerTopBar(
     onBack: () -> Unit,
     timeLabel: String,
+    uploaderIdentity: CollaboratorIdentityUiModel?,
     onShare: () -> Unit,
     onEditTime: () -> Unit,
     onDelete: () -> Unit,
     onOpenRelatedPosts: () -> Unit,
-    onCreatePost: () -> Unit,
     modifier: Modifier = Modifier,
     overlayAlpha: Float = 1f,
 ) {
@@ -1360,60 +1456,59 @@ private fun PhotoViewerTopBar(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            uploaderIdentity?.let { identity ->
+                CollaboratorMarkerBadge(
+                    identity = identity,
+                    size = 44.dp,
+                )
+            }
             ViewerIconCircle(
                 icon = Icons.Rounded.Download,
-                contentDescription = "分享",
+                contentDescription = "下载",
                 onClick = onShare,
             )
-            ViewerIconCircle(
-                icon = Icons.Rounded.Info,
-                contentDescription = "修改时间",
-                onClick = onEditTime,
-            )
-            ViewerIconCircle(
-                icon = Icons.Rounded.MoreHoriz,
-                contentDescription = "更多",
-                onClick = { menuExpanded = true },
-            )
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false },
+            Box(
+                modifier = Modifier.wrapContentSize(Alignment.TopEnd),
             ) {
-                DropdownMenuItem(
-                    text = { Text(text = "分享") },
-                    onClick = {
-                        menuExpanded = false
-                        onShare()
-                    },
+                ViewerIconCircle(
+                    icon = Icons.Rounded.MoreHoriz,
+                    contentDescription = "更多",
+                    onClick = { menuExpanded = true },
                 )
-                DropdownMenuItem(
-                    text = { Text(text = "修改时间") },
-                    onClick = {
-                        menuExpanded = false
-                        onEditTime()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = "删除媒体") },
-                    onClick = {
-                        menuExpanded = false
-                        onDelete()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = "所属小相册") },
-                    onClick = {
-                        menuExpanded = false
-                        onOpenRelatedPosts()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(text = "新建小相册") },
-                    onClick = {
-                        menuExpanded = false
-                        onCreatePost()
-                    },
-                )
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    modifier = Modifier.wrapContentSize(Alignment.TopEnd),
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(text = "分享") },
+                        onClick = {
+                            menuExpanded = false
+                            onShare()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(text = "修改时间") },
+                        onClick = {
+                            menuExpanded = false
+                            onEditTime()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(text = "删除媒体") },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(text = "所属小相册") },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenRelatedPosts()
+                        },
+                    )
+                }
             }
         }
     }
@@ -1521,6 +1616,16 @@ private fun PhotoViewerCanvas(
         } else {
             Modifier
         }
+        var mediaEnterActive by remember(media.mediaId, zoomState != null) { mutableStateOf(false) }
+        LaunchedEffect(media.mediaId, zoomState != null) {
+            mediaEnterActive = zoomState != null
+        }
+        val mediaEnterModifier = if (zoomState != null) {
+            Modifier
+                .yingShiMediaEnterMotion(active = mediaEnterActive)
+        } else {
+            Modifier
+        }
 
         Box(
             modifier = Modifier
@@ -1543,6 +1648,7 @@ private fun PhotoViewerCanvas(
                         onPlaybackStateChange = onVideoPlaybackStateChange,
                         modifier = Modifier
                             .fillMaxSize()
+                            .then(mediaEnterModifier)
                             .then(zoomTransformModifier),
                     )
                     if (videoPlaybackState?.errorMessage == null) {
@@ -1603,6 +1709,7 @@ private fun PhotoViewerCanvas(
                     modifier = Modifier
                         .width(canvasWidth)
                         .height(canvasHeight)
+                        .then(mediaEnterModifier)
                         .then(zoomTransformModifier)
                         .background(ViewerNightBottom),
                 ) {
@@ -2298,7 +2405,7 @@ private fun PhotoViewerEdgeActions(
         )
 
         ViewerCapsule(
-            text = "${overlayUiModel.pageLabel} · ${overlayUiModel.timeLabel}",
+            text = overlayUiModel.timeLabel,
             emphasized = false,
             surfaceAlpha = 0.10f,
             contentAlpha = 0.86f,
@@ -2416,55 +2523,75 @@ private fun ViewerCommentPreviewLayer(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val shape = RoundedCornerShape(radius.lg)
 
-    Column(
+    Surface(
         modifier = modifier
             .fillMaxWidth(ViewerLayoutTuning.commentPreviewWidthFraction)
             .widthIn(max = ViewerLayoutTuning.commentPreviewMaxWidth)
-            .height(ViewerLayoutTuning.commentPreviewHeight)
-            .clip(RoundedCornerShape(radius.lg))
-            .background(ViewerNightTop.copy(alpha = 0.78f))
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = spacing.md, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            .height(ViewerLayoutTuning.commentPreviewHeight),
+        shape = shape,
+        color = ViewerNightTop.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.20f)),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            ViewerAccent.copy(alpha = 0.14f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(0f, 0f),
+                        radius = 360f,
+                    ),
+                ),
         ) {
-            Text(
-                text = "媒体评论",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = ViewerSurface.copy(alpha = 0.88f),
-            )
-            ViewerCapsule(
-                text = "添加评论",
-                emphasized = false,
-                surfaceAlpha = 0.12f,
-                contentAlpha = 0.88f,
-                onClick = onAddComment,
-            )
-        }
-        if (comments.isEmpty()) {
-            Text(
-                text = "当前媒体还没有评论",
-                modifier = Modifier.padding(horizontal = spacing.xs, vertical = spacing.xs),
-                style = MaterialTheme.typography.bodySmall,
-                color = ViewerSurface.copy(alpha = 0.62f),
-            )
-        } else {
-            comments.forEach { comment ->
-                Text(
-                    text = "${comment.author}：${comment.content}",
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(radius.sm))
-                        .clickable { onOpenComment(comment.id) }
-                        .padding(horizontal = spacing.xs, vertical = spacing.xs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = ViewerSurface.copy(alpha = 0.86f),
-                    maxLines = 2,
-                )
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.md, vertical = spacing.md),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "媒体评论",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = ViewerSurface.copy(alpha = 0.90f),
+                    )
+                    ViewerCapsule(
+                        text = "添加评论",
+                        emphasized = false,
+                        surfaceAlpha = 0.12f,
+                        contentAlpha = 0.88f,
+                        onClick = onAddComment,
+                    )
+                }
+                if (comments.isEmpty()) {
+                    Text(
+                        text = "当前媒体还没有评论",
+                        modifier = Modifier.padding(horizontal = spacing.xs, vertical = spacing.xs),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ViewerSurface.copy(alpha = 0.64f),
+                    )
+                } else {
+                    comments.forEach { comment ->
+                        Text(
+                            text = "${comment.author}：${comment.content}",
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(radius.sm))
+                                .clickable { onOpenComment(comment.id) }
+                                .padding(horizontal = spacing.xs, vertical = spacing.xs),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ViewerSurface.copy(alpha = 0.88f),
+                            maxLines = 2,
+                        )
+                    }
+                }
             }
         }
     }
@@ -2819,7 +2946,6 @@ private fun PhotoViewerCommentSheet(
 private fun ViewerRelatedPostsSheet(
     posts: List<ViewerRelatedPostUiModel>,
     onSelectPost: (ViewerRelatedPostUiModel) -> Unit,
-    onAddToExistingPost: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -2844,17 +2970,8 @@ private fun ViewerRelatedPostsSheet(
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = ViewerSurface.copy(alpha = 0.94f),
             )
-            Text(
-                text = "查看当前媒体所属的小相册，或将其加入已有小相册。",
-                style = MaterialTheme.typography.labelMedium,
-                color = ViewerSurface.copy(alpha = 0.58f),
-            )
             if (posts.isEmpty()) {
-                Text(
-                    text = "当前媒体还没有所属小相册。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ViewerSurface.copy(alpha = 0.66f),
-                )
+                Spacer(modifier = Modifier.height(2.dp))
             } else {
                 posts.forEach { post ->
                     Column(
@@ -2871,19 +2988,9 @@ private fun ViewerRelatedPostsSheet(
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                             color = ViewerSurface.copy(alpha = 0.88f),
                         )
-                        Text(
-                            text = post.subtitle,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = ViewerSurface.copy(alpha = 0.58f),
-                        )
                     }
                 }
             }
-            ViewerSheetActionButton(
-                text = "加入已有小相册",
-                emphasized = true,
-                onClick = onAddToExistingPost,
-            )
         }
     }
 }
@@ -2913,7 +3020,7 @@ private fun buildViewerRelatedPosts(
     media: PhotoFeedItem,
     sourcePostRoute: PostDetailPlaceholderRoute?,
 ): List<ViewerRelatedPostUiModel> {
-    return media.postIds.distinct().mapIndexed { index, postId ->
+    return media.postIds.distinct().map { postId ->
         val route = buildViewerRelatedPostRoute(
             media = media,
             postId = postId,
@@ -2922,11 +3029,7 @@ private fun buildViewerRelatedPosts(
         ViewerRelatedPostUiModel(
             id = postId,
             title = route.title,
-            subtitle = if (media.postIds.size == 1) {
-                "点击进入所属小相册"
-            } else {
-                "所属小相册 ${index + 1} / ${media.postIds.size}"
-            },
+            subtitle = "",
             route = route,
         )
     }
@@ -2952,7 +3055,7 @@ private fun buildViewerRelatedPostRoute(
     val fallbackSummary = sourcePostRoute
         ?.takeIf { it.postId == postId }
         ?.summary
-        ?: "从媒体查看态进入的所属小相册"
+        ?: ""
     return PostDetailPlaceholderRoute(
         postId = postId,
         albumId = sourcePostRoute?.albumId ?: "viewer-related",
@@ -3026,6 +3129,10 @@ private suspend fun deleteRealViewerMedia(mediaId: String): String? {
     }
     return when (val result = RepositoryProvider.mediaRepository.systemDeleteMedia(mediaId)) {
         is ApiResult.Success -> {
+            TrashActorHintStore.record(
+                item = result.data,
+                fallbackActorUserId = currentCollaboratorActorUserId(),
+            )
             notifyRealBackendContentChanged(
                 mediaIds = setOf(mediaId),
             )

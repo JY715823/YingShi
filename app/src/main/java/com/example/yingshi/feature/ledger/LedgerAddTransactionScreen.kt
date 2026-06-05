@@ -1,5 +1,10 @@
 package com.example.yingshi.feature.ledger
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -9,6 +14,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,7 +26,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -33,26 +45,37 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.unit.sp
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerCategory
 import com.example.yingshi.feature.ledger.data.LedgerCategoryType
@@ -90,6 +113,18 @@ fun LedgerAddTransactionScreen(
     ) -> Unit,
     onDelete: (String) -> Unit,
 ) {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = view.context.findActivity()?.window
+        val originalSoftInputMode = window?.attributes?.softInputMode
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        onDispose {
+            if (window != null && originalSoftInputMode != null) {
+                window.setSoftInputMode(originalSoftInputMode)
+            }
+        }
+    }
+
     var selectedType by rememberSaveable(initialTransaction?.id) { mutableStateOf((initialTransaction?.type ?: LedgerTransactionType.EXPENSE).name) }
     val type = LedgerTransactionType.valueOf(selectedType)
     val categoryType = if (type == LedgerTransactionType.INCOME) LedgerCategoryType.INCOME else LedgerCategoryType.EXPENSE
@@ -147,13 +182,25 @@ fun LedgerAddTransactionScreen(
     var showDateSheet by rememberSaveable { mutableStateOf(false) }
     var showAccountSheet by rememberSaveable { mutableStateOf(false) }
     var showCategoryManager by rememberSaveable { mutableStateOf(false) }
-    var showRemarkDialog by rememberSaveable { mutableStateOf(false) }
+    var isRemarkEditing by rememberSaveable { mutableStateOf(false) }
+    var remarkKeyboardObservedVisible by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
-    val evaluatedExpression = LedgerCalculator.evaluate(expression)
-    val amountCents = evaluatedExpression?.toCentsOrNull() ?: expression.toCentsOrNull() ?: 0L
-    val amountDisplayText = evaluatedExpression?.let { formatAmountValue(it.toCentsOrNull() ?: 0L) } ?: expression
+    val normalizedExpression = sanitizeAmountExpression(expression)
+    val evaluatedExpression = LedgerCalculator.evaluate(normalizedExpression)
+    val amountCents = evaluatedExpression?.toCentsOrNull() ?: normalizedExpression.toCentsOrNull() ?: 0L
+    val amountDisplayText = expression.ifBlank { "0" }
+    val hasPendingCalculation = expression.hasLedgerOperator()
     var lastBookId by rememberSaveable(initialTransaction?.id) { mutableStateOf(uiState.currentBookId) }
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val currentImeBottom by rememberUpdatedState(imeBottom)
+    val imeBottomDp = with(density) { imeBottom.toDp() }
 
+    LaunchedEffect(isRemarkEditing) {
+        if (!isRemarkEditing) {
+            remarkKeyboardObservedVisible = false
+        }
+    }
     LaunchedEffect(uiState.currentBookId, initialTransaction?.id, newDraftPrimaryAccountId, newDraftTransferInAccountId, categoryOptions, type) {
         if (initialTransaction == null && lastBookId != uiState.currentBookId) {
             selectedAccountId = newDraftPrimaryAccountId
@@ -191,6 +238,23 @@ fun LedgerAddTransactionScreen(
             selectedCategoryId = categoryOptions.firstOrNull()?.id
         }
     }
+    LaunchedEffect(isRemarkEditing, imeBottom) {
+        if (!isRemarkEditing) {
+            return@LaunchedEffect
+        }
+        if (imeBottom > 0) {
+            remarkKeyboardObservedVisible = true
+            return@LaunchedEffect
+        }
+        if (!remarkKeyboardObservedVisible) {
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(120)
+        if (isRemarkEditing && currentImeBottom == 0) {
+            remarkKeyboardObservedVisible = false
+            isRemarkEditing = false
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -202,6 +266,7 @@ fun LedgerAddTransactionScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             LedgerAddTopBar(
                 bookName = uiState.bookName,
+                creatorUserId = uiState.bookCreatorUserId,
                 onBack = onBack,
                 onBookClick = { showBookSheet = true },
                 onManageClick = { showCategoryManager = true },
@@ -242,7 +307,12 @@ fun LedgerAddTransactionScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 286.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 4.dp,
+                        bottom = 286.dp,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -257,28 +327,42 @@ fun LedgerAddTransactionScreen(
             }
         }
 
+            val remarkAmountColor = when (type) {
+                LedgerTransactionType.EXPENSE -> LedgerExpenseRed
+                LedgerTransactionType.INCOME -> LedgerIncomeGreen
+                LedgerTransactionType.TRANSFER -> LedgerHeaderGreen
+            }
+
             LedgerAmountKeyboardPanel(
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter),
                 type = type,
                 isEditing = initialTransaction != null,
                 amountText = amountDisplayText,
+                hasPendingCalculation = hasPendingCalculation,
                 remark = remark,
                 dateLabel = formatLedgerPickerDate(occurredAtMillis),
                 accountLabel = accountOptions.firstOrNull { it.id == selectedAccountId }?.name ?: "请选择账户",
-                onRemarkClick = { showRemarkDialog = true },
+                onRemarkClick = { isRemarkEditing = true },
                 onDateClick = { showDateSheet = true },
                 onAccountClick = {
                     accountPickerTarget = LedgerAccountPickerTarget.PRIMARY.name
                     showAccountSheet = true
                 },
                 onKeyClick = { key ->
+                    if (isRemarkEditing) isRemarkEditing = false
                     expression = when (key) {
                         "⌫" -> expression.dropLast(1).ifBlank { "0" }
-                        "=" -> LedgerCalculator.evaluate(expression) ?: expression
+                        "=" -> LedgerCalculator.evaluate(sanitizeAmountExpression(expression)) ?: expression
                         else -> appendKeyboardInput(expression, key)
                     }
                 },
                 onSaveContinue = {
+                    if (hasPendingCalculation) {
+                        expression = LedgerCalculator.evaluate(sanitizeAmountExpression(expression)) ?: expression
+                        isRemarkEditing = false
+                        return@LedgerAmountKeyboardPanel
+                    }
                     onSave(
                         initialTransaction?.id,
                         type,
@@ -292,25 +376,44 @@ fun LedgerAddTransactionScreen(
                     )
                     expression = "0"
                     remark = ""
+                    isRemarkEditing = false
                 },
                 onDeleteClick = {
                     showDeleteDialog = true
                 },
                 onDone = {
-                    onSave(
-                        initialTransaction?.id,
-                        type,
-                        amountCents,
-                        selectedCategoryId,
-                        selectedAccountId,
-                        selectedToAccountId,
-                        occurredAtMillis,
-                        remark,
-                        false,
-                    )
+                    if (hasPendingCalculation) {
+                        expression = LedgerCalculator.evaluate(sanitizeAmountExpression(expression)) ?: expression
+                    } else {
+                        onSave(
+                            initialTransaction?.id,
+                            type,
+                            amountCents,
+                            selectedCategoryId,
+                            selectedAccountId,
+                            selectedToAccountId,
+                            occurredAtMillis,
+                            remark,
+                            false,
+                        )
+                    }
+                    isRemarkEditing = false
                 },
                 saveEnabled = isDraftValid(type, amountCents, selectedCategoryId, selectedAccountId, selectedToAccountId),
             )
+
+            if (isRemarkEditing) {
+                LedgerFloatingRemarkBar(
+                    remark = remark,
+                    amountText = amountDisplayText,
+                    amountColor = remarkAmountColor,
+                    imeBottom = imeBottomDp,
+                    onRemarkChange = { remark = it },
+                    onDismiss = { isRemarkEditing = false },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+
     }
 
     if (showBookSheet) {
@@ -363,16 +466,6 @@ fun LedgerAddTransactionScreen(
             onReorderCategories = onReorderCategories,
         )
     }
-    if (showRemarkDialog) {
-        LedgerRemarkDialog(
-            initialRemark = remark,
-            onDismiss = { showRemarkDialog = false },
-            onConfirm = {
-                remark = it
-                showRemarkDialog = false
-            },
-        )
-    }
     if (showDeleteDialog && initialTransaction != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -411,6 +504,7 @@ fun LedgerAddTransactionScreen(
 @Composable
 private fun LedgerAddTopBar(
     bookName: String,
+    creatorUserId: String?,
     onBack: () -> Unit,
     onBookClick: () -> Unit,
     onManageClick: () -> Unit,
@@ -431,11 +525,13 @@ private fun LedgerAddTopBar(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = bookName,
-                style = MaterialTheme.typography.titleMedium,
+            LedgerBookTitleWithCreator(
+                title = bookName,
+                creatorUserId = creatorUserId,
+                textStyle = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = LedgerHeaderGreen,
+                textColor = LedgerHeaderGreen,
+                avatarSize = 18.dp,
             )
             Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(13.dp))
         }
@@ -589,6 +685,7 @@ private fun LedgerAmountKeyboardPanel(
     type: LedgerTransactionType,
     isEditing: Boolean,
     amountText: String,
+    hasPendingCalculation: Boolean,
     remark: String,
     dateLabel: String,
     accountLabel: String,
@@ -606,8 +703,10 @@ private fun LedgerAmountKeyboardPanel(
         LedgerTransactionType.INCOME -> LedgerIncomeGreen
         LedgerTransactionType.TRANSFER -> LedgerHeaderGreen
     }
+
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth(),
         color = LedgerRaisedSurface,
         shadowElevation = 0.dp,
         shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp),
@@ -630,6 +729,7 @@ private fun LedgerAmountKeyboardPanel(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.width(10.dp))
                 Text(
                     text = amountText.ifBlank { "0.00" },
                     color = amountColor,
@@ -648,7 +748,7 @@ private fun LedgerAmountKeyboardPanel(
                         .weight(1f)
                         .clickable(onClick = onDateClick),
                     verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(ledgerIcon("calendar"), contentDescription = null, tint = LedgerMuted)
                     Text(dateLabel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
@@ -660,7 +760,12 @@ private fun LedgerAmountKeyboardPanel(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    Icon(accountIcon(com.example.yingshi.feature.ledger.data.LedgerAccountType.WECHAT), contentDescription = null, tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
+                    Icon(
+                        accountIcon(com.example.yingshi.feature.ledger.data.LedgerAccountType.WECHAT),
+                        contentDescription = null,
+                        tint = LedgerHeaderGreen,
+                        modifier = Modifier.size(18.dp),
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         accountLabel,
@@ -704,15 +809,111 @@ private fun LedgerAmountKeyboardPanel(
                 )
                 LedgerKeyboardKey(text = "0", modifier = Modifier.weight(1f), onClick = { onKeyClick("0") })
                 LedgerKeyboardKey(text = ".", modifier = Modifier.weight(1f), onClick = { onKeyClick(".") })
-                LedgerKeyboardKey(text = "=", modifier = Modifier.weight(1f), textStyle = MaterialTheme.typography.titleMedium, onClick = { onKeyClick("=") })
+                LedgerKeyboardKey(text = "×", modifier = Modifier.weight(1f), onClick = { onKeyClick("×") })
                 LedgerKeyboardKey(
-                    text = "完成",
+                    text = if (hasPendingCalculation) "=" else "完成",
                     modifier = Modifier.weight(1.15f),
                     filled = true,
-                    enabled = saveEnabled,
-                    onClick = { if (saveEnabled) onDone() },
+                    enabled = hasPendingCalculation || saveEnabled,
+                    onClick = { if (hasPendingCalculation || saveEnabled) onDone() },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LedgerFloatingRemarkBar(
+    remark: String,
+    amountText: String,
+    amountColor: Color,
+    imeBottom: androidx.compose.ui.unit.Dp,
+    onRemarkChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var remarkFieldValue by remember {
+        mutableStateOf(TextFieldValue(remark, TextRange(remark.length)))
+    }
+
+    LaunchedEffect(remark) {
+        if (remarkFieldValue.text != remark) {
+            remarkFieldValue = TextFieldValue(remark, TextRange(remark.length))
+        }
+    }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(110)
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .padding(bottom = imeBottom + 8.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = LedgerRaisedSurface.copy(alpha = 0.98f),
+        border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.84f)),
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = remarkFieldValue,
+                onValueChange = { nextValue ->
+                    remarkFieldValue = nextValue
+                    onRemarkChange(nextValue.text)
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = LedgerHeaderGreen),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        keyboardController?.hide()
+                        onDismiss()
+                    },
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            val end = remarkFieldValue.text.length
+                            if (remarkFieldValue.selection.start != end || remarkFieldValue.selection.end != end) {
+                                remarkFieldValue = remarkFieldValue.copy(selection = TextRange(end))
+                            }
+                        }
+                    },
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (remarkFieldValue.text.isBlank()) {
+                            Text(
+                                text = "添加备注",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = LedgerMuted,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = amountText.ifBlank { "0.00" },
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = amountColor,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -727,14 +928,17 @@ private fun LedgerKeyboardKey(
     textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleLarge,
     onClick: () -> Unit,
 ) {
+    val isDeleteKey = text == "⌫"
     val background = when {
         !enabled -> if (filled) LedgerPrimaryAction.copy(alpha = 0.42f) else LedgerDivider.copy(alpha = 0.28f)
+        isDeleteKey -> Color(0xFF273036)
         filled -> LedgerPrimaryAction
         danger -> LedgerMemoryWash
         else -> LedgerRaisedSurface
     }
     val contentColor = when {
         !enabled -> LedgerMuted.copy(alpha = 0.62f)
+        isDeleteKey -> Color.White
         filled -> LedgerOnPrimaryAction
         danger -> LedgerExpenseRed
         else -> LedgerHeaderGreen
@@ -760,7 +964,7 @@ private fun LedgerKeyboardKey(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        if (text == "⌫") {
+        if (isDeleteKey) {
             Icon(Icons.Default.Close, contentDescription = "删除", tint = animatedContentColor, modifier = Modifier.size(24.dp))
         } else {
             Text(
@@ -774,56 +978,52 @@ private fun LedgerKeyboardKey(
     }
 }
 
-@Composable
-private fun LedgerRemarkDialog(
-    initialRemark: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    var value by rememberSaveable(initialRemark) { mutableStateOf(initialRemark) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = LedgerRaisedSurface,
-        title = {
-            Text(
-                text = "账单备注",
-                color = LedgerHeaderGreen,
-                fontWeight = FontWeight.Bold,
-            )
-        },
-        text = {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("备注") },
-                placeholder = { Text("写下这笔账的来处") },
-                singleLine = false,
-                minLines = 3,
-            )
-        },
-        confirmButton = {
-            LedgerDialogActionButton(
-                text = "保存",
-                emphasized = true,
-                onClick = { onConfirm(value.trim()) },
-            )
-        },
-        dismissButton = {
-            LedgerDialogActionButton(text = "取消", onClick = onDismiss)
-        },
-    )
-}
-
 private fun appendKeyboardInput(expression: String, key: String): String {
-    if (key == "." && expression.substringAfterLastAny(listOf("+", "-", "×", "÷")).contains(".")) return expression
-    val base = if (expression == "0" && key !in listOf(".", "+", "-", "×", "÷")) "" else expression
-    return base + key
+    val operators = listOf("+", "-", "×", "÷")
+    val segment = expression.substringAfterLastAny(operators)
+    if (key in operators) {
+        val base = expression.trimEnd('.')
+        if (base.isBlank()) return "0"
+        return if (operators.any { base.endsWith(it) }) {
+            base.dropLast(1) + key
+        } else {
+            val resolvedBase = if (base.hasLedgerOperator()) {
+                LedgerCalculator.evaluate(sanitizeAmountExpression(base)) ?: base
+            } else {
+                base
+            }
+            resolvedBase + key
+        }
+    }
+    if (key == ".") {
+        if (segment.contains(".")) return expression
+        return if (segment.isBlank()) expression + "0." else expression + "."
+    }
+    if (key.length == 1 && key.first().isDigit()) {
+        val decimals = segment.substringAfter('.', missingDelimiterValue = "")
+        if (segment.contains(".") && decimals.length >= 2) return expression
+        val base = if (expression == "0") "" else expression
+        return base + key
+    }
+    return expression
 }
 
 private fun String.substringAfterLastAny(delimiters: List<String>): String {
     val index = delimiters.maxOf { lastIndexOf(it) }
     return if (index >= 0) substring(index + 1) else this
+}
+
+private fun String.hasLedgerOperator(): Boolean {
+    return any { it == '+' || it == '-' || it == '×' || it == '÷' }
+}
+
+private fun sanitizeAmountExpression(expression: String): String {
+    val operators = setOf('+', '-', '×', '÷')
+    return expression
+        .trim()
+        .trimEnd('.')
+        .trimEnd { it in operators }
+        .ifBlank { "0" }
 }
 
 private fun isDraftValid(
@@ -846,5 +1046,13 @@ private fun formatLedgerPickerDate(millis: Long): String {
         "今天 %02d:%02d".format(dateTime.hour, dateTime.minute)
     } else {
         "%02d/%02d %02d:%02d".format(dateTime.monthValue, dateTime.dayOfMonth, dateTime.hour, dateTime.minute)
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
     }
 }

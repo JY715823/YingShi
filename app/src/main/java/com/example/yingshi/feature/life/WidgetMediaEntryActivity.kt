@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
@@ -27,7 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,8 +35,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -49,13 +47,11 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
-import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import kotlinx.coroutines.launch
 import java.io.File
 
 class WidgetMediaEntryActivity : ComponentActivity() {
@@ -70,9 +66,7 @@ class WidgetMediaEntryActivity : ComponentActivity() {
                 WidgetMediaEntryScreen(
                     category = category,
                     onFinish = {
-                        LifeConsoleWidgetProvider.refreshAll(applicationContext)
-                        moveTaskToBack(true)
-                        finish()
+                        finishAndRemoveTask()
                     },
                 )
             }
@@ -97,31 +91,22 @@ private fun WidgetMediaEntryScreen(
 ) {
     val activity = LocalContext.current as WidgetMediaEntryActivity
     val colors = YingShiThemeTokens.colors
-    val scope = rememberCoroutineScope()
-    var isUploading by remember { mutableStateOf(false) }
     var captureImageUriValue by rememberSaveable { mutableStateOf<String?>(null) }
     var captureVideoUriValue by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCameraAction by rememberSaveable { mutableStateOf<CameraAction?>(null) }
     val captureImageUri = captureImageUriValue?.let(Uri::parse)
     val captureVideoUri = captureVideoUriValue?.let(Uri::parse)
 
+    BackHandler(onBack = onFinish)
+
     fun upload(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        scope.launch {
-            isUploading = true
-            when (val result = LifeConsoleUploadBridge.uploadMedia(activity, category, uris)) {
-                is ApiResult.Success -> {
-                    Toast.makeText(activity, "已上传到今日痕迹", Toast.LENGTH_SHORT).show()
-                    LifeConsoleWidgetProvider.applySnapshot(activity.applicationContext, result.data)
-                    onFinish()
-                }
-                is ApiResult.Error -> {
-                    isUploading = false
-                    Toast.makeText(activity, result.message, Toast.LENGTH_SHORT).show()
-                }
-                ApiResult.Loading -> Unit
-            }
-        }
+        LifeConsoleUploadRuntime.enqueueWidgetUpload(
+            context = activity.applicationContext,
+            category = category,
+            uris = uris,
+        )
+        onFinish()
     }
 
     fun showLaunchFailure(message: String = "无法打开系统入口，请稍后再试") {
@@ -240,31 +225,6 @@ private fun WidgetMediaEntryScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary,
             )
-            if (isUploading) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                    color = colors.raisedSurface.copy(alpha = 0.94f),
-                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = colors.primaryAction,
-                        )
-                        Text(
-                            text = "正在上传到今日痕迹",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textSecondary,
-                        )
-                    }
-                }
-            }
             WidgetMediaActionButton(
                 icon = Icons.Filled.PhotoLibrary,
                 text = "从相册选择",
@@ -273,27 +233,27 @@ private fun WidgetMediaEntryScreen(
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
                     }.onFailure { showLaunchFailure("无法打开系统相册") }
                 },
-                enabled = !isUploading,
+                enabled = true,
                 emphasized = true,
             )
             WidgetMediaActionButton(
                 icon = Icons.Filled.CameraAlt,
                 text = "拍照",
                 onClick = { launchCamera(CameraAction.Photo) },
-                enabled = !isUploading,
+                enabled = true,
                 emphasized = false,
             )
             WidgetMediaActionButton(
                 icon = Icons.Filled.Videocam,
                 text = "拍视频",
                 onClick = { launchCamera(CameraAction.Video) },
-                enabled = !isUploading,
+                enabled = true,
                 emphasized = false,
             )
             WidgetMediaActionButton(
                 text = "取消",
                 onClick = onFinish,
-                enabled = !isUploading,
+                enabled = true,
                 emphasized = false,
             )
         }

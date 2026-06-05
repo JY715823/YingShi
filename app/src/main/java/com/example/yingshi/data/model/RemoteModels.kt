@@ -61,6 +61,7 @@ data class RemoteTrashItem(
     val trashItemId: String,
     val itemType: String,
     val state: String?,
+    val actorUserId: String? = null,
     val sourceSmallAlbumId: String?,
     val sourceMediaId: String?,
     val commentTargetMediaId: String?,

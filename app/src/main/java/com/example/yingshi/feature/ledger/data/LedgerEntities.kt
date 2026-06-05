@@ -41,6 +41,7 @@ enum class LedgerDeletedItemType {
 data class LedgerBookEntity(
     @PrimaryKey val id: String,
     val name: String,
+    val creatorUserId: String? = null,
     val template: String,
     val currencyCode: String,
     val currencySymbol: String,

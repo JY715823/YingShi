@@ -5,10 +5,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +63,7 @@ import com.example.yingshi.feature.photos.CreatePostScreen
 import com.example.yingshi.feature.photos.CacheManagementScreen
 import com.example.yingshi.feature.photos.BackendDiagnosticsRoute
 import com.example.yingshi.feature.photos.BackendDiagnosticsScreen
+import com.example.yingshi.feature.photos.CollaboratorDirectoryStore
 import com.example.yingshi.feature.photos.GearEditRoute
 import com.example.yingshi.feature.photos.GearEditScreen
 import com.example.yingshi.feature.photos.MediaManagementRoute
@@ -213,6 +214,10 @@ fun YingShiApp() {
     var profileRefreshMessage by remember { mutableStateOf<String?>(null) }
     var isRefreshingProfile by remember { mutableStateOf(false) }
 
+    LaunchedEffect(currentUser?.userId, currentUser?.updatedAtMillis, currentUser?.partner?.userId) {
+        CollaboratorDirectoryStore.update(currentUser)
+    }
+
     fun resetAccountRoutes() {
         personalProfileRoute = null
         editProfileRoute = null
@@ -248,6 +253,23 @@ fun YingShiApp() {
         authNoticeMessage = message ?: "登录状态已失效，请重新登录。"
         clearProtectedUiRoutes()
         selectedDestinationName = RootDestination.HOME.name
+    }
+
+    fun performLogout() {
+        scope.launch {
+            isLoggingOut = true
+            runCatching {
+                RepositoryProvider.authRepository.logout()
+            }
+            AuthSessionManager.clearTokens()
+            currentUser = null
+            authNoticeMessage = null
+            profileRefreshMessage = null
+            isRefreshingProfile = false
+            clearProtectedUiRoutes()
+            selectedDestinationName = RootDestination.HOME.name
+            isLoggingOut = false
+        }
     }
 
     LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl, currentUser?.userId) {
@@ -427,6 +449,39 @@ fun YingShiApp() {
                     "已定位到刚导入媒体，未完成项可在传输中心查看并重试。"
                 GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage =
                     "成功项已导入，照片流还在刷新定位；未完成项可在传输中心查看并重试。"
+            }
+        }
+        photoViewerRoute = null
+        systemMediaViewerRoute = null
+        systemMediaRoute = null
+        createPostRoute = null
+        postDetailRoute = null
+        transferCenterRoute = null
+        selectedDestinationName = RootDestination.PHOTOS.name
+        photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+        photoFeedScrollTrigger++
+    }
+    val requestPhotoFeedRestoreLocate: (List<String>) -> Unit = { resultMediaIds ->
+        val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
+        val targetMediaId = validResultMediaIds.firstOrNull()
+        if (targetMediaId != null) {
+            GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
+            GlobalPhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            GlobalPhotoFeedPageStateStore.pendingHighlightNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingNewImportedMediaIds = emptySet()
+            GlobalPhotoFeedPageStateStore.pendingRestoredMediaIds = validResultMediaIds.toSet()
+            GlobalPhotoFeedPageStateStore.pendingRestoredNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingImportHasRetryableItems = false
+            val extraCount = (validResultMediaIds.size - 1).coerceAtLeast(0)
+            GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage = if (extraCount > 0) {
+                "已定位到恢复媒体，另有 $extraCount 项已恢复"
+            } else {
+                "已定位到恢复媒体"
+            }
+            GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = if (extraCount > 0) {
+                "已恢复 ${validResultMediaIds.size} 项媒体，照片流还在刷新定位"
+            } else {
+                "已恢复媒体，照片流还在刷新定位"
             }
         }
         photoViewerRoute = null
@@ -645,6 +700,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { settingsRoute = null },
                         onOpenBackendDiagnostics = { backendDiagnosticsRoute = it },
+                        onLogout = { performLogout() },
                     )
                 }
             }
@@ -838,7 +894,7 @@ fun YingShiApp() {
                         onEntryRestored = { mediaIds ->
                             trashDetailRoute = null
                             if (mediaIds.isNotEmpty()) {
-                                requestPhotoFeedRefresh(mediaIds, false)
+                                requestPhotoFeedRestoreLocate(mediaIds)
                             } else {
                                 selectedDestinationName = RootDestination.PHOTOS.name
                                 photosTopDestinationName = PhotosTopDestination.PHOTOS.name
@@ -890,16 +946,13 @@ fun YingShiApp() {
                         onOpenTrashDetail = { trashDetailRoute = it },
                         onTrashRestoreTargetMediaIds = { mediaIds ->
                             if (mediaIds.isNotEmpty()) {
-                                requestPhotoFeedRefresh(mediaIds, false)
+                                requestPhotoFeedRestoreLocate(mediaIds)
                             }
                         },
                         onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
                         onOpenTransferCenter = { transferCenterRoute = TransferCenterRoute(source = "photos-top-bar") },
                         onOpenCreatePost = { createPostRoute = it },
                         onAddedMediaToPost = openPostDetailAfterAdd,
-                        onOpenNotifications = {
-                            notificationCenterRoute = NotificationCenterRoute(source = "photos-bell")
-                        },
                         photoFeedScrollTrigger = photoFeedScrollTrigger,
                         photoSelectionClearTrigger = photoSelectionClearTrigger,
                         inlineVideoAutoPlayEnabled = photoViewerRoute == null,
@@ -949,9 +1002,6 @@ fun YingShiApp() {
                                     lifeConsoleRouteActive = false
                                     chatViewerRouteActive = true
                                 },
-                                onOpenNotifications = {
-                                    notificationCenterRoute = NotificationCenterRoute(source = "life-bell")
-                                },
                             )
                         }
                     }
@@ -990,25 +1040,7 @@ fun YingShiApp() {
                             onOpenProfile = {
                                 personalProfileRoute = PersonalProfileRoute(source = "my-page")
                             },
-                            onOpenNotifications = {
-                                notificationCenterRoute = NotificationCenterRoute(source = "my-bell")
-                            },
-                            onLogout = {
-                                scope.launch {
-                                    isLoggingOut = true
-                                    runCatching {
-                                        RepositoryProvider.authRepository.logout()
-                                    }
-                                    AuthSessionManager.clearTokens()
-                                    currentUser = null
-                                    authNoticeMessage = null
-                                    profileRefreshMessage = null
-                                    isRefreshingProfile = false
-                                    clearProtectedUiRoutes()
-                                    selectedDestinationName = RootDestination.HOME.name
-                                    isLoggingOut = false
-                                }
-                            },
+                            onLogout = { performLogout() },
                             onOpenSettings = { settingsRoute = SettingsRoute(source = "my-page") },
                             onOpenCacheManagement = {
                                 cacheManagementRoute = CacheManagementRoute(source = "my-page")
@@ -1194,6 +1226,19 @@ fun YingShiApp() {
                         },
                     ) {
                         Text(text = "导入媒体")
+                    }
+                    TextButton(
+                        onClick = {
+                            showQuickAddSheet = false
+                            selectedDestinationName = RootDestination.PHOTOS.name
+                            createPostRoute = CreatePostRoute(
+                                source = "bottom-quick-add",
+                                initialAppMediaIds = emptyList(),
+                                initialAppMediaItems = emptyList(),
+                            )
+                        },
+                    ) {
+                        Text(text = "新建小相册")
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {

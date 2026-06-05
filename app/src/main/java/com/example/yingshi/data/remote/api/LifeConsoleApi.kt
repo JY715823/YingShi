@@ -2,6 +2,7 @@ package com.example.yingshi.data.remote.api
 
 import com.example.yingshi.data.remote.dto.ApiEnvelopeDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelMutationResponseDto
+import com.example.yingshi.data.remote.dto.LifeConsoleHistoryDto
 import com.example.yingshi.data.remote.dto.LifeConsoleMediaRequestDto
 import com.example.yingshi.data.remote.dto.LifeConsoleTodayDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
@@ -20,6 +21,12 @@ interface LifeConsoleApi {
         @Query("date") date: String? = null,
         @Query("zoneId") zoneId: String? = null,
     ): ApiEnvelopeDto<LifeConsoleTodayDto>
+
+    @GET("api/life-console/history")
+    suspend fun getHistory(
+        @Query("zoneId") zoneId: String? = null,
+        @Query("limitDays") limitDays: Int? = null,
+    ): ApiEnvelopeDto<LifeConsoleHistoryDto>
 
     @POST("api/life-console/media")
     suspend fun addMedia(

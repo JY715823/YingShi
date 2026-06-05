@@ -13,10 +13,17 @@ class PhotoFeedPageStateStore {
     var pendingLocateFailureMessage by mutableStateOf<String?>(null)
     var pendingNewImportedMediaIds by mutableStateOf<Set<String>>(emptySet())
     var pendingNewImportedNonce by mutableIntStateOf(0)
+    var pendingRestoredMediaIds by mutableStateOf<Set<String>>(emptySet())
+    var pendingRestoredNonce by mutableIntStateOf(0)
     var pendingImportHasRetryableItems by mutableStateOf(false)
     var savedFirstVisibleItemIndex by mutableIntStateOf(0)
     var savedFirstVisibleItemScrollOffset by mutableIntStateOf(0)
     var savedFirstVisibleMediaId by mutableStateOf<String?>(null)
+    var savedDensityName by mutableStateOf<String?>(null)
+    var collaboratorSelectionInitialized by mutableStateOf(false)
+    var selectedCollaboratorUserIds by mutableStateOf<Set<String>>(emptySet())
+    var timeBucketHours by mutableIntStateOf(24)
+    var visibleMediaIds by mutableStateOf<Set<String>>(emptySet())
 }
 
 val GlobalPhotoFeedPageStateStore = PhotoFeedPageStateStore()

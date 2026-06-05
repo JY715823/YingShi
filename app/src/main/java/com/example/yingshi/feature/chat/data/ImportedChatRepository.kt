@@ -141,6 +141,12 @@ class ImportedChatRepository(
         }
     }
 
+    suspend fun hasImportedChat(chatId: Long): Boolean {
+        return withContext(Dispatchers.IO) {
+            dao.findChatById(chatId) != null
+        }
+    }
+
     suspend fun deleteImportedChat(chatId: Long): Boolean {
         return withContext(Dispatchers.IO) {
             val chat = dao.findChatById(chatId) ?: return@withContext false
@@ -1393,16 +1399,17 @@ class ImportedChatRepository(
 
     private fun resolveSourceResourceFile(importRoot: File, resource: PreparedResource): File? {
         val candidates = linkedSetOf<File>()
-        val normalizedOriginal = resource.originalRelativePath?.replace('\\', '/')
-        val normalizedLocal = resource.localPath?.replace('\\', '/')
-        normalizedOriginal?.let { relative ->
+        collectImportRelativePathCandidates(resource.originalRelativePath).forEach { relative ->
             candidates += importRoot.resolve(relative)
             relative.removePrefix("resources/").takeIf { it != relative }?.let {
                 candidates += importRoot.resolve("resources").resolve(it)
             }
         }
-        normalizedLocal?.let { relative ->
+        collectImportRelativePathCandidates(resource.localPath).forEach { relative ->
             candidates += importRoot.resolve(relative)
+            relative.removePrefix("resources/").takeIf { it != relative }?.let {
+                candidates += importRoot.resolve("resources").resolve(it)
+            }
             candidates += importRoot.resolve("resources").resolve(relative)
         }
         resource.fileName?.takeIf { it.isNotBlank() }?.let { fileName ->
@@ -1608,12 +1615,11 @@ class ImportedChatRepository(
             ?: elementData?.string("localPath")
         val url = resourceObject.string("url")
             ?: elementData?.string("url")
-        val originalRelativePath = when {
-            !url.isNullOrBlank() && url.startsWith("resources/") -> url
-            !localPath.isNullOrBlank() && localPath.startsWith("resources/") -> localPath
-            !localPath.isNullOrBlank() -> "resources/$localPath"
-            else -> null
-        }
+        val normalizedUrlPath = normalizeImportRelativePath(url)
+        val normalizedLocalPath = normalizeImportRelativePath(localPath)
+        val originalRelativePath = normalizedUrlPath
+            ?: normalizedLocalPath
+            ?: localPath?.replace('\\', '/')
         return PreparedResource(
             type = type,
             renderKind = inferRenderKind(
@@ -2371,6 +2377,37 @@ private fun JsonArray.mediaElementDataAt(index: Int): JsonObject? {
         }
     }
     return null
+}
+
+private fun normalizeImportRelativePath(rawPath: String?): String? {
+    val normalized = rawPath
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.replace('\\', '/')
+        ?.removePrefix("./")
+        ?.removePrefix("/")
+        ?: return null
+    if (normalized.startsWith("http://", ignoreCase = true) ||
+        normalized.startsWith("https://", ignoreCase = true) ||
+        normalized.startsWith("data:", ignoreCase = true)
+    ) {
+        return null
+    }
+    return when {
+        normalized.startsWith("resources/", ignoreCase = true) -> "resources/" + normalized.removePrefix("resources/")
+        normalized.startsWith("images/", ignoreCase = true) ||
+            normalized.startsWith("videos/", ignoreCase = true) ||
+            normalized.startsWith("audios/", ignoreCase = true) ||
+            normalized.startsWith("files/", ignoreCase = true) -> "resources/$normalized"
+        else -> normalized
+    }
+}
+
+private fun collectImportRelativePathCandidates(rawPath: String?): List<String> {
+    val normalized = normalizeImportRelativePath(rawPath) ?: return emptyList()
+    val candidates = linkedSetOf(normalized)
+    normalized.removePrefix("resources/").takeIf { it != normalized }?.let(candidates::add)
+    return candidates.toList()
 }
 
 private fun String?.toImportedChatType(): ImportedChatType {

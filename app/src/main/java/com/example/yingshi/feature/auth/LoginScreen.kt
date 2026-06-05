@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -100,10 +102,11 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 44.dp)
-                .padding(top = 156.dp, bottom = 40.dp),
+                .padding(top = 118.dp, bottom = 52.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(22.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -119,7 +122,7 @@ fun LoginScreen(
             }
 
             Column(
-                modifier = Modifier.padding(top = 64.dp),
+                modifier = Modifier.padding(top = 52.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 YingShiTextField(
@@ -147,69 +150,6 @@ fun LoginScreen(
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                 )
-
-                AdvancedRow(
-                    expanded = advancedExpanded,
-                    onClick = {
-                        advancedExpanded = !advancedExpanded
-                        advancedMessage = null
-                    },
-                )
-
-                if (advancedExpanded) {
-                    YingShiMistCard(
-                        shape = RoundedCornerShape(radius.lg),
-                        color = colors.raisedSurface.copy(alpha = 0.76f),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(spacing.md),
-                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                        ) {
-                            YingShiTextField(
-                                value = baseUrlInput,
-                                onValueChange = {
-                                    baseUrlInput = it
-                                    advancedMessage = null
-                                },
-                                placeholder = LABEL_BACKEND_ADDRESS,
-                                icon = Icons.Rounded.Settings,
-                                enabled = !isLoading,
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = !isLoading) {
-                                        BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                                        baseUrlInput = BackendDebugConfig.currentBaseUrl()
-                                        advancedMessage = "地址已保存"
-                                    },
-                                shape = RoundedCornerShape(radius.capsule),
-                                color = colors.sectionBackground.copy(alpha = 0.84f),
-                                border = BorderStroke(1.dp, colors.dividerSoft),
-                            ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = spacing.sm),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = ACTION_SAVE_ADDRESS,
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                        color = colors.titleAccent,
-                                    )
-                                }
-                            }
-                            advancedMessage?.let { message ->
-                                Text(
-                                    text = message,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = colors.titleAccent,
-                                )
-                            }
-                        }
-                    }
-                }
 
                 (errorMessage ?: sessionMessage)?.let { message ->
                     Surface(
@@ -292,6 +232,68 @@ fun LoginScreen(
                     enabled = !isLoading && account.isNotBlank() && password.isNotBlank(),
                     loading = isLoading,
                 )
+                AdvancedRow(
+                    expanded = advancedExpanded,
+                    onClick = {
+                        advancedExpanded = !advancedExpanded
+                        advancedMessage = null
+                    },
+                )
+
+                if (advancedExpanded) {
+                    YingShiMistCard(
+                        shape = RoundedCornerShape(radius.lg),
+                        color = colors.raisedSurface.copy(alpha = 0.76f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                        ) {
+                            YingShiTextField(
+                                value = baseUrlInput,
+                                onValueChange = {
+                                    baseUrlInput = it
+                                    advancedMessage = null
+                                },
+                                placeholder = LABEL_BACKEND_ADDRESS,
+                                icon = Icons.Rounded.Settings,
+                                enabled = !isLoading,
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isLoading) {
+                                        BackendDebugConfig.updateBaseUrl(baseUrlInput)
+                                        baseUrlInput = BackendDebugConfig.currentBaseUrl()
+                                        advancedMessage = "地址已保存"
+                                    },
+                                shape = RoundedCornerShape(radius.capsule),
+                                color = colors.sectionBackground.copy(alpha = 0.84f),
+                                border = BorderStroke(1.dp, colors.dividerSoft),
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = spacing.sm),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = ACTION_SAVE_ADDRESS,
+                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                        color = colors.titleAccent,
+                                    )
+                                }
+                            }
+                            advancedMessage?.let { message ->
+                                Text(
+                                    text = message,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = colors.titleAccent,
+                                )
+                            }
+                        }
+                    }
+                }
                 Text(
                     text = LOGIN_SUBTITLE,
                     modifier = Modifier

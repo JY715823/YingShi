@@ -8,6 +8,7 @@ data class CreateSmallAlbumRoute(
     val initialMediaItems: List<SystemMediaItem> = emptyList(),
     val initialAppMediaIds: List<String> = emptyList(),
     val initialAppMediaItems: List<CreateSmallAlbumAppMediaItem> = emptyList(),
+    val initialAlbumId: String? = null,
 )
 
 @Immutable

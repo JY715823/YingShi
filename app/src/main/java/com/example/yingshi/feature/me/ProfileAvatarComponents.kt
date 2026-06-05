@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -29,10 +30,11 @@ import com.example.yingshi.feature.photos.backendMediaImageRequest
 import com.example.yingshi.feature.photos.resolveBackendMediaUrl
 
 @Composable
-internal fun ProfileAvatar(
+fun ProfileAvatar(
     name: String,
     avatarUrl: String?,
     modifier: Modifier = Modifier,
+    size: Dp = 56.dp,
 ) {
     val context = LocalContext.current
     val resolvedAvatarUrl = remember(avatarUrl) {
@@ -57,7 +59,7 @@ internal fun ProfileAvatar(
     val avatarLabel = name.firstOrNull()?.uppercaseChar()?.toString() ?: "Y"
 
     Surface(
-        modifier = modifier.size(56.dp),
+        modifier = modifier.size(size),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
     ) {

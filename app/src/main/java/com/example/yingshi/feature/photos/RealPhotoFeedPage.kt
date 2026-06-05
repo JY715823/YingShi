@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -56,7 +57,6 @@ fun RealPhotoFeedPage(
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
     val spacing = YingShiThemeTokens.spacing
-
     androidx.compose.runtime.LaunchedEffect(backendMutationEvent.version) {
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsPhotoFeed()) {
             viewModel.refresh()
@@ -70,6 +70,7 @@ fun RealPhotoFeedPage(
     }
 
     if (showDeleteConfirm) {
+        val selectedIds = selectionState.selectedMediaIds
         val selectedCount = selectionState.selectedCount
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
@@ -88,8 +89,9 @@ fun RealPhotoFeedPage(
                     danger = true,
                     onClick = {
                         showDeleteConfirm = false
-                        viewModel.deleteSelectedMedia(selectionState.selectedMediaIds)
-                        onSelectionStateChange(selectionState.clear())
+                        viewModel.deleteSelectedMedia(selectedIds) { deletedIds ->
+                            onSelectionStateChange(selectionState.without(deletedIds))
+                        }
                     },
                 )
             },
@@ -135,7 +137,9 @@ fun RealPhotoFeedPage(
                                 mediaIds = selectedItems.map { it.mediaId }.toSet(),
                             )
                             viewModel.refresh()
-                            onSelectionStateChange(selectionState.clear())
+                            onSelectionStateChange(
+                                selectionState.without(selectedItems.mapTo(linkedSetOf()) { it.mediaId }),
+                            )
                             showAddToPostDialog = false
                             addToPostPendingPostId = null
                             addToPostError = null
@@ -243,7 +247,7 @@ fun RealPhotoFeedPage(
                             exit = fadeOut(),
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = spacing.sm),
+                                .padding(bottom = 0.dp),
                         ) {
                             RealFeedSelectionBarV2(
                                 selectedCount = selectionState.selectedCount,

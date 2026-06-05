@@ -314,16 +314,26 @@ fun SystemMediaScreen(
             rowKeys = rowKeys,
         )
     }
-    val hitTestAdapter = remember(gridState, gridBlocks, systemRowMapping, density.columns, spacingPx) {
+    val gridEdgePadding = systemMediaGridEdgePadding(density)
+    val edgePaddingPx = with(LocalDensity.current) { gridEdgePadding.toPx() }
+    val hitTestAdapter = remember(
+        gridState,
+        gridBlocks,
+        systemRowMapping,
+        density.columns,
+        spacingPx,
+        edgePaddingPx,
+    ) {
         val colSpacingPx = spacingPx
         MultiSelectHitTestAdapter(
             hitTest = { touchPos ->
                 val layout = gridState.layoutInfo
-                val tx = touchPos.x.toInt()
+                val tx = (touchPos.x - edgePaddingPx).toInt()
                 val ty = touchPos.y.toInt()
                 val viewportW = layout.viewportSize.width.coerceAtLeast(1)
+                val contentW = (viewportW - edgePaddingPx * 2f).coerceAtLeast(1f)
                 val totalSpacing = (density.columns - 1) * colSpacingPx
-                val cellWidth = ((viewportW - totalSpacing).toFloat() / density.columns)
+                val cellWidth = ((contentW - totalSpacing) / density.columns).coerceAtLeast(1f)
                 val segmentWidth = cellWidth + colSpacingPx
                 for (vi in layout.visibleItemsInfo) {
                     val block = gridBlocks.getOrNull(vi.index) as? SystemMediaGridBlock.Media ?: continue
@@ -659,12 +669,12 @@ fun SystemMediaScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(top = 8.dp, bottom = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(top = 10.dp, bottom = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 SystemMediaTopBar(
                     selectedFilter = uiState.selectedFilter,
@@ -750,7 +760,12 @@ fun SystemMediaScreen(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            contentPadding = PaddingValues(top = 2.dp, bottom = 112.dp),
+                            contentPadding = PaddingValues(
+                                start = gridEdgePadding,
+                                end = gridEdgePadding,
+                                top = 2.dp,
+                                bottom = 112.dp,
+                            ),
                         ) {
                             items(
                                 items = gridBlocks,
@@ -1033,7 +1048,7 @@ private fun SystemMediaTopBar(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "系统媒体",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
             )
             Text(
@@ -1042,7 +1057,7 @@ private fun SystemMediaTopBar(
                 } else {
                     selectedFilter.label
                 },
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 color = colors.textSecondary,
             )
         }
@@ -1073,7 +1088,7 @@ private fun SystemMediaFilterMenuButton(
     Box {
         Surface(
             modifier = Modifier
-                .size(42.dp)
+                .size(46.dp)
                 .yingShiClickable(shape = RoundedCornerShape(14.dp), pressedScale = 0.94f) {
                     expanded = true
                 },
@@ -1086,7 +1101,7 @@ private fun SystemMediaFilterMenuButton(
                     imageVector = Icons.Default.Menu,
                     contentDescription = "系统媒体菜单",
                     tint = colors.onPrimaryContainer,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
@@ -1393,7 +1408,7 @@ private fun SystemMediaSelectionBar(
         ) {
             Text(
                 text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
             )
             Column(
@@ -1475,8 +1490,11 @@ private fun SystemMediaActionChip(
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 11.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            textAlign = TextAlign.Center,
             color = if (emphasized) {
                 colors.softGreenAction
             } else {
@@ -1495,7 +1513,7 @@ private fun SystemMediaIconButton(
     val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
-            .size(40.dp)
+            .size(42.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = colors.sectionBackground.copy(alpha = 0.80f),
@@ -1506,7 +1524,7 @@ private fun SystemMediaIconButton(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 tint = colors.titleAccent,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(21.dp),
             )
         }
     }
@@ -1623,8 +1641,12 @@ private fun SystemMediaMonthHeaderRow(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 2.dp, top = 2.dp, bottom = 0.dp),
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            .padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.headlineSmall.copy(
+            fontSize = 32.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.ExtraBold,
+        ),
         color = YingShiThemeTokens.colors.titleAccent,
     )
 }
@@ -1635,10 +1657,22 @@ private fun SystemMediaDayHeaderRow(title: String) {
         text = title,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 2.dp, top = 0.dp, bottom = 0.dp),
-        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-        color = YingShiThemeTokens.colors.textSecondary.copy(alpha = 0.86f),
+            .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
+        style = MaterialTheme.typography.titleLarge.copy(
+            fontSize = 24.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.Bold,
+        ),
+        color = YingShiThemeTokens.colors.textPrimary.copy(alpha = 0.88f),
     )
+}
+
+private fun systemMediaGridEdgePadding(density: PhotoFeedDensity) = when (density) {
+    PhotoFeedDensity.COMFORT_2 -> 5.dp
+    PhotoFeedDensity.COMFORT_3 -> 4.dp
+    PhotoFeedDensity.DENSE_4 -> 4.dp
+    PhotoFeedDensity.OVERVIEW_8 -> 2.dp
+    PhotoFeedDensity.OVERVIEW_16 -> 2.dp
 }
 
 @Composable

@@ -37,6 +37,28 @@ data class LifeConsoleTodayDto(
     val bowel: LifeConsoleBowelSummaryDto,
 )
 
+data class LifeConsoleHistoryDayDto(
+    val date: String,
+    val displayLabel: String,
+    val selfMedia: List<MediaDto> = emptyList(),
+    val partnerMedia: List<MediaDto> = emptyList(),
+)
+
+data class LifeConsoleBowelHistoryDayDto(
+    val date: String,
+    val displayLabel: String,
+    val users: List<LifeConsoleBowelUserSummaryDto> = emptyList(),
+)
+
+data class LifeConsoleHistoryDto(
+    val zoneId: String,
+    val currentUser: LifeConsoleUserDto,
+    val partner: LifeConsoleUserDto? = null,
+    val personDays: List<LifeConsoleHistoryDayDto> = emptyList(),
+    val mealDays: List<LifeConsoleHistoryDayDto> = emptyList(),
+    val bowelDays: List<LifeConsoleBowelHistoryDayDto> = emptyList(),
+)
+
 data class LifeConsoleMediaRequestDto(
     val category: String,
     val mediaIds: List<String>,

@@ -113,10 +113,13 @@ fun LedgerRecurringScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = uiState.bookName,
-                    style = MaterialTheme.typography.titleMedium,
+                LedgerBookTitleWithCreator(
+                    title = uiState.bookName,
+                    creatorUserId = uiState.bookCreatorUserId,
+                    textStyle = MaterialTheme.typography.titleMedium,
+                    textColor = Color.Unspecified,
                     fontWeight = FontWeight.Bold,
+                    avatarSize = 16.dp,
                 )
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", modifier = Modifier.size(14.dp))
             }

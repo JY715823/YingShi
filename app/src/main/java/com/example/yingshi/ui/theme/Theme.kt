@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 private val AppSpacing = YingShiSpacing()
 private val AppRadius = YingShiRadius()
 private val AppColors = YingShiColors()
+private val AppMotion = YingShiMotion()
 
 private val DarkColorScheme = darkColorScheme(
     primary = YingShiViewerAccent,
@@ -66,6 +67,7 @@ fun YingShiTheme(
         LocalYingShiSpacing provides AppSpacing,
         LocalYingShiRadius provides AppRadius,
         LocalYingShiColors provides AppColors,
+        LocalYingShiMotion provides AppMotion,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

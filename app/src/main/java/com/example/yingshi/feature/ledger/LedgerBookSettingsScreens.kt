@@ -347,6 +347,10 @@ private fun LedgerBookRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    LedgerBookCreatorBadge(
+                        creatorUserId = book.creatorUserId,
+                        avatarSize = 18.dp,
+                    )
                     if (isDefault) {
                         LedgerLabelBadge(text = "默认", color = LedgerHeaderGreen, background = LedgerGreenSoft)
                     }

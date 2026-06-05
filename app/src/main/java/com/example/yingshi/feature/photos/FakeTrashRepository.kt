@@ -184,6 +184,7 @@ object FakeTrashRepository {
                 deletedAtMillis = deletedAtMillis,
                 title = snapshot.post.title.ifBlank { "未命名小相册" },
                 previewInfo = "删除于 ${formatTrashTime(deletedAtMillis)} · ${snapshot.mediaSnapshots.size} 张媒体 · ${snapshot.post.albumIds.size.coerceAtLeast(1)} 个所属相册",
+                actorUserId = currentActorUserId(),
                 sourcePostId = snapshot.post.id,
                 relatedMediaIds = snapshot.mediaSnapshots.map { it.mediaId },
                 postSnapshot = snapshot,
@@ -211,6 +212,7 @@ object FakeTrashRepository {
                     deletedAtMillis = deletedAtMillis,
                     title = "从「${post.title.ifBlank { "当前小相册" }}」移除媒体",
                     previewInfo = "${formatTrashMediaLabel(media.displayTimeMillis)} · 媒体本体和评论仍保留",
+                    actorUserId = currentActorUserId(),
                     sourcePostId = post.id,
                     sourceMediaId = media.mediaId,
                     relatedPostIds = listOf(post.id),
@@ -249,6 +251,7 @@ object FakeTrashRepository {
                     deletedAtMillis = deletedAtMillis,
                     title = media.sourcePostTitle?.let { "删除「$it」中的媒体" } ?: "删除媒体",
                     previewInfo = "${formatTrashMediaLabel(media.displayTimeMillis)} · 已从全局媒体流和相关小相册中本地隐藏",
+                    actorUserId = currentActorUserId(),
                     sourcePostId = media.sourcePostId,
                     sourceMediaId = media.mediaId,
                     relatedPostIds = relations.map { it.postId }.distinct(),
@@ -302,5 +305,10 @@ object FakeTrashRepository {
 
     private fun formatTrashMediaLabel(timeMillis: Long): String {
         return SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
+    }
+
+    private fun currentActorUserId(): String? {
+        val directory = CollaboratorDirectoryStore.snapshot(fallbackToFakeProfile = true)
+        return directory.currentUser?.userId ?: directory.partner?.userId
     }
 }

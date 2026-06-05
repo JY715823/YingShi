@@ -1,5 +1,8 @@
 package com.example.yingshi.feature.photos
 
+import java.util.Calendar
+import java.util.Locale
+
 internal fun buildPhotoFeedBlocks(
     items: List<PhotoFeedItem>,
     density: PhotoFeedDensity,
@@ -20,39 +23,144 @@ internal fun buildPhotoFeedBlocks(
     }
 }
 
+internal fun buildCollaborativePhotoFeedBlocks(
+    items: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
+    directory: CollaboratorDirectorySnapshot,
+    selectedUserIds: Set<String>,
+    timeBucketHours: Int,
+): List<PhotoFeedBlock> {
+    if (items.isEmpty()) return emptyList()
+    if (directory.all.isEmpty()) return buildPhotoFeedBlocks(items = items, density = density)
+
+    val currentIdentity = directory.currentUser
+    val partnerIdentity = directory.partner
+    val normalizedBucketHours = CollaborativeBucketHoursOptions
+        .firstOrNull { it == timeBucketHours }
+        ?: DefaultCollaborativeBucketHours
+    val allUserIds = directory.all.mapTo(linkedSetOf()) { it.userId }
+    val selectedIds = normalizeCollaboratorSelectionKeepingEmpty(
+        selectedUserIds = selectedUserIds,
+        allUserIds = allUserIds,
+    )
+    if (selectedIds.isEmpty()) return emptyList()
+
+    val visibleItems = items.filter { item ->
+        resolveCollaborativeOwnerUserId(
+            item = item,
+            currentUserId = currentIdentity?.userId,
+            partnerUserId = partnerIdentity?.userId,
+        ) in selectedIds
+    }
+    if (visibleItems.isEmpty()) return emptyList()
+
+    val currentUserId = currentIdentity?.userId
+    val partnerUserId = partnerIdentity?.userId
+    val showsBoth = !currentUserId.isNullOrBlank() &&
+        !partnerUserId.isNullOrBlank() &&
+        currentUserId in selectedIds &&
+        partnerUserId in selectedIds
+
+    return if (normalizedBucketHours >= DefaultCollaborativeBucketHours) {
+        buildCollaborativeDayBlocks(
+            items = visibleItems,
+            density = density,
+            currentIdentity = currentIdentity,
+            partnerIdentity = partnerIdentity,
+            currentUserId = currentUserId,
+            partnerUserId = partnerUserId,
+            showsBoth = showsBoth,
+        )
+    } else {
+        buildCollaborativeHourBlocks(
+            items = visibleItems,
+            density = density,
+            currentIdentity = currentIdentity,
+            partnerIdentity = partnerIdentity,
+            currentUserId = currentUserId,
+            partnerUserId = partnerUserId,
+            showsBoth = showsBoth,
+            bucketHours = normalizedBucketHours,
+        )
+    }
+}
+
 internal fun buildPhotoFeedScrubberAnchors(
     blocks: List<PhotoFeedBlock>,
     density: PhotoFeedDensity,
     leadingItemCount: Int,
 ): List<PhotoFeedScrubberAnchor> {
+    val hasFineGrainedAnchors = blocks.any { block ->
+        block is PhotoFeedDayHeader || block is PhotoFeedTimeBucketHeader
+    }
     return blocks.mapIndexedNotNull { index, block ->
         when {
-            density.columns <= 4 && block is PhotoFeedDayHeader -> {
+            block is PhotoFeedTimeBucketHeader -> {
                 PhotoFeedScrubberAnchor(
                     blockKey = block.key,
                     itemIndex = leadingItemCount + index,
-                    label = block.title,
+                    label = block.scrubberLabel,
+                    timeMillis = block.anchorTimeMillis,
                 )
             }
 
-            density.columns == 8 && block is PhotoFeedSectionHeader -> {
+            block is PhotoFeedDayHeader && block.anchorTimeMillis != null -> {
                 PhotoFeedScrubberAnchor(
                     blockKey = block.key,
                     itemIndex = leadingItemCount + index,
-                    label = block.title,
+                    label = block.scrubberLabel,
+                    timeMillis = block.anchorTimeMillis,
                 )
             }
 
-            density.columns == 16 && block is PhotoFeedSectionHeader -> {
+            density.columns >= 8 &&
+                !hasFineGrainedAnchors &&
+                block is PhotoFeedSectionHeader &&
+                block.anchorTimeMillis != null -> {
+                val fallbackLabel = blocks
+                    .drop(index + 1)
+                    .firstOrNull { it is PhotoFeedGridRow }
+                    ?.let { it as? PhotoFeedGridRow }
+                    ?.items
+                    ?.firstOrNull()
+                    ?.let { item ->
+                        formatDayScrubberLabel(
+                            year = item.displayYear,
+                            month = item.displayMonth,
+                            day = item.displayDay,
+                        )
+                    }
+                    ?: block.title
                 PhotoFeedScrubberAnchor(
                     blockKey = block.key,
                     itemIndex = leadingItemCount + index,
-                    label = block.title,
+                    label = fallbackLabel,
+                    timeMillis = block.anchorTimeMillis,
                 )
             }
 
             else -> null
         }
+    }
+}
+
+internal fun buildPhotoFeedScrubberYearMarkers(
+    anchors: List<PhotoFeedScrubberAnchor>,
+): List<PhotoFeedScrubberYearMarker> {
+    if (anchors.isEmpty()) return emptyList()
+    val newestTime = anchors.maxOf { it.timeMillis }
+    val oldestTime = anchors.minOf { it.timeMillis }
+    val range = (newestTime - oldestTime).coerceAtLeast(1L)
+    val years = anchors
+        .map { anchor -> calendarFor(anchor.timeMillis).get(Calendar.YEAR) }
+        .distinct()
+        .sortedDescending()
+    return years.map { year ->
+        val markerTime = maxOf(oldestTime, yearStartMillis(year))
+        PhotoFeedScrubberYearMarker(
+            year = year,
+            progress = ((newestTime - markerTime).toFloat() / range.toFloat()).coerceIn(0f, 1f),
+        )
     }
 }
 
@@ -78,13 +186,16 @@ private fun buildMonthAndDayBlocks(
     monthGroups(items).forEach { monthGroup ->
         blocks += PhotoFeedSectionHeader(
             key = "month-${monthGroup.year}-${monthGroup.month}",
-            title = "${monthGroup.year}年${monthGroup.month}月",
+            title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            anchorTimeMillis = monthGroup.anchorTimeMillis,
         )
 
         dayGroups(monthGroup.items).forEach { dayGroup ->
             blocks += PhotoFeedDayHeader(
                 key = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
-                title = "${dayGroup.month}月${dayGroup.day}日",
+                title = formatDayTitle(dayGroup.month, dayGroup.day),
+                scrubberLabel = formatDayScrubberLabel(dayGroup.year, dayGroup.month, dayGroup.day),
+                anchorTimeMillis = dayGroup.anchorTimeMillis,
             )
             addGridRows(
                 target = blocks,
@@ -107,7 +218,8 @@ private fun buildMonthBlocks(
     monthGroups(items).forEach { monthGroup ->
         blocks += PhotoFeedSectionHeader(
             key = "month-${monthGroup.year}-${monthGroup.month}",
-            title = "${monthGroup.year}年${monthGroup.month}月",
+            title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            anchorTimeMillis = monthGroup.anchorTimeMillis,
         )
         addGridRows(
             target = blocks,
@@ -130,6 +242,7 @@ private fun buildYearBlocks(
         blocks += PhotoFeedSectionHeader(
             key = "year-${yearGroup.year}",
             title = "${yearGroup.year}年",
+            anchorTimeMillis = yearGroup.anchorTimeMillis,
         )
         addGridRows(
             target = blocks,
@@ -140,6 +253,192 @@ private fun buildYearBlocks(
     }
 
     return blocks
+}
+
+private fun buildCollaborativeDayBlocks(
+    items: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
+    currentIdentity: CollaboratorIdentityUiModel?,
+    partnerIdentity: CollaboratorIdentityUiModel?,
+    currentUserId: String?,
+    partnerUserId: String?,
+    showsBoth: Boolean,
+): List<PhotoFeedBlock> {
+    val blocks = mutableListOf<PhotoFeedBlock>()
+    monthGroups(items).forEach { monthGroup ->
+        blocks += PhotoFeedSectionHeader(
+            key = "month-${monthGroup.year}-${monthGroup.month}",
+            title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            anchorTimeMillis = monthGroup.anchorTimeMillis,
+        )
+        dayGroups(monthGroup.items).forEach { dayGroup ->
+            blocks += PhotoFeedDayHeader(
+                key = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
+                title = formatDayTitle(dayGroup.month, dayGroup.day),
+                scrubberLabel = formatDayScrubberLabel(dayGroup.year, dayGroup.month, dayGroup.day),
+                anchorTimeMillis = dayGroup.anchorTimeMillis,
+            )
+            addCollaborativeGridRows(
+                target = blocks,
+                prefix = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
+                items = dayGroup.items,
+                columns = density.columns,
+                currentIdentity = currentIdentity,
+                partnerIdentity = partnerIdentity,
+                currentUserId = currentUserId,
+                partnerUserId = partnerUserId,
+                showsBoth = showsBoth,
+            )
+        }
+    }
+    return blocks
+}
+
+private fun buildCollaborativeHourBlocks(
+    items: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
+    currentIdentity: CollaboratorIdentityUiModel?,
+    partnerIdentity: CollaboratorIdentityUiModel?,
+    currentUserId: String?,
+    partnerUserId: String?,
+    showsBoth: Boolean,
+    bucketHours: Int,
+): List<PhotoFeedBlock> {
+    val blocks = mutableListOf<PhotoFeedBlock>()
+    monthGroups(items).forEach { monthGroup ->
+        blocks += PhotoFeedSectionHeader(
+            key = "month-${monthGroup.year}-${monthGroup.month}",
+            title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            anchorTimeMillis = monthGroup.anchorTimeMillis,
+        )
+        dayGroups(monthGroup.items).forEach { dayGroup ->
+            blocks += PhotoFeedDayHeader(
+                key = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
+                title = formatDayTitle(dayGroup.month, dayGroup.day),
+                scrubberLabel = formatDayScrubberLabel(dayGroup.year, dayGroup.month, dayGroup.day),
+                anchorTimeMillis = dayGroup.anchorTimeMillis,
+            )
+            collaborativeBuckets(
+                items = dayGroup.items,
+                timeBucketHours = bucketHours,
+            ).forEach { bucket ->
+                val currentCount = bucket.items.count { item ->
+                    collaborativeSlotForItem(
+                        item = item,
+                        currentUserId = currentUserId,
+                        partnerUserId = partnerUserId,
+                    ) == CollaborativeSlot.CURRENT
+                }
+                val partnerCount = bucket.items.count { item ->
+                    collaborativeSlotForItem(
+                        item = item,
+                        currentUserId = currentUserId,
+                        partnerUserId = partnerUserId,
+                    ) == CollaborativeSlot.PARTNER
+                }
+                blocks += PhotoFeedTimeBucketHeader(
+                    key = "bucket-${bucket.startMillis}",
+                    title = formatHourRangeTitle(bucket.startMillis, bucketHours),
+                    scrubberLabel = formatDayScrubberLabel(
+                        year = dayGroup.year,
+                        month = dayGroup.month,
+                        day = dayGroup.day,
+                    ),
+                    bucketHours = bucketHours,
+                    anchorTimeMillis = bucket.startMillis,
+                    currentCount = currentCount,
+                    partnerCount = partnerCount,
+                )
+                addCollaborativeGridRows(
+                    target = blocks,
+                    prefix = "bucket-${bucket.startMillis}",
+                    items = bucket.items,
+                    columns = density.columns,
+                    currentIdentity = currentIdentity,
+                    partnerIdentity = partnerIdentity,
+                    currentUserId = currentUserId,
+                    partnerUserId = partnerUserId,
+                    showsBoth = showsBoth,
+                )
+            }
+        }
+    }
+    return blocks
+}
+
+private fun addCollaborativeGridRows(
+    target: MutableList<PhotoFeedBlock>,
+    prefix: String,
+    items: List<PhotoFeedItem>,
+    columns: Int,
+    currentIdentity: CollaboratorIdentityUiModel?,
+    partnerIdentity: CollaboratorIdentityUiModel?,
+    currentUserId: String?,
+    partnerUserId: String?,
+    showsBoth: Boolean,
+) {
+    if (!showsBoth) {
+        addGridRows(
+            target = target,
+            prefix = prefix,
+            items = items,
+            columns = columns,
+        )
+        return
+    }
+
+    val currentItems = items.filter { item ->
+        collaborativeSlotForItem(
+            item = item,
+            currentUserId = currentUserId,
+            partnerUserId = partnerUserId,
+        ) == CollaborativeSlot.CURRENT
+    }
+    val partnerItems = items.filter { item ->
+        collaborativeSlotForItem(
+            item = item,
+            currentUserId = currentUserId,
+            partnerUserId = partnerUserId,
+        ) == CollaborativeSlot.PARTNER
+    }
+
+    if (currentItems.isNotEmpty()) {
+        currentIdentity?.let { identity ->
+            if (columns <= 4) {
+                target += PhotoFeedCollaboratorHeader(
+                    key = "$prefix-current-label",
+                    identity = identity,
+                )
+            }
+        }
+        addGridRows(
+            target = target,
+            prefix = "$prefix-current",
+            items = currentItems,
+            columns = columns,
+        )
+    }
+    if (currentItems.isNotEmpty() && partnerItems.isNotEmpty()) {
+        target += PhotoFeedCollaboratorDivider(
+            key = "$prefix-divider",
+        )
+    }
+    if (partnerItems.isNotEmpty()) {
+        partnerIdentity?.let { identity ->
+            if (columns <= 4) {
+                target += PhotoFeedCollaboratorHeader(
+                    key = "$prefix-partner-label",
+                    identity = identity,
+                )
+            }
+        }
+        addGridRows(
+            target = target,
+            prefix = "$prefix-partner",
+            items = partnerItems,
+            columns = columns,
+        )
+    }
 }
 
 private fun addGridRows(
@@ -169,6 +468,7 @@ private fun monthGroups(items: List<PhotoFeedItem>): List<MonthGroup> {
             year = key.first,
             month = key.second,
             items = groupItems,
+            anchorTimeMillis = monthStartMillis(key.first, key.second),
         )
     }
 }
@@ -187,6 +487,7 @@ private fun dayGroups(items: List<PhotoFeedItem>): List<DayGroup> {
             month = key.second,
             day = key.third,
             items = groupItems,
+            anchorTimeMillis = dayStartMillis(key.first, key.second, key.third),
         )
     }
 }
@@ -202,6 +503,7 @@ private fun yearGroups(items: List<PhotoFeedItem>): List<YearGroup> {
         YearGroup(
             year = year,
             items = groupItems,
+            anchorTimeMillis = yearStartMillis(year),
         )
     }
 }
@@ -210,6 +512,7 @@ private data class MonthGroup(
     val year: Int,
     val month: Int,
     val items: List<PhotoFeedItem>,
+    val anchorTimeMillis: Long,
 )
 
 private data class DayGroup(
@@ -217,11 +520,13 @@ private data class DayGroup(
     val month: Int,
     val day: Int,
     val items: List<PhotoFeedItem>,
+    val anchorTimeMillis: Long,
 )
 
 private data class YearGroup(
     val year: Int,
     val items: List<PhotoFeedItem>,
+    val anchorTimeMillis: Long,
 )
 
 internal fun findBlockIndexForMedia(
@@ -243,9 +548,149 @@ internal fun headerIndexForMedia(
         .take(mediaBlockIndex + 1)
         .indexOfLast { block ->
             when {
+                block is PhotoFeedTimeBucketHeader -> true
                 density.columns <= 4 -> block is PhotoFeedDayHeader
                 else -> block is PhotoFeedSectionHeader
             }
         }
     return if (headerIndex >= 0) headerIndex else mediaBlockIndex
+}
+
+internal val CollaborativeBucketHoursOptions: List<Int> = listOf(1, 2, 4, 6, 8, 12, 24)
+internal const val DefaultCollaborativeBucketHours: Int = 24
+
+private enum class CollaborativeSlot {
+    CURRENT,
+    PARTNER,
+}
+
+private data class CollaborativeBucket(
+    val startMillis: Long,
+    val items: List<PhotoFeedItem>,
+)
+
+private fun collaborativeSlotForItem(
+    item: PhotoFeedItem,
+    currentUserId: String?,
+    partnerUserId: String?,
+): CollaborativeSlot {
+    return when {
+        !partnerUserId.isNullOrBlank() && item.uploadedByUserId == partnerUserId -> CollaborativeSlot.PARTNER
+        else -> CollaborativeSlot.CURRENT
+    }
+}
+
+private fun collaborativeOwnerUserId(
+    item: PhotoFeedItem,
+    currentUserId: String?,
+    partnerUserId: String?,
+): String? {
+    return when (collaborativeSlotForItem(item, currentUserId, partnerUserId)) {
+        CollaborativeSlot.CURRENT -> currentUserId ?: item.uploadedByUserId ?: partnerUserId
+        CollaborativeSlot.PARTNER -> partnerUserId ?: item.uploadedByUserId ?: currentUserId
+    }
+}
+
+internal fun resolveCollaborativeOwnerUserId(
+    item: PhotoFeedItem,
+    currentUserId: String?,
+    partnerUserId: String?,
+): String? = collaborativeOwnerUserId(item, currentUserId, partnerUserId)
+
+private fun collaborativeBuckets(
+    items: List<PhotoFeedItem>,
+    timeBucketHours: Int,
+): List<CollaborativeBucket> {
+    val grouped = linkedMapOf<Long, MutableList<PhotoFeedItem>>()
+    items.forEach { item ->
+        val bucketStartMillis = collaborativeBucketStartMillis(
+            displayTimeMillis = item.mediaDisplayTimeMillis,
+            bucketHours = timeBucketHours,
+        )
+        grouped.getOrPut(bucketStartMillis) { mutableListOf() } += item
+    }
+    return grouped.map { (startMillis, bucketItems) ->
+        CollaborativeBucket(
+            startMillis = startMillis,
+            items = bucketItems,
+        )
+    }
+}
+
+private fun collaborativeBucketStartMillis(
+    displayTimeMillis: Long,
+    bucketHours: Int,
+): Long {
+    val calendar = calendarFor(displayTimeMillis).apply {
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    if (bucketHours >= DefaultCollaborativeBucketHours) {
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        return calendar.timeInMillis
+    }
+    val bucketStartHour = (calendar.get(Calendar.HOUR_OF_DAY) / bucketHours) * bucketHours
+    calendar.set(Calendar.HOUR_OF_DAY, bucketStartHour)
+    return calendar.timeInMillis
+}
+
+private fun formatMonthTitle(year: Int, month: Int): String = "${year}年${month}月"
+
+private fun formatDayTitle(month: Int, day: Int): String = "${month}月${day}日"
+
+private fun formatDayScrubberLabel(year: Int, month: Int, day: Int): String {
+    return "${year}年${month}月${day}日"
+}
+
+private fun formatHourRangeTitle(
+    startMillis: Long,
+    bucketHours: Int,
+): String {
+    val calendar = calendarFor(startMillis)
+    val startHour = calendar.get(Calendar.HOUR_OF_DAY)
+    val endHour = (startHour + bucketHours).coerceAtMost(24)
+    return "${startHour}:00-${endHour}:00"
+}
+
+private fun yearStartMillis(year: Int): Long {
+    return calendarFor(0L).apply {
+        set(Calendar.YEAR, year)
+        set(Calendar.MONTH, Calendar.JANUARY)
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+private fun monthStartMillis(year: Int, month: Int): Long {
+    return calendarFor(0L).apply {
+        set(Calendar.YEAR, year)
+        set(Calendar.MONTH, month - 1)
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+private fun dayStartMillis(year: Int, month: Int, day: Int): Long {
+    return calendarFor(0L).apply {
+        set(Calendar.YEAR, year)
+        set(Calendar.MONTH, month - 1)
+        set(Calendar.DAY_OF_MONTH, day)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+}
+
+private fun calendarFor(timeMillis: Long): Calendar {
+    return Calendar.getInstance(Locale.CHINA).apply {
+        timeInMillis = timeMillis
+    }
 }

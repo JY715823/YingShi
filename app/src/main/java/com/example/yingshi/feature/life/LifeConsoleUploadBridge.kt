@@ -7,11 +7,18 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.widget.Toast
 import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -231,6 +238,40 @@ object LifeConsoleUploadBridge {
                 importedAtMillis = importedAtMillis,
                 displayTimeSource = if (capturedAtMillis == null) "IMPORTED" else "ORIGINAL",
             )
+        }
+    }
+}
+
+object LifeConsoleUploadRuntime {
+    private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    fun enqueueWidgetUpload(
+        context: Context,
+        category: String,
+        uris: List<Uri>,
+    ) {
+        if (uris.isEmpty()) return
+        val appContext = context.applicationContext
+        AuthSessionManager.init(appContext)
+        BackendDebugConfig.init(appContext)
+        LifeConsoleWidgetProvider.refreshAll(appContext)
+        Toast.makeText(appContext, "正在后台上传", Toast.LENGTH_SHORT).show()
+        uploadScope.launch {
+            when (val result = LifeConsoleUploadBridge.uploadMedia(appContext, category, uris)) {
+                is ApiResult.Success -> {
+                    LifeConsoleWidgetProvider.applySnapshot(appContext, result.data)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, "已上传到今日痕迹", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                is ApiResult.Error -> {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(appContext, result.message, Toast.LENGTH_SHORT).show()
+                    }
+                    LifeConsoleWidgetProvider.refreshAll(appContext)
+                }
+                ApiResult.Loading -> Unit
+            }
         }
     }
 }

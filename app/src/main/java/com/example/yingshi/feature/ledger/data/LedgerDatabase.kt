@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LedgerRecurringRuleEntity::class,
         LedgerRecurringOccurrenceEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(LedgerTypeConverters::class)
@@ -38,7 +38,7 @@ abstract class LedgerDatabase : RoomDatabase() {
                     context.applicationContext,
                     LedgerDatabase::class.java,
                     "yingshi-ledger.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
         }
     }
@@ -84,6 +84,12 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_ledger_recurring_occurrences_ruleId_occurrenceAtMillis ON ledger_recurring_occurrences(ruleId, occurrenceAtMillis)")
         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_ledger_recurring_occurrences_transactionId ON ledger_recurring_occurrences(transactionId)")
+    }
+}
+
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE ledger_books ADD COLUMN creatorUserId TEXT")
     }
 }
 

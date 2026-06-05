@@ -37,6 +37,28 @@ data class RemoteLifeConsoleToday(
     val bowel: RemoteLifeConsoleBowelSummary,
 )
 
+data class RemoteLifeConsoleHistoryDay(
+    val date: String,
+    val displayLabel: String,
+    val selfMedia: List<RemoteMedia>,
+    val partnerMedia: List<RemoteMedia>,
+)
+
+data class RemoteLifeConsoleBowelHistoryDay(
+    val date: String,
+    val displayLabel: String,
+    val users: List<RemoteLifeConsoleBowelUserSummary>,
+)
+
+data class RemoteLifeConsoleHistory(
+    val zoneId: String,
+    val currentUser: RemoteLifeConsoleUser,
+    val partner: RemoteLifeConsoleUser?,
+    val personDays: List<RemoteLifeConsoleHistoryDay>,
+    val mealDays: List<RemoteLifeConsoleHistoryDay>,
+    val bowelDays: List<RemoteLifeConsoleBowelHistoryDay>,
+)
+
 data class RemoteLifeConsoleBowelMutation(
     val eventId: String?,
     val bowel: RemoteLifeConsoleBowelSummary,

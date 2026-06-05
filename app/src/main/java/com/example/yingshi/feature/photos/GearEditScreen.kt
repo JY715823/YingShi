@@ -2,9 +2,13 @@ package com.example.yingshi.feature.photos
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -112,11 +116,9 @@ fun GearEditScreen(
     var isSaving by rememberSaveable(route.postId) { mutableStateOf(false) }
     val albums = remember { FakeAlbumRepository.getAlbums() }
     var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
+    var showAlbumDirectory by rememberSaveable(route.postId) { mutableStateOf(false) }
     val safeCoverMediaId = coverMediaId?.takeIf { id -> mediaItems.any { it.id == id } }
         ?: mediaItems.firstOrNull()?.id
-    val selectedAlbumTitles = albums
-        .filter { selectedAlbumIds.contains(it.id) }
-        .map { it.title }
     val hasChanges = title != initialDraft.title ||
         summary != initialDraft.summary ||
         displayTimeMillis != initialDraft.postDisplayTimeMillis ||
@@ -211,7 +213,7 @@ fun GearEditScreen(
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.lg),
     ) {
         GearEditTopBar(
             onCancel = handleClose,
@@ -219,21 +221,9 @@ fun GearEditScreen(
             saveEnabled = !isSaving,
         )
 
-        GearEditMemoryHeader(
-            mediaCount = mediaItems.size,
-            albumTitles = selectedAlbumTitles,
-            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
-        )
-
         localMessage?.let { message ->
             BackendInlineNotice(text = message, emphasized = true)
         }
-
-        GearEditMediaPreviewSection(
-            items = mediaItems,
-            coverMediaId = safeCoverMediaId,
-            onOpenAll = { showPostMediaList = true },
-        )
 
         GearEditTextSection(
             title = title,
@@ -244,42 +234,11 @@ fun GearEditScreen(
         )
 
         GearEditSection(
-            title = "时间设置",
-            subtitle = "沿用新建小相册流程的发布时间检查，保存后同步到详情。",
-        ) {
-            Text(
-                text = formatGearEditTime(displayTimeMillis),
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                GearEditChip(text = "-1小时") { displayTimeMillis -= 60 * 60 * 1000L }
-                GearEditChip(text = "+1小时") { displayTimeMillis += 60 * 60 * 1000L }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                GearEditChip(text = "-1天") { displayTimeMillis -= 24 * 60 * 60 * 1000L }
-                GearEditChip(text = "+1天") { displayTimeMillis += 24 * 60 * 60 * 1000L }
-                GearEditChip(text = "设为现在") { displayTimeMillis = System.currentTimeMillis() }
-            }
-        }
-
-        GearEditSection(
             title = "选择所属大相册",
-            subtitle = if (selectedAlbumIds.isEmpty()) {
-                "请选择一个父大相册后再保存。"
-            } else {
-                "当前父大相册：${selectedAlbumTitles.firstOrNull() ?: "未选择"}"
-            },
         ) {
             if (selectedAlbumIds.isEmpty()) {
                 Text(
-                    text = "请选择一个父大相册后再保存。",
+                    text = "请选择一个大相册",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -288,42 +247,52 @@ fun GearEditScreen(
                 albums = albums,
                 selectedAlbumIds = selectedAlbumIds,
                 onToggleAlbum = { albumId ->
-                    if (selectedAlbumIds.contains(albumId)) {
-                        selectedAlbumIds.clear()
-                    } else {
+                    if (selectedAlbumIds.firstOrNull() != albumId) {
                         selectedAlbumIds.clear()
                         selectedAlbumIds.add(albumId)
                     }
                 },
-            )
-        }
-
-        GearEditPublishSummary(
-            mediaCount = mediaItems.size,
-            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
-            albumTitles = selectedAlbumTitles,
-            displayTimeMillis = displayTimeMillis,
-        )
-
-        GearEditSaveRow(
-            isSaving = isSaving,
-            onCancel = handleClose,
-            onSave = ::saveDraft,
-        )
-
-        GearEditSection(
-            title = "危险操作",
-            subtitle = "删除小相册会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
-        ) {
-            GearEditEntryRow(
-                title = "删除整个小相册",
-                subtitle = "本轮支持“仅删小相册”以及“删小相册并系统删其中媒体”的本地版本。",
-                danger = true,
-                onClick = {
-                    showDeletePostDialog = true
+                trailing = {
+                    AlbumIconAction(
+                        icon = Icons.Rounded.Menu,
+                        contentDescription = "更多大相册",
+                        containerColor = colors.sectionBackground.copy(alpha = 0.88f),
+                        contentColor = colors.titleAccent,
+                        onClick = { showAlbumDirectory = true },
+                    )
                 },
             )
         }
+        GearEditActionButton(
+            text = if (isSaving) "保存中…" else "保存",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving,
+            emphasized = true,
+            onClick = ::saveDraft,
+        )
+        Spacer(modifier = Modifier.weight(1f, fill = false))
+        GearEditActionButton(
+            text = "删除整个小相册",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isSaving,
+            danger = true,
+            onClick = { showDeletePostDialog = true },
+        )
+    }
+
+    if (showAlbumDirectory) {
+        AlbumDirectoryDialog(
+            albums = albums,
+            selectedAlbumId = selectedAlbumIds.firstOrNull().orEmpty(),
+            onDismiss = { showAlbumDirectory = false },
+            onSelectAlbum = { albumId ->
+                showAlbumDirectory = false
+                if (selectedAlbumIds.firstOrNull() != albumId) {
+                    selectedAlbumIds.clear()
+                    selectedAlbumIds.add(albumId)
+                }
+            },
+        )
     }
 
     if (showDeletePostDialog) {
@@ -396,12 +365,10 @@ private fun RealGearEditScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
     var showPostMediaList by remember(route.postId) { mutableStateOf(false) }
+    var showAlbumDirectory by rememberSaveable(route.postId) { mutableStateOf(false) }
     val mediaItems = uiState.mediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
     val safeCoverMediaId = uiState.coverMediaId?.takeIf { id -> mediaItems.any { it.id == id } }
         ?: mediaItems.firstOrNull()?.id
-    val selectedAlbumTitles = uiState.albums
-        .filter { uiState.selectedAlbumIds.contains(it.id) }
-        .map { it.title }
 
     val handleClose = {
         if (uiState.hasChanges) {
@@ -465,7 +432,7 @@ private fun RealGearEditScreen(
             .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.lg),
     ) {
         GearEditTopBar(
             onCancel = handleClose,
@@ -481,30 +448,8 @@ private fun RealGearEditScreen(
         )
 
         uiState.errorMessage?.let { errorMessage ->
-            GearEditSection(
-                title = "保存状态",
-                subtitle = errorMessage,
-            ) {}
+            BackendInlineNotice(text = errorMessage, emphasized = true)
         }
-
-        uiState.statusMessage?.let { statusMessage ->
-            GearEditSection(
-                title = "操作结果",
-                subtitle = statusMessage,
-            ) {}
-        }
-
-        GearEditMemoryHeader(
-            mediaCount = mediaItems.size,
-            albumTitles = selectedAlbumTitles,
-            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
-        )
-
-        GearEditMediaPreviewSection(
-            items = mediaItems,
-            coverMediaId = safeCoverMediaId,
-            onOpenAll = { showPostMediaList = true },
-        )
 
         GearEditTextSection(
             title = uiState.title,
@@ -515,42 +460,11 @@ private fun RealGearEditScreen(
         )
 
         GearEditSection(
-            title = "时间设置",
-            subtitle = "保存后会同步到小相册。",
-        ) {
-            Text(
-                text = formatGearEditTime(uiState.displayTimeMillis),
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                GearEditChip(text = "-1小时") { viewModel.shiftDisplayTime(-(60 * 60 * 1000L)) }
-                GearEditChip(text = "+1小时") { viewModel.shiftDisplayTime(60 * 60 * 1000L) }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                GearEditChip(text = "-1天") { viewModel.shiftDisplayTime(-(24 * 60 * 60 * 1000L)) }
-                GearEditChip(text = "+1天") { viewModel.shiftDisplayTime(24 * 60 * 60 * 1000L) }
-                GearEditChip(text = "设为现在") { viewModel.setDisplayTimeNow() }
-            }
-        }
-
-        GearEditSection(
             title = "选择所属大相册",
-            subtitle = if (uiState.selectedAlbumIds.isEmpty()) {
-                "请选择一个父大相册后再保存。"
-            } else {
-                "当前父大相册：${selectedAlbumTitles.firstOrNull() ?: "未选择"}"
-            },
         ) {
             if (uiState.selectedAlbumIds.isEmpty()) {
                 Text(
-                    text = "请选择一个父大相册后再保存。",
+                    text = "请选择一个大相册",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -559,20 +473,23 @@ private fun RealGearEditScreen(
                 albums = uiState.albums,
                 selectedAlbumIds = uiState.selectedAlbumIds,
                 onToggleAlbum = viewModel::toggleAlbum,
+                trailing = {
+                    AlbumIconAction(
+                        icon = Icons.Rounded.Menu,
+                        contentDescription = "更多大相册",
+                        containerColor = YingShiThemeTokens.colors.sectionBackground.copy(alpha = 0.88f),
+                        contentColor = YingShiThemeTokens.colors.titleAccent,
+                        onClick = { showAlbumDirectory = true },
+                    )
+                },
             )
         }
-
-        GearEditPublishSummary(
-            mediaCount = mediaItems.size,
-            coverLabel = gearEditCoverLabel(mediaItems, safeCoverMediaId),
-            albumTitles = selectedAlbumTitles,
-            displayTimeMillis = uiState.displayTimeMillis,
-        )
-
-        GearEditSaveRow(
-            isSaving = uiState.isSaving,
-            onCancel = handleClose,
-            onSave = {
+        GearEditActionButton(
+            text = if (uiState.isSaving) "保存中…" else "保存",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uiState.isSaving,
+            emphasized = true,
+            onClick = {
                 viewModel.save(
                     onSuccess = {
                         onPostUpdated(route.postId, uiState.selectedAlbumIds.firstOrNull())
@@ -581,18 +498,28 @@ private fun RealGearEditScreen(
                 )
             },
         )
+        Spacer(modifier = Modifier.weight(1f, fill = false))
+        GearEditActionButton(
+            text = "删除整个小相册",
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uiState.isSaving && !uiState.isDeleting,
+            danger = true,
+            onClick = { showDeletePostDialog = true },
+        )
+    }
 
-        GearEditSection(
-            title = "危险操作",
-            subtitle = "删除小相册会进入回收站流程，媒体列表调整请在上方同一套媒体列表里完成。",
-        ) {
-            GearEditEntryRow(
-                title = "删除整个小相册",
-                subtitle = "会把小相册移入回收站。",
-                danger = true,
-                onClick = { showDeletePostDialog = true },
-            )
-        }
+    if (showAlbumDirectory) {
+        AlbumDirectoryDialog(
+            albums = uiState.albums,
+            selectedAlbumId = uiState.selectedAlbumIds.firstOrNull().orEmpty(),
+            onDismiss = { showAlbumDirectory = false },
+            onSelectAlbum = { albumId ->
+                showAlbumDirectory = false
+                if (uiState.selectedAlbumIds.firstOrNull() != albumId) {
+                    viewModel.toggleAlbum(albumId)
+                }
+            },
+        )
     }
 
     if (showDeletePostDialog) {
@@ -632,7 +559,7 @@ private fun RealGearEditScreen(
 @Composable
 private fun GearEditTopBar(
     onCancel: () -> Unit,
-    onSave: () -> Unit,
+    onSave: () -> Unit = {},
     saveEnabled: Boolean = true,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -643,11 +570,11 @@ private fun GearEditTopBar(
     ) {
         GearEditActionButton(text = "取消", onClick = onCancel)
         Text(
-            text = "小相册编辑",
+            text = "编辑小相册",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = colors.titleAccent,
         )
-        GearEditActionButton(text = "保存", onClick = onSave, enabled = saveEnabled, emphasized = true)
+        Spacer(modifier = Modifier.width(72.dp))
     }
 }
 
@@ -701,7 +628,7 @@ private fun GearEditTextSection(
     onSummaryChange: (String) -> Unit,
 ) {
     GearEditSection(
-        title = "写下这条记忆",
+        title = "编辑标题和简介",
     ) {
         OutlinedTextField(
             value = title,
@@ -710,7 +637,7 @@ private fun GearEditTextSection(
             singleLine = true,
             enabled = enabled,
             label = { Text("标题") },
-            placeholder = { Text("给这条记忆起个名字") },
+            placeholder = { Text("输入标题") },
         )
         Spacer(modifier = Modifier.size(4.dp))
         OutlinedTextField(
@@ -720,7 +647,7 @@ private fun GearEditTextSection(
             minLines = 4,
             enabled = enabled,
             label = { Text("简介 / 摘要") },
-            placeholder = { Text("写一点背景、感受或想留给以后看的话") },
+            placeholder = { Text("输入简介") },
         )
     }
 }
@@ -937,7 +864,7 @@ private fun GearEditSection(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
             )
             if (!subtitle.isNullOrBlank()) {
@@ -952,47 +879,34 @@ private fun GearEditSection(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AlbumSelectionFlow(
     albums: List<AlbumSummaryUiModel>,
     selectedAlbumIds: List<String>,
     onToggleAlbum: (String) -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        verticalAlignment = Alignment.Top,
     ) {
-        buildGearEditAlbumRows(albums).forEach { rowAlbums ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
-            ) {
-                rowAlbums.forEach { album ->
-                    SelectableGearEditChip(
-                        text = album.title,
-                        selected = selectedAlbumIds.contains(album.id),
-                        onClick = { onToggleAlbum(album.id) },
-                    )
-                }
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        ) {
+            albums.forEach { album ->
+                SelectableGearEditChip(
+                    text = album.title,
+                    selected = selectedAlbumIds.contains(album.id),
+                    onClick = { onToggleAlbum(album.id) },
+                )
             }
         }
+        trailing?.invoke()
     }
-}
-
-private fun buildGearEditAlbumRows(albums: List<AlbumSummaryUiModel>): List<List<AlbumSummaryUiModel>> {
-    if (albums.isEmpty()) return emptyList()
-    if (albums.size == 1) return listOf(albums)
-
-    val firstRow = mutableListOf<AlbumSummaryUiModel>()
-    val secondRow = mutableListOf<AlbumSummaryUiModel>()
-    albums.forEachIndexed { index, album ->
-        if (index % 2 == 0) {
-            firstRow += album
-        } else {
-            secondRow += album
-        }
-    }
-    return listOf(firstRow, secondRow).filter { it.isNotEmpty() }
 }
 
 @Composable
@@ -1108,6 +1022,7 @@ private fun GearEditActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     emphasized: Boolean = false,
+    danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1119,12 +1034,17 @@ private fun GearEditActionButton(
         shape = shape,
         color = when {
             !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
+            danger -> MaterialTheme.colorScheme.error.copy(alpha = 0.10f)
             emphasized -> colors.primaryContainer.copy(alpha = 0.88f)
             else -> colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             1.dp,
-            if (emphasized) colors.glassStroke.copy(alpha = 0.84f) else colors.dividerSoft.copy(alpha = 0.68f),
+            when {
+                danger -> MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
+                emphasized -> colors.glassStroke.copy(alpha = 0.84f)
+                else -> colors.dividerSoft.copy(alpha = 0.68f)
+            },
         ),
         shadowElevation = 0.dp,
     ) {
@@ -1137,6 +1057,7 @@ private fun GearEditActionButton(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = when {
                     !enabled -> colors.textSecondary.copy(alpha = 0.58f)
+                    danger -> MaterialTheme.colorScheme.error
                     emphasized -> colors.titleAccent
                     else -> colors.textSecondary
                 },

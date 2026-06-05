@@ -191,7 +191,10 @@ class RealPhotoFeedViewModel(
         loadNextPage()
     }
 
-    fun deleteSelectedMedia(mediaIds: Set<String>) {
+    fun deleteSelectedMedia(
+        mediaIds: Set<String>,
+        onCompleted: (deletedIds: Set<String>) -> Unit = {},
+    ) {
         val normalizedIds = mediaIds.toList().distinct()
         if (normalizedIds.isEmpty()) return
         if (!AuthSessionManager.isLoggedIn) {
@@ -211,10 +214,17 @@ class RealPhotoFeedViewModel(
             }
             val deletedIds = linkedSetOf<String>()
             var firstFailure: String? = null
+            val fallbackActorUserId = currentCollaboratorActorUserId()
 
             normalizedIds.forEach { mediaId ->
                 when (val result = mediaRepository.systemDeleteMedia(mediaId)) {
-                    is ApiResult.Success -> deletedIds += mediaId
+                    is ApiResult.Success -> {
+                        deletedIds += mediaId
+                        TrashActorHintStore.record(
+                            item = result.data,
+                            fallbackActorUserId = fallbackActorUserId,
+                        )
+                    }
                     is ApiResult.Error -> {
                         if (firstFailure == null) {
                             firstFailure = result.toBackendUiMessage("删除媒体失败。")
@@ -245,6 +255,7 @@ class RealPhotoFeedViewModel(
             if (deletedIds.isNotEmpty()) {
                 notifyRealBackendContentChanged(mediaIds = deletedIds)
             }
+            onCompleted(deletedIds)
         }
     }
 

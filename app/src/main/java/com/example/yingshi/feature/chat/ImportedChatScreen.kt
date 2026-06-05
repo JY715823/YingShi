@@ -355,11 +355,6 @@ fun ImportedChatScreen(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            ChatImportForegroundService.start(
-                context = context,
-                uri = uri,
-                expectedChatId = uiState.activeManagedChatId,
-            )
             viewModel.importFromZip(uri, uiState.activeManagedChatId)
         }
     }
@@ -3714,7 +3709,8 @@ private fun buildTimelineItems(
             lastDate = currentDate
             lastTimestamp = null
         }
-        if (lastTimestamp == null || message.message.timestamp - lastTimestamp!! >= 5 * 60 * 1000L) {
+        val previousTimestamp = lastTimestamp
+        if (previousTimestamp == null || message.message.timestamp - previousTimestamp >= 5 * 60 * 1000L) {
             items += ChatTimelineItem.TimeHint(
                 key = "time_${message.message.messageLocalId}",
                 timestamp = message.message.timestamp,

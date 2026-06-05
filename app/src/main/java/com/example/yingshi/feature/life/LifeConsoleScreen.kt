@@ -5,28 +5,38 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +47,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +60,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleHistory
+import com.example.yingshi.data.model.RemoteLifeConsoleHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
@@ -60,13 +77,24 @@ import com.example.yingshi.feature.photos.PhotoThumbnailPalette
 import com.example.yingshi.feature.photos.resolveAppMediaType
 import com.example.yingshi.feature.photos.toAppContentMediaSource
 import com.example.yingshi.ui.components.ShellPage
+import com.example.yingshi.ui.components.TitleTabs
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.Locale
+
+private enum class LifeConsoleHistoryRange(val label: String, val limitDays: Int) {
+    LAST_7("近7天", 7),
+    LAST_30("近30天", 30),
+    ALL("全部", 365),
+}
 
 @Composable
 fun LifeConsoleScreen(
@@ -77,18 +105,28 @@ fun LifeConsoleScreen(
     onOpenLedgerAdd: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val colors = YingShiThemeTokens.colors
     val scope = rememberCoroutineScope()
+    val zoneId = "Asia/Shanghai"
     var snapshot by remember { mutableStateOf<RemoteLifeConsoleToday?>(null) }
+    var history by remember { mutableStateOf<RemoteLifeConsoleHistory?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var isHistoryLoading by remember { mutableStateOf(false) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
     var pendingUploadCategory by remember { mutableStateOf<String?>(null) }
-    BackHandler(onBack = onBack)
+    var historyRange by remember { mutableStateOf(LifeConsoleHistoryRange.ALL) }
+    var showHistoryPage by remember { mutableStateOf(false) }
+    val currentHistoryRange by rememberUpdatedState(historyRange)
 
     fun loadToday() {
+        val requestedDate = currentLifeConsoleDate(zoneId)
+        if (snapshot?.date != requestedDate) {
+            snapshot = null
+        }
         scope.launch {
             isLoading = true
-            when (val result = RepositoryProvider.lifeConsoleRepository.getToday()) {
+            when (val result = RepositoryProvider.lifeConsoleRepository.getToday(date = requestedDate, zoneId = zoneId)) {
                 is ApiResult.Success -> {
                     val today = result.data
                     snapshot = today
@@ -99,6 +137,22 @@ fun LifeConsoleScreen(
                 ApiResult.Loading -> Unit
             }
             isLoading = false
+        }
+    }
+
+    fun loadHistory(limitDays: Int = currentHistoryRange.limitDays) {
+        val todayDate = currentLifeConsoleDate(zoneId)
+        scope.launch {
+            isHistoryLoading = true
+            when (val result = RepositoryProvider.lifeConsoleRepository.getHistory(zoneId = zoneId, limitDays = limitDays)) {
+                is ApiResult.Success -> {
+                    history = result.data.withoutDate(todayDate)
+                    actionMessage = null
+                }
+                is ApiResult.Error -> actionMessage = result.message
+                ApiResult.Loading -> Unit
+            }
+            isHistoryLoading = false
         }
     }
 
@@ -115,6 +169,7 @@ fun LifeConsoleScreen(
                     snapshot = result.data
                     LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, result.data)
                     Toast.makeText(context, "已上传到今日痕迹", Toast.LENGTH_SHORT).show()
+                    loadHistory()
                 }
                 is ApiResult.Error -> {
                     actionMessage = result.message
@@ -128,7 +183,51 @@ fun LifeConsoleScreen(
 
     LaunchedEffect(Unit) {
         loadToday()
+        loadHistory(historyRange.limitDays)
     }
+    LaunchedEffect(zoneId) {
+        while (true) {
+            kotlinx.coroutines.delay(millisUntilNextLifeConsoleRefresh(zoneId))
+            loadToday()
+            loadHistory(currentHistoryRange.limitDays)
+        }
+    }
+    LaunchedEffect(showHistoryPage, historyRange) {
+        if (showHistoryPage) {
+            loadHistory(historyRange.limitDays)
+        }
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                loadToday()
+                loadHistory(historyRange.limitDays)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    if (showHistoryPage) {
+        BackHandler { showHistoryPage = false }
+        LifeConsoleHistoryPage(
+            history = history,
+            isLoading = isHistoryLoading,
+            actionMessage = actionMessage,
+            selectedRange = historyRange,
+            onRangeChange = { historyRange = it },
+            onBack = { showHistoryPage = false },
+            onRefresh = { loadHistory(historyRange.limitDays) },
+            modifier = modifier,
+            onOpenMedia = { media ->
+                context.startActivity(LifeMediaQuickViewerActivity.intent(context, media))
+            },
+        )
+        return
+    }
+    BackHandler(onBack = onBack)
 
     ShellPage(
         title = "今日痕迹",
@@ -144,16 +243,20 @@ fun LifeConsoleScreen(
                 LifeConsolePillAction(
                     text = "刷新",
                     icon = Icons.Filled.Refresh,
-                    onClick = { loadToday() },
-                    enabled = !isLoading,
+                    onClick = {
+                        loadToday()
+                        loadHistory(historyRange.limitDays)
+                    },
+                    enabled = !isLoading && !isHistoryLoading,
                     containerColor = YingShiThemeTokens.colors.primaryContainer.copy(alpha = 0.78f),
                     contentColor = YingShiThemeTokens.colors.titleAccent,
                 )
                 LifeConsolePillAction(
-                    text = "快捷记账",
-                    onClick = onOpenLedgerAdd,
-                    containerColor = YingShiThemeTokens.colors.softGreenContainer.copy(alpha = 0.92f),
-                    contentColor = YingShiThemeTokens.colors.softGreenAction,
+                    text = "历史记录",
+                    onClick = { showHistoryPage = true },
+                    enabled = !isHistoryLoading,
+                    containerColor = YingShiThemeTokens.colors.sectionBackground.copy(alpha = 0.90f),
+                    contentColor = YingShiThemeTokens.colors.titleAccent,
                 )
             }
             if (actionMessage != null) {
@@ -189,6 +292,9 @@ fun LifeConsoleScreen(
                     isBusy = isLoading,
                     initialSlotKey = initialSlotKey,
                     initialMediaId = initialMediaId,
+                    onOpenMedia = { media ->
+                        context.startActivity(LifeMediaQuickViewerActivity.intent(context, media))
+                    },
                     onUpload = { category ->
                         pendingUploadCategory = category
                         pickerLauncher.launch(
@@ -205,6 +311,7 @@ fun LifeConsoleScreen(
                                         LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                     }
                                     loadToday()
+                                    loadHistory(historyRange.limitDays)
                                 }
                                 is ApiResult.Error -> actionMessage = result.message
                                 ApiResult.Loading -> Unit
@@ -217,8 +324,11 @@ fun LifeConsoleScreen(
                     snapshot = today,
                     isBusy = isLoading,
                     onAdd = {
+                        val restored = snapshot ?: return@BowelCard
+                        val optimistic = restored.withOptimisticBowelDelta(delta = 1) ?: return@BowelCard
+                        snapshot = optimistic
+                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, optimistic)
                         scope.launch {
-                            isLoading = true
                             when (val result = RepositoryProvider.lifeConsoleRepository.addBowelEvent()) {
                                 is ApiResult.Success -> {
                                     val current = snapshot
@@ -227,16 +337,23 @@ fun LifeConsoleScreen(
                                         snapshot = next
                                         LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                     }
+                                    loadHistory(historyRange.limitDays)
                                 }
-                                is ApiResult.Error -> actionMessage = result.message
+                                is ApiResult.Error -> {
+                                    snapshot = restored
+                                    LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, restored)
+                                    actionMessage = result.message
+                                }
                                 ApiResult.Loading -> Unit
                             }
-                            isLoading = false
                         }
                     },
                     onRemove = {
+                        val restored = snapshot ?: return@BowelCard
+                        val optimistic = restored.withOptimisticBowelDelta(delta = -1) ?: return@BowelCard
+                        snapshot = optimistic
+                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, optimistic)
                         scope.launch {
-                            isLoading = true
                             when (val result = RepositoryProvider.lifeConsoleRepository.deleteLatestBowelEvent()) {
                                 is ApiResult.Success -> {
                                     val current = snapshot
@@ -245,15 +362,404 @@ fun LifeConsoleScreen(
                                         snapshot = next
                                         LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                     }
+                                    loadHistory(historyRange.limitDays)
                                 }
-                                is ApiResult.Error -> actionMessage = result.message
+                                is ApiResult.Error -> {
+                                    snapshot = restored
+                                    LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, restored)
+                                    actionMessage = result.message
+                                }
                                 ApiResult.Loading -> Unit
                             }
-                            isLoading = false
                         }
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LifeConsoleHistoryPage(
+    history: RemoteLifeConsoleHistory?,
+    isLoading: Boolean,
+    actionMessage: String?,
+    selectedRange: LifeConsoleHistoryRange,
+    onRangeChange: (LifeConsoleHistoryRange) -> Unit,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenMedia: (RemoteMedia) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(horizontal = spacing.lg, vertical = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LifeConsoleBackButton(onClick = onBack)
+            Text(
+                text = "历史记录",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            LifeConsolePillAction(
+                text = "刷新",
+                icon = Icons.Filled.Refresh,
+                onClick = onRefresh,
+                enabled = !isLoading,
+                containerColor = colors.primaryContainer.copy(alpha = 0.82f),
+                contentColor = colors.titleAccent,
+            )
+        }
+        if (!actionMessage.isNullOrBlank()) {
+            Text(
+                text = actionMessage,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        LifeConsoleHistoryPanel(
+            history = history,
+            isLoading = isLoading,
+            selectedRange = selectedRange,
+            onRangeChange = onRangeChange,
+            onOpenMedia = onOpenMedia,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun LifeConsoleHistoryPanel(
+    history: RemoteLifeConsoleHistory?,
+    isLoading: Boolean,
+    selectedRange: LifeConsoleHistoryRange,
+    onRangeChange: (LifeConsoleHistoryRange) -> Unit,
+    onOpenMedia: (RemoteMedia) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = 0,
+        pageCount = { 3 },
+    )
+    var filterExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
+        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TitleTabs(
+                tabs = listOf("人物", "吃饭", "大便"),
+                selectedIndex = pagerState.currentPage,
+                modifier = Modifier.weight(1f),
+                onSelected = { index ->
+                    scope.launch {
+                        pagerState.animateScrollToPage(index)
+                    }
+                },
+            )
+            Box {
+                LifeConsolePillAction(
+                    text = selectedRange.label,
+                    onClick = { filterExpanded = true },
+                    containerColor = colors.sectionBackground.copy(alpha = 0.88f),
+                    contentColor = colors.titleAccent,
+                )
+                DropdownMenu(
+                    expanded = filterExpanded,
+                    onDismissRequest = { filterExpanded = false },
+                ) {
+                    LifeConsoleHistoryRange.entries.forEach { range ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = range.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            onClick = {
+                                filterExpanded = false
+                                onRangeChange(range)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) { page ->
+            when {
+                isLoading && history == null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = colors.primaryAction)
+                    }
+                }
+
+                history == null -> {
+                    LifeConsoleHistoryEmptyState(modifier = Modifier.fillMaxSize())
+                }
+
+                page == 2 -> {
+                    if (history.bowelDays.isEmpty()) {
+                        LifeConsoleHistoryEmptyState(modifier = Modifier.fillMaxSize())
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                        ) {
+                            history.bowelDays.forEach { day ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = colors.raisedSurface.copy(alpha = 0.82f),
+                                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+                                        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                                    ) {
+                                        Text(
+                                            text = day.displayLabel,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = colors.titleAccent,
+                                        )
+                                        day.users.forEach { user ->
+                                            val name = when (user.userId) {
+                                                history.currentUser.userId -> history.currentUser.displayName
+                                                history.partner?.userId -> history.partner.displayName
+                                                else -> user.userId
+                                            }
+                                            Text(
+                                                text = buildString {
+                                                    append(name)
+                                                    append(" · ")
+                                                    append(user.count)
+                                                    append(" 次")
+                                                    if (user.eventTimesMillis.isNotEmpty()) {
+                                                        append(" · ")
+                                                        append(
+                                                            user.eventTimesMillis
+                                                                .takeLast(4)
+                                                                .joinToString(" / ") { formatTime(it) },
+                                                        )
+                                                    }
+                                                },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = colors.textSecondary,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    val days = if (page == 0) history.personDays else history.mealDays
+                    if (days.isEmpty()) {
+                        LifeConsoleHistoryEmptyState(modifier = Modifier.fillMaxSize())
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+                        ) {
+                            days.forEach { day ->
+                                LifeConsoleHistoryDaySection(
+                                    day = day,
+                                    selfLabel = history.currentUser.displayName,
+                                    partnerLabel = history.partner?.displayName ?: "对方",
+                                    onOpenMedia = onOpenMedia,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LifeConsoleHistoryDaySection(
+    day: RemoteLifeConsoleHistoryDay,
+    selfLabel: String,
+    partnerLabel: String,
+    onOpenMedia: (RemoteMedia) -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = colors.raisedSurface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        ) {
+            Text(
+                text = day.displayLabel,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.titleAccent,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md)) {
+                LifeConsoleHistoryMediaColumn(
+                    title = selfLabel,
+                    mediaItems = day.selfMedia,
+                    modifier = Modifier.weight(1f),
+                    onOpenMedia = onOpenMedia,
+                )
+                LifeConsoleHistoryMediaColumn(
+                    title = partnerLabel,
+                    mediaItems = day.partnerMedia,
+                    modifier = Modifier.weight(1f),
+                    onOpenMedia = onOpenMedia,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LifeConsoleHistoryMediaColumn(
+    title: String,
+    mediaItems: List<RemoteMedia>,
+    modifier: Modifier = Modifier,
+    onOpenMedia: (RemoteMedia) -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textSecondary,
+        )
+        if (mediaItems.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.08f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.sectionBackground.copy(alpha = 0.78f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "暂无",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textSecondary.copy(alpha = 0.72f),
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                mediaItems.chunked(2).forEach { rowItems ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        rowItems.forEach { media ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(colors.sectionBackground.copy(alpha = 0.78f)),
+                            ) {
+                                LifeMediaPreview(
+                                    media = media,
+                                    onClick = { onOpenMedia(media) },
+                                )
+                            }
+                        }
+                        repeat(2 - rowItems.size) {
+                            Spacer(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LifeConsoleHistoryEmptyState(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 180.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "还没有历史记录",
+            style = MaterialTheme.typography.bodyMedium,
+            color = YingShiThemeTokens.colors.textSecondary.copy(alpha = 0.72f),
+        )
+    }
+}
+
+@Composable
+private fun LifeConsoleBackButton(
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(14.dp)
+    Surface(
+        modifier = Modifier
+            .size(40.dp)
+            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+        shape = shape,
+        color = colors.sectionBackground.copy(alpha = 0.80f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        shadowElevation = 0.dp,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                tint = colors.titleAccent,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
@@ -264,6 +770,7 @@ private fun LifeConsoleGrid(
     isBusy: Boolean,
     initialSlotKey: String?,
     initialMediaId: String?,
+    onOpenMedia: (RemoteMedia) -> Unit,
     onUpload: (String) -> Unit,
     onDelete: (String, String) -> Unit,
 ) {
@@ -276,6 +783,7 @@ private fun LifeConsoleGrid(
                 modifier = Modifier.weight(1f),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.PERSON_SELF },
+                onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
             )
@@ -286,6 +794,7 @@ private fun LifeConsoleGrid(
                 modifier = Modifier.weight(1f),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.PERSON_PARTNER },
+                onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
             )
@@ -298,6 +807,7 @@ private fun LifeConsoleGrid(
                 modifier = Modifier.weight(1f),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.MEAL_SELF },
+                onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
             )
@@ -308,6 +818,7 @@ private fun LifeConsoleGrid(
                 modifier = Modifier.weight(1f),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.MEAL_PARTNER },
+                onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
             )
@@ -323,6 +834,7 @@ private fun LifeMediaFrame(
     modifier: Modifier = Modifier,
     isBusy: Boolean,
     initialMediaId: String?,
+    onOpenMedia: (RemoteMedia) -> Unit,
     onUpload: (String) -> Unit,
     onDelete: (String, String) -> Unit,
 ) {
@@ -387,7 +899,10 @@ private fun LifeMediaFrame(
                         modifier = Modifier.fillMaxSize(),
                     ) { page ->
                         val media = slot.mediaItems[page]
-                        LifeMediaPreview(media = media)
+                        LifeMediaPreview(
+                            media = media,
+                            onClick = { onOpenMedia(media) },
+                        )
                     }
                 }
             }
@@ -431,7 +946,10 @@ private fun LifeMediaFrame(
 }
 
 @Composable
-private fun LifeMediaPreview(media: RemoteMedia) {
+private fun LifeMediaPreview(
+    media: RemoteMedia,
+    onClick: () -> Unit,
+) {
     val mediaType = resolveAppMediaType(
         rawType = media.mediaType,
         mimeType = media.mimeType,
@@ -445,7 +963,12 @@ private fun LifeMediaPreview(media: RemoteMedia) {
         mediaSource = media.toAppContentMediaSource(),
         mediaType = mediaType,
         palette = LifeFramePalette,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .yingShiClickable(
+                pressedScale = 0.985f,
+                onClick = onClick,
+            ),
         contentDescription = null,
         contentScale = ContentScale.Crop,
         showVideoPlayOverlay = mediaType == AppMediaType.VIDEO,
@@ -632,6 +1155,58 @@ private fun RemoteLifeConsoleToday.withoutMedia(mediaId: String): RemoteLifeCons
         mealSelf = mealSelf.withoutTarget(),
         mealPartner = mealPartner.withoutTarget(),
     )
+}
+
+private fun RemoteLifeConsoleToday.withOptimisticBowelDelta(delta: Int): RemoteLifeConsoleToday? {
+    val userId = currentUser.userId
+    val nowMillis = System.currentTimeMillis()
+    val users = bowel.users.toMutableList()
+    val userIndex = users.indexOfFirst { it.userId == userId }
+    val current = users.getOrNull(userIndex) ?: if (delta > 0) {
+        RemoteLifeConsoleBowelUserSummary(
+            userId = userId,
+            count = 0,
+            latestOccurredAtMillis = null,
+            eventTimesMillis = emptyList(),
+        )
+    } else {
+        return null
+    }
+    val nextTimes = if (delta > 0) {
+        current.eventTimesMillis + nowMillis
+    } else {
+        if (current.eventTimesMillis.isEmpty() && current.count <= 0) return null
+        current.eventTimesMillis.dropLast(1)
+    }
+    val nextUser = current.copy(
+        count = (current.count + delta).coerceAtLeast(0),
+        latestOccurredAtMillis = nextTimes.lastOrNull(),
+        eventTimesMillis = nextTimes,
+    )
+    if (userIndex >= 0) {
+        users[userIndex] = nextUser
+    } else {
+        users += nextUser
+    }
+    return copy(bowel = bowel.copy(users = users))
+}
+
+private fun RemoteLifeConsoleHistory.withoutDate(date: String): RemoteLifeConsoleHistory {
+    return copy(
+        personDays = personDays.filterNot { it.date == date },
+        mealDays = mealDays.filterNot { it.date == date },
+        bowelDays = bowelDays.filterNot { it.date == date },
+    )
+}
+
+private fun currentLifeConsoleDate(zoneId: String): String {
+    return LocalDate.now(ZoneId.of(zoneId)).toString()
+}
+
+private fun millisUntilNextLifeConsoleRefresh(zoneId: String): Long {
+    val now = ZonedDateTime.now(ZoneId.of(zoneId))
+    val next = now.toLocalDate().plusDays(1).atStartOfDay(now.zone).plusSeconds(1)
+    return ChronoUnit.MILLIS.between(now, next).coerceAtLeast(1L)
 }
 
 private fun formatTime(timeMillis: Long): String {

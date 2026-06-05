@@ -79,10 +79,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.photos.CollaboratorMarkerBadge
+import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerAccount
 import com.example.yingshi.feature.ledger.data.LedgerAccountType
@@ -111,6 +118,58 @@ val LedgerMuted = Color(0xFF5E7580)
 val LedgerSubtleText = Color(0xFF5E7580)
 
 fun ledgerColor(raw: Long): Color = Color(raw)
+
+@Composable
+internal fun LedgerBookCreatorBadge(
+    creatorUserId: String?,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = 18.dp,
+) {
+    if (creatorUserId.isNullOrBlank()) return
+    val directory = rememberCollaboratorDirectorySnapshot(
+        fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+    )
+    val identity = remember(directory, creatorUserId) {
+        directory.resolve(creatorUserId)
+    } ?: return
+    CollaboratorMarkerBadge(
+        identity = identity,
+        modifier = modifier,
+        size = avatarSize,
+    )
+}
+
+@Composable
+internal fun LedgerBookTitleWithCreator(
+    title: String,
+    creatorUserId: String?,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = MaterialTheme.typography.titleMedium,
+    textColor: Color = LedgerHeaderGreen,
+    fontWeight: FontWeight = FontWeight.Bold,
+    avatarSize: Dp = 16.dp,
+    maxLines: Int = 1,
+    overflow: TextOverflow = TextOverflow.Ellipsis,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = title,
+            style = textStyle,
+            fontWeight = fontWeight,
+            color = textColor,
+            maxLines = maxLines,
+            overflow = overflow,
+        )
+        LedgerBookCreatorBadge(
+            creatorUserId = creatorUserId,
+            avatarSize = avatarSize,
+        )
+    }
+}
 
 fun ledgerIcon(key: String): ImageVector = when (key) {
     "restaurant" -> Icons.Default.Restaurant
@@ -298,6 +357,10 @@ fun LedgerBookPickerSheet(
                                     text = book.name,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
+                                )
+                                LedgerBookCreatorBadge(
+                                    creatorUserId = book.creatorUserId,
+                                    avatarSize = 18.dp,
                                 )
                                 if (book.id == defaultBookId) {
                                     Surface(
@@ -605,6 +668,9 @@ fun LedgerSegmentChip(
     selected: Boolean,
     selectedColor: Color = LedgerPrimaryAction,
     modifier: Modifier = Modifier,
+    horizontalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 4.dp,
+    largeText: Boolean = false,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(22.dp)
@@ -639,13 +705,13 @@ fun LedgerSegmentChip(
         border = BorderStroke(1.dp, borderColor),
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = text,
                 color = contentColor,
-                style = MaterialTheme.typography.bodySmall,
+                style = if (largeText) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 softWrap = false,

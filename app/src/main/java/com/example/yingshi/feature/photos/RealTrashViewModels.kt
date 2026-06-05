@@ -75,12 +75,13 @@ class RealTrashListViewModel(
 
             val itemError = (itemsResult as? ApiResult.Error)
                 ?.toBackendUiMessage("读取回收站列表失败。")
+            val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
+            successItems.forEach(TrashActorHintStore::record)
 
             _uiState.value = RealTrashListUiState(
                 isLoading = false,
                 errorMessage = itemError,
-                entries = (itemsResult as? ApiResult.Success)?.data.orEmpty()
-                    .map { it.toTrashEntryUiModel() },
+                entries = successItems.map { it.toTrashEntryUiModel() },
                 pendingEntries = emptyList(),
                 statusMessage = _uiState.value.statusMessage,
             )
@@ -269,6 +270,7 @@ class RealTrashDetailViewModel(
             }
             when (val result = trashRepository.getTrashDetail(route.entryId)) {
                 is ApiResult.Success -> {
+                    TrashActorHintStore.record(result.data.item)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         detail = result.data,

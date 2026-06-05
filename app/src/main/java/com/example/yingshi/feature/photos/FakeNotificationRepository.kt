@@ -56,13 +56,9 @@ enum class NotificationCenterItemType(
 
 enum class NotificationCenterFilter(
     val label: String,
-    val targetType: NotificationCenterItemType?,
 ) {
-    ALL("全部", null),
-    COMMENT("评论", NotificationCenterItemType.COMMENT),
-    CONTENT_UPDATE("内容更新", NotificationCenterItemType.CONTENT_UPDATE),
-    DELETE_RESTORE("删除 / 恢复", NotificationCenterItemType.DELETE_RESTORE),
-    SYSTEM("系统", NotificationCenterItemType.SYSTEM),
+    PHOTOS("照片模块"),
+    LIFE("生活模块"),
 }
 
 object FakeNotificationRepository {
@@ -150,15 +146,32 @@ object FakeNotificationRepository {
             targetSummary = "照片流",
             targetType = "SYSTEM",
         ),
+        NotificationCenterItemUiModel(
+            id = "notice-life-ledger-1",
+            type = NotificationCenterItemType.SYSTEM,
+            title = "记账有新变动",
+            body = "本月账本新增了一笔生活支出。",
+            createdAtMillis = 1_777_372_000_000L,
+            isRead = false,
+            targetSummary = "记账",
+            targetType = "LIFE_LEDGER",
+        ),
+        NotificationCenterItemUiModel(
+            id = "notice-life-trace-1",
+            type = NotificationCenterItemType.CONTENT_UPDATE,
+            title = "今日痕迹已更新",
+            body = "今日痕迹里有新的照片记录。",
+            createdAtMillis = 1_777_368_400_000L,
+            isRead = true,
+            targetSummary = "今日痕迹",
+            targetType = "LIFE_CONSOLE",
+        ),
     )
 
     fun getNotifications(): List<NotificationCenterItemUiModel> = notifications
 
     fun getNotifications(filter: NotificationCenterFilter): List<NotificationCenterItemUiModel> {
-        return when (val targetType = filter.targetType) {
-            null -> notifications
-            else -> notifications.filter { it.type == targetType }
-        }
+        return notifications.filter { it.matchesNotificationCenterFilter(filter) }
     }
 
     fun getNotification(notificationId: String): NotificationCenterItemUiModel? {
@@ -206,4 +219,22 @@ fun RemoteNotification.toNotificationCenterItemUiModel(): NotificationCenterItem
 
 private fun String?.orNotificationTargetSummary(): String {
     return this?.takeIf { it.isNotBlank() } ?: "查看相关内容"
+}
+
+private fun NotificationCenterItemUiModel.matchesNotificationCenterFilter(
+    filter: NotificationCenterFilter,
+): Boolean {
+    val text = listOfNotNull(targetType, targetSummary, title, body)
+        .joinToString(separator = " ")
+        .lowercase()
+    val isLife = text.contains("life") ||
+        text.contains("ledger") ||
+        text.contains("chat") ||
+        text.contains("账") ||
+        text.contains("聊天") ||
+        text.contains("痕迹")
+    return when (filter) {
+        NotificationCenterFilter.LIFE -> isLife
+        NotificationCenterFilter.PHOTOS -> !isLife
+    }
 }

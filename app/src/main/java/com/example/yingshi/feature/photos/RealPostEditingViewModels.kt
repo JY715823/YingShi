@@ -306,7 +306,7 @@ class RealGearEditViewModel(
                         it.copy(
                             isSaving = false,
                             hasChanges = false,
-                            statusMessage = "小相册信息已保存。",
+                            statusMessage = null,
                         )
                     }
                     notifyRealBackendPostChanged(

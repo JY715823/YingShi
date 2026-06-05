@@ -4,8 +4,11 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelSummary
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleHistory
+import com.example.yingshi.data.model.RemoteLifeConsoleHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteLifeConsoleUser
@@ -23,8 +26,11 @@ import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelMutationResponseDto
+import com.example.yingshi.data.remote.dto.LifeConsoleBowelHistoryDayDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelSummaryDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelUserSummaryDto
+import com.example.yingshi.data.remote.dto.LifeConsoleHistoryDto
+import com.example.yingshi.data.remote.dto.LifeConsoleHistoryDayDto
 import com.example.yingshi.data.remote.dto.LifeConsoleMediaSlotDto
 import com.example.yingshi.data.remote.dto.LifeConsoleTodayDto
 import com.example.yingshi.data.remote.dto.LifeConsoleUserDto
@@ -114,6 +120,34 @@ fun LifeConsoleTodayDto.toRemoteModel(): RemoteLifeConsoleToday {
     )
 }
 
+fun LifeConsoleHistoryDayDto.toRemoteModel(): RemoteLifeConsoleHistoryDay {
+    return RemoteLifeConsoleHistoryDay(
+        date = date,
+        displayLabel = displayLabel,
+        selfMedia = selfMedia.map(MediaDto::toRemoteModel),
+        partnerMedia = partnerMedia.map(MediaDto::toRemoteModel),
+    )
+}
+
+fun LifeConsoleBowelHistoryDayDto.toRemoteModel(): RemoteLifeConsoleBowelHistoryDay {
+    return RemoteLifeConsoleBowelHistoryDay(
+        date = date,
+        displayLabel = displayLabel,
+        users = users.map(LifeConsoleBowelUserSummaryDto::toRemoteModel),
+    )
+}
+
+fun LifeConsoleHistoryDto.toRemoteModel(): RemoteLifeConsoleHistory {
+    return RemoteLifeConsoleHistory(
+        zoneId = zoneId,
+        currentUser = currentUser.toRemoteModel(),
+        partner = partner?.toRemoteModel(),
+        personDays = personDays.map(LifeConsoleHistoryDayDto::toRemoteModel),
+        mealDays = mealDays.map(LifeConsoleHistoryDayDto::toRemoteModel),
+        bowelDays = bowelDays.map(LifeConsoleBowelHistoryDayDto::toRemoteModel),
+    )
+}
+
 fun LifeConsoleBowelMutationResponseDto.toRemoteModel(): RemoteLifeConsoleBowelMutation {
     return RemoteLifeConsoleBowelMutation(
         eventId = event?.bowelEventId,
@@ -137,6 +171,8 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
         title = title,
         summary = summary,
         contributorLabel = contributorLabel,
+        creatorUserId = creatorUserId,
+        participantUserIds = participantUserIds.orEmpty(),
         displayTimeMillis = displayTimeMillis,
         eventStartedAtMillis = eventStartedAtMillis,
         eventEndedAtMillis = eventEndedAtMillis,
@@ -170,6 +206,7 @@ fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
         capturedAtMillis = media.capturedAtMillis,
         importedAtMillis = media.importedAtMillis,
         displayTimeSource = media.displayTimeSource,
+        uploadedByUserId = media.uploadedByUserId,
     )
 }
 
@@ -179,6 +216,8 @@ fun PostDetailDto.toRemoteDetail(): RemotePostDetail {
         title = title,
         summary = summary,
         contributorLabel = contributorLabel,
+        creatorUserId = creatorUserId,
+        participantUserIds = participantUserIds.orEmpty(),
         displayTimeMillis = displayTimeMillis,
         eventStartedAtMillis = eventStartedAtMillis,
         eventEndedAtMillis = eventEndedAtMillis,
@@ -195,6 +234,8 @@ fun PostDetailDto.toRemoteSummary(): RemotePostSummary {
         title = title,
         summary = summary,
         contributorLabel = contributorLabel,
+        creatorUserId = creatorUserId,
+        participantUserIds = participantUserIds.orEmpty(),
         displayTimeMillis = displayTimeMillis,
         eventStartedAtMillis = eventStartedAtMillis,
         eventEndedAtMillis = eventEndedAtMillis,
@@ -233,6 +274,7 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
         trashItemId = trashItemId,
         itemType = itemType,
         state = state,
+        actorUserId = actorUserId,
         sourceSmallAlbumId = sourceSmallAlbumId,
         sourceMediaId = sourceMediaId,
         commentTargetMediaId = commentTargetMediaId,

@@ -420,11 +420,18 @@ object LocalSystemMediaBridgeRepository {
             statusMessage = "上传已取消",
             canRetry = true,
         )
-        uploadJobsByTaskId.remove(taskId)?.cancel(CancellationException("Upload task canceled by user"))
+        cancelUploadJob(task)
         publishOperationSummaryIfReady(task.operationId)
         uploadScope.launch {
             RepositoryProvider.uploadRepository.cancelUpload(taskId)
         }
+    }
+
+    fun cancelUploadOperation(operationId: String) {
+        uploadTasksState
+            .filter { task -> task.operationId == operationId && !task.isTerminal }
+            .map { it.taskId }
+            .forEach(::cancelUploadTask)
     }
 
     fun dismissUploadTask(taskId: String) {
@@ -1173,13 +1180,6 @@ object LocalSystemMediaBridgeRepository {
                     statusMessage = "正在上传 35%",
                 )
 
-                updateUploadTask(
-                    taskId = uploadId,
-                    state = UploadState.UPLOADING,
-                    progressPercent = 35,
-                    statusMessage = "正在上传 35%",
-                )
-
                 val uploadResult = runUploadApiWithTimeout(
                     timeoutMillis = UploadFileTimeoutMillis,
                     timeoutMessage = "上传超时，请检查网络后重试。",
@@ -1194,7 +1194,7 @@ object LocalSystemMediaBridgeRepository {
                                 ?: error("无法读取已选择的媒体。")
                         },
                         onProgressPercent = { progress ->
-                            val mappedProgress = (35 + progress * 55 / 100).coerceIn(35, 90)
+                            val mappedProgress = (35 + progress * 61 / 100).coerceIn(35, 96)
                             uploadScope.launch {
                                 if (!isUploadTaskCancelled(uploadId)) {
                                     updateUploadTask(
@@ -1721,6 +1721,13 @@ object LocalSystemMediaBridgeRepository {
         return uploadTasksState.firstOrNull { it.taskId == taskId }?.state == UploadState.CANCELLED
     }
 
+    private fun cancelUploadJob(task: SystemMediaUploadTaskUiModel) {
+        val fallbackTaskId = "${task.operationId}-${task.mediaId}"
+        val cancellation = CancellationException("Upload task canceled by user")
+        uploadJobsByTaskId.remove(task.taskId)?.cancel(cancellation)
+        uploadJobsByTaskId.remove(fallbackTaskId)?.cancel(cancellation)
+    }
+
     private fun replaceUploadTaskId(
         oldTaskId: String,
         newTaskId: String,
@@ -2156,6 +2163,7 @@ object LocalSystemMediaBridgeRepository {
             palette = palette,
             linkedPostIds = postIds,
             videoDurationMillis = videoDurationMillis,
+            uploadedByUserId = uploadedByUserId,
         )
     }
 
@@ -2548,6 +2556,10 @@ object LocalSystemMediaBridgeRepository {
                 failureCount = failureCount,
                 cancelledCount = cancelledCount,
                 totalCount = operationTasks.size,
+                shouldAutoOpenResult = resolvedOperationType == OperationType.IMPORT_TO_APP &&
+                    successCount > 0 &&
+                    failureCount == 0 &&
+                    cancelledCount == 0,
             ),
         )
     }
@@ -2637,7 +2649,7 @@ object LocalSystemMediaBridgeRepository {
                 successCount = 1,
                 failureCount = 0,
                 totalCount = uploadTasksState.count { it.operationId == operationId }.coerceAtLeast(1),
-                shouldAutoOpenResult = true,
+                shouldAutoOpenResult = false,
             ),
         )
     }

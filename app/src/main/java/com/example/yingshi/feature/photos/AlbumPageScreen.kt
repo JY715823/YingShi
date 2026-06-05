@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -32,7 +33,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
@@ -58,6 +58,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.repository.RepositoryMode
@@ -151,9 +152,8 @@ fun AlbumPageScreen(
             albums = albums,
             selectedAlbumId = selectedAlbumId,
             onSelectAlbum = { selectedAlbumId = it },
-            selectedAlbumIdForCreate = selectedAlbumId.takeIf { it.isNotBlank() },
             onCreateLargeAlbum = onCreateLargeAlbum,
-            onCreateSmallAlbum = onCreateSmallAlbum,
+            onCreateSmallAlbum = { onCreateSmallAlbum(selectedAlbumId.ifBlank { null }) },
         )
 
         if (filteredPosts.isEmpty()) {
@@ -312,9 +312,8 @@ private fun RealAlbumPageScreen(
                     albums = uiState.albums,
                     selectedAlbumId = uiState.selectedAlbumId.orEmpty(),
                     onSelectAlbum = viewModel::selectAlbum,
-                    selectedAlbumIdForCreate = uiState.selectedAlbumId,
                     onCreateLargeAlbum = onCreateLargeAlbum,
-                    onCreateSmallAlbum = onCreateSmallAlbum,
+                    onCreateSmallAlbum = { onCreateSmallAlbum(uiState.selectedAlbumId) },
                 )
 
                 when {
@@ -466,7 +465,7 @@ private fun AlbumPageNoticeCard(
 }
 
 @Composable
-private fun AlbumIconAction(
+internal fun AlbumIconAction(
     text: String? = null,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     contentDescription: String,
@@ -478,7 +477,7 @@ private fun AlbumIconAction(
     val resolvedContentColor = contentColor ?: colors.titleAccent
     Surface(
         modifier = Modifier
-            .size(32.dp)
+            .size(46.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = containerColor ?: colors.sectionBackground.copy(alpha = 0.82f),
@@ -491,7 +490,7 @@ private fun AlbumIconAction(
                     imageVector = icon,
                     contentDescription = contentDescription,
                     tint = resolvedContentColor,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(25.dp),
                 )
             } else {
                 Text(
@@ -544,9 +543,8 @@ private fun AlbumSwitchSection(
     albums: List<AlbumSummaryUiModel>,
     selectedAlbumId: String,
     onSelectAlbum: (String) -> Unit,
-    selectedAlbumIdForCreate: String?,
     onCreateLargeAlbum: () -> Unit,
-    onCreateSmallAlbum: (String?) -> Unit,
+    onCreateSmallAlbum: () -> Unit,
 ) {
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
@@ -563,19 +561,21 @@ private fun AlbumSwitchSection(
     ) {
         Row(
             modifier = Modifier.padding(vertical = 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 visibleAlbums.forEach { album ->
                     AlbumSwitchChip(
                         album = album,
                         selected = album.id == selectedAlbumId,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .widthIn(min = 0.dp),
                         onClick = { onSelectAlbum(album.id) },
                     )
                 }
@@ -584,25 +584,18 @@ private fun AlbumSwitchSection(
                 }
             }
             AlbumIconAction(
+                icon = Icons.Rounded.Add,
+                contentDescription = "新建小相册",
+                containerColor = colors.softGreenContainer.copy(alpha = 0.92f),
+                contentColor = colors.softGreenAction,
+                onClick = onCreateSmallAlbum,
+            )
+            AlbumIconAction(
                 icon = Icons.Rounded.Menu,
                 contentDescription = "全部大相册",
                 containerColor = colors.primaryContainer.copy(alpha = 0.74f),
                 contentColor = colors.titleAccent,
                 onClick = { showAlbumMenu = true },
-            )
-            AlbumIconAction(
-                icon = Icons.Rounded.CreateNewFolder,
-                contentDescription = "新建大相册",
-                containerColor = colors.glowWash.copy(alpha = 0.90f),
-                contentColor = colors.titleAccent,
-                onClick = onCreateLargeAlbum,
-            )
-            AlbumIconAction(
-                icon = Icons.Rounded.Add,
-                contentDescription = "新建小相册",
-                containerColor = colors.softGreenContainer.copy(alpha = 0.90f),
-                contentColor = colors.softGreenAction,
-                onClick = { onCreateSmallAlbum(selectedAlbumIdForCreate) },
             )
         }
     }
@@ -612,6 +605,10 @@ private fun AlbumSwitchSection(
             albums = albums,
             selectedAlbumId = selectedAlbumId,
             onDismiss = { showAlbumMenu = false },
+            onCreateLargeAlbum = {
+                showAlbumMenu = false
+                onCreateLargeAlbum()
+            },
             onSelectAlbum = { albumId ->
                 showAlbumMenu = false
                 onSelectAlbum(albumId)
@@ -621,10 +618,11 @@ private fun AlbumSwitchSection(
 }
 
 @Composable
-private fun AlbumDirectoryDialog(
+internal fun AlbumDirectoryDialog(
     albums: List<AlbumSummaryUiModel>,
     selectedAlbumId: String,
     onDismiss: () -> Unit,
+    onCreateLargeAlbum: (() -> Unit)? = null,
     onSelectAlbum: (String) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -662,15 +660,33 @@ private fun AlbumDirectoryDialog(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.titleAccent,
                 )
-                AlbumSearchField(
-                    query = query,
-                    onQueryChange = { query = it },
-                )
-                LazyColumn(
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AlbumSearchField(
+                        query = query,
+                        onQueryChange = { query = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (onCreateLargeAlbum != null) {
+                        AlbumIconAction(
+                            icon = Icons.Rounded.Add,
+                            contentDescription = "新建大相册",
+                            containerColor = colors.softGreenContainer.copy(alpha = 0.92f),
+                            contentColor = colors.softGreenAction,
+                            onClick = onCreateLargeAlbum,
+                        )
+                    }
+                }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 330.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 2.dp),
                 ) {
                     items(
                         items = filteredAlbums,
@@ -699,12 +715,13 @@ private fun AlbumDirectoryDialog(
 private fun AlbumSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.capsule),
         color = colors.sectionBackground.copy(alpha = 0.64f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
@@ -804,7 +821,12 @@ private fun AlbumSwitchChip(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(16.dp)
+    val title = remember(album.title) {
+        album.title.trim().let { original ->
+            if (original.length <= 4) original else original.take(4)
+        }
+    }
 
     Surface(
         modifier = modifier
@@ -822,20 +844,22 @@ private fun AlbumSwitchChip(
         shadowElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(8.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .size(width = 3.dp, height = 18.dp)
+                    .clip(RoundedCornerShape(999.dp))
                     .background(Brush.linearGradient(listOf(album.accent.start, album.accent.end))),
             )
             Text(
-                text = album.title,
+                text = title,
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium.copy(
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 17.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 ),
                 color = if (selected) colors.titleAccent else colors.textPrimary,

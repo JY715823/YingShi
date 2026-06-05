@@ -6,10 +6,14 @@ object LedgerSeedData {
     const val SharedBookId = "book-shared"
     const val DefaultCashAccountId = "account-cash"
 
-    fun defaultBooks(nowMillis: Long) = listOf(
+    fun defaultBooks(
+        nowMillis: Long,
+        creatorUserId: String? = null,
+    ) = listOf(
         LedgerBookEntity(
             id = DefaultBookId,
             name = "日常账本",
+            creatorUserId = creatorUserId,
             template = "daily",
             currencyCode = "CNY",
             currencySymbol = "¥",
@@ -21,6 +25,7 @@ object LedgerSeedData {
         LedgerBookEntity(
             id = TravelBookId,
             name = "旅行账本",
+            creatorUserId = creatorUserId,
             template = "travel",
             currencyCode = "CNY",
             currencySymbol = "¥",
@@ -32,6 +37,7 @@ object LedgerSeedData {
         LedgerBookEntity(
             id = SharedBookId,
             name = "家庭账本",
+            creatorUserId = creatorUserId,
             template = "shared",
             currencyCode = "CNY",
             currencySymbol = "¥",

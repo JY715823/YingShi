@@ -40,6 +40,7 @@ data class SystemMediaItem(
     val palette: PhotoThumbnailPalette,
     val linkedPostIds: List<String>,
     val videoDurationMillis: Long? = null,
+    val uploadedByUserId: String? = null,
     val sizeBytes: Long? = null,
 )
 

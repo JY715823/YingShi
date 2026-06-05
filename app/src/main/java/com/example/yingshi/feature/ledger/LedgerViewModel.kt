@@ -32,6 +32,7 @@ import com.example.yingshi.feature.ledger.data.LedgerSeedData
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionDraft
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
+import com.example.yingshi.feature.photos.CollaboratorDirectoryStore
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
@@ -64,6 +65,7 @@ data class LedgerUiState(
     val defaultAccountIdsByBook: Map<String, String?> = emptyMap(),
     val visibleAccountsByBook: Map<String, List<LedgerAccount>> = emptyMap(),
     val bookName: String = "日常账本",
+    val bookCreatorUserId: String? = null,
     val currencySymbol: String = "¥",
     val selectedMonth: YearMonth = YearMonth.now(),
     val selectedDate: LocalDate = LocalDate.now(),
@@ -118,6 +120,16 @@ class LedgerViewModel(
                 repository.ensureDemoData()
             }
             observeCatalog()
+        }
+    }
+
+    fun refreshBookCreatorsFromCollaborators() {
+        val currentUserId = CollaboratorDirectoryStore.snapshot(
+            fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+        ).currentUser?.userId
+        if (currentUserId.isNullOrBlank()) return
+        viewModelScope.launch {
+            repository.backfillMissingBookCreatorUserIds()
         }
     }
 
@@ -478,27 +490,26 @@ class LedgerViewModel(
         keepOpen: Boolean = false,
         onSaved: () -> Unit = {},
     ) {
+        val validationMessage = validateDraft(type, amountCents, categoryId, accountId, toAccountId)
+        if (validationMessage != null) {
+            _uiState.update { it.copy(message = validationMessage) }
+            return
+        }
+        val draft = LedgerTransactionDraft(
+            id = transactionId,
+            bookId = _uiState.value.currentBookId,
+            categoryId = categoryId,
+            accountId = accountId,
+            toAccountId = toAccountId,
+            amountCents = amountCents,
+            type = type,
+            occurredAtMillis = occurredAtMillis,
+            remark = remark,
+        )
+        _uiState.update { it.copy(message = if (keepOpen) "已保存，可继续记一笔" else "账单已保存") }
+        onSaved()
         viewModelScope.launch {
-            val validationMessage = validateDraft(type, amountCents, categoryId, accountId, toAccountId)
-            if (validationMessage != null) {
-                _uiState.update { it.copy(message = validationMessage) }
-                return@launch
-            }
-            repository.saveTransaction(
-                LedgerTransactionDraft(
-                    id = transactionId,
-                    bookId = _uiState.value.currentBookId,
-                    categoryId = categoryId,
-                    accountId = accountId,
-                    toAccountId = toAccountId,
-                    amountCents = amountCents,
-                    type = type,
-                    occurredAtMillis = occurredAtMillis,
-                    remark = remark,
-                ),
-            )
-            _uiState.update { it.copy(message = if (keepOpen) "已保存，可继续记一笔" else "账单已保存") }
-            onSaved()
+            repository.saveTransaction(draft)
         }
     }
 
@@ -850,6 +861,7 @@ class LedgerViewModel(
                         defaultAccountIdsByBook = resolvedDefaultAccountIdsByBook,
                         visibleAccountsByBook = visibleAccountsByBook,
                         bookName = currentBook?.name ?: it.bookName,
+                        bookCreatorUserId = currentBook?.creatorUserId ?: it.bookCreatorUserId,
                         currencySymbol = currentBook?.currencySymbol ?: it.currencySymbol,
                     )
                 }
@@ -930,6 +942,7 @@ class LedgerViewModel(
                     defaultAccountIdsByBook = previous.defaultAccountIdsByBook,
                     visibleAccountsByBook = previous.visibleAccountsByBook,
                     bookName = book?.name ?: "日常账本",
+                    bookCreatorUserId = book?.creatorUserId,
                     currencySymbol = book?.currencySymbol ?: "¥",
                     selectedMonth = previous.selectedMonth,
                     selectedDate = previous.selectedDate,
@@ -1028,6 +1041,11 @@ class LedgerViewModel(
             return LedgerRepository(
                 dao = dao,
                 syncBridge = syncBridge,
+                currentUserIdProvider = {
+                    CollaboratorDirectoryStore.snapshot(
+                        fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+                    ).currentUser?.userId
+                },
             )
         }
 

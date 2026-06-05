@@ -20,10 +20,15 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,6 +87,10 @@ fun TrashPageScreen(
     }
 
     val spacing = YingShiThemeTokens.spacing
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
+    val allCollaboratorUserIds = remember(collaboratorDirectory) {
+        collaboratorDirectory.all.mapTo(linkedSetOf()) { it.userId }
+    }
     var transientMessage by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -105,8 +115,44 @@ fun TrashPageScreen(
     var selectedEntryIds by rememberSaveable {
         mutableStateOf(emptySet<String>())
     }
+    var savedSelectedCollaboratorUserIds by rememberSaveable(selectedTypeName) {
+        mutableStateOf(emptyList<String>())
+    }
+    var collaboratorSelectionInitialized by rememberSaveable(selectedTypeName) {
+        mutableStateOf(false)
+    }
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
-    val entries = FakeTrashRepository.getEntries(selectedType)
+    LaunchedEffect(allCollaboratorUserIds) {
+        if (allCollaboratorUserIds.isEmpty()) return@LaunchedEffect
+        savedSelectedCollaboratorUserIds = if (!collaboratorSelectionInitialized) {
+            defaultCollaboratorSelection(allCollaboratorUserIds).toList()
+        } else {
+            normalizeCollaboratorSelectionKeepingEmpty(
+                selectedUserIds = savedSelectedCollaboratorUserIds.toSet(),
+                allUserIds = allCollaboratorUserIds,
+            ).toList()
+        }
+        collaboratorSelectionInitialized = true
+    }
+    val selectedCollaboratorUserIds = remember(savedSelectedCollaboratorUserIds, allCollaboratorUserIds) {
+        normalizeCollaboratorSelectionKeepingEmpty(
+            selectedUserIds = savedSelectedCollaboratorUserIds.toSet(),
+            allUserIds = allCollaboratorUserIds,
+        )
+    }
+    val rawEntries = FakeTrashRepository.getEntries(selectedType)
+    val entries = remember(rawEntries, selectedCollaboratorUserIds, allCollaboratorUserIds) {
+        filterTrashEntriesByCollaborator(
+            entries = rawEntries,
+            directory = collaboratorDirectory,
+            selectedUserIds = selectedCollaboratorUserIds,
+            allUserIds = allCollaboratorUserIds,
+        )
+    }
+    val showActorBadge = isAllCollaboratorsSelected(
+        selectedUserIds = selectedCollaboratorUserIds,
+        allUserIds = allCollaboratorUserIds,
+    )
     val selectedEntries = entries.filter { it.id in selectedEntryIds }
     val snackbarMessage = FakeTrashRepository.getSnackbarMessage()
 
@@ -268,9 +314,18 @@ fun TrashPageScreen(
                 TrashCategoryActionRow(
                     selectedType = selectedType,
                     entryCount = entries.size,
+                    directory = collaboratorDirectory,
+                    selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onToggleCollaborator = { userId ->
+                        savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                            currentSelection = selectedCollaboratorUserIds,
+                            toggledUserId = userId,
+                            allUserIds = allCollaboratorUserIds,
+                        ).toList()
+                    },
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
@@ -290,7 +345,13 @@ fun TrashPageScreen(
 
             if (entries.isEmpty()) {
                 item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                    TrashEmptyCard(text = "暂无删除条目")
+                    TrashEmptyCard(
+                        text = if (selectedCollaboratorUserIds.isEmpty()) {
+                            "未选中任何账号，当前不展示条目"
+                        } else {
+                            "暂无删除条目"
+                        },
+                    )
                 }
             } else {
                 gridItems(
@@ -308,6 +369,8 @@ fun TrashPageScreen(
                                 showPostTitle = selectedType == TrashEntryType.MEDIA_REMOVED,
                                 selected = entry.id in selectedEntryIds,
                                 selectionMode = selectionMode,
+                                actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
+                                showActorBadge = showActorBadge,
                                 modifier = Modifier.weight(1f),
                                 onClick = {
                                     if (selectionMode) {
@@ -346,9 +409,18 @@ fun TrashPageScreen(
                 TrashCategoryActionRow(
                     selectedType = selectedType,
                     entryCount = entries.size,
+                    directory = collaboratorDirectory,
+                    selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onToggleCollaborator = { userId ->
+                        savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                            currentSelection = selectedCollaboratorUserIds,
+                            toggledUserId = userId,
+                            allUserIds = allCollaboratorUserIds,
+                        ).toList()
+                    },
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
@@ -369,7 +441,11 @@ fun TrashPageScreen(
         if (entries.isEmpty()) {
             item {
                 TrashEmptyCard(
-                    text = "暂无删除条目",
+                    text = if (selectedCollaboratorUserIds.isEmpty()) {
+                        "未选中任何账号，当前不展示条目"
+                    } else {
+                        "暂无删除条目"
+                    },
                 )
             }
         } else {
@@ -381,6 +457,8 @@ fun TrashPageScreen(
                     entry = entry,
                     selected = entry.id in selectedEntryIds,
                     selectionMode = selectionMode,
+                    actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
+                    showActorBadge = showActorBadge,
                     onClick = {
                         if (selectionMode) {
                             toggleSelection(entry)
@@ -492,9 +570,12 @@ fun TrashPageScreen(
 private fun TrashCategoryActionRow(
     selectedType: TrashEntryType,
     entryCount: Int,
+    directory: CollaboratorDirectorySnapshot,
+    selectedCollaboratorUserIds: Set<String>,
     menuExpanded: Boolean,
     onMenuExpandedChange: (Boolean) -> Unit,
     onTypeSelected: (TrashEntryType) -> Unit,
+    onToggleCollaborator: (String) -> Unit,
     selectionMode: Boolean,
     selectedCount: Int,
     onCancelSelection: () -> Unit,
@@ -522,6 +603,7 @@ private fun TrashCategoryActionRow(
             Box {
                 TrashIconActionButton(
                     text = "菜单",
+                    icon = Icons.Filled.Menu,
                     emphasized = true,
                     onClick = { onMenuExpandedChange(true) },
                 )
@@ -582,14 +664,24 @@ private fun TrashCategoryActionRow(
             }
         }
         Box(modifier = Modifier.weight(1f))
+        if (!selectionMode && directory.all.isNotEmpty()) {
+            CollaboratorFilterChipRow(
+                directory = directory,
+                selectedUserIds = selectedCollaboratorUserIds,
+                onToggleCollaborator = onToggleCollaborator,
+                modifier = Modifier.padding(end = spacing.xxs),
+            )
+        }
         TrashIconActionButton(
             text = "恢复",
+            icon = Icons.AutoMirrored.Filled.Undo,
             emphasized = true,
             enabled = entryCount > 0 || selectionMode,
             onClick = onRestoreCurrent,
         )
         TrashIconActionButton(
             text = "删除",
+            icon = Icons.Filled.Delete,
             danger = true,
             enabled = entryCount > 0 || selectionMode,
             onClick = onRequestClearCurrent,
@@ -600,6 +692,7 @@ private fun TrashCategoryActionRow(
 @Composable
 private fun TrashIconActionButton(
     text: String,
+    icon: ImageVector? = null,
     enabled: Boolean = true,
     emphasized: Boolean = false,
     danger: Boolean = false,
@@ -619,22 +712,37 @@ private fun TrashIconActionButton(
         else -> colors.titleAccent
     }
     Surface(
-        modifier = Modifier.yingShiClickable(
-            enabled = enabled,
-            shape = shape,
-            pressedScale = 0.96f,
-            onClick = onClick,
-        ),
+        modifier = (if (icon != null) Modifier.size(48.dp) else Modifier)
+            .yingShiClickable(
+                enabled = enabled,
+                shape = shape,
+                pressedScale = 0.96f,
+                onClick = onClick,
+            ),
         shape = shape,
         color = containerColor,
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = contentColor,
-        )
+        if (icon != null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = text,
+                    modifier = Modifier.size(25.dp),
+                    tint = contentColor,
+                )
+            }
+        } else {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor,
+            )
+        }
     }
 }
 
@@ -697,6 +805,8 @@ private fun TrashMediaGridCell(
     showPostTitle: Boolean,
     selected: Boolean,
     selectionMode: Boolean,
+    actorIdentity: CollaboratorIdentityUiModel?,
+    showActorBadge: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -753,6 +863,15 @@ private fun TrashMediaGridCell(
                 visible = selectionMode,
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
+            if (showActorBadge && actorIdentity != null) {
+                CollaboratorMarkerBadge(
+                    identity = actorIdentity,
+                    size = 22.dp,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                )
+            }
         }
 
         if (showPostTitle) {
@@ -803,6 +922,8 @@ private fun TrashEntryRow(
     entry: TrashEntryUiModel,
     selected: Boolean,
     selectionMode: Boolean,
+    actorIdentity: CollaboratorIdentityUiModel?,
+    showActorBadge: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -840,6 +961,15 @@ private fun TrashEntryRow(
                     visible = selectionMode,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
+                if (showActorBadge && actorIdentity != null) {
+                    CollaboratorMarkerBadge(
+                        identity = actorIdentity,
+                        size = 22.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                    )
+                }
             }
             Column(
                 modifier = Modifier.weight(0.72f),

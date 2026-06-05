@@ -26,6 +26,7 @@ object FakeAlbumRepository {
         val id: String,
         val displayTimeMillis: Long,
         val commentCount: Int,
+        val uploadedByUserId: String? = null,
         val palette: PhotoThumbnailPalette,
         val mediaType: AppMediaType,
         val aspectRatio: Float,
@@ -127,12 +128,15 @@ object FakeAlbumRepository {
         val normalizedAlbumIds = albumIds.distinct().ifEmpty { listOf(albums.first().id) }
         val primaryAlbum = albums.firstOrNull { it.id == normalizedAlbumIds.first() } ?: albums.first()
         val postId = "post-local-${postDisplayTimeMillis}-${posts.size + 1}"
+        val creatorUserId = fakeCurrentCollaboratorUserId()
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
             albumIds = normalizedAlbumIds,
             title = title.ifBlank { "新的小相册" },
             summary = summary.ifBlank { "从本地创建的小相册" },
+            creatorUserId = creatorUserId,
+            participantUserIds = listOfNotNull(creatorUserId),
             postDisplayTimeMillis = postDisplayTimeMillis,
             mediaCount = 1,
             coverPalette = primaryAlbum.accent,
@@ -159,6 +163,7 @@ object FakeAlbumRepository {
         val coverMedia = normalizedMedia.first()
         val postTime = normalizedMedia.maxOf { it.displayTimeMillis }
         val postId = "post-system-import-$postTime-${posts.size + 1}"
+        val creatorUserId = fakeCurrentCollaboratorUserId()
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -168,6 +173,8 @@ object FakeAlbumRepository {
                 displayTimeMillis = postTime,
             ),
             summary = "从系统媒体加入的小相册",
+            creatorUserId = creatorUserId,
+            participantUserIds = listOfNotNull(creatorUserId),
             postDisplayTimeMillis = postTime,
             mediaCount = normalizedMedia.size,
             coverPalette = coverMedia.palette,
@@ -211,6 +218,7 @@ object FakeAlbumRepository {
             coverAspectRatio = coverMedia.aspectRatio,
             coverMediaSource = coverMedia.mediaSource,
         )
+        mergePostParticipant(postId, fakeCurrentCollaboratorUserId())
         return appendedMedia.size
     }
 
@@ -231,6 +239,7 @@ object FakeAlbumRepository {
         val primaryAlbum = albums.firstOrNull { it.id == primaryAlbumId } ?: albums.first()
         val postTime = draft.displayTimeMillis
         val postId = "post-system-import-$postTime-${posts.size + 1}"
+        val creatorUserId = fakeCurrentCollaboratorUserId()
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -242,6 +251,8 @@ object FakeAlbumRepository {
                 )
             },
             summary = draft.summary.ifBlank { "从系统媒体工具区加入的本地小相册" },
+            creatorUserId = creatorUserId,
+            participantUserIds = listOfNotNull(creatorUserId),
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -276,6 +287,7 @@ object FakeAlbumRepository {
         val primaryAlbum = albums.firstOrNull { it.id == primaryAlbumId } ?: albums.first()
         val postTime = draft.displayTimeMillis
         val postId = "post-feed-selection-$postTime-${posts.size + 1}"
+        val creatorUserId = fakeCurrentCollaboratorUserId()
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -287,6 +299,8 @@ object FakeAlbumRepository {
                 )
             },
             summary = draft.summary.ifBlank { "从照片流选择媒体创建的本地小相册" },
+            creatorUserId = creatorUserId,
+            participantUserIds = listOfNotNull(creatorUserId),
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -333,6 +347,7 @@ object FakeAlbumRepository {
         val primaryAlbum = albums.firstOrNull { it.id == primaryAlbumId } ?: albums.first()
         val postTime = draft.displayTimeMillis
         val postId = "post-mixed-create-$postTime-${posts.size + 1}"
+        val creatorUserId = fakeCurrentCollaboratorUserId()
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -344,6 +359,8 @@ object FakeAlbumRepository {
                 )
             },
             summary = draft.summary.ifBlank { "从系统媒体和照片流共同选择媒体创建的本地小相册" },
+            creatorUserId = creatorUserId,
+            participantUserIds = listOfNotNull(creatorUserId),
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -387,6 +404,7 @@ object FakeAlbumRepository {
             coverAspectRatio = coverMedia.aspectRatio,
             coverMediaSource = coverMedia.mediaSource,
         )
+        mergePostParticipant(postId, fakeCurrentCollaboratorUserId())
         FakePhotoFeedRepository.importSystemMediaToFeed(
             mediaItems = mediaItems.map { it.toSyntheticSystemMediaItem() },
             postId = postId,
@@ -457,6 +475,7 @@ object FakeAlbumRepository {
                 id = media.id,
                 displayTimeMillis = media.displayTimeMillis,
                 commentCount = FakeCommentRepository.mediaCommentCount(media.id),
+                uploadedByUserId = media.uploadedByUserId,
                 palette = media.palette,
                 mediaType = media.mediaType,
                 aspectRatio = media.aspectRatio,
@@ -474,6 +493,8 @@ object FakeAlbumRepository {
             title = title,
             summary = summary,
             contributorLabel = if (route.postId.length % 2 == 0) "我整理" else "你补充",
+            creatorUserId = post?.creatorUserId,
+            participantUserIds = post?.participantUserIds.orEmpty(),
             postDisplayTimeMillis = postDisplayTimeMillis,
             albumIds = albumIds,
             albumChips = buildAlbumChips(albumIds),
@@ -835,6 +856,7 @@ object FakeAlbumRepository {
                         id = mediaId,
                         displayTimeMillis = baseTime + (index * 9 * 60 * 1000L),
                         commentCount = FakeCommentRepository.mediaCommentCount(mediaId),
+                        uploadedByUserId = fakeCollaboratorUserIdForIndex(postId, index),
                         palette = if (index == 0) {
                             basePalette
                         } else {
@@ -960,6 +982,7 @@ object FakeAlbumRepository {
             id = id,
             displayTimeMillis = displayTimeMillis,
             commentCount = FakeCommentRepository.mediaCommentCount(id),
+            uploadedByUserId = uploadedByUserId,
             palette = palette,
             mediaType = mediaType,
             aspectRatio = aspectRatio,
@@ -1021,6 +1044,7 @@ object FakeAlbumRepository {
             palette = palette,
             linkedPostIds = postIds,
             videoDurationMillis = videoDurationMillis,
+            uploadedByUserId = uploadedByUserId,
         )
     }
 
@@ -1067,6 +1091,7 @@ object FakeAlbumRepository {
             id = id,
             displayTimeMillis = displayTimeMillis,
             commentCount = FakeCommentRepository.mediaCommentCount(id),
+            uploadedByUserId = uploadedByUserId ?: fakeCurrentCollaboratorUserId(),
             palette = palette,
             mediaType = when (type) {
                 SystemMediaType.IMAGE -> AppMediaType.IMAGE
@@ -1167,6 +1192,58 @@ object FakeAlbumRepository {
     private fun fakeMediaIdForPost(postId: String, index: Int): String {
         val sharedIds = sharedMediaIdsByPost[postId]
         return sharedIds?.getOrNull(index) ?: "$postId-media-$index"
+    }
+
+    private fun fakeCurrentCollaboratorUserId(): String? {
+        val directory = CollaboratorDirectoryStore.snapshot(fallbackToFakeProfile = true)
+        return directory.currentUser?.userId ?: directory.partner?.userId
+    }
+
+    private fun fakePartnerCollaboratorUserId(): String? {
+        return CollaboratorDirectoryStore.snapshot(fallbackToFakeProfile = true).partner?.userId
+    }
+
+    private fun fakeCollaboratorUserIdForIndex(
+        seed: String,
+        index: Int,
+    ): String? {
+        val currentUserId = fakeCurrentCollaboratorUserId()
+        val partnerUserId = fakePartnerCollaboratorUserId()
+        return when {
+            currentUserId == null -> partnerUserId
+            partnerUserId == null -> currentUserId
+            ((seed.hashCode() + index) and 1) == 0 -> currentUserId
+            else -> partnerUserId
+        }
+    }
+
+    private fun fakeParticipantsForSeed(
+        index: Int,
+        creatorUserId: String?,
+    ): List<String> {
+        val participants = linkedSetOf<String>()
+        creatorUserId?.let(participants::add)
+        if (index % 3 == 1) {
+            val partnerUserId = fakePartnerCollaboratorUserId()
+            if (!partnerUserId.isNullOrBlank()) {
+                participants += partnerUserId
+            }
+        }
+        return participants.toList()
+    }
+
+    private fun mergePostParticipant(
+        postId: String,
+        userId: String?,
+    ) {
+        val normalizedUserId = userId?.takeIf { it.isNotBlank() } ?: return
+        val index = posts.indexOfFirst { it.id == postId }
+        if (index < 0) return
+        val post = posts[index]
+        if (normalizedUserId in post.participantUserIds) return
+        posts[index] = post.copy(
+            participantUserIds = (post.participantUserIds + normalizedUserId).distinct(),
+        )
     }
 
     private fun seedPosts(): List<AlbumPostCardUiModel> {
@@ -1335,7 +1412,13 @@ object FakeAlbumRepository {
                 coverMediaType = AppMediaType.VIDEO,
                 coverAspectRatio = 1.06f,
             ),
-        )
+        ).mapIndexed { index, post ->
+            val creatorUserId = fakeCollaboratorUserIdForIndex(post.id, index) ?: fakeCurrentCollaboratorUserId()
+            post.copy(
+                creatorUserId = creatorUserId,
+                participantUserIds = fakeParticipantsForSeed(index = index, creatorUserId = creatorUserId),
+            )
+        }
     }
 
     private val sharedMediaIdsByPost = mapOf(

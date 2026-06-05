@@ -11,6 +11,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Timelapse
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,14 +67,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
@@ -81,6 +94,7 @@ import java.time.ZoneId
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.abs
 
 enum class LedgerRoute {
     HOME,
@@ -110,6 +124,9 @@ fun LedgerScreen(
     ),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(
+        fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+    )
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -121,6 +138,9 @@ fun LedgerScreen(
 
     LaunchedEffect(Unit) {
         viewModel.handleLedgerEntry()
+    }
+    LaunchedEffect(collaboratorDirectory.currentUser?.userId) {
+        viewModel.refreshBookCreatorsFromCollaborators()
     }
     LaunchedEffect(openHomeNonce) {
         if (openHomeNonce > 0 && openHomeNonce != lastOpenHomeNonce) {
@@ -222,6 +242,11 @@ fun LedgerScreen(
                         onToggleCategoryHidden = viewModel::setCategoryHidden,
                         onReorderCategories = viewModel::reorderCategories,
                         onSave = { transactionId, type, amount, categoryId, accountId, toAccountId, occurredAt, remark, keepOpen ->
+                            if (!keepOpen) {
+                                route = LedgerRoute.HOME.name
+                                editingTransactionId = null
+                                draftOccurredAtMillis = null
+                            }
                             viewModel.saveTransaction(
                                 transactionId = transactionId,
                                 type = type,
@@ -391,10 +416,49 @@ private fun LedgerHomeScreen(
     var showBookSheet by rememberSaveable { mutableStateOf(false) }
     var showMonthSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val viewConfiguration = LocalViewConfiguration.current
+    var monthPullDistancePx by remember { mutableFloatStateOf(0f) }
+    val monthPullThresholdPx = with(density) { 204.dp.toPx() }
+    val monthPullMaxPx = monthPullThresholdPx * 1.28f
+    val monthPullDamping = 0.42f
+    val monthPullTouchSlop = viewConfiguration.touchSlop
+    val topPullSpace = with(density) {
+        monthPullDistancePx.coerceAtLeast(0f).coerceAtMost(monthPullMaxPx).toDp()
+    }
+    val bottomPullSpace = with(density) {
+        (-monthPullDistancePx).coerceAtLeast(0f).coerceAtMost(monthPullMaxPx).toDp()
+    }
     val grouped = remember(uiState.transactions) {
         uiState.transactions.groupBy { dayStart(it.occurredAtMillis) }
             .toList()
             .sortedByDescending { it.first }
+    }
+    fun isAtListTop(): Boolean {
+        return !listState.canScrollBackward || (
+            listState.firstVisibleItemIndex == 0 &&
+                listState.firstVisibleItemScrollOffset <= 2
+            )
+    }
+    fun isAtListBottom(): Boolean {
+        if (!listState.canScrollForward) return true
+        val layoutInfo = listState.layoutInfo
+        if (layoutInfo.totalItemsCount == 0) return true
+        val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull() ?: return false
+        return lastVisible.index >= layoutInfo.totalItemsCount - 1 &&
+            lastVisible.offset + lastVisible.size <= layoutInfo.viewportEndOffset + 2
+    }
+    fun commitMonthPull() {
+        val pull = monthPullDistancePx
+        monthPullDistancePx = 0f
+        when {
+            pull >= monthPullThresholdPx -> onSelectMonth(uiState.selectedMonth.plusMonths(1))
+            pull <= -monthPullThresholdPx -> onSelectMonth(uiState.selectedMonth.minusMonths(1))
+        }
+    }
+    LaunchedEffect(uiState.selectedMonth) {
+        monthPullDistancePx = 0f
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -414,27 +478,142 @@ private fun LedgerHomeScreen(
                     .padding(horizontal = 16.dp)
                     .offset(y = (-14).dp),
             )
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 104.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(
+                        uiState.selectedMonth,
+                        monthPullThresholdPx,
+                        monthPullMaxPx,
+                        monthPullTouchSlop,
+                    ) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val pointerId = down.id
+                            val startPosition = down.position
+                            var activeDirection = 0
+                            var accumulatedDy = 0f
+                            var lockedToEdge = false
+
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                    ?: event.changes.firstOrNull()
+                                    ?: continue
+
+                                if (!change.pressed) {
+                                    if (monthPullDistancePx != 0f) {
+                                        commitMonthPull()
+                                    }
+                                    break
+                                }
+
+                                val deltaY = change.positionChange().y
+                                if (deltaY == 0f && activeDirection == 0) continue
+
+                                if (activeDirection == 0) {
+                                    accumulatedDy += deltaY
+                                    val totalDx = change.position.x - startPosition.x
+                                    val absDy = abs(accumulatedDy)
+                                    val absDx = abs(totalDx)
+                                    if (absDy < monthPullTouchSlop || absDy <= absDx * 1.05f) {
+                                        continue
+                                    }
+
+                                    activeDirection = when {
+                                        accumulatedDy > 0f && isAtListTop() -> 1
+                                        accumulatedDy < 0f && isAtListBottom() -> -1
+                                        else -> 0
+                                    }
+                                    lockedToEdge = activeDirection != 0
+
+                                    if (activeDirection == 0) {
+                                        if (absDx > absDy * 1.1f) break
+                                        continue
+                                    }
+                                }
+
+                                if (!lockedToEdge) continue
+
+                                val previous = monthPullDistancePx
+                                val next = when (activeDirection) {
+                                    1 -> (previous + deltaY * if (deltaY > 0f) monthPullDamping else 1f)
+                                        .coerceIn(0f, monthPullMaxPx)
+
+                                    -1 -> (previous + deltaY * if (deltaY < 0f) monthPullDamping else 1f)
+                                        .coerceIn(-monthPullMaxPx, 0f)
+
+                                    else -> previous
+                                }
+
+                                if (next != previous) {
+                                    monthPullDistancePx = next
+                                    event.changes.forEach { it.consume() }
+                                }
+
+                                if (next == 0f) {
+                                    val inwardRelease = when (activeDirection) {
+                                        1 -> deltaY < 0f
+                                        -1 -> deltaY > 0f
+                                        else -> false
+                                    }
+                                    if (inwardRelease) {
+                                        activeDirection = 0
+                                        lockedToEdge = false
+                                        accumulatedDy = 0f
+                                    }
+                                }
+                            }
+                        }
+                    }
             ) {
-                if (grouped.isEmpty()) {
-                    item {
-                        LedgerEmptyState(
-                            title = "当月暂无账单",
-                            summary = "点右下角记一笔，账单会按日期自动分组。",
-                        )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 2.dp + topPullSpace,
+                        bottom = 104.dp + bottomPullSpace,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (grouped.isEmpty()) {
+                        item {
+                            LedgerEmptyState(
+                                title = "当月暂无账单",
+                                summary = "点右下角记一笔，账单会按日期自动分组。",
+                            )
+                        }
+                    } else {
+                        items(grouped, key = { it.first }) { (dayStart, dayTransactions) ->
+                            LedgerDayGroupCard(
+                                dayStartMillis = dayStart,
+                                transactions = dayTransactions,
+                                currencySymbol = uiState.currencySymbol,
+                                onTransactionClick = onEditTransaction,
+                            )
+                        }
                     }
-                } else {
-                    items(grouped, key = { it.first }) { (dayStart, dayTransactions) ->
-                        LedgerDayGroupCard(
-                            dayStartMillis = dayStart,
-                            transactions = dayTransactions,
-                            currencySymbol = uiState.currencySymbol,
-                            onTransactionClick = onEditTransaction,
-                        )
-                    }
+                }
+                if (monthPullDistancePx > 0f) {
+                    LedgerMonthPullIndicator(
+                        pullDistancePx = monthPullDistancePx,
+                        thresholdPx = monthPullThresholdPx,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter),
+                    )
+                }
+                if (monthPullDistancePx < 0f) {
+                    LedgerMonthPullIndicator(
+                        pullDistancePx = monthPullDistancePx,
+                        thresholdPx = monthPullThresholdPx,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 92.dp),
+                    )
                 }
             }
         }
@@ -501,6 +680,41 @@ private fun LedgerHomeScreen(
 }
 
 @Composable
+private fun LedgerMonthPullIndicator(
+    pullDistancePx: Float,
+    thresholdPx: Float,
+    modifier: Modifier = Modifier,
+) {
+    if (pullDistancePx == 0f) return
+    val progress = (abs(pullDistancePx) / thresholdPx).coerceIn(0f, 1f)
+    val indicatorHeight = with(LocalDensity.current) {
+        (18.dp.toPx() + abs(pullDistancePx).coerceAtMost(thresholdPx * 1.12f) * 0.58f).toDp()
+    }
+    Box(
+        modifier = modifier.height(indicatorHeight.coerceAtMost(78.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier.size((26 + 12 * progress).dp),
+            shape = CircleShape,
+            color = LedgerRaisedSurface.copy(alpha = 0.94f),
+            border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.88f)),
+            shadowElevation = if (progress >= 1f) 2.dp else 0.dp,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.size(20.dp),
+                    color = if (progress >= 1f) LedgerHeaderGreen else LedgerSubtleText,
+                    strokeWidth = 2.4.dp,
+                    trackColor = LedgerGroupedHeader,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun LedgerHomeHeader(
     uiState: LedgerUiState,
     onOpenDrawer: () -> Unit,
@@ -522,8 +736,13 @@ private fun LedgerHomeHeader(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onOpenDrawer, modifier = Modifier.size(34.dp)) {
-                Icon(LedgerActionIcons.Menu, contentDescription = "菜单", tint = LedgerHeaderGreen, modifier = Modifier.size(24.dp))
+            Box(
+                modifier = Modifier.width(78.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(38.dp)) {
+                    Icon(LedgerActionIcons.Menu, contentDescription = "菜单", tint = LedgerHeaderGreen, modifier = Modifier.size(25.dp))
+                }
             }
             Row(
                 modifier = Modifier
@@ -532,34 +751,41 @@ private fun LedgerHomeHeader(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = uiState.bookName,
-                    color = LedgerHeaderGreen,
-                    style = MaterialTheme.typography.titleMedium,
+                LedgerBookTitleWithCreator(
+                    title = uiState.bookName,
+                    creatorUserId = uiState.bookCreatorUserId,
+                    textStyle = MaterialTheme.typography.titleMedium,
+                    textColor = LedgerHeaderGreen,
                     fontWeight = FontWeight.Bold,
+                    avatarSize = 18.dp,
                 )
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
             }
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = LedgerRaisedSurface.copy(alpha = 0.88f),
-                border = BorderStroke(1.dp, LedgerGlassStroke),
+            Box(
+                modifier = Modifier.width(78.dp),
+                contentAlignment = Alignment.CenterEnd,
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = LedgerRaisedSurface.copy(alpha = 0.88f),
+                    border = BorderStroke(1.dp, LedgerGlassStroke),
                 ) {
-                    IconButton(onClick = onMoreClick, modifier = Modifier.size(26.dp)) {
-                        Icon(Icons.Default.MoreHoriz, contentDescription = "更多", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        IconButton(onClick = onMoreClick, modifier = Modifier.size(26.dp)) {
+                            Icon(Icons.Default.MoreHoriz, contentDescription = "更多", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
+                        }
+                        Box(
+                            modifier = Modifier
+                                .height(18.dp)
+                                .width(1.dp)
+                                .background(LedgerDivider),
+                        )
+                        IconButton(onClick = onCloseLedger, modifier = Modifier.size(26.dp)) { LedgerCloseCircleIcon() }
                     }
-                    Box(
-                        modifier = Modifier
-                            .height(18.dp)
-                            .width(1.dp)
-                            .background(LedgerDivider),
-                    )
-                    IconButton(onClick = onCloseLedger, modifier = Modifier.size(26.dp)) { LedgerCloseCircleIcon() }
                 }
             }
         }
@@ -798,16 +1024,19 @@ fun LedgerTransactionListRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = when (transaction.type) {
-                    LedgerTransactionType.TRANSFER -> "${transaction.account?.name.orEmpty()} -> ${transaction.toAccount?.name.orEmpty()}"
-                    else -> transaction.remark.ifBlank { transaction.account?.name.orEmpty() }
-                },
-                color = LedgerSubtleText,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val detailText = when (transaction.type) {
+                LedgerTransactionType.TRANSFER -> "${transaction.account?.name.orEmpty()} -> ${transaction.toAccount?.name.orEmpty()}"
+                else -> transaction.remark
+            }
+            if (detailText.isNotBlank()) {
+                Text(
+                    text = detailText,
+                    color = LedgerSubtleText,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
@@ -938,7 +1167,14 @@ private fun LedgerDrawer(
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(uiState.bookName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        LedgerBookTitleWithCreator(
+                            title = uiState.bookName,
+                            creatorUserId = uiState.bookCreatorUserId,
+                            textStyle = MaterialTheme.typography.titleMedium,
+                            textColor = Color.Unspecified,
+                            fontWeight = FontWeight.Bold,
+                            avatarSize = 16.dp,
+                        )
                         Text("净资产 ${formatAmountValue(uiState.netAssetCents)}", style = MaterialTheme.typography.bodySmall, color = LedgerSubtleText)
                     }
                 }
@@ -994,6 +1230,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.drawerItem(
 @Composable
 fun LedgerPageScaffold(
     title: String,
+    creatorUserId: String? = null,
     onBack: () -> Unit,
     action: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit,
@@ -1007,20 +1244,26 @@ fun LedgerPageScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(18.dp))
+            IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+                Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(24.dp))
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+            Box(
                 modifier = Modifier.weight(1f),
-                textAlign = TextAlign.Center,
-            )
-            Box(modifier = Modifier.width(32.dp), contentAlignment = Alignment.CenterEnd) {
+                contentAlignment = Alignment.Center,
+            ) {
+                LedgerBookTitleWithCreator(
+                    title = title,
+                    creatorUserId = creatorUserId,
+                    textStyle = MaterialTheme.typography.titleMedium,
+                    textColor = Color.Unspecified,
+                    fontWeight = FontWeight.Bold,
+                    avatarSize = 16.dp,
+                )
+            }
+            Box(modifier = Modifier.width(44.dp), contentAlignment = Alignment.CenterEnd) {
                 action?.invoke()
             }
         }

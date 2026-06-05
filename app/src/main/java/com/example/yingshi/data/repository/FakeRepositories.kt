@@ -11,8 +11,11 @@ import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelSummary
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
+import com.example.yingshi.data.model.RemoteLifeConsoleHistory
+import com.example.yingshi.data.model.RemoteLifeConsoleHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteLifeConsoleUser
@@ -56,21 +59,7 @@ class FakeMediaRepositoryShell : MediaRepository {
         val items = FakePhotoFeedRepository.getPhotoFeed()
             .drop((page - 1).coerceAtLeast(0) * pageSize)
             .take(pageSize)
-            .map { item ->
-                RemoteMedia(
-                    mediaId = item.mediaId,
-                    mediaType = item.mediaType.toRemoteMediaType(),
-                    previewUrl = null,
-                    originalUrl = null,
-                    videoUrl = null,
-                    width = item.width,
-                    height = item.height,
-                    aspectRatio = item.aspectRatio,
-                    displayTimeMillis = item.mediaDisplayTimeMillis,
-                    commentCount = item.commentCount,
-                    smallAlbumIds = item.postIds,
-                )
-            }
+            .map { item -> item.toRemoteMedia() }
         return ApiResult.Success(items)
     }
 
@@ -665,6 +654,38 @@ class FakeLifeConsoleRepositoryShell : LifeConsoleRepository {
         return ApiResult.Success(fakeToday(date = date, zoneId = zoneId))
     }
 
+    override suspend fun getHistory(
+        zoneId: String,
+        limitDays: Int,
+    ): ApiResult<RemoteLifeConsoleHistory> {
+        val today = fakeToday(zoneId = zoneId)
+        val recentMedia = FakePhotoFeedRepository.getPhotoFeed()
+            .sortedByDescending { it.mediaDisplayTimeMillis }
+            .take(limitDays.coerceAtLeast(14) * 2)
+            .map { it.toRemoteMedia() }
+        val selfMedia = recentMedia.filterIndexed { index, _ -> index % 2 == 0 }
+        val partnerMedia = recentMedia.filterIndexed { index, _ -> index % 2 == 1 }
+        val personDays = buildFakeHistoryDays(selfMedia, partnerMedia)
+        val mealDays = buildFakeHistoryDays(
+            selfMedia = selfMedia.drop(1),
+            partnerMedia = partnerMedia.dropLast(1),
+        )
+        val bowelDays = buildFakeBowelHistoryDays(
+            today = today,
+            limitDays = limitDays.coerceIn(7, 60),
+        )
+        return ApiResult.Success(
+            RemoteLifeConsoleHistory(
+                zoneId = zoneId,
+                currentUser = today.currentUser,
+                partner = today.partner,
+                personDays = personDays,
+                mealDays = mealDays,
+                bowelDays = bowelDays,
+            ),
+        )
+    }
+
     override suspend fun addMedia(
         category: String,
         mediaIds: List<String>,
@@ -755,6 +776,60 @@ class FakeLifeConsoleRepositoryShell : LifeConsoleRepository {
         )
     }
 
+    private fun buildFakeHistoryDays(
+        selfMedia: List<RemoteMedia>,
+        partnerMedia: List<RemoteMedia>,
+    ): List<RemoteLifeConsoleHistoryDay> {
+        val groupedSelf = selfMedia.groupBy { historyDateKey(it.displayTimeMillis) }
+        val groupedPartner = partnerMedia.groupBy { historyDateKey(it.displayTimeMillis) }
+        val orderedDates = (groupedSelf.keys + groupedPartner.keys)
+            .distinct()
+            .sortedDescending()
+            .take(18)
+        return orderedDates.map { date ->
+            RemoteLifeConsoleHistoryDay(
+                date = date,
+                displayLabel = historyDateLabel(date),
+                selfMedia = groupedSelf[date].orEmpty().sortedByDescending { it.displayTimeMillis },
+                partnerMedia = groupedPartner[date].orEmpty().sortedByDescending { it.displayTimeMillis },
+            )
+        }.filter { it.selfMedia.isNotEmpty() || it.partnerMedia.isNotEmpty() }
+    }
+
+    private fun buildFakeBowelHistoryDays(
+        today: RemoteLifeConsoleToday,
+        limitDays: Int,
+    ): List<RemoteLifeConsoleBowelHistoryDay> {
+        val userMap = listOfNotNull(today.currentUser, today.partner).associateBy { it.userId }
+        val eventPairs = bowelTimesByUserId.flatMap { (userId, times) ->
+            times.map { time -> userId to time }
+        }
+        val grouped = eventPairs.groupBy { (_, time) -> historyDateKey(time) }
+        return grouped.entries
+            .sortedByDescending { it.key }
+            .take(limitDays)
+            .map { (date, entries) ->
+                val users = entries
+                    .groupBy({ it.first }, { it.second })
+                    .mapNotNull { (userId, times) ->
+                        val owner = userMap[userId] ?: return@mapNotNull null
+                        RemoteLifeConsoleBowelUserSummary(
+                            userId = owner.userId,
+                            count = times.size,
+                            latestOccurredAtMillis = times.maxOrNull(),
+                            eventTimesMillis = times.sorted(),
+                        )
+                    }
+                    .sortedBy { it.userId }
+                RemoteLifeConsoleBowelHistoryDay(
+                    date = date,
+                    displayLabel = historyDateLabel(date),
+                    users = users,
+                )
+            }
+            .filter { it.users.isNotEmpty() }
+    }
+
     private fun emptySlot(
         category: String,
         ownerUserId: String?,
@@ -778,11 +853,41 @@ class FakeLifeConsoleRepositoryShell : LifeConsoleRepository {
     }
 }
 
+private fun historyDateKey(timeMillis: Long): String {
+    val instant = java.time.Instant.ofEpochMilli(timeMillis)
+    val date = instant.atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate()
+    return date.toString()
+}
+
+private fun historyDateLabel(date: String): String {
+    return runCatching {
+        val parsed = java.time.LocalDate.parse(date)
+        "${parsed.monthValue}月${parsed.dayOfMonth}日"
+    }.getOrElse { date }
+}
+
 private fun AppMediaType.toRemoteMediaType(): String {
     return when (this) {
         AppMediaType.IMAGE -> "image"
         AppMediaType.VIDEO -> "video"
     }
+}
+
+private fun com.example.yingshi.feature.photos.PhotoFeedItem.toRemoteMedia(): RemoteMedia {
+    return RemoteMedia(
+        mediaId = mediaId,
+        mediaType = mediaType.toRemoteMediaType(),
+        previewUrl = null,
+        originalUrl = null,
+        videoUrl = null,
+        width = width,
+        height = height,
+        aspectRatio = aspectRatio,
+        displayTimeMillis = mediaDisplayTimeMillis,
+        commentCount = commentCount,
+        smallAlbumIds = postIds,
+        uploadedByUserId = uploadedByUserId,
+    )
 }
 
 private fun AlbumPostCardUiModel.toRemotePostSummary(): RemotePostSummary {
@@ -791,6 +896,8 @@ private fun AlbumPostCardUiModel.toRemotePostSummary(): RemotePostSummary {
         title = title,
         summary = summary,
         contributorLabel = null,
+        creatorUserId = creatorUserId,
+        participantUserIds = participantUserIds,
         displayTimeMillis = postDisplayTimeMillis,
         albumId = albumId,
         coverMediaId = null,
@@ -805,6 +912,8 @@ private fun PostDetailUiModel.toRemotePostDetail(): RemotePostDetail {
         title = title,
         summary = summary,
         contributorLabel = contributorLabel,
+        creatorUserId = creatorUserId,
+        participantUserIds = participantUserIds,
         displayTimeMillis = postDisplayTimeMillis,
         albumId = albumId,
         coverMediaId = coverMediaId,
@@ -822,6 +931,7 @@ private fun PostDetailUiModel.toRemotePostDetail(): RemotePostDetail {
                 commentCount = media.commentCount,
                 isCover = index == 0,
                 videoDurationMillis = media.videoDurationMillis,
+                uploadedByUserId = media.uploadedByUserId,
             )
         },
     )
@@ -887,9 +997,11 @@ private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashIt
             TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"
         },
         state = state,
+        actorUserId = actorUserId,
         sourceSmallAlbumId = sourcePostId,
         sourceMediaId = sourceMediaId,
-        commentTargetMediaId = sourceMediaId
+        commentTargetMediaId = commentTargetMediaId
+            ?: sourceMediaId
             ?: mediaSnapshot?.mediaId
             ?: relatedMediaIds.firstOrNull { it.isNotBlank() },
         title = title,

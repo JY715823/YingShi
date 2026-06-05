@@ -1,25 +1,38 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -38,8 +51,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
@@ -98,6 +114,9 @@ fun CreatePostScreen(
     }
     var hydratedInitialAppMediaIds by remember(route.source, mediaKey) { mutableStateOf(false) }
     var showPostMediaList by remember(route.source, mediaKey) { mutableStateOf(false) }
+    var showAlbumDirectory by remember(route.source, mediaKey) { mutableStateOf(false) }
+    var showPhotoFeedPicker by remember(route.source, mediaKey) { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable(route.source, mediaKey) { mutableStateOf(false) }
     var displayTimeMillis by rememberSaveable(route.source, mediaKey) { mutableStateOf(System.currentTimeMillis()) }
     var localMessage by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
     val spacing = YingShiThemeTokens.spacing
@@ -120,14 +139,23 @@ fun CreatePostScreen(
     val selectedAlbumTitles = seedState.albums
         .filter { selectedAlbumIds.contains(it.id) }
         .map { it.title }
-    val coverStatusLabel = createPostCoverLabel(
-        items = postMediaListItems,
-        coverMediaId = resolvedCoverMediaId,
-    )
+    val hasUnsavedChanges = title.isNotBlank() ||
+        summary.isNotBlank() ||
+        selectedSystemMediaItems.isNotEmpty() ||
+        selectedAppMediaItems.isNotEmpty()
     val publishButtonText = when {
-        isSubmitting -> "发布中..."
-        selectedSystemMediaItems.isNotEmpty() -> "上传并发布"
-        else -> "发布记忆"
+        isSubmitting -> "创建中..."
+        selectedSystemMediaItems.isNotEmpty() -> "上传并创建相册"
+        else -> "创建相册"
+    }
+
+    fun handleClose() {
+        if (isSubmitting) return
+        if (hasUnsavedChanges) {
+            showDiscardConfirm = true
+        } else {
+            onBack()
+        }
     }
 
     if (showPostMediaList) {
@@ -144,6 +172,42 @@ fun CreatePostScreen(
                 selectedAppMediaItems = updatedIds.mapNotNull(appById::get)
                 selectedCoverMediaId = updatedCoverId
                 showPostMediaList = false
+            },
+            modifier = modifier,
+        )
+        return
+    }
+
+    if (showAlbumDirectory && seedState.albums.isNotEmpty()) {
+        AlbumDirectoryDialog(
+            albums = seedState.albums,
+            selectedAlbumId = selectedAlbumIds.firstOrNull().orEmpty(),
+            onDismiss = { showAlbumDirectory = false },
+            onCreateLargeAlbum = {
+                showAlbumDirectory = false
+                localMessage = "请先返回相册页新建大相册。"
+            },
+            onSelectAlbum = { albumId ->
+                selectedAlbumIds = listOf(albumId)
+                showAlbumDirectory = false
+            },
+        )
+    }
+
+    if (showPhotoFeedPicker) {
+        AppPhotoFeedPickerScreen(
+            title = "选择媒体",
+            confirmLabel = "加入新相册",
+            initialSelectedMediaIds = selectedAppMediaIds.toSet(),
+            onBack = { showPhotoFeedPicker = false },
+            onConfirm = { items ->
+                val nextItems = items.distinctBy { it.mediaId }
+                selectedAppMediaItems = nextItems
+                val remainingIds = selectedSystemMediaIds + nextItems.map { it.mediaId }
+                if (selectedCoverMediaId != null && selectedCoverMediaId !in remainingIds) {
+                    selectedCoverMediaId = remainingIds.firstOrNull()
+                }
+                showPhotoFeedPicker = false
             },
             modifier = modifier,
         )
@@ -174,7 +238,10 @@ fun CreatePostScreen(
         if (initialized || seedState.isLoading) return@LaunchedEffect
         title = seedState.title
         summary = seedState.summary
-        selectedAlbumIds = seedState.selectedAlbumIds
+        selectedAlbumIds = when {
+            route.initialAlbumId != null && seedState.albums.any { it.id == route.initialAlbumId } -> listOf(route.initialAlbumId)
+            else -> seedState.selectedAlbumIds
+        }
         if (selectedCoverMediaId == null) {
             selectedCoverMediaId = seedState.selectedCoverSourceMediaId
         }
@@ -184,6 +251,8 @@ fun CreatePostScreen(
         }
         initialized = true
     }
+
+    BackHandler(onBack = ::handleClose)
 
     fun toggleAlbum(albumId: String) {
         selectedAlbumIds = if (selectedAlbumIds.contains(albumId)) {
@@ -335,7 +404,7 @@ fun CreatePostScreen(
         ) {
             CreatePostTopBar(
                 mediaCount = postMediaListItems.size,
-                onBack = onBack,
+                onBack = ::handleClose,
             )
 
             when {
@@ -353,12 +422,6 @@ fun CreatePostScreen(
                     )
                 }
                 else -> {
-                    CreatePostMemoryHeader(
-                        mediaCount = postMediaListItems.size,
-                        albumTitles = selectedAlbumTitles,
-                        coverLabel = coverStatusLabel,
-                    )
-
                     localMessage?.let { message ->
                         BackendInlineNotice(
                             text = message,
@@ -375,11 +438,20 @@ fun CreatePostScreen(
                     CreatePostMediaPreviewSection(
                         items = postMediaListItems,
                         coverMediaId = resolvedCoverMediaId,
+                        onAddMedia = { showPhotoFeedPicker = true },
+                        onRemoveMedia = { mediaId ->
+                            selectedSystemMediaItems = selectedSystemMediaItems.filterNot { it.id == mediaId }
+                            selectedAppMediaItems = selectedAppMediaItems.filterNot { it.mediaId == mediaId }
+                            val remainingIds = selectedSystemMediaItems.map { it.id } + selectedAppMediaItems.map { it.mediaId }
+                            if (selectedCoverMediaId == mediaId) {
+                                selectedCoverMediaId = remainingIds.firstOrNull()
+                            }
+                        },
                         onOpenAll = { showPostMediaList = true },
                     )
 
                     CreatePostSection(
-                        title = "写下这条记忆",
+                        title = "标题和简介",
                     ) {
                         OutlinedTextField(
                             value = title,
@@ -388,7 +460,7 @@ fun CreatePostScreen(
                             singleLine = true,
                             enabled = !isSubmitting,
                             label = { Text("标题") },
-                            placeholder = { Text("给这条记忆起个名字") },
+                            placeholder = { Text("输入标题") },
                         )
                         Spacer(modifier = Modifier.size(4.dp))
                         OutlinedTextField(
@@ -397,43 +469,52 @@ fun CreatePostScreen(
                             modifier = Modifier.fillMaxWidth(),
                             minLines = 4,
                             enabled = !isSubmitting,
-                            label = { Text("简介 / 摘要") },
-                            placeholder = { Text("写一点背景、感受或想留给以后看的话") },
+                            label = { Text("简介") },
+                            placeholder = { Text("输入简介") },
                         )
                     }
 
                     CreatePostSection(
                         title = "选择所属大相册",
-                        subtitle = if (selectedAlbumIds.isEmpty()) {
-                            "请选择一个父大相册后再发布。"
-                        } else {
-                            "当前父大相册：${selectedAlbumTitles.firstOrNull() ?: "未选择"}"
-                        },
                     ) {
                         if (seedState.albums.isEmpty()) {
                             BackendInlineNotice(text = "当前没有可选相册。")
                         } else {
                             Row(
-                                modifier = Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                seedState.albums.forEach { album ->
-                                    SelectableAlbumChip(
-                                        title = album.title,
-                                        selected = selectedAlbumIds.contains(album.id),
-                                        onClick = { toggleAlbum(album.id) },
-                                    )
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    seedState.albums.forEach { album ->
+                                        SelectableAlbumChip(
+                                            title = album.title,
+                                            selected = selectedAlbumIds.contains(album.id),
+                                            onClick = { toggleAlbum(album.id) },
+                                        )
+                                    }
                                 }
+                                AlbumIconAction(
+                                    icon = Icons.Rounded.Menu,
+                                    contentDescription = "全部大相册",
+                                    containerColor = colors.primaryContainer.copy(alpha = 0.78f),
+                                    contentColor = colors.titleAccent,
+                                    onClick = { showAlbumDirectory = true },
+                                )
                             }
                         }
                     }
-
-                    CreatePostPublishSummary(
-                        mediaCount = postMediaListItems.size,
-                        coverLabel = coverStatusLabel,
-                        albumTitles = selectedAlbumTitles,
-                        displayTimeMillis = displayTimeMillis,
-                    )
+                    CreatePostSection(title = "时间") {
+                        Text(
+                            text = formatCreatePostTime(displayTimeMillis),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -442,7 +523,7 @@ fun CreatePostScreen(
                     ) {
                         CreatePostActionButton(
                             text = "取消",
-                            onClick = onBack,
+                            onClick = ::handleClose,
                             enabled = !isSubmitting,
                         )
                         CreatePostActionButton(
@@ -456,6 +537,42 @@ fun CreatePostScreen(
                 }
             }
         }
+    }
+
+    if (showDiscardConfirm) {
+        val dialogColors = YingShiThemeTokens.colors
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            containerColor = dialogColors.raisedSurface,
+            titleContentColor = dialogColors.titleAccent,
+            textContentColor = dialogColors.textSecondary,
+            title = {
+                Text(
+                    text = "放弃这次创建？",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+            },
+            text = {
+                Text("已经选好的照片、标题和简介会一起丢失。")
+            },
+            confirmButton = {
+                TrashDialogActionButton(
+                    text = "放弃退出",
+                    danger = true,
+                    onClick = {
+                        showDiscardConfirm = false
+                        onBack()
+                    },
+                )
+            },
+            dismissButton = {
+                TrashDialogActionButton(
+                    text = "继续编辑",
+                    emphasized = true,
+                    onClick = { showDiscardConfirm = false },
+                )
+            },
+        )
     }
 }
 
@@ -487,60 +604,10 @@ private fun CreatePostTopBar(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "写一条记忆",
+                text = "新建小相册",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
             )
-            Text(
-                text = if (mediaCount > 0) {
-                    "整理 $mediaCount 项媒体"
-                } else {
-                    "先写内容，之后可继续补媒体"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CreatePostMemoryHeader(
-    mediaCount: Int,
-    albumTitles: List<String>,
-    coverLabel: String,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = colors.softGreenContainer.copy(alpha = 0.66f),
-        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = "准备创建",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CreatePostInfoChip(text = "媒体 $mediaCount 项")
-                CreatePostInfoChip(text = "封面：$coverLabel")
-                CreatePostInfoChip(
-                    text = if (albumTitles.isEmpty()) {
-                        "未选择相册"
-                    } else {
-                        "相册：${albumTitles.take(2).joinToString("、")}${if (albumTitles.size > 2) "等" else ""}"
-                    },
-                )
-            }
         }
     }
 }
@@ -556,7 +623,7 @@ private fun CreatePostSection(
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = colors.titleAccent,
             )
             if (!subtitle.isNullOrBlank()) {
@@ -568,25 +635,6 @@ private fun CreatePostSection(
             }
         }
         content()
-    }
-}
-
-@Composable
-private fun CreatePostInfoChip(
-    text: String,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = colors.raisedSurface.copy(alpha = 0.74f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = colors.textSecondary,
-        )
     }
 }
 
@@ -628,31 +676,36 @@ private fun SelectableAlbumChip(
 private fun CreatePostMediaPreviewSection(
     items: List<PostMediaListItem>,
     coverMediaId: String?,
+    onAddMedia: () -> Unit,
+    onRemoveMedia: (String) -> Unit,
     onOpenAll: () -> Unit,
 ) {
     CreatePostSection(
         title = "媒体",
-        subtitle = if (items.isEmpty()) "当前没有预选媒体。" else null,
     ) {
         val colors = YingShiThemeTokens.colors
-        if (items.isEmpty()) {
-            BackendInlineNotice(text = "当前没有媒体，创建后可在小相册设置中继续管理。")
-            return@CreatePostSection
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "已选 ${items.size} 项 · ${createPostCoverLabel(items, coverMediaId)}",
-                style = MaterialTheme.typography.bodySmall,
+                text = if (items.isEmpty()) "还没有选媒体" else "已选 ${items.size} 项",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.textSecondary,
+                modifier = Modifier.weight(1f),
             )
-            CreatePostActionButton(text = "全部", onClick = onOpenAll)
+            AlbumIconAction(
+                icon = Icons.Rounded.Add,
+                contentDescription = "添加媒体",
+                containerColor = colors.softGreenContainer.copy(alpha = 0.92f),
+                contentColor = colors.softGreenAction,
+                onClick = onAddMedia,
+            )
         }
+        val previewItems = items.take(5)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items.take(4).chunked(2).forEach { rowItems ->
+            previewItems.chunked(3).forEachIndexed { rowIndex, rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -670,6 +723,20 @@ private fun CreatePostMediaPreviewSection(
                                 modifier = Modifier.fillMaxSize(),
                                 requestSize = 640,
                             )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(28.dp),
+                            ) {
+                                AlbumIconAction(
+                                    icon = Icons.Default.Close,
+                                    contentDescription = "移出媒体",
+                                    containerColor = Color.Black.copy(alpha = 0.58f),
+                                    contentColor = Color.White,
+                                    onClick = { onRemoveMedia(item.id) },
+                                )
+                            }
                             if (item.id == coverMediaId) {
                                 Surface(
                                     modifier = Modifier
@@ -688,69 +755,53 @@ private fun CreatePostMediaPreviewSection(
                             }
                         }
                     }
-                    if (rowItems.size == 1) {
+                    if (rowIndex == 1 && previewItems.size < 6) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+                                .background(colors.sectionBackground.copy(alpha = 0.56f))
+                                .clickable(onClick = onOpenAll),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "全部",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = colors.textSecondary,
+                            )
+                        }
+                    }
+                    repeat((3 - rowItems.size - if (rowIndex == 1 && previewItems.size < 6) 1 else 0).coerceAtLeast(0)) {
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun CreatePostPublishSummary(
-    mediaCount: Int,
-    coverLabel: String,
-    albumTitles: List<String>,
-    displayTimeMillis: Long,
-) {
-    CreatePostSection(title = "发布信息") {
-        val colors = YingShiThemeTokens.colors
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-            color = colors.raisedSurface.copy(alpha = 0.90f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
-        ) {
-            Column(
-                modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CreatePostSummaryRow(label = "媒体", value = if (mediaCount > 0) "$mediaCount 项" else "无媒体")
-                CreatePostSummaryRow(label = "封面", value = coverLabel)
-                CreatePostSummaryRow(
-                    label = "相册",
-                    value = albumTitles.ifEmpty { listOf("未选择") }.joinToString("、"),
-                )
-                CreatePostSummaryRow(label = "时间", value = formatCreatePostTime(displayTimeMillis))
+            if (previewItems.size <= 3) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
+                            .background(colors.sectionBackground.copy(alpha = 0.56f))
+                            .clickable(onClick = onOpenAll),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "全部",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.textSecondary,
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun CreatePostSummaryRow(
-    label: String,
-    value: String,
-) {
-    val colors = YingShiThemeTokens.colors
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(48.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
-        )
-        Text(
-            text = value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.textSecondary,
-        )
     }
 }
 
@@ -818,13 +869,15 @@ private suspend fun loadCreatePostUiState(
     val defaultCoverId = initialItems.firstOrNull()?.id
     if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
         val albums = FakeAlbumRepository.getAlbums()
+        val defaultAlbumId = route.initialAlbumId?.takeIf { initialId -> albums.any { it.id == initialId } }
+            ?: albums.firstOrNull()?.id
         return CreatePostUiState(
             isLoading = false,
             albums = albums,
             title = "",
             summary = "",
             displayTimeMillis = defaultDisplayTime,
-            selectedAlbumIds = albums.firstOrNull()?.id?.let(::listOf).orEmpty(),
+            selectedAlbumIds = defaultAlbumId?.let(::listOf).orEmpty(),
             initialMediaItems = initialItems,
             selectedCoverSourceMediaId = defaultCoverId,
         )
@@ -843,11 +896,13 @@ private suspend fun loadCreatePostUiState(
     return when (val result = RepositoryProvider.albumRepository.getAlbums()) {
         is ApiResult.Success -> {
             val albums = result.data.map { it.toAlbumSummaryUiModel() }
+            val defaultAlbumId = route.initialAlbumId?.takeIf { initialId -> albums.any { it.id == initialId } }
+                ?: albums.firstOrNull()?.id
             CreatePostUiState(
                 isLoading = false,
                 albums = albums,
                 displayTimeMillis = defaultDisplayTime,
-                selectedAlbumIds = albums.firstOrNull()?.id?.let(::listOf).orEmpty(),
+                selectedAlbumIds = defaultAlbumId?.let(::listOf).orEmpty(),
                 initialMediaItems = initialItems,
                 selectedCoverSourceMediaId = defaultCoverId,
             )

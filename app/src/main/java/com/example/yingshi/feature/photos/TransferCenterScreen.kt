@@ -146,7 +146,7 @@ fun TransferCenterScreen(
                     TransferOperationCard(
                         tasks = group,
                         onRetryTask = { taskId -> LocalSystemMediaBridgeRepository.retryUploadTask(context, taskId) },
-                        onCancelTask = LocalSystemMediaBridgeRepository::cancelUploadTask,
+                        onCancelOperation = LocalSystemMediaBridgeRepository::cancelUploadOperation,
                         onClearTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
                         onOpen = { onOpenTaskMedia(it) },
                     )
@@ -188,7 +188,7 @@ private fun TransferEmptyState() {
 private fun TransferOperationCard(
     tasks: List<SystemMediaUploadTaskUiModel>,
     onRetryTask: (String) -> Unit,
-    onCancelTask: (String) -> Unit,
+    onCancelOperation: (String) -> Unit,
     onClearTask: (String) -> Unit,
     onOpen: (SystemMediaUploadTaskUiModel) -> Unit,
 ) {
@@ -341,9 +341,9 @@ private fun TransferOperationCard(
                 }
                 runningTasks.firstOrNull()?.let { task ->
                     TransferActionPill(
-                        text = if (runningTasks.size > 1) "取消当前项" else "取消",
+                        text = if (runningTasks.size > 1) "取消全部" else "取消",
                         emphasized = false,
-                        onClick = { onCancelTask(task.taskId) },
+                        onClick = { onCancelOperation(task.operationId) },
                     )
                 }
                 if (allTerminal) {

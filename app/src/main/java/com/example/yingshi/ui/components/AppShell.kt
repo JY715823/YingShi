@@ -18,17 +18,17 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
@@ -121,7 +121,7 @@ fun ShellPage(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Rounded.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "返回",
                         tint = colors.titleAccent,
                         modifier = Modifier.size(20.dp),
@@ -224,30 +224,43 @@ private fun FloatingBottomBar(
     onCenterAction: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.appBackground)
-            .windowInsetsPadding(WindowInsets.navigationBars),
-        shape = RoundedCornerShape(0.dp),
-        color = colors.appBackground.copy(alpha = 0.98f),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = BorderStroke(0.dp, Color.Transparent),
+            .navigationBarsPadding(),
     ) {
-        Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(68.dp),
+                shape = RoundedCornerShape(0.dp),
+                color = colors.appBackground.copy(alpha = 0.99f),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                border = BorderStroke(0.dp, Color.Transparent),
+            ) {}
             Box(
                 modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 2.dp)
                     .fillMaxWidth()
                     .height(1.dp)
                     .background(colors.dividerSoft.copy(alpha = 0.72f)),
             )
             Row(
                 modifier = Modifier
-                    .height(62.dp)
+                    .align(Alignment.TopCenter)
+                    .offset(y = 5.dp)
+                    .height(64.dp)
                     .fillMaxWidth()
-                    .background(colors.appBackground.copy(alpha = 0.98f))
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -261,7 +274,12 @@ private fun FloatingBottomBar(
                     )
                 }
 
-                Box(modifier = Modifier.weight(0.78f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .weight(0.86f)
+                        .height(58.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     CenterAddButton(onClick = onCenterAction)
                 }
 
@@ -307,8 +325,8 @@ private fun BottomNavItem(
 
     Surface(
         modifier = modifier
-            .padding(horizontal = 2.dp, vertical = 5.dp)
-            .height(50.dp)
+            .padding(horizontal = 2.dp)
+            .height(56.dp)
             .yingShiClickable(shape = shape, onClick = onClick),
         shape = shape,
         color = containerColor,
@@ -322,12 +340,12 @@ private fun BottomNavItem(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 2.dp, vertical = 5.dp),
+                .padding(horizontal = 2.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(1.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Box(
-                modifier = Modifier.size(27.dp),
+                modifier = Modifier.size(28.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -335,7 +353,7 @@ private fun BottomNavItem(
                     contentDescription = destination.label,
                     tint = contentColor,
                     modifier = Modifier
-                        .size(21.dp)
+                        .size(23.dp)
                         .graphicsLayer {
                             scaleX = itemScale
                             scaleY = itemScale
@@ -357,23 +375,23 @@ private fun BottomNavItem(
 @Composable
 private fun CenterAddButton(onClick: () -> Unit) {
     val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(14.dp)
+    val shape = CircleShape
 
     Surface(
         modifier = Modifier
-            .size(42.dp)
+            .size(56.dp)
             .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
         shape = shape,
-        color = colors.softGreenContainer.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-        shadowElevation = 0.dp,
+        color = colors.softGreenContainer.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.20f)),
+        shadowElevation = 2.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "添加",
                 tint = colors.titleAccent,
-                modifier = Modifier.size(25.dp),
+                modifier = Modifier.size(46.dp),
             )
         }
     }

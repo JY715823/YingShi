@@ -40,6 +40,22 @@ data class PhotoFeedSelectionState(
     }
 
     fun clear(): PhotoFeedSelectionState = PhotoFeedSelectionState()
+
+    fun visibleWithin(visibleMediaIds: Set<String>): PhotoFeedSelectionState {
+        return copy(
+            selectedMediaIds = selectedMediaIds.filterTo(linkedSetOf()) { it in visibleMediaIds },
+        )
+    }
+
+    fun without(mediaIds: Set<String>): PhotoFeedSelectionState {
+        if (mediaIds.isEmpty()) return this
+        val remainingIds = selectedMediaIds - mediaIds
+        return if (remainingIds.isEmpty()) {
+            clear()
+        } else {
+            copy(selectedMediaIds = remainingIds)
+        }
+    }
 }
 
 @Immutable
@@ -53,6 +69,13 @@ data class PhotoFeedScrubberAnchor(
     val blockKey: String,
     val itemIndex: Int,
     val label: String,
+    val timeMillis: Long,
+)
+
+@Immutable
+data class PhotoFeedScrubberYearMarker(
+    val year: Int,
+    val progress: Float,
 )
 
 @Immutable

@@ -45,6 +45,7 @@ fun SettingsScreen(
     route: SettingsRoute,
     onBack: () -> Unit,
     onOpenBackendDiagnostics: (BackendDiagnosticsRoute) -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -84,6 +85,12 @@ fun SettingsScreen(
                 title = "登录状态",
                 subtitle = "用于同步相册、通知和生活记录。",
                 value = loginStatusValue,
+            )
+            SettingsEntryRow(
+                title = "退出登录",
+                subtitle = "清除当前账号会话",
+                destructive = true,
+                onClick = onLogout,
             )
         }
 
@@ -401,6 +408,7 @@ private fun SettingsInfoRow(
 private fun SettingsEntryRow(
     title: String,
     subtitle: String,
+    destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -412,8 +420,19 @@ private fun SettingsEntryRow(
             .fillMaxWidth()
             .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
-        color = colors.softGreenContainer.copy(alpha = 0.54f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.48f)),
+        color = if (destructive) {
+            colors.memoryContainer.copy(alpha = 0.70f)
+        } else {
+            colors.softGreenContainer.copy(alpha = 0.54f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (destructive) {
+                colors.memoryAccent.copy(alpha = 0.18f)
+            } else {
+                colors.dividerSoft.copy(alpha = 0.48f)
+            },
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -429,7 +448,7 @@ private fun SettingsEntryRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.textPrimary,
+                    color = if (destructive) colors.memoryAccent else colors.textPrimary,
                 )
                 Text(
                     text = subtitle,
@@ -440,7 +459,7 @@ private fun SettingsEntryRow(
             Text(
                 text = ">",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.softGreenAction,
+                color = if (destructive) colors.memoryAccent else colors.softGreenAction,
             )
         }
     }
@@ -488,6 +507,7 @@ private fun SettingsScreenPreview() {
             route = SettingsRoute(),
             onBack = { },
             onOpenBackendDiagnostics = { },
+            onLogout = { },
         )
     }
 }

@@ -181,6 +181,11 @@ fun CommentListItem(
     val density = LocalDensity.current
     val textColor = if (darkMode) Color.White.copy(alpha = 0.86f) else MaterialTheme.colorScheme.onSurface
     val metaColor = if (darkMode) Color.White.copy(alpha = 0.58f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val authorColor = if (darkMode) {
+        Color.White.copy(alpha = 0.94f)
+    } else {
+        YingShiThemeTokens.colors.goldAccent.copy(alpha = 0.96f)
+    }
     val activeBackground = when {
         selectionMode && darkMode -> Color.White.copy(alpha = 0.10f)
         selectionMode -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
@@ -229,11 +234,22 @@ fun CommentListItem(
                 .padding(horizontal = spacing.sm, vertical = spacing.xs),
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            Text(
-                text = "${comment.author} · $timeLabel",
-                style = MaterialTheme.typography.labelMedium,
-                color = metaColor,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Text(
+                    text = comment.author,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = authorColor,
+                )
+                Text(
+                    text = timeLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = metaColor,
+                )
+            }
 
             when {
                 isEditing -> {

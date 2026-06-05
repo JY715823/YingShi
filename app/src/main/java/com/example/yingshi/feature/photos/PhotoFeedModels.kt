@@ -20,6 +20,7 @@ data class PhotoFeedSourceEntry(
     val mediaId: String,
     val mediaDisplayTimeMillis: Long,
     val smallAlbumId: String?,
+    val uploadedByUserId: String? = null,
     val palette: PhotoThumbnailPalette,
     val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
@@ -41,6 +42,7 @@ data class PhotoFeedItem(
     val displayDay: Int,
     val commentCount: Int,
     val smallAlbumIds: List<String>,
+    val uploadedByUserId: String? = null,
     val palette: PhotoThumbnailPalette,
     val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
@@ -71,14 +73,36 @@ sealed interface PhotoFeedBlock {
 data class PhotoFeedSectionHeader(
     override val key: String,
     val title: String,
+    val anchorTimeMillis: Long? = null,
 ) : PhotoFeedBlock
 
 data class PhotoFeedDayHeader(
     override val key: String,
     val title: String,
+    val scrubberLabel: String = title,
+    val anchorTimeMillis: Long? = null,
 ) : PhotoFeedBlock
 
 data class PhotoFeedGridRow(
     override val key: String,
     val items: List<PhotoFeedItem>,
+) : PhotoFeedBlock
+
+data class PhotoFeedTimeBucketHeader(
+    override val key: String,
+    val title: String,
+    val scrubberLabel: String,
+    val bucketHours: Int,
+    val anchorTimeMillis: Long,
+    val currentCount: Int = 0,
+    val partnerCount: Int = 0,
+) : PhotoFeedBlock
+
+data class PhotoFeedCollaboratorHeader(
+    override val key: String,
+    val identity: CollaboratorIdentityUiModel,
+) : PhotoFeedBlock
+
+data class PhotoFeedCollaboratorDivider(
+    override val key: String,
 ) : PhotoFeedBlock

@@ -1,5 +1,7 @@
 package com.example.yingshi.ui.theme
 
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
@@ -58,9 +60,30 @@ data class YingShiColors(
     val viewerTextSecondary: Color = YingShiViewerTextSecondary,
 )
 
+@Immutable
+data class YingShiMotion(
+    val tapMillis: Int = 150,
+    val stateMillis: Int = 180,
+    val floatingMillis: Int = 220,
+    val viewerTransitionMillis: Int = 320,
+    val viewerNoticeMillis: Int = 240,
+    val viewerNoticeVisibleMillis: Int = 1600,
+    val commentPreviewMillis: Int = 240,
+    val memoryGlowMillis: Int = 1100,
+    val mediaFadeMillis: Int = 180,
+    val pressedScale: Float = 0.965f,
+    val selectedMediaScale: Float = 0.972f,
+    val mediaEnterScale: Float = 0.985f,
+    val ambientGlowAlpha: Float = 0.18f,
+    val feedAtmosphereAlpha: Float = 0.34f,
+    val memorySweepAlpha: Float = 0.18f,
+    val easing: Easing = FastOutSlowInEasing,
+)
+
 internal val LocalYingShiSpacing = staticCompositionLocalOf { YingShiSpacing() }
 internal val LocalYingShiRadius = staticCompositionLocalOf { YingShiRadius() }
 internal val LocalYingShiColors = staticCompositionLocalOf { YingShiColors() }
+internal val LocalYingShiMotion = staticCompositionLocalOf { YingShiMotion() }
 
 object YingShiThemeTokens {
     val spacing: YingShiSpacing
@@ -77,4 +100,9 @@ object YingShiThemeTokens {
         @Composable
         @ReadOnlyComposable
         get() = LocalYingShiColors.current
+
+    val motion: YingShiMotion
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalYingShiMotion.current
 }

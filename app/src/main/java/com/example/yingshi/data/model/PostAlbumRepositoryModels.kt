@@ -5,6 +5,8 @@ data class RemotePostSummary(
     val title: String,
     val summary: String,
     val contributorLabel: String?,
+    val creatorUserId: String? = null,
+    val participantUserIds: List<String> = emptyList(),
     val displayTimeMillis: Long,
     val eventStartedAtMillis: Long? = null,
     val eventEndedAtMillis: Long? = null,
@@ -44,6 +46,7 @@ data class RemotePostMedia(
     val capturedAtMillis: Long? = null,
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
+    val uploadedByUserId: String? = null,
 )
 
 data class RemotePostDetail(
@@ -51,6 +54,8 @@ data class RemotePostDetail(
     val title: String,
     val summary: String,
     val contributorLabel: String?,
+    val creatorUserId: String? = null,
+    val participantUserIds: List<String> = emptyList(),
     val displayTimeMillis: Long,
     val eventStartedAtMillis: Long? = null,
     val eventEndedAtMillis: Long? = null,

@@ -12,6 +12,7 @@ import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
+import com.example.yingshi.data.model.RemoteLifeConsoleHistory
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
@@ -215,6 +216,11 @@ interface LifeConsoleRepository {
         date: String? = null,
         zoneId: String = "Asia/Shanghai",
     ): ApiResult<RemoteLifeConsoleToday>
+
+    suspend fun getHistory(
+        zoneId: String = "Asia/Shanghai",
+        limitDays: Int = 60,
+    ): ApiResult<RemoteLifeConsoleHistory>
 
     suspend fun addMedia(
         category: String,

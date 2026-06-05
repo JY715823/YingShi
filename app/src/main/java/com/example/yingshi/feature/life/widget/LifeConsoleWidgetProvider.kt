@@ -19,12 +19,15 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.life.LifeMediaQuickViewerActivity
 import com.example.yingshi.feature.life.WidgetMediaEntryActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 
@@ -101,16 +104,47 @@ internal object LifeConsoleWidgetController {
         when (action) {
             ACTION_REFRESH -> fetchAndUpdateAll(context)
             ACTION_BOWEL_ADD -> widgetScope.launch {
-                LifeConsoleWidgetStore.saveStatus(context, "记录中")
+                val restoredSnapshot = LifeConsoleWidgetStore.updateBowelOptimistically(context, delta = 1)
+                LifeConsoleWidgetStore.saveStatus(context, "已记录")
                 renderAllFromStore(context)
-                RepositoryProvider.lifeConsoleRepository.addBowelEvent()
-                fetchAndUpdateAll(context)
+                when (val result = RepositoryProvider.lifeConsoleRepository.addBowelEvent()) {
+                    is ApiResult.Success -> {
+                        LifeConsoleWidgetStore.loadSnapshot(context)?.let { snapshot ->
+                            LifeConsoleWidgetStore.saveSnapshot(context, snapshot.copy(bowel = result.data.bowel))
+                        }
+                        LifeConsoleWidgetStore.saveStatus(context, updateStatus("已同步"))
+                        renderAllFromStore(context)
+                    }
+                    is ApiResult.Error -> {
+                        if (restoredSnapshot != null) {
+                            LifeConsoleWidgetStore.restoreSnapshot(context, restoredSnapshot)
+                        }
+                        LifeConsoleWidgetStore.saveStatus(context, "记录失败")
+                        renderAllFromStore(context)
+                    }
+                    ApiResult.Loading -> Unit
+                }
             }
             ACTION_BOWEL_REMOVE -> widgetScope.launch {
-                LifeConsoleWidgetStore.saveStatus(context, "删除中")
+                val restoredSnapshot = LifeConsoleWidgetStore.updateBowelOptimistically(context, delta = -1)
+                    ?: return@launch
+                LifeConsoleWidgetStore.saveStatus(context, "已删除")
                 renderAllFromStore(context)
-                RepositoryProvider.lifeConsoleRepository.deleteLatestBowelEvent()
-                fetchAndUpdateAll(context)
+                when (val result = RepositoryProvider.lifeConsoleRepository.deleteLatestBowelEvent()) {
+                    is ApiResult.Success -> {
+                        LifeConsoleWidgetStore.loadSnapshot(context)?.let { snapshot ->
+                            LifeConsoleWidgetStore.saveSnapshot(context, snapshot.copy(bowel = result.data.bowel))
+                        }
+                        LifeConsoleWidgetStore.saveStatus(context, updateStatus("已同步"))
+                        renderAllFromStore(context)
+                    }
+                    is ApiResult.Error -> {
+                        LifeConsoleWidgetStore.restoreSnapshot(context, restoredSnapshot)
+                        LifeConsoleWidgetStore.saveStatus(context, "删除失败")
+                        renderAllFromStore(context)
+                    }
+                    ApiResult.Loading -> Unit
+                }
             }
             ACTION_SLOT_PREV -> {
                 if (slotKey != null) {
@@ -145,7 +179,7 @@ internal object LifeConsoleWidgetController {
         LifeConsoleWidgetStore.saveStatus(context, "同步中")
         renderAllFromStore(context)
         widgetScope.launch {
-            when (val result = RepositoryProvider.lifeConsoleRepository.getToday()) {
+            when (val result = RepositoryProvider.lifeConsoleRepository.getToday(date = widgetTodayDate())) {
                 is ApiResult.Success -> {
                     LifeConsoleWidgetStore.saveSnapshot(context, result.data)
                     LifeConsoleWidgetStore.saveStatus(context, updateStatus("更新"))
@@ -279,17 +313,28 @@ internal object LifeConsoleWidgetController {
         setOnClickPendingIntent(views.nextId, slotIntent(context, ACTION_SLOT_NEXT, slotKey, views.nextId))
 
         if (views.openId != null) {
-            setOnClickPendingIntent(
-                views.openId,
-                openMainIntent(
-                    context = context,
-                    action = AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE,
-                    lane = laneFor(slotKey),
-                    requestCode = requestCodeFor(slotKey, views.openId),
-                    slotKey = slotKey,
-                    mediaId = media?.mediaId,
-                ),
-            )
+            if (media != null) {
+                setOnClickPendingIntent(
+                    views.openId,
+                    openMediaViewer(
+                        context = context,
+                        media = media,
+                        lane = laneFor(slotKey),
+                        requestCode = requestCodeFor(slotKey, views.openId),
+                    ),
+                )
+            } else {
+                setOnClickPendingIntent(
+                    views.openId,
+                    widgetBroadcast(
+                        context = context,
+                        providerClass = providerClassFor(slotKey),
+                        lane = laneFor(slotKey),
+                        action = ACTION_REFRESH,
+                        requestCode = requestCodeFor(slotKey, views.openId),
+                    ),
+                )
+            }
         }
         if (views.uploadId != null) {
             setOnClickPendingIntent(
@@ -399,7 +444,25 @@ internal object LifeConsoleWidgetController {
         val intent = Intent(context, WidgetMediaEntryActivity::class.java).apply {
             data = Uri.parse("yingshi://widget/$lane/upload/$requestCode/$category")
             putExtra(LifeConsoleWidgetProvider.EXTRA_CATEGORY, category)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+        }
+        return PendingIntent.getActivity(
+            context,
+            resolvedRequestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun openMediaViewer(
+        context: Context,
+        media: RemoteMedia,
+        lane: String,
+        requestCode: Int,
+    ): PendingIntent {
+        val resolvedRequestCode = widgetRequestCode(lane, requestCode)
+        val intent = LifeMediaQuickViewerActivity.widgetIntent(context, media).apply {
+            data = Uri.parse("yingshi://widget/$lane/view/$requestCode/${media.mediaId}")
         }
         return PendingIntent.getActivity(
             context,
@@ -467,6 +530,10 @@ internal object LifeConsoleWidgetController {
         } else {
             LifeConsoleWidgetProvider::class.java
         }
+    }
+
+    private fun widgetTodayDate(zoneId: String = "Asia/Shanghai"): String {
+        return LocalDate.now(ZoneId.of(zoneId)).toString()
     }
 
     private fun widgetRequestCode(lane: String, requestCode: Int): Int {

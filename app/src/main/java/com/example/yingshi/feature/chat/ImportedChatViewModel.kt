@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.chat
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -25,6 +26,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flatMapLatest
@@ -123,50 +125,6 @@ class ImportedChatViewModel(
     private val repository: ImportedChatRepository = ImportedChatRepository(application),
 ) : AndroidViewModel(application) {
 
-    init {
-        viewModelScope.launch {
-            runCatching {
-                repository.hydrateFromRemoteIfNeeded()
-            }
-        }
-        viewModelScope.launch {
-            runCatching {
-                repository.ensurePresentationMaintenance()
-            }
-        }
-        viewModelScope.launch {
-            ChatImportRuntime.state.collect { runtimeState ->
-                isImporting.value = runtimeState.isRunning
-                importProgress.value = runtimeState.progress
-                runtimeState.error?.let {
-                    message.value = it
-                    ChatImportRuntime.clearTerminalState()
-                }
-                runtimeState.message?.let { summary ->
-                    val importedChatId = runtimeState.importedChatId
-                    if (importedChatId != null) {
-                        selectedChatId.value = importedChatId
-                        pendingJumpMessageLocalId.value = null
-                        pendingJumpScrollOffset.value = 0
-                        highlightedMessageLocalId.value = null
-                        searchQuery.value = ""
-                        activeHighlightQuery.value = ""
-                        activeJumpContext.value = ChatJumpSource.LATEST
-                        currentSearchResultIndex.value = -1
-                        activeManagedChatId.value = null
-                        importInfoDialog.value = null
-                        deleteConfirmInfo.value = null
-                        returnAnchor.value = null
-                        showBackToLatest.value = false
-                        loadLatestWindow(importedChatId)
-                    }
-                    message.value = summary
-                    ChatImportRuntime.clearTerminalState()
-                }
-            }
-        }
-    }
-
     private val selectedChatId = MutableStateFlow<Long?>(null)
     private val searchQuery = MutableStateFlow("")
     private val isImporting = MutableStateFlow(false)
@@ -198,6 +156,10 @@ class ImportedChatViewModel(
     )
 
     val chats: StateFlow<List<ImportedChatSummary>> = repository.observeChatSummaries()
+        .catch {
+            message.value = "聊天记录加载失败，请稍后重试。"
+            emit(emptyList())
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -207,6 +169,11 @@ class ImportedChatViewModel(
     val selectedChatDetail: StateFlow<ImportedChatDetail?> = selectedChatId
         .flatMapLatest { chatId ->
             if (chatId == null) flowOf(null) else repository.observeChatDetail(chatId)
+        }
+        .catch {
+            message.value = "聊天详情加载失败。"
+            selectedChatId.value = null
+            emit(null)
         }
         .stateIn(
             scope = viewModelScope,
@@ -235,7 +202,12 @@ class ImportedChatViewModel(
         } else {
             repository.searchChatMessages(chatId, query)
         }
-    }.stateIn(
+    }
+        .catch {
+            message.value = "搜索聊天记录失败。"
+            emit(emptyList())
+        }
+        .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
@@ -373,21 +345,73 @@ class ImportedChatViewModel(
         initialValue = ImportedChatUiState(),
     )
 
+    init {
+        viewModelScope.launch {
+            runCatching {
+                repository.hydrateFromRemoteIfNeeded()
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                repository.ensurePresentationMaintenance()
+            }
+        }
+        viewModelScope.launch {
+            ChatImportRuntime.state.collect { runtimeState ->
+                isImporting.value = runtimeState.isRunning
+                importProgress.value = runtimeState.progress
+                runtimeState.error?.let {
+                    message.value = it
+                    ChatImportRuntime.clearTerminalState()
+                }
+                runtimeState.message?.let { summary ->
+                    val importedChatId = runtimeState.importedChatId
+                    if (importedChatId != null) {
+                        selectedChatId.value = importedChatId
+                        pendingJumpMessageLocalId.value = null
+                        pendingJumpScrollOffset.value = 0
+                        highlightedMessageLocalId.value = null
+                        searchQuery.value = ""
+                        activeHighlightQuery.value = ""
+                        activeJumpContext.value = ChatJumpSource.LATEST
+                        currentSearchResultIndex.value = -1
+                        activeManagedChatId.value = null
+                        importInfoDialog.value = null
+                        deleteConfirmInfo.value = null
+                        returnAnchor.value = null
+                        showBackToLatest.value = false
+                        loadLatestWindow(importedChatId)
+                    }
+                    message.value = summary
+                    ChatImportRuntime.clearTerminalState()
+                }
+            }
+        }
+    }
+
     fun openChat(chatId: Long) {
-        selectedChatId.value = chatId
-        pendingJumpMessageLocalId.value = null
-        pendingJumpScrollOffset.value = 0
-        highlightedMessageLocalId.value = null
-        searchQuery.value = ""
-        activeHighlightQuery.value = ""
-        activeJumpContext.value = null
-        currentSearchResultIndex.value = -1
-        activeManagedChatId.value = null
-        importInfoDialog.value = null
-        deleteConfirmInfo.value = null
-        pendingMessageAction.value = null
-        showBackToLatest.value = false
-        loadInitialWindow(chatId)
+        viewModelScope.launch {
+            val exists = runCatching { repository.hasImportedChat(chatId) }.getOrDefault(false)
+            if (!exists) {
+                message.value = "这个会话已经不存在，请重新导入。"
+                closeChat(persistAnchor = false)
+                return@launch
+            }
+            selectedChatId.value = chatId
+            pendingJumpMessageLocalId.value = null
+            pendingJumpScrollOffset.value = 0
+            highlightedMessageLocalId.value = null
+            searchQuery.value = ""
+            activeHighlightQuery.value = ""
+            activeJumpContext.value = null
+            currentSearchResultIndex.value = -1
+            activeManagedChatId.value = null
+            importInfoDialog.value = null
+            deleteConfirmInfo.value = null
+            pendingMessageAction.value = null
+            showBackToLatest.value = false
+            loadInitialWindow(chatId)
+        }
     }
 
     fun closeChat(anchor: ChatReadingAnchor? = null, persistAnchor: Boolean = true) {
@@ -430,6 +454,13 @@ class ImportedChatViewModel(
 
     fun importFromZip(uri: Uri, expectedChatId: Long? = null) {
         if (isImporting.value) return
+        val appContext = getApplication<Application>().applicationContext
+        runCatching {
+            appContext.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
         isImporting.value = true
         importProgress.value = ChatImportProgress(
             stage = "prepare",
@@ -438,6 +469,18 @@ class ImportedChatViewModel(
             total = 1,
         )
         message.value = null
+        ChatImportRuntime.startImport(
+            context = appContext,
+            uri = uri,
+            expectedChatId = expectedChatId,
+        )
+        runCatching {
+            ChatImportForegroundService.start(
+                context = appContext,
+                uri = uri,
+                expectedChatId = expectedChatId,
+            )
+        }
     }
 
     fun loadOlderPage() {
@@ -462,6 +505,8 @@ class ImportedChatViewModel(
                 } else {
                     selectedChatWindow.value = selectedChatWindow.value.copy(hasOlder = false)
                 }
+            }.onFailure {
+                message.value = "加载上一页失败。"
             }
             isLoadingOlderPage.value = false
         }
@@ -489,6 +534,8 @@ class ImportedChatViewModel(
                 } else {
                     selectedChatWindow.value = selectedChatWindow.value.copy(hasNewer = false)
                 }
+            }.onFailure {
+                message.value = "加载下一页失败。"
             }
             isLoadingNewerPage.value = false
         }
@@ -735,28 +782,14 @@ class ImportedChatViewModel(
                     runCatching {
                         selectedChatWindow.value = repository.loadLatestMessageWindow(chatId)
                     }.onFailure {
-                        selectedChatWindow.value = ImportedMessageWindow(
-                            items = emptyList(),
-                            startAnchor = null,
-                            endAnchor = null,
-                            hasOlder = false,
-                            hasNewer = false,
-                        )
-                        message.value = "加载聊天记录失败。"
+                        resetFailedChatWindow("加载聊天记录失败。")
                     }
                 }
             } else {
                 runCatching {
                     selectedChatWindow.value = repository.loadLatestMessageWindow(chatId)
                 }.onFailure {
-                    selectedChatWindow.value = ImportedMessageWindow(
-                        items = emptyList(),
-                        startAnchor = null,
-                        endAnchor = null,
-                        hasOlder = false,
-                        hasNewer = false,
-                    )
-                    message.value = "加载聊天记录失败。"
+                    resetFailedChatWindow("加载聊天记录失败。")
                 }
             }
             isLoadingChatWindow.value = false
@@ -771,17 +804,27 @@ class ImportedChatViewModel(
                 pendingJumpMessageLocalId.value = null
                 pendingJumpScrollOffset.value = 0
             }.onFailure {
-                selectedChatWindow.value = ImportedMessageWindow(
-                    items = emptyList(),
-                    startAnchor = null,
-                    endAnchor = null,
-                    hasOlder = false,
-                    hasNewer = false,
-                )
-                message.value = "加载聊天记录失败。"
+                resetFailedChatWindow("加载聊天记录失败。")
             }
             isLoadingChatWindow.value = false
         }
+    }
+
+    private fun resetFailedChatWindow(messageText: String) {
+        selectedChatWindow.value = ImportedMessageWindow(
+            items = emptyList(),
+            startAnchor = null,
+            endAnchor = null,
+            hasOlder = false,
+            hasNewer = false,
+        )
+        selectedChatId.value = null
+        pendingJumpMessageLocalId.value = null
+        pendingJumpScrollOffset.value = 0
+        highlightedMessageLocalId.value = null
+        activeJumpContext.value = null
+        showBackToLatest.value = false
+        message.value = messageText
     }
 
     private fun com.example.yingshi.feature.chat.data.ImportedMessage.toAnchor(): MessageWindowAnchor {

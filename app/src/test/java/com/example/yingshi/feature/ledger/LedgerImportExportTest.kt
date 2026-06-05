@@ -144,6 +144,8 @@ class LedgerImportExportTest {
         return LedgerTransaction(
             id = id,
             bookId = "book",
+            accountId = account?.id.orEmpty(),
+            toAccountId = toAccount?.id,
             category = category,
             account = account,
             toAccount = toAccount,

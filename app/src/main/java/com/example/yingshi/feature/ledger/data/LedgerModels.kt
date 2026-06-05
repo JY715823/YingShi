@@ -7,6 +7,7 @@ import java.time.ZoneId
 data class LedgerBook(
     val id: String,
     val name: String,
+    val creatorUserId: String? = null,
     val template: String,
     val currencyCode: String,
     val currencySymbol: String,
@@ -42,6 +43,8 @@ data class LedgerAccount(
 data class LedgerTransaction(
     val id: String,
     val bookId: String,
+    val accountId: String,
+    val toAccountId: String?,
     val category: LedgerCategory?,
     val account: LedgerAccount?,
     val toAccount: LedgerAccount?,
@@ -134,6 +137,7 @@ data class LedgerAccountDraft(
 data class LedgerBookDraft(
     val id: String? = null,
     val name: String,
+    val creatorUserId: String? = null,
     val template: String,
     val coverColor: Long,
 )
@@ -236,16 +240,22 @@ data class LedgerSearchFilter(
             if (!matchedType) return false
         }
         if (!categoryId.isNullOrBlank() && transaction.category?.id != categoryId) return false
-        if (!accountId.isNullOrBlank()) {
-            val matchedAccount = transaction.account?.id == accountId || transaction.toAccount?.id == accountId
-            if (!matchedAccount) return false
-        }
+        if (!accountId.isNullOrBlank() && !transaction.belongsToLedgerAccount(accountId)) return false
         val occurredDate = Instant.ofEpochMilli(transaction.occurredAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
         if (startDate != null && occurredDate.isBefore(startDate)) return false
         if (endDate != null && occurredDate.isAfter(endDate)) return false
         if (minAmountCents != null && transaction.amountCents < minAmountCents) return false
         if (maxAmountCents != null && transaction.amountCents > maxAmountCents) return false
         return true
+    }
+}
+
+fun LedgerTransaction.belongsToLedgerAccount(accountId: String): Boolean {
+    if (accountId.isBlank()) return false
+    return when (type) {
+        LedgerTransactionType.TRANSFER -> this.accountId == accountId || toAccountId == accountId
+        LedgerTransactionType.EXPENSE,
+        LedgerTransactionType.INCOME -> this.accountId == accountId
     }
 }
 
@@ -300,6 +310,7 @@ fun recurringFrequencyLabel(frequency: LedgerRecurringFrequency): String = when 
 fun LedgerBookEntity.toDomain() = LedgerBook(
     id = id,
     name = name,
+    creatorUserId = creatorUserId,
     template = template,
     currencyCode = currencyCode,
     currencySymbol = currencySymbol,

@@ -20,9 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CloudDone
-import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -42,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePartnerProfile
 import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.ui.components.YingShiIconBubble
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -52,7 +49,6 @@ private const val TEXT_USER_PENDING = "未加载用户"
 private const val TEXT_EMAIL_PENDING = "未获取账号"
 private const val TEXT_BIO_HINT = "进入个人主页后可以编辑昵称和简介。"
 private const val TEXT_PARTNER_HINT = "一起把平常日子慢慢收进这座小小相册。"
-private const val TITLE_SHARED_SPACE = "我们的小空间"
 
 @Composable
 fun MyScreen(
@@ -62,7 +58,6 @@ fun MyScreen(
     isLoggingOut: Boolean,
     onOpenProfile: () -> Unit,
     onLogout: () -> Unit,
-    onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCacheManagement: () -> Unit,
     modifier: Modifier = Modifier,
@@ -111,12 +106,6 @@ fun MyScreen(
                         color = colors.textSecondary,
                     )
                 }
-                YingShiIconBubble(
-                    icon = Icons.Rounded.Notifications,
-                    contentDescription = "通知",
-                    modifier = Modifier.size(62.dp),
-                    onClick = onOpenNotifications,
-                )
             }
 
             Column(
@@ -132,15 +121,15 @@ fun MyScreen(
                     onOpenProfile = onOpenProfile,
                 )
                 PartnerCard(partner = currentUser?.partner)
+                MyToolListCard(
+                    onOpenSettings = onOpenSettings,
+                    onOpenCacheManagement = onOpenCacheManagement,
+                )
                 AccountStatusCard(
                     currentUser = currentUser,
                     repositoryMode = repositoryMode,
                     isLoggingOut = isLoggingOut,
                     onLogout = onLogout,
-                )
-                MyToolListCard(
-                    onOpenSettings = onOpenSettings,
-                    onOpenCacheManagement = onOpenCacheManagement,
                 )
             }
         }
@@ -159,7 +148,6 @@ private fun SpaceIdentityCard(
     val displayName = currentUser?.displayName?.takeIf { it.isNotBlank() } ?: TEXT_USER_PENDING
     val account = currentUser?.account?.takeIf { it.isNotBlank() } ?: TEXT_EMAIL_PENDING
     val intro = currentUser?.bio?.takeIf { it.isNotBlank() } ?: TEXT_BIO_HINT
-    val libraryName = currentUser?.libraryDisplayName?.takeIf { it.isNotBlank() } ?: TITLE_SHARED_SPACE
 
     Surface(
         modifier = Modifier
@@ -229,46 +217,6 @@ private fun SpaceIdentityCard(
                     tint = colors.titleAccent,
                     modifier = Modifier.size(22.dp),
                 )
-            }
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(radius.lg),
-                color = colors.softGreenContainer.copy(alpha = 0.58f),
-                border = BorderStroke(1.dp, colors.softGreenContainer.copy(alpha = 0.92f)),
-            ) {
-                Row(
-                    modifier = Modifier.padding(spacing.md),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.md),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(shape = CircleShape, color = colors.raisedSurface.copy(alpha = 0.88f)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Group,
-                            contentDescription = null,
-                            tint = colors.titleAccent,
-                            modifier = Modifier.padding(14.dp).size(28.dp),
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = libraryName,
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.textPrimary,
-                        )
-                        Text(
-                            text = "2 人共享 · 128 个回忆",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textSecondary,
-                        )
-                        Text(
-                            text = "仅成员可见",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.memoryAccent,
-                        )
-                    }
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.titleAccent)
-                }
             }
         }
     }
@@ -533,7 +481,6 @@ private fun MyScreenPreview() {
             isLoggingOut = false,
             onOpenProfile = {},
             onLogout = {},
-            onOpenNotifications = {},
             onOpenSettings = {},
             onOpenCacheManagement = {},
         )

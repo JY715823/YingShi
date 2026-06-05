@@ -42,6 +42,7 @@ object FakePhotoFeedRepository {
                         .mapNotNull { it.smallAlbumId }
                         .filterNot { hiddenPostIds.contains(it) }
                         .distinct(),
+                    uploadedByUserId = latestEntry.uploadedByUserId,
                     palette = latestEntry.palette,
                     mediaType = latestEntry.mediaType,
                     aspectRatio = latestEntry.aspectRatio,
@@ -71,6 +72,7 @@ object FakePhotoFeedRepository {
                             mediaId = item.id,
                             mediaDisplayTimeMillis = item.displayTimeMillis,
                             smallAlbumId = postId,
+                            uploadedByUserId = fakeCurrentCollaboratorUserId(),
                             palette = item.palette,
                             mediaType = item.type.toAppMediaType(),
                             aspectRatio = item.aspectRatio,
@@ -136,7 +138,7 @@ object FakePhotoFeedRepository {
 
     private fun fakeSourceEntries(): List<PhotoFeedSourceEntry> {
         return buildList {
-            feedSeeds.forEach { seed ->
+            feedSeeds.forEachIndexed { index, seed ->
                 val postIds = seed.postIds.ifEmpty { listOf(null) }
                 postIds.forEach { postId ->
                     add(
@@ -150,6 +152,7 @@ object FakePhotoFeedRepository {
                                 minute = seed.minute,
                             ),
                             smallAlbumId = postId,
+                            uploadedByUserId = fakeCollaboratorUserIdForSeed(seed.mediaId, index),
                             palette = seed.palette,
                             mediaType = seed.mediaType,
                             aspectRatio = seed.aspectRatio,
@@ -363,4 +366,34 @@ object FakePhotoFeedRepository {
             SystemMediaType.VIDEO -> AppMediaType.VIDEO
         }
     }
+
+    private fun fakeCurrentCollaboratorUserId(): String? {
+        return rememberFakeCollaboratorIds().currentUserId
+    }
+
+    private fun fakeCollaboratorUserIdForSeed(
+        mediaId: String,
+        index: Int,
+    ): String? {
+        val collaborators = rememberFakeCollaboratorIds()
+        return when {
+            collaborators.currentUserId == null -> collaborators.partnerUserId
+            collaborators.partnerUserId == null -> collaborators.currentUserId
+            ((mediaId.hashCode() + index) and 1) == 0 -> collaborators.currentUserId
+            else -> collaborators.partnerUserId
+        }
+    }
+
+    private fun rememberFakeCollaboratorIds(): FakeCollaboratorIds {
+        val directory = CollaboratorDirectoryStore.snapshot(fallbackToFakeProfile = true)
+        return FakeCollaboratorIds(
+            currentUserId = directory.currentUser?.userId,
+            partnerUserId = directory.partner?.userId,
+        )
+    }
+
+    private data class FakeCollaboratorIds(
+        val currentUserId: String?,
+        val partnerUserId: String?,
+    )
 }
