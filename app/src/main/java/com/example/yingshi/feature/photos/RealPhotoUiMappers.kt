@@ -23,6 +23,7 @@ fun RemoteAlbum.toAlbumSummaryUiModel(): AlbumSummaryUiModel {
 fun RemotePostSummary.toAlbumPostCardUiModel(
     selectedAlbumId: String,
     coverMedia: RemotePostMedia? = null,
+    previewMedia: List<RemotePostMedia> = coverMedia?.let(::listOf).orEmpty(),
 ): AlbumPostCardUiModel {
     val palette = realPaletteFor(coverMediaId ?: postId)
     val resolvedCoverType = coverMedia?.toResolvedAppMediaType() ?: AppMediaType.IMAGE
@@ -40,6 +41,10 @@ fun RemotePostSummary.toAlbumPostCardUiModel(
         coverMediaType = resolvedCoverType,
         coverAspectRatio = coverMedia?.toResolvedAspectRatio(resolvedCoverType) ?: 1f,
         coverMediaSource = coverMedia?.toAppContentMediaSource(),
+        previewMedia = previewMedia
+            .distinctBy { it.mediaId }
+            .take(2)
+            .map { it.toAlbumPostPreviewMediaUiModel() },
     )
 }
 
@@ -229,6 +234,17 @@ fun RemotePostMedia.toPostDetailMediaUiModel(): PostDetailMediaUiModel {
         width = width,
         height = height,
         videoDurationMillis = videoDurationMillis,
+        mediaSource = toAppContentMediaSource(),
+    )
+}
+
+fun RemotePostMedia.toAlbumPostPreviewMediaUiModel(): AlbumPostPreviewMediaUiModel {
+    val resolvedType = toResolvedAppMediaType()
+    return AlbumPostPreviewMediaUiModel(
+        id = mediaId,
+        palette = realPaletteFor(mediaId),
+        mediaType = resolvedType,
+        aspectRatio = toResolvedAspectRatio(resolvedType),
         mediaSource = toAppContentMediaSource(),
     )
 }

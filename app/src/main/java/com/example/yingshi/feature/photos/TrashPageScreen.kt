@@ -2,6 +2,7 @@
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.scrollBy
@@ -66,6 +67,9 @@ fun TrashPageScreen(
     onSelectedTypeNameChange: (String) -> Unit = { },
     showPendingCleanup: Boolean = false,
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
+    selectionMode: Boolean = false,
+    selectedEntryIds: Set<String> = emptySet(),
+    onSelectionStateChange: (Boolean, Set<String>) -> Unit = { _, _ -> },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
     onRestoreTargetMediaIds: (List<String>) -> Unit = { },
     selectionExitNonce: Int = 0,
@@ -78,6 +82,9 @@ fun TrashPageScreen(
             onSelectedTypeNameChange = onSelectedTypeNameChange,
             showPendingCleanup = showPendingCleanup,
             onShowPendingCleanupChange = onShowPendingCleanupChange,
+            selectionMode = selectionMode,
+            selectedEntryIds = selectedEntryIds,
+            onSelectionStateChange = onSelectionStateChange,
             onOpenTrashDetail = onOpenTrashDetail,
             onRestoreTargetMediaIds = onRestoreTargetMediaIds,
             selectionExitNonce = selectionExitNonce,
@@ -109,11 +116,8 @@ fun TrashPageScreen(
     var pendingRestoreEntries by remember {
         mutableStateOf(emptyList<TrashEntryUiModel>())
     }
-    var selectionMode by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var selectedEntryIds by rememberSaveable {
-        mutableStateOf(emptySet<String>())
+    var previousSelectedTypeName by rememberSaveable {
+        mutableStateOf(selectedTypeName)
     }
     var savedSelectedCollaboratorUserIds by rememberSaveable(selectedTypeName) {
         mutableStateOf(emptyList<String>())
@@ -157,8 +161,10 @@ fun TrashPageScreen(
     val snackbarMessage = FakeTrashRepository.getSnackbarMessage()
 
     fun toggleSelection(entry: TrashEntryUiModel) {
-        selectionMode = true
-        selectedEntryIds = if (entry.id in selectedEntryIds) selectedEntryIds - entry.id else selectedEntryIds + entry.id
+        onSelectionStateChange(
+            true,
+            if (entry.id in selectedEntryIds) selectedEntryIds - entry.id else selectedEntryIds + entry.id,
+        )
     }
 
     fun restoreEntries(targetEntries: List<TrashEntryUiModel>) {
@@ -180,8 +186,7 @@ fun TrashPageScreen(
             successCount > 0 -> "已恢复 $successCount 项。"
             else -> "批量恢复失败，条目已保留。"
         }
-        selectedEntryIds = emptySet()
-        selectionMode = false
+        onSelectionStateChange(false, emptySet())
         if (firstRestoredMediaIds.isNotEmpty()) onRestoreTargetMediaIds(firstRestoredMediaIds)
     }
 
@@ -206,8 +211,7 @@ fun TrashPageScreen(
             successCount > 0 -> "$successPrefix $successCount 项。"
             else -> "$successPrefix 失败，条目已保留。"
         }
-        selectedEntryIds = emptySet()
-        selectionMode = false
+        onSelectionStateChange(false, emptySet())
     }
 
     fun requestDeleteFromTopBar() {
@@ -233,14 +237,15 @@ fun TrashPageScreen(
     }
 
     LaunchedEffect(selectedTypeName) {
-        selectedEntryIds = emptySet()
-        selectionMode = false
+        if (selectedTypeName != previousSelectedTypeName) {
+            onSelectionStateChange(false, emptySet())
+            previousSelectedTypeName = selectedTypeName
+        }
     }
 
     LaunchedEffect(selectionExitNonce) {
         if (selectionExitNonce > 0) {
-            selectedEntryIds = emptySet()
-            selectionMode = false
+            onSelectionStateChange(false, emptySet())
         }
     }
 
@@ -303,7 +308,7 @@ fun TrashPageScreen(
                 enabled = selectionMode,
                 hitTestAdapter = hitTestAdapter,
                 selectedIds = selectedEntryIds,
-                onSelectionChange = { selectedEntryIds = it },
+                onSelectionChange = { onSelectionStateChange(true, it) },
                 onAutoScroll = { delta -> mediaGridState.scrollBy(delta) },
             ),
             state = mediaGridState,
@@ -329,8 +334,7 @@ fun TrashPageScreen(
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
-                        selectedEntryIds = emptySet()
-                        selectionMode = false
+                        onSelectionStateChange(false, emptySet())
                     },
                     onRestoreCurrent = { requestRestoreFromTopBar() },
                     onRequestClearCurrent = { requestDeleteFromTopBar() },
@@ -372,20 +376,17 @@ fun TrashPageScreen(
                                 actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
                                 showActorBadge = showActorBadge,
                                 modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (selectionMode) {
-                                        toggleSelection(entry)
-                                    } else {
-                                        onOpenTrashDetail(
-                                            TrashDetailRoute(
-                                                entryId = entry.id,
-                                                entryType = entry.type,
-                                                sourcePostId = entry.sourcePostId,
-                                                sourceMediaId = entry.sourceMediaId,
-                                            ),
-                                        )
-                                    }
+                                onOpenDetail = {
+                                    onOpenTrashDetail(
+                                        TrashDetailRoute(
+                                            entryId = entry.id,
+                                            entryType = entry.type,
+                                            sourcePostId = entry.sourcePostId,
+                                            sourceMediaId = entry.sourceMediaId,
+                                        ),
+                                    )
                                 },
+                                onToggleSelection = { toggleSelection(entry) },
                                 onLongClick = { toggleSelection(entry) },
                             )
                         }
@@ -424,8 +425,7 @@ fun TrashPageScreen(
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
-                        selectedEntryIds = emptySet()
-                        selectionMode = false
+                        onSelectionStateChange(false, emptySet())
                     },
                     onRestoreCurrent = { requestRestoreFromTopBar() },
                     onRequestClearCurrent = { requestDeleteFromTopBar() },
@@ -808,14 +808,16 @@ private fun TrashMediaGridCell(
     actorIdentity: CollaboratorIdentityUiModel?,
     showActorBadge: Boolean,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onToggleSelection: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val media = entry.primaryPreviewMedia()
+    val selectionHotspotOnly = selectionMode
     Column(
         modifier = modifier
             .combinedClickable(
-                onClick = onClick,
+                onClick = onOpenDetail,
                 onLongClick = onLongClick,
             ),
         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -861,6 +863,7 @@ private fun TrashMediaGridCell(
             TrashSelectionOverlay(
                 selected = selected,
                 visible = selectionMode,
+                onClick = onToggleSelection,
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
             if (showActorBadge && actorIdentity != null) {
@@ -869,7 +872,7 @@ private fun TrashMediaGridCell(
                     size = 22.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                        .padding(end = if (selectionHotspotOnly) 30.dp else 6.dp, bottom = 6.dp),
                 )
             }
         }
@@ -959,6 +962,7 @@ private fun TrashEntryRow(
                 TrashSelectionOverlay(
                     selected = selected,
                     visible = selectionMode,
+                    onClick = onClick,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
                 if (showActorBadge && actorIdentity != null) {
@@ -1016,12 +1020,14 @@ private fun TrashEntryRow(
 private fun TrashSelectionOverlay(
     selected: Boolean,
     visible: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
     Box(
         modifier = modifier
-            .size(46.dp),
+            .size(46.dp)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.BottomEnd,
     ) {
         AppMediaSelectionBadge(

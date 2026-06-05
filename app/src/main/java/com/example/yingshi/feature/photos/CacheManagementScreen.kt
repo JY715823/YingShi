@@ -1,6 +1,5 @@
 package com.example.yingshi.feature.photos
 
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,6 +37,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +58,12 @@ fun CacheManagementScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var refreshVersion by rememberSaveable { mutableIntStateOf(0) }
+    var noticeNonce by rememberSaveable { mutableIntStateOf(0) }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    fun showNotice(message: String, tone: YingShiNoticeTone = YingShiNoticeTone.INFO) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
     val summary by produceState<RealMediaCacheSummary?>(
         initialValue = null,
         context,
@@ -64,99 +75,109 @@ fun CacheManagementScreen(
     }
     val currentSummary = summary
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.appBackground)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        CacheTopBar(
-            title = "缓存管理",
-            onBack = onBack,
+    YingShiMistBackground(modifier = modifier, showWaves = false) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            CacheTopBar(
+                title = "缓存管理",
+                onBack = onBack,
+            )
+
+            CacheSection(
+                title = "当前缓存概览",
+                subtitle = "只统计映世自己的缓存目录，不会扫描或删除系统相册源文件。",
+            ) {
+                CacheSummaryBlock(summary = currentSummary)
+            }
+
+            CacheSection(
+                title = "缓存分类",
+                subtitle = "按缩略图、封面、原图和视频片段分类。",
+            ) {
+                CacheInfoRow(title = "媒体缓存总量", value = currentSummary?.totalSizeLabel ?: "统计中")
+                CacheInfoRow(title = "缩略图 / 视频封面", value = currentSummary?.thumbnailCoverSizeLabel ?: "统计中")
+                CacheInfoRow(title = "原图 / 原视频", value = currentSummary?.originalMediaSizeLabel ?: "统计中")
+                CacheInfoRow(
+                    title = "已登记媒体状态",
+                    value = currentSummary?.let {
+                        "${it.registeredMediaCount} 项"
+                    } ?: "统计中",
+                )
+            }
+
+            CacheSection(
+                title = "清理入口",
+                subtitle = "清理后需要重新加载对应媒体。",
+            ) {
+                CacheActionRow(
+                    title = "清理缩略图 / 视频封面",
+                    subtitle = "当前约 ${currentSummary?.thumbnailCoverSizeLabel ?: "统计中"}。会清理 Coil 图片缓存和本地视频封面文件。",
+                    onClick = {
+                        coroutineScope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                MediaCacheRepository.clearThumbnailAndCoverCache(context)
+                            }
+                            refreshVersion += 1
+                            showNotice(
+                                if (ok) "已清理缩略图和视频封面缓存。" else "部分缓存清理失败，已保留可继续使用的文件。",
+                                if (ok) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
+                            )
+                        }
+                    },
+                )
+                CacheActionRow(
+                    title = "清理原图 / 原视频缓存",
+                    subtitle = "当前约 ${currentSummary?.originalMediaSizeLabel ?: "统计中"}。只清理 App 产生的原图状态和远程视频缓存片段。",
+                    onClick = {
+                        coroutineScope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                MediaCacheRepository.clearOriginalMediaCache(context)
+                            }
+                            refreshVersion += 1
+                            showNotice(
+                                if (ok) "已清理原图和原视频缓存。" else "部分原媒体缓存清理失败，已保留可继续使用的文件。",
+                                if (ok) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
+                            )
+                        }
+                    },
+                )
+                CacheActionRow(
+                    title = "清理全部缓存",
+                    subtitle = "一次性清理缩略图、封面、原图状态和远程视频缓存片段。",
+                    danger = true,
+                    onClick = {
+                        coroutineScope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                MediaCacheRepository.clearAllMediaCaches(context)
+                            }
+                            refreshVersion += 1
+                            showNotice(
+                                if (ok) "已清理全部媒体缓存。" else "部分媒体缓存清理失败，已保留可继续使用的文件。",
+                                if (ok) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
+                            )
+                        }
+                    },
+                )
+            }
+        }
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = spacing.md),
         )
-
-        CacheSection(
-            title = "当前缓存概览",
-            subtitle = "只统计映世自己的缓存目录，不会扫描或删除系统相册源文件。",
-        ) {
-            CacheSummaryBlock(summary = currentSummary)
-        }
-
-        CacheSection(
-            title = "缓存分类",
-            subtitle = "按缩略图、封面、原图和视频片段分类。",
-        ) {
-            CacheInfoRow(title = "媒体缓存总量", value = currentSummary?.totalSizeLabel ?: "统计中")
-            CacheInfoRow(title = "缩略图 / 视频封面", value = currentSummary?.thumbnailCoverSizeLabel ?: "统计中")
-            CacheInfoRow(title = "原图 / 原视频", value = currentSummary?.originalMediaSizeLabel ?: "统计中")
-            CacheInfoRow(
-                title = "已登记媒体状态",
-                value = currentSummary?.let {
-                    "${it.registeredMediaCount} 项"
-                } ?: "统计中",
-            )
-        }
-
-        CacheSection(
-            title = "清理入口",
-            subtitle = "清理后需要重新加载对应媒体。",
-        ) {
-            CacheActionRow(
-                title = "清理缩略图 / 视频封面",
-                subtitle = "当前约 ${currentSummary?.thumbnailCoverSizeLabel ?: "统计中"}。会清理 Coil 图片缓存和本地视频封面文件。",
-                onClick = {
-                    coroutineScope.launch {
-                        val ok = withContext(Dispatchers.IO) {
-                            MediaCacheRepository.clearThumbnailAndCoverCache(context)
-                        }
-                        refreshVersion += 1
-                        Toast.makeText(
-                            context,
-                            if (ok) "已清理缩略图和视频封面缓存。" else "部分缓存清理失败，已保留可继续使用的文件。",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
-            )
-            CacheActionRow(
-                title = "清理原图 / 原视频缓存",
-                subtitle = "当前约 ${currentSummary?.originalMediaSizeLabel ?: "统计中"}。只清理 App 产生的原图状态和远程视频缓存片段。",
-                onClick = {
-                    coroutineScope.launch {
-                        val ok = withContext(Dispatchers.IO) {
-                            MediaCacheRepository.clearOriginalMediaCache(context)
-                        }
-                        refreshVersion += 1
-                        Toast.makeText(
-                            context,
-                            if (ok) "已清理原图和原视频缓存。" else "部分原媒体缓存清理失败，已保留可继续使用的文件。",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
-            )
-            CacheActionRow(
-                title = "清理全部缓存",
-                subtitle = "一次性清理缩略图、封面、原图状态和远程视频缓存片段。",
-                danger = true,
-                onClick = {
-                    coroutineScope.launch {
-                        val ok = withContext(Dispatchers.IO) {
-                            MediaCacheRepository.clearAllMediaCaches(context)
-                        }
-                        refreshVersion += 1
-                        Toast.makeText(
-                            context,
-                            if (ok) "已清理全部媒体缓存。" else "部分媒体缓存清理失败，已保留可继续使用的文件。",
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
-            )
-        }
     }
 }
 

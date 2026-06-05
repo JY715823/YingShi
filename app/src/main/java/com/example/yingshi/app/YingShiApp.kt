@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -102,6 +103,9 @@ import androidx.compose.material3.TextButton
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.theme.YingShiTheme
 import kotlinx.coroutines.launch
 
@@ -119,6 +123,12 @@ fun YingShiApp() {
     }
     var trashShowPendingCleanup by rememberSaveable {
         mutableStateOf(false)
+    }
+    var trashSelectionModeState by rememberSaveable {
+        mutableStateOf(false)
+    }
+    var trashSelectedEntryIdsState by rememberSaveable {
+        mutableStateOf(emptyList<String>())
     }
     var showQuickAddSheet by rememberSaveable {
         mutableStateOf(false)
@@ -200,6 +210,7 @@ fun YingShiApp() {
     }
     val operationResults = LocalSystemMediaBridgeRepository.operationResults
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
+    val motion = YingShiThemeTokens.motion
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val authSessionVersion = AuthSessionManager.sessionVersion
@@ -213,6 +224,20 @@ fun YingShiApp() {
     var authNoticeMessage by remember { mutableStateOf<String?>(null) }
     var profileRefreshMessage by remember { mutableStateOf<String?>(null) }
     var isRefreshingProfile by remember { mutableStateOf(false) }
+    var appNotice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var appNoticeNonce by rememberSaveable { mutableIntStateOf(0) }
+
+    fun showAppNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        appNoticeNonce += 1
+        appNotice = YingShiNotice(
+            message = message,
+            tone = tone,
+            nonce = appNoticeNonce,
+        )
+    }
 
     LaunchedEffect(currentUser?.userId, currentUser?.updatedAtMillis, currentUser?.partner?.userId) {
         CollaboratorDirectoryStore.update(currentUser)
@@ -498,7 +523,7 @@ fun YingShiApp() {
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
     ) { uris ->
         if (uris.isEmpty()) {
-            Toast.makeText(context, "已取消导入媒体。", Toast.LENGTH_SHORT).show()
+            showAppNotice("已取消导入媒体")
             return@rememberLauncherForActivityResult
         }
         showQuickAddSheet = false
@@ -510,24 +535,21 @@ fun YingShiApp() {
                 )
         }.onSuccess { importedCount ->
             if (importedCount > 0) {
-                Toast.makeText(
-                    context,
+                showAppNotice(
                     "已加入导入队列，完成后会出现在照片流。",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                    YingShiNoticeTone.SUCCESS,
+                )
             } else {
-                Toast.makeText(
-                    context,
+                showAppNotice(
                     "没有找到可导入的图片或视频。",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                    YingShiNoticeTone.WARNING,
+                )
             }
         }.onFailure {
-            Toast.makeText(
-                context,
+            showAppNotice(
                 "导入媒体失败，请稍后重试。",
-                Toast.LENGTH_SHORT,
-            ).show()
+                YingShiNoticeTone.WARNING,
+            )
         }
     }
 
@@ -536,7 +558,14 @@ fun YingShiApp() {
         val pendingEvents = operationResults.toList()
         pendingEvents.forEach { event ->
             transferToastMessage(event).takeIf { it.isNotBlank() }?.let { message ->
-                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                showAppNotice(
+                    message,
+                    if (event.failureCount > 0 || event.cancelledCount > 0) {
+                        YingShiNoticeTone.WARNING
+                    } else {
+                        YingShiNoticeTone.SUCCESS
+                    },
+                )
             }
             if (event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST &&
                 event.postRoute != null &&
@@ -649,6 +678,14 @@ fun YingShiApp() {
             cacheManagementRoute = null
         }
     }
+    val photosOverlayActive = photoViewerRoute != null ||
+        systemMediaRoute != null ||
+        systemMediaViewerRoute != null ||
+        createPostRoute != null ||
+        trashDetailRoute != null ||
+        postDetailRoute != null ||
+        gearEditRoute != null ||
+        mediaManagementRoute != null
 
     Box(modifier = Modifier.fillMaxSize()) {
         AppShellScaffold(
@@ -806,28 +843,26 @@ fun YingShiApp() {
 
                                 !task.resultMediaId.isNullOrBlank() -> {
                                     val mediaIds = task.successfulResultMediaIdsInOperation()
-                                    if (mediaIds.isNotEmpty()) {
-                                        requestPhotoFeedRefresh(
-                                            mediaIds,
-                                            task.operationFailureCount > 0 || task.operationCancelledCount > 0,
-                                        )
-                                    } else {
-                                        Toast.makeText(
-                                            context,
-                                            "没有成功导入的媒体，可在传输中心查看失败原因并重试。",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                    }
-                                }
-
-                                else -> {
-                                    Toast.makeText(
-                                        context,
-                                        "这个任务还没有可查看的结果。",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                }
-                            }
+	                                    if (mediaIds.isNotEmpty()) {
+	                                        requestPhotoFeedRefresh(
+	                                            mediaIds,
+	                                            task.operationFailureCount > 0 || task.operationCancelledCount > 0,
+	                                        )
+	                                    } else {
+	                                        showAppNotice(
+	                                            "没有成功导入的媒体，可在传输中心查看失败原因并重试。",
+	                                            YingShiNoticeTone.WARNING,
+	                                        )
+	                                    }
+	                                }
+	
+	                                else -> {
+	                                    showAppNotice(
+	                                        "这个任务还没有可查看的结果。",
+	                                        YingShiNoticeTone.WARNING,
+	                                    )
+	                                }
+	                            }
                         },
                     )
                 }
@@ -907,11 +942,11 @@ fun YingShiApp() {
             else -> {
                 Box(modifier = Modifier.fillMaxSize()) {
                 AnimatedContent(
-                    targetState = selectedDestination,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(180)) togetherWith
-                            fadeOut(animationSpec = tween(120))
-                    },
+	                    targetState = selectedDestination,
+	                    transitionSpec = {
+	                        fadeIn(animationSpec = tween(motion.routeMillis, easing = motion.easing)) togetherWith
+	                            fadeOut(animationSpec = tween(motion.stateMillis, easing = motion.easing))
+	                    },
                     label = "rootDestinationTransition",
                 ) { destination ->
                 when (destination) {
@@ -941,17 +976,33 @@ fun YingShiApp() {
                         onTrashShowPendingCleanupChange = {
                             trashShowPendingCleanup = it
                         },
-                        onOpenViewer = { photoViewerRoute = it },
-                        onOpenPostDetail = { postDetailRoute = it },
-                        onOpenTrashDetail = { trashDetailRoute = it },
+                        trashSelectionMode = trashSelectionModeState,
+                        onTrashSelectionModeChange = { trashSelectionModeState = it },
+                        trashSelectedEntryIds = trashSelectedEntryIdsState,
+                        onTrashSelectedEntryIdsChange = { trashSelectedEntryIdsState = it },
+                        onOpenViewer = { if (!photosOverlayActive) photoViewerRoute = it },
+                        onOpenPostDetail = { if (!photosOverlayActive) postDetailRoute = it },
+                        onOpenTrashDetail = { if (!photosOverlayActive) trashDetailRoute = it },
                         onTrashRestoreTargetMediaIds = { mediaIds ->
                             if (mediaIds.isNotEmpty()) {
                                 requestPhotoFeedRestoreLocate(mediaIds)
                             }
                         },
-                        onOpenSystemMedia = { systemMediaRoute = SystemMediaRoute() },
-                        onOpenTransferCenter = { transferCenterRoute = TransferCenterRoute(source = "photos-top-bar") },
-                        onOpenCreatePost = { createPostRoute = it },
+                        onOpenSystemMedia = {
+                            if (!photosOverlayActive) {
+                                systemMediaRoute = SystemMediaRoute()
+                            }
+                        },
+                        onOpenTransferCenter = {
+                            if (!photosOverlayActive) {
+                                transferCenterRoute = TransferCenterRoute(source = "photos-top-bar")
+                            }
+                        },
+                        onOpenCreatePost = {
+                            if (!photosOverlayActive) {
+                                createPostRoute = it
+                            }
+                        },
                         onAddedMediaToPost = openPostDetailAfterAdd,
                         photoFeedScrollTrigger = photoFeedScrollTrigger,
                         photoSelectionClearTrigger = photoSelectionClearTrigger,
@@ -1102,6 +1153,14 @@ fun YingShiApp() {
                             }
                         },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
+                            if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                                markPostListUpdated(postId, postDetailRoute?.albumId)
+                                gearEditRoute = null
+                                postDetailRoute = null
+                                selectedDestinationName = RootDestination.PHOTOS.name
+                                photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                                return@GearEditScreen
+                            }
                             val postSnapshot = FakeAlbumRepository.snapshotPost(postId)
                             if (postSnapshot == null) {
                                 gearEditRoute = null
@@ -1166,8 +1225,8 @@ fun YingShiApp() {
                     )
                 }
 
-                photoViewerRoute?.let { route ->
-                    PhotoViewerScreen(
+	                photoViewerRoute?.let { route ->
+	                    PhotoViewerScreen(
                         route = route,
                         onBack = {
                             photoViewerRoute = null
@@ -1182,11 +1241,23 @@ fun YingShiApp() {
                             createPostRoute = route
                         },
                         onOpenCacheManagement = { cacheManagementRoute = it },
-                    )
-                }
-            } // closes Box
-            }
-        }
+	                    )
+	                }
+                YingShiNoticeHost(
+                    notice = appNotice,
+                    onExpired = { nonce ->
+                        if (appNotice?.nonce == nonce) {
+                            appNotice = null
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = YingShiThemeTokens.spacing.md),
+                )
+	            } // closes Box
+	            }
+	        }
     }
 
     if (showQuickAddSheet) {
@@ -1216,13 +1287,12 @@ fun YingShiApp() {
                                         mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
                                     ),
                                 )
-                            }.onFailure {
-                                Toast.makeText(
-                                    context,
-                                    "无法打开系统照片选择器，请稍后重试。",
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                            }
+	                            }.onFailure {
+	                                showAppNotice(
+	                                    "无法打开系统照片选择器，请稍后重试。",
+	                                    YingShiNoticeTone.WARNING,
+	                                )
+	                            }
                         },
                     ) {
                         Text(text = "导入媒体")

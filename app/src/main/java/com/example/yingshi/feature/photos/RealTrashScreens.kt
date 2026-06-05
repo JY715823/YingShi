@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,6 +98,9 @@ fun RealTrashPageScreen(
     onSelectedTypeNameChange: (String) -> Unit = { },
     showPendingCleanup: Boolean = false,
     onShowPendingCleanupChange: (Boolean) -> Unit = { },
+    selectionMode: Boolean = false,
+    selectedEntryIds: Set<String> = emptySet(),
+    onSelectionStateChange: (Boolean, Set<String>) -> Unit = { _, _ -> },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
     onRestoreTargetMediaIds: (List<String>) -> Unit = { },
     selectionExitNonce: Int = 0,
@@ -120,10 +124,9 @@ fun RealTrashPageScreen(
     var showDeleteSelectedConfirm by remember { mutableStateOf(false) }
     var showRestoreConfirm by remember { mutableStateOf(false) }
     var pendingRestoreEntries by remember { mutableStateOf(emptyList<TrashEntryUiModel>()) }
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedEntryIds by remember { mutableStateOf(emptySet<String>()) }
-    var savedSelectedCollaboratorUserIds by remember(selectedTypeName) { mutableStateOf(emptyList<String>()) }
-    var collaboratorSelectionInitialized by remember(selectedTypeName) { mutableStateOf(false) }
+    var previousSelectedTypeName by rememberSaveable { mutableStateOf(selectedTypeName) }
+    var savedSelectedCollaboratorUserIds by rememberSaveable(selectedTypeName) { mutableStateOf(emptyList<String>()) }
+    var collaboratorSelectionInitialized by rememberSaveable(selectedTypeName) { mutableStateOf(false) }
     LaunchedEffect(allCollaboratorUserIds) {
         if (allCollaboratorUserIds.isEmpty()) return@LaunchedEffect
         savedSelectedCollaboratorUserIds = if (!collaboratorSelectionInitialized) {
@@ -157,12 +160,14 @@ fun RealTrashPageScreen(
     val selectedEntries = entries.filter { it.id in selectedEntryIds }
 
     fun toggleSelection(entry: TrashEntryUiModel) {
-        selectionMode = true
-        selectedEntryIds = if (entry.id in selectedEntryIds) {
-            selectedEntryIds - entry.id
-        } else {
-            selectedEntryIds + entry.id
-        }
+        onSelectionStateChange(
+            true,
+            if (entry.id in selectedEntryIds) {
+                selectedEntryIds - entry.id
+            } else {
+                selectedEntryIds + entry.id
+            },
+        )
     }
 
     fun restoreFromTopBar() {
@@ -192,14 +197,15 @@ fun RealTrashPageScreen(
     }
 
     LaunchedEffect(selectedTypeName) {
-        selectedEntryIds = emptySet()
-        selectionMode = false
+        if (selectedTypeName != previousSelectedTypeName) {
+            onSelectionStateChange(false, emptySet())
+            previousSelectedTypeName = selectedTypeName
+        }
     }
 
     LaunchedEffect(selectionExitNonce) {
         if (selectionExitNonce > 0) {
-            selectedEntryIds = emptySet()
-            selectionMode = false
+            onSelectionStateChange(false, emptySet())
         }
     }
 
@@ -277,7 +283,7 @@ fun RealTrashPageScreen(
                 enabled = selectionMode,
                 hitTestAdapter = hitTestAdapter,
                 selectedIds = selectedEntryIds,
-                onSelectionChange = { selectedEntryIds = it },
+                onSelectionChange = { onSelectionStateChange(true, it) },
                 onAutoScroll = { delta -> mediaGridState.scrollBy(delta) },
             ),
             state = mediaGridState,
@@ -304,8 +310,7 @@ fun RealTrashPageScreen(
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
-                        selectionMode = false
-                        selectedEntryIds = emptySet()
+                        onSelectionStateChange(false, emptySet())
                     },
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
@@ -352,13 +357,10 @@ fun RealTrashPageScreen(
                                     actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
                                     showActorBadge = showActorBadge,
                                     modifier = Modifier.weight(1f),
-                                    onClick = {
-                                        if (selectionMode) {
-                                            toggleSelection(entry)
-                                        } else {
-                                            onOpenTrashDetail(TrashDetailRoute(entryId = entry.id))
-                                        }
+                                    onOpenDetail = {
+                                        onOpenTrashDetail(TrashDetailRoute(entryId = entry.id))
                                     },
+                                    onToggleSelection = { toggleSelection(entry) },
                                     onLongClick = { toggleSelection(entry) },
                                 )
                             }
@@ -401,8 +403,7 @@ fun RealTrashPageScreen(
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
-                        selectionMode = false
-                        selectedEntryIds = emptySet()
+                        onSelectionStateChange(false, emptySet())
                     },
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
@@ -479,8 +480,7 @@ fun RealTrashPageScreen(
                     selectionMode = selectionMode,
                     selectedCount = selectedEntries.size,
                     onCancelSelection = {
-                        selectionMode = false
-                        selectedEntryIds = emptySet()
+                        onSelectionStateChange(false, emptySet())
                     },
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
@@ -614,8 +614,7 @@ fun RealTrashPageScreen(
                             selectedType = selectedType,
                             onFirstRestoredMediaIds = onRestoreTargetMediaIds,
                         )
-                        selectedEntryIds = emptySet()
-                        selectionMode = false
+                        onSelectionStateChange(false, emptySet())
                     },
                 )
             },
@@ -654,8 +653,7 @@ fun RealTrashPageScreen(
                             entries = selectedEntries,
                             selectedType = selectedType,
                         )
-                        selectedEntryIds = emptySet()
-                        selectionMode = false
+                        onSelectionStateChange(false, emptySet())
                     },
                 )
             },
@@ -1062,14 +1060,16 @@ private fun RealTrashMediaGridCell(
     actorIdentity: CollaboratorIdentityUiModel? = null,
     showActorBadge: Boolean = false,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onToggleSelection: () -> Unit,
     onLongClick: () -> Unit,
 ) {
     val media = entry.mediaSnapshot
+    val selectionHotspotOnly = selectionMode
     Column(
         modifier = modifier
             .combinedClickable(
-                onClick = onClick,
+                onClick = onOpenDetail,
                 onLongClick = onLongClick,
             ),
         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -1115,6 +1115,7 @@ private fun RealTrashMediaGridCell(
             RealTrashSelectionOverlay(
                 selected = selected,
                 visible = selectionMode,
+                onClick = onToggleSelection,
                 modifier = Modifier.align(Alignment.BottomEnd),
             )
             if (showActorBadge && actorIdentity != null) {
@@ -1123,7 +1124,7 @@ private fun RealTrashMediaGridCell(
                     size = 22.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = if (selectionMode) 30.dp else 6.dp, bottom = 6.dp),
+                        .padding(end = if (selectionHotspotOnly) 30.dp else 6.dp, bottom = 6.dp),
                 )
             }
         }
@@ -1224,6 +1225,7 @@ private fun RealTrashPostGridCard(
                 RealTrashSelectionOverlay(
                     selected = selected,
                     visible = selectionMode,
+                    onClick = onClick,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
                 if (showActorBadge && actorIdentity != null) {
@@ -1265,11 +1267,14 @@ private fun RealTrashPostGridCard(
 private fun RealTrashSelectionOverlay(
     selected: Boolean,
     visible: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
     Box(
-        modifier = modifier.size(46.dp),
+        modifier = modifier
+            .size(46.dp)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.BottomEnd,
     ) {
         AppMediaSelectionBadge(

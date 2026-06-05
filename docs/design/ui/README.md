@@ -16,6 +16,8 @@ Updated: 2026-05-29
   - [album-prd-v2.md](E:/Study/App/YingShi/docs/product/album-prd-v2.md)
 - 颜色系统文档：
   - [light-color-system-v1.md](E:/Study/App/YingShi/docs/design/light-color-system-v1.md)
+- 交互动效与工具链文档：
+  - [motion-plugin-tooling-guide-v1.md](E:/Study/App/YingShi/docs/design/motion-plugin-tooling-guide-v1.md)
 - 可调颜色系统工作台：
   - [color-system-lab.html](E:/Study/App/YingShi/docs/design/ui/color-system-lab.html)
 - 当前真实前端能力说明：

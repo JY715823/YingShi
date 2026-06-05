@@ -87,6 +87,10 @@ fun PhotosRootScreen(
     onTrashSelectedTypeNameChange: (String) -> Unit = { },
     trashShowPendingCleanup: Boolean = false,
     onTrashShowPendingCleanupChange: (Boolean) -> Unit = { },
+    trashSelectionMode: Boolean = false,
+    onTrashSelectionModeChange: (Boolean) -> Unit = { },
+    trashSelectedEntryIds: List<String> = emptyList(),
+    onTrashSelectedEntryIdsChange: (List<String>) -> Unit = { },
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = { },
     onOpenTrashDetail: (TrashDetailRoute) -> Unit = { },
@@ -111,9 +115,6 @@ fun PhotosRootScreen(
         mutableStateOf(PhotoFeedSelectionState())
     }
     var showDeleteConfirm by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var trashSelectionMode by rememberSaveable {
         mutableStateOf(false)
     }
     var trashSelectionExitNonce by rememberSaveable {
@@ -290,7 +291,8 @@ fun PhotosRootScreen(
     }
     if (isTrashSelectionMode) {
         BackHandler {
-            trashSelectionMode = false
+            onTrashSelectionModeChange(false)
+            onTrashSelectedEntryIdsChange(emptyList())
             trashSelectionExitNonce += 1
         }
     }
@@ -577,10 +579,16 @@ fun PhotosRootScreen(
                                 onSelectedTypeNameChange = onTrashSelectedTypeNameChange,
                                 showPendingCleanup = trashShowPendingCleanup,
                                 onShowPendingCleanupChange = onTrashShowPendingCleanupChange,
+                                selectionMode = trashSelectionMode,
+                                selectedEntryIds = trashSelectedEntryIds.toSet(),
+                                onSelectionStateChange = { mode, ids ->
+                                    onTrashSelectionModeChange(mode)
+                                    onTrashSelectedEntryIdsChange(ids.toList())
+                                },
                                 onOpenTrashDetail = onOpenTrashDetail,
                                 onRestoreTargetMediaIds = onTrashRestoreTargetMediaIds,
                                 selectionExitNonce = trashSelectionExitNonce,
-                                onSelectionModeChange = { trashSelectionMode = it },
+                                onSelectionModeChange = onTrashSelectionModeChange,
                             )
                         }
                     }

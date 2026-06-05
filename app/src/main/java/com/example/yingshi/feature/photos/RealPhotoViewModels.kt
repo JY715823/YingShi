@@ -192,16 +192,20 @@ class AlbumPageRealViewModel(
 
         loadCoverJob?.cancel()
         loadCoverJob = viewModelScope.launch {
-            val coverMediaByPostId = supervisorScope {
+            val previewMediaByPostId = supervisorScope {
                 targetSummaries.associate { summary ->
                     summary.postId to async {
                         when (val detailResult = postRepository.getPostDetail(summary.postId)) {
                             is ApiResult.Success -> {
                                 val detail = detailResult.data
-                                detail.mediaItems.firstOrNull { it.mediaId == detail.coverMediaId }
+                                val coverMedia = detail.mediaItems.firstOrNull { it.mediaId == detail.coverMediaId }
                                     ?: detail.mediaItems.firstOrNull()
+                                listOfNotNull(coverMedia)
+                                    .plus(detail.mediaItems)
+                                    .distinctBy { it.mediaId }
+                                    .take(2)
                             }
-                            else -> null
+                            else -> emptyList()
                         }
                     }
                 }.mapValues { (_, deferred) -> deferred.await() }
@@ -212,11 +216,13 @@ class AlbumPageRealViewModel(
             _uiState.update { state ->
                 state.copy(
                     posts = state.posts.map { post ->
-                        val coverMedia = coverMediaByPostId[post.id] ?: return@map post
+                        val previewMedia = previewMediaByPostId[post.id].orEmpty()
+                        val coverMedia = previewMedia.firstOrNull() ?: return@map post
                         val sourcePost = targetSummaries.firstOrNull { it.postId == post.id } ?: return@map post
                         sourcePost.toAlbumPostCardUiModel(
                             selectedAlbumId = albumId,
                             coverMedia = coverMedia,
+                            previewMedia = previewMedia,
                         )
                     },
                 )

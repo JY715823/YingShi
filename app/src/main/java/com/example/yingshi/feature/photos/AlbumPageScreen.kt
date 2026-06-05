@@ -145,7 +145,7 @@ fun AlbumPageScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         AlbumSwitchSection(
@@ -273,7 +273,7 @@ private fun RealAlbumPageScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         when {
@@ -553,14 +553,13 @@ private fun AlbumSwitchSection(
         preferredVisibleAlbums(albums, selectedAlbumId)
     }
 
-    Surface(
+    YingShiToolSurface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius.md),
-        color = Color.Transparent,
-        border = null,
+        shape = RoundedCornerShape(radius.lg),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 0.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -789,18 +788,38 @@ private fun AlbumDirectoryRow(
         ) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(width = 36.dp, height = 42.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(Brush.linearGradient(listOf(album.accent.start, album.accent.end))),
-            )
-            Text(
-                text = album.title,
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(13.dp)
+                        .clip(RoundedCornerShape(topStart = 7.dp))
+                        .background(colors.raisedSurface.copy(alpha = 0.80f)),
+                )
+            }
+            Column(
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             )
+            {
+                Text(
+                    text = album.title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = album.subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (selected) {
                 Icon(
                     imageVector = Icons.Rounded.Check,
@@ -977,21 +996,37 @@ private fun AlbumPostCard(
         else -> "${post.mediaCount} 张"
     }
     val titleStyle = if (density == AlbumGridDensity.COZY_4) {
-        MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+        MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
     } else {
-        MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+        MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
     }
     val coverAspectRatio = when (density) {
-        AlbumGridDensity.COZY_2 -> 1.72f
-        AlbumGridDensity.COZY_3 -> 1.56f
-        AlbumGridDensity.COZY_4 -> 1.32f
+        AlbumGridDensity.COZY_2 -> 1.26f
+        AlbumGridDensity.COZY_3 -> 1.18f
+        AlbumGridDensity.COZY_4 -> 1.08f
     }
-    val secondPreviewPost = remember(post.id, post.albumId, post.albumIds) {
-        FakeAlbumRepository.getPosts()
-            .firstOrNull { candidate ->
-                candidate.id != post.id &&
-                    (candidate.albumId == post.albumId || candidate.albumIds.any { it in post.albumIds })
+    val previewMedia = remember(post) {
+        val resolved = if (post.previewMedia.size >= 2 || RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            post.previewMedia
+        } else {
+            FakeAlbumRepository.getPostDetail(FakeAlbumRepository.toPostDetailRoute(post))
+                .mediaItems
+                .map(PostDetailMediaUiModel::toAlbumPostPreviewMediaUiModel)
+        }
+        resolved
+            .ifEmpty {
+                listOf(
+                    AlbumPostPreviewMediaUiModel(
+                        id = "${post.id}-cover",
+                        palette = post.coverPalette,
+                        mediaType = post.coverMediaType,
+                        aspectRatio = post.coverAspectRatio,
+                        mediaSource = post.coverMediaSource,
+                    ),
+                )
             }
+            .distinctBy { it.id }
+            .take(2)
     }
 
     Surface(
@@ -1016,35 +1051,43 @@ private fun AlbumPostCard(
                     .fillMaxWidth()
                     .aspectRatio(coverAspectRatio)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    AppContentMediaThumbnail(
-                        mediaSource = post.coverMediaSource,
-                        mediaType = post.coverMediaType,
-                        palette = post.coverPalette,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize(),
+                if (previewMedia.size >= 2) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        AlbumPostPreviewThumbnail(
+                            media = previewMedia[0],
+                            contentDescription = post.title,
+                            modifier = Modifier
+                                .weight(1.45f)
+                                .fillMaxSize(),
+                        )
+                        AlbumPostPreviewThumbnail(
+                            media = previewMedia[1],
+                            contentDescription = post.title,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize(),
+                        )
+                    }
+                } else {
+                    AlbumPostPreviewThumbnail(
+                        media = previewMedia.first(),
                         contentDescription = post.title,
-                        requestSize = 384,
-                        showLoadingIndicator = false,
-                    )
-                    AppContentMediaThumbnail(
-                        mediaSource = secondPreviewPost?.coverMediaSource ?: post.coverMediaSource,
-                        mediaType = secondPreviewPost?.coverMediaType ?: post.coverMediaType,
-                        palette = secondPreviewPost?.coverPalette ?: post.coverPalette,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize(),
-                        contentDescription = secondPreviewPost?.title ?: post.title,
-                        requestSize = 384,
-                        showLoadingIndicator = false,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
 
-                if (post.coverMediaType == AppMediaType.VIDEO) {
+                YingShiMediaFrame(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(topStart = radius.lg, topEnd = radius.lg),
+                    memoryActive = isRecentlyUpdated,
+                    topScrimAlpha = 0.12f,
+                    bottomGlowAlpha = 0.20f,
+                )
+
+                if (previewMedia.firstOrNull()?.mediaType == AppMediaType.VIDEO) {
                     VideoMediaMarker(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -1052,88 +1095,108 @@ private fun AlbumPostCard(
                     )
                 }
 
-                Surface(
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = spacing.xs, bottom = spacing.xs),
-                    shape = RoundedCornerShape(radius.capsule),
-                    color = colors.raisedSurface.copy(alpha = 0.82f),
-                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.52f),
+                                ),
+                            ),
+                        )
+                        .padding(horizontal = innerPadding, vertical = innerPadding),
                 ) {
-                    Text(
-                        text = mediaCountLabel,
-                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.titleAccent,
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+                        Text(
+                            text = post.title,
+                            style = titleStyle,
+                            color = Color.White.copy(alpha = 0.96f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = formatAlbumPostTime(post.postDisplayTimeMillis),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.78f),
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = mediaCountLabel,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = colors.glowWash,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
 
                 if (isRecentlyUpdated) {
-                    Surface(
+                    YingShiMemoryBadge(
+                        text = "刚更新",
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(
                                 start = innerPadding,
-                                top = if (post.coverMediaType == AppMediaType.VIDEO) {
+                                top = if (previewMedia.firstOrNull()?.mediaType == AppMediaType.VIDEO) {
                                     innerPadding + 28.dp
                                 } else {
                                     innerPadding
-                        },
-                    ),
-                    shape = RoundedCornerShape(radius.capsule),
-                    color = colors.memoryContainer.copy(alpha = 0.94f),
-                    border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.20f)),
-                ) {
-                    Text(
-                        text = "刚更新",
-                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onMemoryContainer,
+                                },
+                            ),
+                        compact = density == AlbumGridDensity.COZY_4,
                     )
                 }
             }
-            }
 
-            Column(
-                modifier = Modifier.padding(horizontal = innerPadding, vertical = innerPadding),
-                verticalArrangement = Arrangement.spacedBy(if (density == AlbumGridDensity.COZY_4) spacing.xxs else spacing.xs),
-            ) {
-                Text(
-                    text = post.title,
-                    style = titleStyle,
-                    color = colors.textPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (summary != null) {
+            if (summary != null) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = innerPadding,
+                        vertical = if (density == AlbumGridDensity.COZY_4) spacing.xs else innerPadding,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(if (density == AlbumGridDensity.COZY_4) 2.dp else spacing.xxs),
+                ) {
+                    Text(
+                        text = "简介",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.goldAccent.copy(alpha = 0.86f),
+                        maxLines = 1,
+                    )
                     Text(
                         text = summary,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                         color = colors.textSecondary,
                         maxLines = summaryMaxLines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = formatAlbumPostTime(post.postDisplayTimeMillis),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.textSecondary.copy(alpha = 0.82f),
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = mediaCountLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.goldAccent,
-                        maxLines = 1,
-                    )
-                }
             }
         }
     }
+}
+
+@Composable
+private fun AlbumPostPreviewThumbnail(
+    media: AlbumPostPreviewMediaUiModel,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    AppContentMediaThumbnail(
+        mediaSource = media.mediaSource,
+        mediaType = media.mediaType,
+        palette = media.palette,
+        modifier = modifier,
+        contentDescription = contentDescription,
+        requestSize = 384,
+        showLoadingIndicator = false,
+    )
 }
 
 @Composable
@@ -1262,9 +1325,9 @@ private fun DetailMetaCapsule(text: String) {
 }
 
 private fun cardSpacing(density: AlbumGridDensity) = when (density) {
-    AlbumGridDensity.COZY_2 -> 10.dp
-    AlbumGridDensity.COZY_3 -> 8.dp
-    AlbumGridDensity.COZY_4 -> 6.dp
+    AlbumGridDensity.COZY_2 -> 8.dp
+    AlbumGridDensity.COZY_3 -> 6.dp
+    AlbumGridDensity.COZY_4 -> 5.dp
 }
 
 private fun preferredVisibleAlbums(

@@ -12,6 +12,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -81,6 +82,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -100,6 +102,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -1034,41 +1037,48 @@ private fun SystemMediaTopBar(
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
 
-    Row(
+    YingShiToolSurface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
+        highlighted = selectionMode,
     ) {
-        SystemMediaIconButton(
-            icon = Icons.Default.ArrowBack,
-            contentDescription = "返回",
-            onClick = onBack,
-        )
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "系统媒体",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SystemMediaIconButton(
+                icon = Icons.Default.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
             )
-            Text(
-                text = if (selectionMode) {
-                    if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
-                } else {
-                    selectedFilter.label
-                },
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = colors.textSecondary,
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "系统媒体",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Text(
+                    text = if (selectionMode) {
+                        if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
+                    } else {
+                        selectedFilter.label
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = colors.textSecondary,
+                )
+            }
+
+            SystemMediaFilterMenuButton(
+                selectedFilter = selectedFilter,
+                selectionMode = selectionMode,
+                onFilterSelected = onFilterSelected,
+                onRefresh = onRefresh,
+                onToggleSelectionMode = onToggleSelectionMode,
             )
         }
-
-        SystemMediaFilterMenuButton(
-            selectedFilter = selectedFilter,
-            selectionMode = selectionMode,
-            onFilterSelected = onFilterSelected,
-            onRefresh = onRefresh,
-            onToggleSelectionMode = onToggleSelectionMode,
-        )
     }
 }
 
@@ -1239,6 +1249,8 @@ private fun SystemMediaCard(
 ) {
     val context = LocalContext.current
     val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
     val shape = RoundedCornerShape(0.dp)
     val videoThumbnail = if (item.type == SystemMediaType.VIDEO) {
         rememberSystemVideoThumbnail(context, item.uri)
@@ -1253,10 +1265,19 @@ private fun SystemMediaCard(
     val showSelectionVideoMarker = selectionMode &&
         item.type == SystemMediaType.VIDEO &&
         density.columns <= 4
+    val itemScale by animateFloatAsState(
+        targetValue = if (selected) motion.selectedMediaScale else 1f,
+        animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
+        label = "systemMediaCardSelectionScale",
+    )
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+            }
             .clip(shape)
             .background(colors.sectionBackground.copy(alpha = 0.62f))
             .combinedClickable(
@@ -1284,6 +1305,14 @@ private fun SystemMediaCard(
                 contentScale = ContentScale.Crop,
             )
         }
+
+        YingShiMediaFrame(
+            modifier = Modifier.fillMaxSize(),
+            shape = shape,
+            selected = selected,
+            topScrimAlpha = if (item.type == SystemMediaType.VIDEO) 0.22f else 0.14f,
+            bottomGlowAlpha = if (selected) 0.24f else 0.14f,
+        )
 
         if (supportsInlineVideo && isInlineVideoPlaying) {
             SystemMediaInlineVideoPlayer(
@@ -1325,6 +1354,11 @@ private fun SystemMediaCard(
         }
 
         if (selectionMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = if (selected) 0.18f else 0.06f)),
+            )
             if (selectionHotspotOnly) {
                 Box(
                     modifier = Modifier
@@ -1396,21 +1430,33 @@ private fun SystemMediaSelectionBar(
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
 
-    Surface(
+    YingShiToolSurface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
+        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
+        highlighted = selectedCount > 0,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.sm),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            Text(
-                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                YingShiStatusPill(
+                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
+                    selected = selectedCount > 0,
+                    modifier = Modifier.weight(1f),
+                )
+                SystemMediaActionChip(
+                    text = "取消",
+                    emphasized = false,
+                    compact = true,
+                    onClick = onCancel,
+                )
+            }
             Column(
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
@@ -1448,12 +1494,6 @@ private fun SystemMediaSelectionBar(
                         onClick = onMoveToTrash,
                     )
                 }
-                SystemMediaActionChip(
-                    text = "取消",
-                    emphasized = false,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onCancel,
-                )
             }
         }
     }
@@ -1464,6 +1504,7 @@ private fun SystemMediaActionChip(
     text: String,
     emphasized: Boolean,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1475,14 +1516,14 @@ private fun SystemMediaActionChip(
         ),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (emphasized) {
-            colors.softGreenContainer.copy(alpha = 0.92f)
+            colors.primaryContainer.copy(alpha = 0.88f)
         } else {
             colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             width = 1.dp,
             color = if (emphasized) {
-                colors.softGreenAction.copy(alpha = 0.28f)
+                colors.glassStroke.copy(alpha = 0.72f)
             } else {
                 colors.dividerSoft.copy(alpha = 0.62f)
             },
@@ -1491,12 +1532,12 @@ private fun SystemMediaActionChip(
         Text(
             text = text,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 11.dp),
+                .then(if (compact) Modifier else Modifier.fillMaxWidth())
+                .padding(horizontal = if (compact) 12.dp else 14.dp, vertical = if (compact) 7.dp else 10.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             textAlign = TextAlign.Center,
             color = if (emphasized) {
-                colors.softGreenAction
+                colors.titleAccent
             } else {
                 colors.titleAccent
             },

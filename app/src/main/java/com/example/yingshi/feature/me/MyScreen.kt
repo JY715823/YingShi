@@ -41,6 +41,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePartnerProfile
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -330,7 +331,7 @@ private fun AccountStatusCard(
             }
             Surface(
                 modifier = Modifier
-                    .yingShiClickable(
+                    .yingShiHapticClickable(
                         enabled = !isLoggingOut,
                         shape = RoundedCornerShape(radius.capsule),
                         onClick = onLogout,
@@ -414,7 +415,7 @@ private fun MyToolRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .yingShiClickable(
+            .yingShiHapticClickable(
                 shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
                 onClick = onClick,
             )

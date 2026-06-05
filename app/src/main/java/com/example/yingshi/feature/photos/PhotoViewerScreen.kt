@@ -735,14 +735,14 @@ fun PhotoViewerScreen(
                                     coroutineScope.launch {
                                         pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
                                     }
+                                    showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
                                 }
-                                Toast.makeText(context, "已删除当前媒体，并写入回收站。", Toast.LENGTH_SHORT).show()
                             }
                             RepositoryMode.REAL -> {
                                 coroutineScope.launch {
                                     val message = deleteRealViewerMedia(deletingItem.mediaId)
                                     if (message != null) {
-                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        showViewerNotice(message)
                                         return@launch
                                     }
                                     val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
@@ -751,6 +751,7 @@ fun PhotoViewerScreen(
                                     } else {
                                         viewerItems = nextItems
                                         pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
+                                        showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
                                     }
                                 }
                             }
@@ -1152,7 +1153,7 @@ fun PhotoViewerScreen(
                             ?: currentIndex.coerceIn(0, nextItems.lastIndex)
                         pagerState.scrollToPage(nextIndex)
                     }
-                    Toast.makeText(context, "时间已修改", Toast.LENGTH_SHORT).show()
+                    showViewerNotice("时间已修改", emphasized = true)
                 },
             )
         }

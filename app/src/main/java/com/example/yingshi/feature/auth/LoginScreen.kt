@@ -108,18 +108,13 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = APP_NAME,
-                    style = MaterialTheme.typography.displayLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                    color = colors.titleAccent,
-                )
-            }
+            Text(
+                text = APP_NAME,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = colors.titleAccent,
+            )
 
             Column(
                 modifier = Modifier.padding(top = 52.dp),
@@ -183,7 +178,7 @@ fun LoginScreen(
                 }
 
                 YingShiPrimaryMistButton(
-                    text = ACTION_LOGIN,
+                    text = if (isLoading) "正在登录" else ACTION_LOGIN,
                     onClick = {
                         scope.launch {
                             isLoading = true
@@ -232,76 +227,69 @@ fun LoginScreen(
                     enabled = !isLoading && account.isNotBlank() && password.isNotBlank(),
                     loading = isLoading,
                 )
-                AdvancedRow(
-                    expanded = advancedExpanded,
-                    onClick = {
-                        advancedExpanded = !advancedExpanded
-                        advancedMessage = null
-                    },
-                )
+            }
 
-                if (advancedExpanded) {
-                    YingShiMistCard(
-                        shape = RoundedCornerShape(radius.lg),
-                        color = colors.raisedSurface.copy(alpha = 0.76f),
+            AdvancedRow(
+                expanded = advancedExpanded,
+                onClick = {
+                    advancedExpanded = !advancedExpanded
+                    advancedMessage = null
+                },
+            )
+
+            if (advancedExpanded) {
+                YingShiMistCard(
+                    shape = RoundedCornerShape(radius.lg),
+                    color = colors.raisedSurface.copy(alpha = 0.76f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(spacing.md),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
                     ) {
-                        Column(
-                            modifier = Modifier.padding(spacing.md),
-                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                        ) {
-                            YingShiTextField(
-                                value = baseUrlInput,
-                                onValueChange = {
-                                    baseUrlInput = it
-                                    advancedMessage = null
+                        YingShiTextField(
+                            value = baseUrlInput,
+                            onValueChange = {
+                                baseUrlInput = it
+                                advancedMessage = null
+                            },
+                            placeholder = LABEL_BACKEND_ADDRESS,
+                            icon = Icons.Rounded.Settings,
+                            enabled = !isLoading,
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .yingShiClickable(enabled = !isLoading, shape = RoundedCornerShape(radius.capsule)) {
+                                    BackendDebugConfig.updateBaseUrl(baseUrlInput)
+                                    baseUrlInput = BackendDebugConfig.currentBaseUrl()
+                                    advancedMessage = "地址已保存"
                                 },
-                                placeholder = LABEL_BACKEND_ADDRESS,
-                                icon = Icons.Rounded.Settings,
-                                enabled = !isLoading,
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable(enabled = !isLoading) {
-                                        BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                                        baseUrlInput = BackendDebugConfig.currentBaseUrl()
-                                        advancedMessage = "地址已保存"
-                                    },
-                                shape = RoundedCornerShape(radius.capsule),
-                                color = colors.sectionBackground.copy(alpha = 0.84f),
-                                border = BorderStroke(1.dp, colors.dividerSoft),
+                            shape = RoundedCornerShape(radius.capsule),
+                            color = colors.sectionBackground.copy(alpha = 0.84f),
+                            border = BorderStroke(1.dp, colors.dividerSoft),
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(vertical = spacing.sm),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Box(
-                                    modifier = Modifier.padding(vertical = spacing.sm),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = ACTION_SAVE_ADDRESS,
-                                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                                        color = colors.titleAccent,
-                                    )
-                                }
-                            }
-                            advancedMessage?.let { message ->
                                 Text(
-                                    text = message,
-                                    style = MaterialTheme.typography.labelMedium,
+                                    text = ACTION_SAVE_ADDRESS,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                                     color = colors.titleAccent,
                                 )
                             }
                         }
+                        advancedMessage?.let { message ->
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.titleAccent,
+                            )
+                        }
                     }
                 }
-                Text(
-                    text = LOGIN_SUBTITLE,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
             }
         }
     }

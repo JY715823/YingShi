@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -23,7 +25,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +54,19 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.delay
+
+enum class YingShiNoticeTone {
+    INFO,
+    SUCCESS,
+    WARNING,
+}
+
+data class YingShiNotice(
+    val message: String,
+    val tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    val nonce: Int,
+)
 
 @Composable
 fun YingShiMistBackground(
@@ -73,6 +93,199 @@ fun YingShiMistBackground(
             MistWaveCanvas(modifier = Modifier.matchParentSize())
         }
         content()
+    }
+}
+
+@Composable
+fun YingShiNoticeHost(
+    notice: YingShiNotice?,
+    modifier: Modifier = Modifier,
+    onExpired: (Int) -> Unit,
+) {
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val colors = YingShiThemeTokens.colors
+    LaunchedEffect(notice?.nonce) {
+        val active = notice ?: return@LaunchedEffect
+        delay(motion.noticeVisibleMillis.toLong())
+        onExpired(active.nonce)
+    }
+
+    androidx.compose.animation.AnimatedVisibility(
+        visible = notice != null,
+        enter = androidx.compose.animation.fadeIn(
+            animationSpec = androidx.compose.animation.core.tween(
+                durationMillis = if (motionEnabled) motion.noticeMillis else 0,
+                easing = motion.easing,
+            ),
+        ),
+        exit = androidx.compose.animation.fadeOut(
+            animationSpec = androidx.compose.animation.core.tween(
+                durationMillis = if (motionEnabled) motion.stateMillis else 0,
+                easing = motion.easing,
+            ),
+        ),
+        modifier = modifier,
+    ) {
+        val activeNotice = notice ?: return@AnimatedVisibility
+        val icon = when (activeNotice.tone) {
+            YingShiNoticeTone.INFO -> Icons.Rounded.Info
+            YingShiNoticeTone.SUCCESS -> Icons.Rounded.CheckCircle
+            YingShiNoticeTone.WARNING -> Icons.Rounded.ErrorOutline
+        }
+        val container = when (activeNotice.tone) {
+            YingShiNoticeTone.INFO -> colors.raisedSurface.copy(alpha = 0.94f)
+            YingShiNoticeTone.SUCCESS -> colors.memoryContainer.copy(alpha = 0.95f)
+            YingShiNoticeTone.WARNING -> colors.memoryWash.copy(alpha = 0.96f)
+        }
+        val content = when (activeNotice.tone) {
+            YingShiNoticeTone.INFO -> colors.titleAccent
+            YingShiNoticeTone.SUCCESS -> colors.onMemoryContainer
+            YingShiNoticeTone.WARNING -> colors.memoryAccent
+        }
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .yingShiSoftReveal(visible = true, motionEnabled = motionEnabled),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            color = container,
+            border = BorderStroke(
+                1.dp,
+                if (activeNotice.tone == YingShiNoticeTone.INFO) {
+                    colors.glassStroke.copy(alpha = 0.68f)
+                } else {
+                    colors.memoryAccent.copy(alpha = 0.22f)
+                },
+            ),
+            shadowElevation = 2.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.34f),
+                                colors.glowWash.copy(alpha = 0.18f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    )
+                    .padding(horizontal = 15.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = content,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = activeNotice.message,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = content,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun YingShiStateLayer(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+    tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    val spacing = YingShiThemeTokens.spacing
+    val icon = when (tone) {
+        YingShiNoticeTone.INFO -> Icons.Rounded.Info
+        YingShiNoticeTone.SUCCESS -> Icons.Rounded.CheckCircle
+        YingShiNoticeTone.WARNING -> Icons.Rounded.ErrorOutline
+    }
+    val accent = when (tone) {
+        YingShiNoticeTone.INFO -> colors.titleAccent
+        YingShiNoticeTone.SUCCESS -> colors.memoryAccent
+        YingShiNoticeTone.WARNING -> MaterialTheme.colorScheme.error
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+        shadowElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            accent.copy(alpha = 0.10f),
+                            colors.glowWash.copy(alpha = 0.12f),
+                            Color.Transparent,
+                        ),
+                        center = Offset.Zero,
+                        radius = 520f,
+                    ),
+                )
+                .padding(spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = accent.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .size(24.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
+            }
+            if (actionLabel != null && onAction != null) {
+                Surface(
+                    modifier = Modifier.yingShiHapticClickable(
+                        shape = RoundedCornerShape(radius.capsule),
+                        onClick = onAction,
+                    ),
+                    shape = RoundedCornerShape(radius.capsule),
+                    color = colors.primaryContainer.copy(alpha = 0.68f),
+                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.58f)),
+                ) {
+                    Text(
+                        text = actionLabel,
+                        modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.onPrimaryContainer,
+                    )
+                }
+            }
+        }
     }
 }
 

@@ -47,7 +47,7 @@ fun Modifier.yingShiMediaEnterMotion(
 @Composable
 fun Modifier.yingShiSoftReveal(
     visible: Boolean = true,
-    enterScale: Float = 0.985f,
+    enterScale: Float = YingShiThemeTokens.motion.sectionEnterScale,
     motionEnabled: Boolean = rememberYingShiMotionEnabled(),
 ): Modifier {
     val motion = YingShiThemeTokens.motion
@@ -60,6 +60,30 @@ fun Modifier.yingShiSoftReveal(
         targetValue = if (visible || !motionEnabled) 1f else enterScale,
         animationSpec = tween(if (motionEnabled) motion.floatingMillis else 0, easing = motion.easing),
         label = "yingShiSoftRevealScale",
+    )
+    return this
+        .alpha(alpha)
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+}
+
+@Composable
+fun Modifier.yingShiRouteReveal(
+    visible: Boolean = true,
+    motionEnabled: Boolean = rememberYingShiMotionEnabled(),
+): Modifier {
+    val motion = YingShiThemeTokens.motion
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(if (motionEnabled) motion.routeMillis else 0, easing = motion.easing),
+        label = "yingShiRouteRevealAlpha",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (visible || !motionEnabled) 1f else motion.routeEnterScale,
+        animationSpec = tween(if (motionEnabled) motion.routeMillis else 0, easing = motion.easing),
+        label = "yingShiRouteRevealScale",
     )
     return this
         .alpha(alpha)

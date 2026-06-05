@@ -55,6 +55,7 @@ fun AppPhotoFeedPickerScreen(
         )
     }
     var showExitConfirm by remember { mutableStateOf(false) }
+    var viewerRoute by remember { mutableStateOf<PhotoViewerRoute?>(null) }
     val localPageStateStore = remember { PhotoFeedPageStateStore() }
 
     fun handleBackRequest() {
@@ -147,8 +148,9 @@ fun AppPhotoFeedPickerScreen(
                             },
                             onLoadMore = viewModel::loadNextPage,
                             onRetryLoadMore = viewModel::retryLoadNextPage,
-                            onOpenViewer = {},
+                            onOpenViewer = { viewerRoute = it },
                             inlineVideoAutoPlayEnabled = false,
+                            allowOpenMediaWhileSelecting = true,
                             disabledMediaIds = disabledMediaIds,
                             disabledSelectionLabel = disabledSelectionLabel,
                         )
@@ -163,6 +165,13 @@ fun AppPhotoFeedPickerScreen(
                     showExitConfirm = false
                     onBack()
                 },
+            )
+        }
+        viewerRoute?.let { route ->
+            PhotoViewerScreen(
+                route = route,
+                onBack = { viewerRoute = null },
+                modifier = Modifier.fillMaxSize(),
             )
         }
         return
@@ -206,14 +215,22 @@ fun AppPhotoFeedPickerScreen(
                     onSelectionStateChange = {
                         selectionState = it.copy(isInSelectionMode = true)
                     },
-                    onOpenViewer = {},
+                    onOpenViewer = { viewerRoute = it },
                     inlineVideoAutoPlayEnabled = false,
+                    allowOpenMediaWhileSelecting = true,
                     disabledMediaIds = disabledMediaIds,
                     disabledSelectionLabel = disabledSelectionLabel,
                 )
             }
         },
     )
+    viewerRoute?.let { route ->
+        PhotoViewerScreen(
+            route = route,
+            onBack = { viewerRoute = null },
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
     if (showExitConfirm) {
         PickerExitConfirmDialog(
             onDismiss = { showExitConfirm = false },

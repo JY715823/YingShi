@@ -69,6 +69,7 @@ fun GearEditScreen(
             route = route,
             onBack = onBack,
             onPostUpdated = onPostUpdated,
+            onDeleteCurrentPost = onDeleteCurrentPost,
             modifier = modifier,
         )
         return
@@ -353,6 +354,7 @@ private fun RealGearEditScreen(
     route: GearEditRoute,
     onBack: () -> Unit,
     onPostUpdated: (postId: String, albumId: String?) -> Unit,
+    onDeleteCurrentPost: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -543,7 +545,11 @@ private fun RealGearEditScreen(
                     text = if (uiState.isDeleting) "处理中…" else "确认删除",
                     onClick = {
                         showDeletePostDialog = false
-                        viewModel.deletePost(onSuccess = onBack)
+                        viewModel.deletePost(
+                            onSuccess = {
+                                onDeleteCurrentPost(route.postId, false)
+                            },
+                        )
                     },
                     enabled = !uiState.isDeleting,
                     danger = true,

@@ -2,6 +2,8 @@
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -40,7 +42,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ModeComment
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
@@ -65,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
@@ -83,6 +85,7 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -512,7 +515,6 @@ private fun RealSmallAlbumDetailContent(
                     Toast.makeText(context, "当前设备未提供可用导出入口。", Toast.LENGTH_SHORT).show()
                 },
                 onEdit = onOpenGearEdit,
-                onOpenComments = onOpenSmallAlbumComments,
             )
         },
         notice = {
@@ -878,7 +880,6 @@ private fun PostDetailInfoState(
             onBack = onBack,
             onExport = {},
             onEdit = {},
-            onOpenComments = {},
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -988,7 +989,6 @@ private fun PostDetailMissingState(
             onBack = onBack,
             onExport = {},
             onEdit = {},
-            onOpenComments = {},
         )
         Text(
             text = "当前小相册没有可展示的媒体，可能已经被删除、被移出关系，或仍处于系统删除状态。",
@@ -1095,7 +1095,6 @@ private fun SmallAlbumDetailContent(
                     Toast.makeText(context, "当前设备未提供可用导出入口。", Toast.LENGTH_SHORT).show()
                 },
                 onEdit = onOpenGearEdit,
-                onOpenComments = onOpenSmallAlbumComments,
             )
         },
         notice = {
@@ -1210,26 +1209,31 @@ private fun SmallAlbumDetailTopBar(
     onBack: () -> Unit,
     onExport: () -> Unit,
     onEdit: () -> Unit,
-    onOpenComments: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
 
-    Row(
+    YingShiToolSurface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
     ) {
-        PostCircleButton(text = "<", onClick = onBack)
-        Text(
-            text = "小相册详情",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
-            maxLines = 1,
-        )
-        PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
-        PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PostCircleButton(text = "<", onClick = onBack)
+            Text(
+                text = "小相册详情",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+                maxLines = 1,
+            )
+            PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
+            PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
+        }
     }
 }
 
@@ -1239,47 +1243,38 @@ private fun PostIconButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+    buttonSize: Dp = 48.dp,
+    iconSize: Dp = 25.dp,
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = CircleShape
     Surface(
         modifier = modifier
-            .size(48.dp)
+            .size(buttonSize)
             .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
         shape = shape,
-        color = colors.raisedSurface.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-        shadowElevation = 1.dp,
+        color = if (emphasized) {
+            colors.primaryContainer.copy(alpha = 0.92f)
+        } else {
+            colors.raisedSurface.copy(alpha = 0.94f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (emphasized) {
+                colors.glassStroke.copy(alpha = 0.82f)
+            } else {
+                colors.dividerSoft.copy(alpha = 0.72f)
+            },
+        ),
+        shadowElevation = if (emphasized) 3.dp else 1.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 tint = colors.titleAccent,
-                modifier = Modifier.size(25.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SmallAlbumCommentButton(onClick: () -> Unit) {
-    val colors = YingShiThemeTokens.colors
-    val shape = CircleShape
-    Surface(
-        modifier = Modifier
-            .size(48.dp)
-            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
-        shape = shape,
-        color = colors.primaryContainer.copy(alpha = 0.82f),
-        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.78f)),
-        shadowElevation = 1.dp,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Filled.ModeComment,
-                contentDescription = "打开小相册评论",
-                tint = colors.titleAccent,
+                modifier = Modifier.size(iconSize),
             )
         }
     }
@@ -1330,6 +1325,20 @@ fun PostMediaCard(
             originalLoadState = originalLoadState,
             onOriginalLoadStateChange = onOriginalLoadStateChange,
         )
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .width(fittedWidth)
+                .height(fittedHeight),
+        ) {
+            YingShiMediaFrame(
+                modifier = Modifier.matchParentSize(),
+                shape = RoundedCornerShape(10.dp),
+                memoryActive = isNewlyAdded,
+                topScrimAlpha = if (media.mediaType == AppMediaType.VIDEO) 0.18f else 0.10f,
+                bottomGlowAlpha = 0.14f,
+            )
+        }
         if (isNewlyAdded) {
             Box(
                 modifier = Modifier
@@ -1345,19 +1354,11 @@ fun PostMediaCard(
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color.Transparent),
                 )
-                Surface(
+                YingShiMemoryBadge(
+                    text = "新加入",
                     modifier = Modifier.align(Alignment.TopEnd),
-                    shape = RoundedCornerShape(999.dp),
-                    color = YingShiThemeTokens.colors.selectedPillBg.copy(alpha = 0.92f),
-                    border = BorderStroke(1.dp, YingShiThemeTokens.colors.glassStroke.copy(alpha = 0.72f)),
-                ) {
-                    Text(
-                        text = "新加入",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = YingShiThemeTokens.colors.titleAccent,
-                    )
-                }
+                    compact = true,
+                )
             }
         }
     }
@@ -1426,76 +1427,78 @@ fun SmallAlbumInfoSection(
         append(" 张")
     }
 
-    Column(
+    YingShiToolSurface(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.md),
+        highlighted = detail.comments.isNotEmpty(),
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.Top,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = detail.title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.headlineSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 27.sp,
-                    lineHeight = 31.sp,
-                ),
-                color = colors.titleAccent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = metaLabel,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                color = colors.textSecondary.copy(alpha = 0.78f),
-                maxLines = 1,
-            )
-        }
-        if (summary != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.Top,
+            ) {
                 Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                    maxLines = if (summaryExpanded) Int.MAX_VALUE else 2,
+                    text = detail.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 27.sp,
+                        lineHeight = 31.sp,
+                    ),
+                    color = colors.titleAccent,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (summary.length > 28) {
-                    PostActionChip(
-                        text = if (summaryExpanded) "收起" else "展开",
-                        onClick = { summaryExpanded = !summaryExpanded },
-                        containerColor = colors.sectionBackground.copy(alpha = 0.68f),
+                YingShiStatusPill(text = metaLabel)
+            }
+            if (summary != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                        maxLines = if (summaryExpanded) Int.MAX_VALUE else 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    if (summary.length > 28) {
+                        PostActionChip(
+                            text = if (summaryExpanded) "收起" else "展开",
+                            onClick = { summaryExpanded = !summaryExpanded },
+                            containerColor = colors.sectionBackground.copy(alpha = 0.68f),
+                        )
+                    }
                 }
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (albumTitle.isNotBlank()) {
-                SmallAlbumBelongChip(
-                    text = albumTitle,
-                    palette = albumPalette,
-                )
-            } else {
-                Spacer(modifier = Modifier.width(1.dp))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalAlignment = Alignment.CenterVertically) {
-                PostActionChip(
-                    text = originalSummary.buttonLabel,
-                    onClick = onLoadAllOriginals,
-                    containerColor = colors.primaryContainer.copy(alpha = 0.70f),
-                )
-                PostActionChip(
-                    text = if (detail.comments.isEmpty()) "评论" else "评论 ${detail.comments.size}",
-                    onClick = onOpenComments,
-                    containerColor = colors.softGreenContainer.copy(alpha = 0.78f),
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (albumTitle.isNotBlank()) {
+                    SmallAlbumBelongChip(
+                        text = albumTitle,
+                        palette = albumPalette,
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                    PostActionChip(
+                        text = originalSummary.buttonLabel,
+                        onClick = onLoadAllOriginals,
+                        containerColor = colors.primaryContainer.copy(alpha = 0.70f),
+                    )
+                    PostActionChip(
+                        text = if (detail.comments.isEmpty()) "评论" else "评论 ${detail.comments.size}",
+                        onClick = onOpenComments,
+                        containerColor = colors.softGreenContainer.copy(alpha = 0.78f),
+                    )
+                }
             }
         }
     }
@@ -2199,7 +2202,7 @@ private fun SmallAlbumMediaGridSection(
                 when (val result = RepositoryProvider.mediaRepository.deleteMediaFromPost(
                     smallAlbumId = postId,
                     mediaId = mediaId,
-                    deleteMode = "DIRECTORY_ONLY",
+                    deleteMode = "directory",
                 )) {
                     is com.example.yingshi.data.remote.result.ApiResult.Success -> successCount += 1
                     is com.example.yingshi.data.remote.result.ApiResult.Error -> {
@@ -2232,66 +2235,56 @@ private fun SmallAlbumMediaGridSection(
     }
 
     Column(
-        modifier = modifier
-            .discreteZoomLevelGesture(
-                enabled = !selectionMode,
-                levels = listOf(
-                    PhotoFeedDensity.COMFORT_2,
-                    PhotoFeedDensity.COMFORT_3,
-                    PhotoFeedDensity.DENSE_4,
-                ),
-                currentLevel = density,
-                onLevelChange = { densityName = it.name },
-            )
-            .multiSelectSwipeGesture(
-                enabled = selectionMode,
-                hitTestAdapter = hitTestAdapter,
-                selectedIds = liveSelectedIds.value,
-                onSelectionChange = { selectedIds = it },
-                onAutoScroll = { delta -> listState.scrollBy(delta) },
-            ),
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         if (selectionMode) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "已选 ${selectedIds.size} 项",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
-                    PostActionChip(
-                        text = "取消",
-                        onClick = {
-                            selectionMode = false
-                            selectedIds = emptySet()
-                        },
-                        containerColor = colors.sectionBackground.copy(alpha = 0.72f),
-                    )
-                    PostIconButton(
-                        icon = Icons.Filled.Delete,
-                        contentDescription = "移出选中媒体",
-                        onClick = { if (!isMutating) deleteSelectedMedia() },
-                    )
-                }
-            }
+            SmallAlbumSelectionActionBar(
+                selectedCount = selectedIds.size,
+                onCancel = {
+                    selectionMode = false
+                    selectedIds = emptySet()
+                },
+                onDelete = { if (!isMutating) deleteSelectedMedia() },
+            )
+        } else {
+            SmallAlbumMediaActionBar(
+                mediaCount = sortedMediaItems.size,
+                density = density,
+                canSelect = sortedMediaItems.isNotEmpty(),
+                onSelect = {
+                    selectionMode = true
+                    selectedIds = emptySet()
+                },
+                onAddMedia = { if (!isMutating) onAddMedia() },
+            )
         }
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .discreteZoomLevelGesture(
+                    enabled = !selectionMode,
+                    levels = listOf(
+                        PhotoFeedDensity.COMFORT_2,
+                        PhotoFeedDensity.COMFORT_3,
+                        PhotoFeedDensity.DENSE_4,
+                    ),
+                    currentLevel = density,
+                    onLevelChange = { densityName = it.name },
+                )
+                .multiSelectSwipeGesture(
+                    enabled = selectionMode,
+                    hitTestAdapter = hitTestAdapter,
+                    selectedIds = liveSelectedIds.value,
+                    onSelectionChange = { selectedIds = it },
+                    onAutoScroll = { delta -> listState.scrollBy(delta) },
+                ),
+        ) {
             if (mediaItems.isEmpty()) {
-                Box(
+                SmallAlbumEmptyState(
+                    onAddMedia = { if (!isMutating) onAddMedia() },
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "还没有媒体",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.textSecondary.copy(alpha = 0.76f),
-                    )
-                }
+                )
             } else {
                 LazyColumn(
                     state = listState,
@@ -2368,9 +2361,142 @@ private fun SmallAlbumMediaGridSection(
                     icon = Icons.Rounded.Add,
                     contentDescription = "从照片流加入媒体",
                     onClick = { if (!isMutating) onAddMedia() },
+                    emphasized = false,
+                    buttonSize = 50.dp,
+                    iconSize = 26.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = gridSpacing, bottom = 18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumMediaActionBar(
+    mediaCount: Int,
+    density: PhotoFeedDensity,
+    canSelect: Boolean,
+    onSelect: () -> Unit,
+    onAddMedia: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    YingShiToolSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.lg),
+        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            YingShiStatusPill(
+                text = if (mediaCount > 0) "$mediaCount 张媒体" else "暂无媒体",
+                modifier = Modifier.weight(1f),
+            )
+            YingShiStatusPill(text = density.label)
+            if (canSelect) {
+                PostActionChip(
+                    text = "选择",
+                    onClick = onSelect,
+                    containerColor = colors.sectionBackground.copy(alpha = 0.68f),
+                )
+            }
+            PostActionChip(
+                text = "添加",
+                onClick = onAddMedia,
+                containerColor = colors.primaryContainer.copy(alpha = 0.76f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumSelectionActionBar(
+    selectedCount: Int,
+    onCancel: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    YingShiToolSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.lg),
+        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
+        highlighted = selectedCount > 0,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            YingShiStatusPill(
+                text = "已选 $selectedCount 项",
+                selected = selectedCount > 0,
+                modifier = Modifier.weight(1f),
+            )
+            PostActionChip(
+                text = "取消",
+                onClick = onCancel,
+                containerColor = colors.sectionBackground.copy(alpha = 0.72f),
+            )
+            PostIconButton(
+                icon = Icons.Filled.Delete,
+                contentDescription = "移出选中媒体",
+                onClick = onDelete,
+                buttonSize = 42.dp,
+                iconSize = 22.dp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumEmptyState(
+    onAddMedia: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        YingShiToolSurface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.lg),
+            shape = RoundedCornerShape(radius.xl),
+            contentPadding = PaddingValues(horizontal = spacing.lg, vertical = spacing.lg),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Text(
+                    text = "还没有媒体",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Text(
+                    text = "从照片流挑几张加入这里，这个小相册就会有自己的记忆封面。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
+                PostActionChip(
+                    text = "添加媒体",
+                    onClick = onAddMedia,
+                    containerColor = colors.primaryContainer.copy(alpha = 0.78f),
                 )
             }
         }
@@ -2391,9 +2517,20 @@ private fun SmallAlbumGridMediaTile(
     onLongClick: () -> Unit,
 ) {
     val selectionHotspotOnly = selectionMode && density.columns in 2..4
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val itemScale by animateFloatAsState(
+        targetValue = if (selected) motion.selectedMediaScale else 1f,
+        animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
+        label = "smallAlbumGridTileSelectionScale",
+    )
     Box(
         modifier = modifier
             .aspectRatio(1f)
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+            }
             .background(Color.Transparent)
             .combinedClickable(
                 onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
@@ -2410,14 +2547,28 @@ private fun SmallAlbumGridMediaTile(
             contentScale = ContentScale.Crop,
             showLoadingIndicator = false,
         )
+        YingShiMediaFrame(
+            modifier = Modifier.fillMaxSize(),
+            selected = selected,
+            memoryActive = highlighted,
+            topScrimAlpha = if (media.mediaType == AppMediaType.VIDEO) 0.22f else 0.14f,
+            bottomGlowAlpha = if (selected) 0.24f else 0.16f,
+        )
         if (highlighted) {
-            SmallAlbumNewBadge(
+            YingShiMemoryBadge(
+                text = "新加入",
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(6.dp),
+                compact = density.columns >= 4,
             )
         }
         if (selectionMode) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color.Black.copy(alpha = if (selected) 0.18f else 0.06f)),
+            )
             if (selectionHotspotOnly) {
                 Box(
                     modifier = Modifier

@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
@@ -79,12 +79,18 @@ fun AppShellScaffold(
             }
         },
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            content = content,
-        )
+        YingShiMistBackground(
+            modifier = Modifier.fillMaxSize(),
+            showWaves = false,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .yingShiRouteReveal(),
+                content = content,
+            )
+        }
     }
 }
 
@@ -176,6 +182,7 @@ fun TitleTabs(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -192,8 +199,18 @@ fun TitleTabs(
 
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(radius.capsule))
-                    .clickable { onSelected(index) }
+                    .yingShiHapticClickable(
+                        shape = RoundedCornerShape(radius.capsule),
+                        pressedScale = motion.pressedScale,
+                        onClick = { onSelected(index) },
+                    )
+                    .background(
+                        if (selected) {
+                            colors.primaryContainer.copy(alpha = 0.42f)
+                        } else {
+                            Color.Transparent
+                        },
+                    )
                     .padding(
                         horizontal = if (selected) spacing.sm else spacing.xs,
                         vertical = spacing.xxs,
@@ -227,7 +244,15 @@ private fun FloatingBottomBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.appBackground)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent,
+                        colors.appBackground.copy(alpha = 0.94f),
+                        colors.appBackground,
+                    ),
+                ),
+            )
             .navigationBarsPadding(),
     ) {
         Box(
@@ -241,11 +266,25 @@ private fun FloatingBottomBar(
                     .fillMaxWidth()
                     .height(68.dp),
                 shape = RoundedCornerShape(0.dp),
-                color = colors.appBackground.copy(alpha = 0.99f),
+                color = colors.raisedSurface.copy(alpha = 0.92f),
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp,
                 border = BorderStroke(0.dp, Color.Transparent),
             ) {}
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.glowWash.copy(alpha = 0.46f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -306,20 +345,21 @@ private fun BottomNavItem(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
     val shape = RoundedCornerShape(16.dp)
     val containerColor by animateColorAsState(
         targetValue = if (selected) colors.primaryContainer.copy(alpha = 0.82f) else Color.Transparent,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = motion.stateMillis, easing = motion.easing),
         label = "bottomNavContainer",
     )
     val contentColor by animateColorAsState(
         targetValue = if (selected) colors.titleAccent else colors.textSecondary.copy(alpha = 0.82f),
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = motion.stateMillis, easing = motion.easing),
         label = "bottomNavContent",
     )
     val itemScale by animateFloatAsState(
-        targetValue = if (selected) 1.04f else 1f,
-        animationSpec = tween(durationMillis = 180),
+        targetValue = if (selected) 1.035f else 1f,
+        animationSpec = tween(durationMillis = motion.stateMillis, easing = motion.easing),
         label = "bottomNavScale",
     )
 
@@ -327,7 +367,7 @@ private fun BottomNavItem(
         modifier = modifier
             .padding(horizontal = 2.dp)
             .height(56.dp)
-            .yingShiClickable(shape = shape, onClick = onClick),
+            .yingShiHapticClickable(shape = shape, pressedScale = motion.pressedScale, onClick = onClick),
         shape = shape,
         color = containerColor,
         border = if (selected) {
@@ -380,13 +420,24 @@ private fun CenterAddButton(onClick: () -> Unit) {
     Surface(
         modifier = Modifier
             .size(56.dp)
-            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+            .yingShiHapticClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
         shape = shape,
         color = colors.softGreenContainer.copy(alpha = 0.96f),
         border = BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.20f)),
         shadowElevation = 2.dp,
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.background(
+                Brush.radialGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.58f),
+                        colors.glowWash.copy(alpha = 0.26f),
+                        Color.Transparent,
+                    ),
+                ),
+            ),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "添加",

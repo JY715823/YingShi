@@ -111,6 +111,7 @@ fun PhotoFeedScreen(
     onRetryLoadMore: () -> Unit = { },
     scrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
+    allowOpenMediaWhileSelecting: Boolean = true,
     disabledMediaIds: Set<String> = emptySet(),
     disabledSelectionLabel: String? = null,
 ) {
@@ -660,6 +661,7 @@ fun PhotoFeedScreen(
                             newImportedMediaIds = newImportedMediaIds,
                             restoredMediaIds = restoredMediaIds,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
+                            allowOpenMediaWhileSelecting = allowOpenMediaWhileSelecting,
                             playingInlineVideoId = playingInlineVideoId,
                             activeInlineVideoId = activeInlineVideoId,
                             pausedInlineVideoIds = pausedInlineVideoIds,
@@ -670,7 +672,7 @@ fun PhotoFeedScreen(
                             },
                             thumbnailRequestSize = thumbnailRequestSize,
                             onMediaClick = { item ->
-                                if (item.mediaId in disabledMediaIds) {
+                                if (item.mediaId in disabledMediaIds && selectionState.isInSelectionMode) {
                                     return@PhotoFeedGridRowContent
                                 }
                                 onSelectionStateChange(
@@ -698,9 +700,6 @@ fun PhotoFeedScreen(
                                 )
                             },
                             onOpenMedia = { item ->
-                                if (item.mediaId in disabledMediaIds) {
-                                    return@PhotoFeedGridRowContent
-                                }
                                 onOpenViewer(
                                     PhotoViewerRoute(
                                         mediaItems = displayFeedItems,
@@ -972,29 +971,25 @@ private fun PhotoFeedToolbar(
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
 
-    Surface(
+    YingShiToolSurface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.capsule),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(
-            width = 1.dp,
-            color = colors.dividerSoft.copy(alpha = 0.72f),
-        ),
+        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
+        highlighted = selectedCount > 0,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            YingShiStatusPill(
                 text = if (selectedCount > 0) {
                     "\u5df2\u9009 $selectedCount"
                 } else {
-                    "$mediaCount \u9879"
+                    "$mediaCount \u9879 · ${selectedDensity.label}"
                 },
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.textSecondary,
+                selected = selectedCount > 0,
             )
             PhotoFeedDensitySwitcher(
                 selectedDensity = selectedDensity,
@@ -1017,7 +1012,7 @@ private fun PhotoFeedDensitySwitcher(
     val chipShape = RoundedCornerShape(radius.capsule)
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhotoFeedDensity.entries.forEach { density ->
@@ -1033,20 +1028,24 @@ private fun PhotoFeedDensitySwitcher(
                 else -> colors.textSecondary
             }
 
-            Box(
+            Surface(
                 modifier = Modifier
                     .yingShiClickable(
                         enabled = enabled,
                         shape = chipShape,
                         pressedScale = 0.96f,
                         onClick = { onDensitySelected(density) },
-                    )
-                    .background(backgroundColor)
-                    .padding(horizontal = spacing.xs, vertical = 6.dp),
-                contentAlignment = Alignment.Center,
+                    ),
+                shape = chipShape,
+                color = backgroundColor,
+                border = BorderStroke(
+                    1.dp,
+                    if (selected) colors.glassStroke.copy(alpha = 0.74f) else colors.dividerSoft.copy(alpha = 0.42f),
+                ),
             ) {
                 Text(
                     text = density.label,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = textColor,
                 )
@@ -1087,7 +1086,7 @@ private fun PhotoFeedTimeScrubber(
     val thumbWidthPx = with(density) { thumbWidth.roundToPx() }
     val thumbHeightPx = with(density) { thumbHeight.roundToPx() }
     val endMarginPx = with(density) { endMargin.roundToPx() }
-    val labelGapPx = with(density) { 12.dp.roundToPx() }
+    val labelGapPx = with(density) { 40.dp.roundToPx() }
     val yearLabelGapPx = with(density) { 8.dp.roundToPx() }
     val yearLabelWidthPx = with(density) { 60.dp.roundToPx() }
     val trackInsetYPx = with(density) { trackInsetY.roundToPx() }
@@ -1120,13 +1119,17 @@ private fun PhotoFeedTimeScrubber(
                 scrubberHeightPx = it.height
             },
     ) {
+        val minTrackCenterXPx = thumbWidthPx / 2f
+        val maxTrackCenterXPx = (
+            scrubberWidthPx.toFloat() - (thumbWidthPx / 2f)
+            ).coerceAtLeast(minTrackCenterXPx)
         val trackCenterXPx = (
             scrubberWidthPx.toFloat() -
                 endMarginPx.toFloat() -
                 (thumbWidthPx / 2f)
             ).coerceIn(
-                thumbWidthPx / 2f,
-                scrubberWidthPx.toFloat() - (thumbWidthPx / 2f),
+                minTrackCenterXPx,
+                maxTrackCenterXPx,
             )
         val thumbLeftPx = (trackCenterXPx - (thumbWidthPx / 2f)).roundToInt()
         val labelLeftPx = (
@@ -1143,7 +1146,9 @@ private fun PhotoFeedTimeScrubber(
         Canvas(
             modifier = Modifier.matchParentSize(),
         ) {
-            val centerX = trackCenterXPx.coerceIn(thumbWidthPx / 2f, size.width - (thumbWidthPx / 2f))
+            val canvasMinCenterX = thumbWidthPx / 2f
+            val canvasMaxCenterX = (size.width - (thumbWidthPx / 2f)).coerceAtLeast(canvasMinCenterX)
+            val centerX = trackCenterXPx.coerceIn(canvasMinCenterX, canvasMaxCenterX)
             val topY = trackInsetYPx.toFloat()
             val bottomY = (size.height - trackInsetYPx.toFloat()).coerceAtLeast(topY)
             val thumbCenterY = (thumbTopPx + thumbHeightPx / 2f).coerceIn(topY, bottomY)
@@ -1236,13 +1241,16 @@ private fun PhotoFeedTimeScrubber(
                 Text(
                     text = label,
                     modifier = Modifier
-                        .width(112.dp)
-                        .padding(horizontal = spacing.sm, vertical = 7.dp)
+                        .width(132.dp)
+                        .padding(horizontal = spacing.sm, vertical = 9.dp)
                         .onSizeChanged {
                             scrubberLabelWidthPx = it.width
                             labelHeightPx = it.height
                         },
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                    ),
                     maxLines = 1,
                     softWrap = false,
                     textAlign = TextAlign.Center,
@@ -1645,6 +1653,7 @@ private fun PhotoFeedGridRowContent(
     newImportedMediaIds: Set<String>,
     restoredMediaIds: Set<String>,
     inlineVideoAutoPlayEnabled: Boolean,
+    allowOpenMediaWhileSelecting: Boolean,
     playingInlineVideoId: String?,
     activeInlineVideoId: String?,
     pausedInlineVideoIds: Set<String>,
@@ -1676,6 +1685,7 @@ private fun PhotoFeedGridRowContent(
                 isNewImported = item.mediaId in newImportedMediaIds,
                 isRestored = item.mediaId in restoredMediaIds,
                 inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                allowOpenMediaWhileSelecting = allowOpenMediaWhileSelecting,
                 isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
                 isInlineVideoActive = activeInlineVideoId == item.mediaId,
                 isInlineVideoPaused = item.mediaId in pausedInlineVideoIds,
@@ -1711,6 +1721,7 @@ private fun PhotoFeedCard(
     isNewImported: Boolean,
     isRestored: Boolean,
     inlineVideoAutoPlayEnabled: Boolean,
+    allowOpenMediaWhileSelecting: Boolean,
     isInlineVideoPlaying: Boolean,
     isInlineVideoActive: Boolean,
     isInlineVideoPaused: Boolean,
@@ -1725,7 +1736,7 @@ private fun PhotoFeedCard(
 ) {
     val motion = YingShiThemeTokens.motion
     val motionEnabled = rememberYingShiMotionEnabled()
-    val selectionHotspotOnly = isInSelectionMode && density.columns in 2..4
+    val selectionHotspotOnly = isInSelectionMode && allowOpenMediaWhileSelecting && density.columns in 2..4
     val supportsInlineVideo = inlineVideoAutoPlayEnabled &&
         !isInSelectionMode &&
         item.mediaType == AppMediaType.VIDEO &&
@@ -1766,6 +1777,14 @@ private fun PhotoFeedCard(
             requestSize = thumbnailRequestSize,
             showLoadingIndicator = false,
             showVideoPlayOverlay = !(supportsInlineVideo || showSelectionVideoMarker),
+        )
+
+        YingShiMediaFrame(
+            modifier = Modifier.matchParentSize(),
+            selected = isSelected,
+            memoryActive = isNewImported || isRestored || isHighlighted,
+            topScrimAlpha = if (item.mediaType == AppMediaType.VIDEO) 0.22f else 0.14f,
+            bottomGlowAlpha = if (isSelected) 0.24f else 0.16f,
         )
 
         Box(
@@ -1826,16 +1845,20 @@ private fun PhotoFeedCard(
         }
 
         if (isNewImported) {
-            NewImportedBadge(
+            YingShiMemoryBadge(
+                text = "新导入",
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 6.dp, top = 6.dp),
+                compact = density.columns >= 4,
             )
         } else if (isRestored) {
-            RestoredBadge(
+            YingShiMemoryBadge(
+                text = "已恢复",
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 6.dp, top = 6.dp),
+                compact = density.columns >= 4,
             )
         }
 
@@ -1866,7 +1889,7 @@ private fun PhotoFeedCard(
 
         if (isInSelectionMode) {
             val selectionVeilAlpha by animateFloatAsState(
-                targetValue = if (isSelected) 0.18f else 0.08f,
+                targetValue = if (isSelected) 0.20f else 0.06f,
                 animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
                 label = "photoFeedSelectionVeil",
             )
@@ -1905,7 +1928,7 @@ private fun PhotoFeedCard(
                     .matchParentSize()
                     .border(
                         width = 2.dp,
-                        color = YingShiThemeTokens.colors.primaryContainer.copy(alpha = selectionBorderAlpha),
+                        color = YingShiThemeTokens.colors.glassStroke.copy(alpha = selectionBorderAlpha),
                     ),
             )
         }

@@ -30,7 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +51,11 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
 import com.example.yingshi.data.model.UploadState
+import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
+import com.example.yingshi.ui.components.YingShiStateLayer
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -72,116 +79,126 @@ fun TransferCenterScreen(
     val runningGroups = operationGroups.size - completedGroups
     var showClearCompletedDialog by rememberSaveable { mutableStateOf(false) }
     val colors = YingShiThemeTokens.colors
+    var noticeNonce by rememberSaveable { mutableIntStateOf(0) }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    fun showNotice(message: String, tone: YingShiNoticeTone = YingShiNoticeTone.INFO) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.appBackground)
-            .statusBarsPadding()
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+    YingShiMistBackground(modifier = modifier, showWaves = false) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            TransferCircleButton(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
-                onClick = onBack,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "传输中心",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                Text(
-                    text = if (tasks.isEmpty()) {
-                        "暂无传输任务"
-                    } else {
-                        "进行中 $runningGroups · 已完成 $completedGroups"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                )
-            }
-            if (completedGroups > 0) {
-                TransferActionPill(
-                    text = "清理",
-                    icon = Icons.Default.Delete,
-                    onClick = { showClearCompletedDialog = true },
-                )
-            } else {
-                Box(modifier = Modifier.size(40.dp))
-            }
-        }
-        if (showClearCompletedDialog) {
-            TransferClearRecordsDialog(
-                title = "清理已完成的传输记录？",
-                body = "只会从传输中心移除已结束的任务记录，不会删除已导入照片流的媒体、已创建的小相册，或已加入小相册里的媒体。",
-                onDismiss = { showClearCompletedDialog = false },
-                onConfirm = {
-                    showClearCompletedDialog = false
-                    operationGroups
-                        .filter { group -> group.all { it.isTerminal } }
-                        .flatten()
-                        .forEach { task -> LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId) }
-                },
-            )
-        }
-
-        if (tasks.isEmpty()) {
-            TransferEmptyState()
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                items(
-                    items = operationGroups,
-                    key = { group -> group.first().operationId },
-                ) { group ->
-                    TransferOperationCard(
-                        tasks = group,
-                        onRetryTask = { taskId -> LocalSystemMediaBridgeRepository.retryUploadTask(context, taskId) },
-                        onCancelOperation = LocalSystemMediaBridgeRepository::cancelUploadOperation,
-                        onClearTask = LocalSystemMediaBridgeRepository::dismissUploadTask,
-                        onOpen = { onOpenTaskMedia(it) },
+                TransferCircleButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    onClick = onBack,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "传输中心",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
                     )
+                    Text(
+                        text = if (tasks.isEmpty()) {
+                            "暂无传输任务"
+                        } else {
+                            "进行中 $runningGroups · 已完成 $completedGroups"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                }
+                if (completedGroups > 0) {
+                    TransferActionPill(
+                        text = "清理",
+                        icon = Icons.Default.Delete,
+                        onClick = { showClearCompletedDialog = true },
+                    )
+                } else {
+                    Box(modifier = Modifier.size(40.dp))
+                }
+            }
+            if (showClearCompletedDialog) {
+                TransferClearRecordsDialog(
+                    title = "清理已完成的传输记录？",
+                    body = "只会从传输中心移除已结束的任务记录，不会删除已导入照片流的媒体、已创建的小相册，或已加入小相册里的媒体。",
+                    onDismiss = { showClearCompletedDialog = false },
+                    onConfirm = {
+                        showClearCompletedDialog = false
+                        operationGroups
+                            .filter { group -> group.all { it.isTerminal } }
+                            .flatten()
+                            .forEach { task -> LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId) }
+                        showNotice("已清理完成的传输记录", YingShiNoticeTone.SUCCESS)
+                    },
+                )
+            }
+
+            if (tasks.isEmpty()) {
+                TransferEmptyState()
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    items(
+                        items = operationGroups,
+                        key = { group -> group.first().operationId },
+                    ) { group ->
+                        TransferOperationCard(
+                            tasks = group,
+                            onRetryTask = { taskId ->
+                                LocalSystemMediaBridgeRepository.retryUploadTask(context, taskId)
+                                showNotice("已重新加入传输队列", YingShiNoticeTone.SUCCESS)
+                            },
+                            onCancelOperation = {
+                                LocalSystemMediaBridgeRepository.cancelUploadOperation(it)
+                                showNotice("已取消传输任务")
+                            },
+                            onClearTask = {
+                                LocalSystemMediaBridgeRepository.dismissUploadTask(it)
+                                showNotice("已移除传输记录")
+                            },
+                            onOpen = { onOpenTaskMedia(it) },
+                        )
+                    }
                 }
             }
         }
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = spacing.md),
+        )
     }
 }
 
 @Composable
 private fun TransferEmptyState() {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = colors.sectionBackground.copy(alpha = 0.62f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            Text(
-                text = "没有传输任务",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
-            Text(
-                text = "导入照片流、新建小相册、加入小相册后的进度会显示在这里。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary,
-            )
-        }
-    }
+    YingShiStateLayer(
+        title = "没有传输任务",
+        body = "导入照片流、新建小相册、加入小相册后的进度会显示在这里。",
+        tone = YingShiNoticeTone.INFO,
+    )
 }
 
 @Composable

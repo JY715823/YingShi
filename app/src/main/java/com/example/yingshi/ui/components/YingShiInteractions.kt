@@ -6,13 +6,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 private const val YingShiTapMillis = 170
 
@@ -69,4 +73,27 @@ fun Modifier.yingShiClickable(
             indication = null,
             onClick = onClick,
         )
+}
+
+@Composable
+fun Modifier.yingShiHapticClickable(
+    enabled: Boolean = true,
+    shape: Shape? = null,
+    pressedScale: Float = 0.965f,
+    hapticType: HapticFeedbackType = HapticFeedbackType.LongPress,
+    onClick: () -> Unit,
+): Modifier {
+    val haptic = LocalHapticFeedback.current
+    val motion = YingShiThemeTokens.motion
+    return yingShiClickable(
+        enabled = enabled,
+        shape = shape,
+        pressedScale = pressedScale,
+        onClick = {
+            if (motion.hapticEnabled && enabled) {
+                haptic.performHapticFeedback(hapticType)
+            }
+            onClick()
+        },
+    )
 }
