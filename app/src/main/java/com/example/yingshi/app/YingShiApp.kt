@@ -75,6 +75,9 @@ import com.example.yingshi.feature.photos.NotificationDetailRoute
 import com.example.yingshi.feature.photos.NotificationDetailScreen
 import com.example.yingshi.feature.photos.NotificationCenterItemType
 import com.example.yingshi.feature.photos.NotificationCenterItemUiModel
+import com.example.yingshi.feature.photos.isLifeChatTarget
+import com.example.yingshi.feature.photos.isLifeConsoleTarget
+import com.example.yingshi.feature.photos.isLifeLedgerTarget
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.GlobalPhotoFeedPageStateStore
@@ -166,6 +169,9 @@ fun YingShiApp() {
     var postDetailRoute by remember {
         mutableStateOf<PostDetailPlaceholderRoute?>(null)
     }
+    var postDetailReturnViewerRoute by remember {
+        mutableStateOf<PhotoViewerRoute?>(null)
+    }
     var pendingPostListUpdatedPostId by remember {
         mutableStateOf<String?>(null)
     }
@@ -182,6 +188,12 @@ fun YingShiApp() {
         mutableStateOf<MediaManagementRoute?>(null)
     }
     var notificationCenterRoute by remember {
+        mutableStateOf<NotificationCenterRoute?>(null)
+    }
+    var notificationCenterSnapshotRoute by remember {
+        mutableStateOf<NotificationCenterRoute?>(null)
+    }
+    var notificationTargetReturnRoute by remember {
         mutableStateOf<NotificationCenterRoute?>(null)
     }
     var transferCenterRoute by remember {
@@ -257,15 +269,36 @@ fun YingShiApp() {
         systemMediaViewerRoute = null
         createPostRoute = null
         postDetailRoute = null
+        postDetailReturnViewerRoute = null
         gearEditRoute = null
         mediaManagementRoute = null
         notificationCenterRoute = null
+        notificationCenterSnapshotRoute = null
+        notificationTargetReturnRoute = null
         transferCenterRoute = null
         notificationDetailRoute = null
         settingsRoute = null
         backendDiagnosticsRoute = null
         cacheManagementRoute = null
         resetAccountRoutes()
+    }
+
+    fun captureNotificationReturnRoute(): NotificationCenterRoute {
+        val snapshot = notificationCenterRoute
+            ?: notificationCenterSnapshotRoute
+            ?: NotificationCenterRoute(source = "notification-center")
+        notificationCenterSnapshotRoute = snapshot
+        notificationTargetReturnRoute = snapshot
+        return snapshot
+    }
+
+    fun restoreNotificationCenter(): Boolean {
+        val restoreRoute = notificationTargetReturnRoute ?: return false
+        notificationDetailRoute = null
+        notificationCenterRoute = restoreRoute
+        notificationCenterSnapshotRoute = restoreRoute
+        notificationTargetReturnRoute = null
+        return true
     }
 
     fun handleUnauthorized(message: String?) {
@@ -420,7 +453,6 @@ fun YingShiApp() {
         }
     }
     val closePostDetail: () -> Unit = {
-        postDetailRoute = null
         pendingPostListUpdatedAlbumId?.let { albumId ->
             AlbumPageStateStore.pendingSelectedAlbumId = albumId
         }
@@ -429,6 +461,11 @@ fun YingShiApp() {
         }
         pendingPostListUpdatedPostId = null
         pendingPostListUpdatedAlbumId = null
+        postDetailRoute = null
+        postDetailReturnViewerRoute?.let { viewerRoute ->
+            postDetailReturnViewerRoute = null
+            photoViewerRoute = viewerRoute
+        } ?: restoreNotificationCenter()
     }
     val postDetailRouteWithNotice: (PostDetailPlaceholderRoute, String) -> PostDetailPlaceholderRoute = { route, notice ->
         postDetailFeedbackNonce += 1
@@ -626,6 +663,7 @@ fun YingShiApp() {
     if (trashDetailRoute != null) {
         BackHandler {
             trashDetailRoute = null
+            restoreNotificationCenter()
         }
     }
     if (postDetailRoute != null) {
@@ -651,6 +689,7 @@ fun YingShiApp() {
     if (transferCenterRoute != null) {
         BackHandler {
             transferCenterRoute = null
+            restoreNotificationCenter()
         }
     }
     if (
@@ -676,6 +715,30 @@ fun YingShiApp() {
     if (cacheManagementRoute != null) {
         BackHandler {
             cacheManagementRoute = null
+            restoreNotificationCenter()
+        }
+    }
+    if (
+        notificationTargetReturnRoute != null &&
+        notificationCenterRoute == null &&
+        notificationDetailRoute == null &&
+        transferCenterRoute == null &&
+        postDetailRoute == null &&
+        trashDetailRoute == null &&
+        cacheManagementRoute == null &&
+        settingsRoute == null &&
+        backendDiagnosticsRoute == null &&
+        photoViewerRoute == null &&
+        systemMediaRoute == null &&
+        systemMediaViewerRoute == null &&
+        createPostRoute == null &&
+        !ledgerRouteActive &&
+        !chatViewerRouteActive &&
+        !lifeConsoleRouteActive &&
+        !isProfileFlowActive
+    ) {
+        BackHandler {
+            restoreNotificationCenter()
         }
     }
     val photosOverlayActive = photoViewerRoute != null ||
@@ -712,6 +775,102 @@ fun YingShiApp() {
                 !chatViewerRouteActive &&
                 !lifeConsoleRouteActive,
         ) {
+            val openNotificationTarget: (NotificationCenterItemUiModel) -> Unit = { item ->
+                captureNotificationReturnRoute()
+                when {
+                    item.id == "notice-cache-1" -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        cacheManagementRoute = CacheManagementRoute(source = "notification-center")
+                    }
+
+                    !item.postId.isNullOrBlank() -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.PHOTOS.name
+                        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                        postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                            item.toNotificationPostRoute()
+                        } else {
+                            FakeAlbumRepository.getPost(item.postId)
+                                ?.let(FakeAlbumRepository::toPostDetailRoute)
+                                ?.copy(
+                                    entryNotice = "从通知进入",
+                                    highlightMediaIds = item.mediaId?.let(::listOf).orEmpty(),
+                                    focusMediaId = item.mediaId,
+                                )
+                                ?: item.toNotificationPostRoute()
+                        }
+                    }
+
+                    !item.trashItemId.isNullOrBlank() && RepositoryProvider.currentMode == RepositoryMode.REAL -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.PHOTOS.name
+                        photosTopDestinationName = PhotosTopDestination.TRASH.name
+                        trashDetailRoute = TrashDetailRoute(
+                            entryId = item.trashItemId,
+                            entryType = item.targetType.toTrashEntryTypeOrNull(),
+                            sourcePostId = item.postId,
+                            sourceMediaId = item.mediaId,
+                        )
+                    }
+
+                    item.isLifeLedgerTarget() -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.LIFE.name
+                        lifeConsoleRouteActive = false
+                        chatViewerRouteActive = false
+                        ledgerRouteActive = true
+                    }
+
+                    item.isLifeConsoleTarget() -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.LIFE.name
+                        ledgerRouteActive = false
+                        chatViewerRouteActive = false
+                        lifeConsoleRouteActive = true
+                    }
+
+                    item.isLifeChatTarget() -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.LIFE.name
+                        ledgerRouteActive = false
+                        lifeConsoleRouteActive = false
+                        chatViewerRouteActive = true
+                    }
+
+                    item.type == NotificationCenterItemType.DELETE_RESTORE -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.PHOTOS.name
+                        photosTopDestinationName = PhotosTopDestination.TRASH.name
+                    }
+
+                    item.targetType.equals("UPLOAD", ignoreCase = true) -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        transferCenterRoute = TransferCenterRoute(source = "notification-center")
+                    }
+
+                    item.type == NotificationCenterItemType.CONTENT_UPDATE -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.PHOTOS.name
+                        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                    }
+
+                    else -> {
+                        notificationDetailRoute = NotificationDetailRoute(
+                            notificationId = item.id,
+                            source = "notification-center",
+                        )
+                    }
+                }
+            }
             when {
             backendDiagnosticsRoute != null -> {
                 backendDiagnosticsRoute?.let { route ->
@@ -747,6 +906,7 @@ fun YingShiApp() {
                     NotificationDetailScreen(
                         route = route,
                         onBack = { notificationDetailRoute = null },
+                        onOpenTarget = openNotificationTarget,
                     )
                 }
             }
@@ -757,74 +917,8 @@ fun YingShiApp() {
                         route = route,
                         onBack = { notificationCenterRoute = null },
                         onOpenNotificationDetail = { notificationDetailRoute = it },
-                        onOpenNotificationTarget = { item ->
-                            when {
-                                item.id == "notice-cache-1" -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    cacheManagementRoute = CacheManagementRoute(source = "notification-center")
-                                }
-
-                                !item.postId.isNullOrBlank() -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.HOME.name
-                                    photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                                    postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                                        item.toNotificationPostRoute()
-                                    } else {
-                                        FakeAlbumRepository.getPost(item.postId)
-                                            ?.let(FakeAlbumRepository::toPostDetailRoute)
-                                            ?.copy(
-                                                entryNotice = "从通知进入",
-                                                highlightMediaIds = item.mediaId?.let(::listOf).orEmpty(),
-                                                focusMediaId = item.mediaId,
-                                            )
-                                            ?: item.toNotificationPostRoute()
-                                    }
-                                }
-
-                                !item.trashItemId.isNullOrBlank() && RepositoryProvider.currentMode == RepositoryMode.REAL -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.PHOTOS.name
-                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                    trashDetailRoute = TrashDetailRoute(
-                                        entryId = item.trashItemId,
-                                        entryType = item.targetType.toTrashEntryTypeOrNull(),
-                                        sourcePostId = item.postId,
-                                        sourceMediaId = item.mediaId,
-                                    )
-                                }
-
-                                item.type == NotificationCenterItemType.DELETE_RESTORE -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.PHOTOS.name
-                                    photosTopDestinationName = PhotosTopDestination.TRASH.name
-                                }
-
-                                item.targetType.equals("UPLOAD", ignoreCase = true) -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    transferCenterRoute = TransferCenterRoute(source = "notification-center")
-                                }
-
-                                item.type == NotificationCenterItemType.CONTENT_UPDATE -> {
-                                    notificationCenterRoute = null
-                                    notificationDetailRoute = null
-                                    selectedDestinationName = RootDestination.PHOTOS.name
-                                    photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                                }
-
-                                else -> {
-                                    notificationDetailRoute = NotificationDetailRoute(
-                                        notificationId = item.id,
-                                        source = "notification-center",
-                                    )
-                                }
-                            }
-                        },
+                        onOpenNotificationTarget = openNotificationTarget,
+                        onRouteSnapshotChange = { notificationCenterSnapshotRoute = it },
                     )
                 }
             }
@@ -935,6 +1029,7 @@ fun YingShiApp() {
                                 photosTopDestinationName = PhotosTopDestination.PHOTOS.name
                             }
                         },
+                        onShowNotice = ::showAppNotice,
                     )
                 }
             }
@@ -1067,6 +1162,7 @@ fun YingShiApp() {
                                 profileRefreshMessage = null
                             },
                             onSessionExpired = { message -> handleUnauthorized(message) },
+                            onShowNotice = ::showAppNotice,
                             modifier = Modifier.fillMaxSize(),
                         )
 
@@ -1233,6 +1329,7 @@ fun YingShiApp() {
                             photoFeedScrollTrigger++
                         },
                         onOpenPostDetail = {
+                            postDetailReturnViewerRoute = route
                             photoViewerRoute = null
                             postDetailRoute = it
                         },

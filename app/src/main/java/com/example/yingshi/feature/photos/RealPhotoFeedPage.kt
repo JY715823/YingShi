@@ -19,13 +19,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
@@ -53,10 +55,17 @@ fun RealPhotoFeedPage(
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var addToPostPendingPostId by rememberSaveable { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by rememberSaveable { mutableStateOf(0) }
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
     val spacing = YingShiThemeTokens.spacing
+
+    fun showNotice(message: String) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, nonce = noticeNonce)
+    }
     androidx.compose.runtime.LaunchedEffect(backendMutationEvent.version) {
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsPhotoFeed()) {
             viewModel.refresh()
@@ -237,6 +246,7 @@ fun RealPhotoFeedPage(
                             onOpenViewer = onOpenViewer,
                             onLoadMore = viewModel::loadNextPage,
                             onRetryLoadMore = viewModel::retryLoadNextPage,
+                            onShowNotice = ::showNotice,
                             scrollTrigger = scrollTrigger,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                         )
@@ -288,6 +298,18 @@ fun RealPhotoFeedPage(
                 }
             }
         }
+
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = spacing.sm),
+        )
     }
 }
 

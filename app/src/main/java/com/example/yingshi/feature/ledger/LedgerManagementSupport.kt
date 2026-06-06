@@ -122,12 +122,16 @@ fun LedgerActionSheet(
                             onDismiss()
                             action.onClick()
                         },
-                    color = Color(0xFFF8F8F9),
+                    color = if (action.destructive) {
+                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f)
+                    } else {
+                        LedgerGroupedHeader
+                    },
                 ) {
                     Text(
                         text = action.label,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                        color = if (action.destructive) LedgerExpenseRed else Color.Black,
+                        color = if (action.destructive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -266,7 +270,7 @@ fun LedgerAccountEditorSheet(
                 items(LedgerAccountType.entries.toList()) { accountType ->
                     Surface(
                         shape = RoundedCornerShape(18.dp),
-                        color = if (accountType.name == type) LedgerGreenSoft else Color(0xFFF8F8F9),
+                        color = if (accountType.name == type) LedgerGreenSoft else LedgerGroupedHeader,
                         border = BorderStroke(1.dp, if (accountType.name == type) LedgerHeaderGreen else LedgerDivider),
                         modifier = Modifier.clickable { type = accountType.name },
                     ) {
@@ -279,7 +283,7 @@ fun LedgerAccountEditorSheet(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .clip(CircleShape)
-                                    .background(Color.White),
+                                    .background(LedgerRaisedSurface),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
@@ -367,7 +371,7 @@ fun LedgerCategoryPickerSheet(
                                 .background(ledgerColor(category.color)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
                         }
                     },
                     trailingText = if (category.hidden) "已隐藏" else null,
@@ -411,7 +415,7 @@ fun LedgerAccountChoiceSheet(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFF2F2F2)),
+                                .background(LedgerGroupedHeader),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(accountIcon(account.type), contentDescription = null, tint = ledgerColor(account.color), modifier = Modifier.size(18.dp))
@@ -669,7 +673,7 @@ private fun IconChoiceChip(
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = if (selected) LedgerGreenSoft else Color(0xFFF8F8F9),
+        color = if (selected) LedgerGreenSoft else LedgerGroupedHeader,
         border = BorderStroke(1.dp, if (selected) LedgerHeaderGreen else LedgerDivider),
         modifier = Modifier.clickable(onClick = onClick),
     ) {

@@ -1,6 +1,5 @@
 package com.example.yingshi.feature.photos
 
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,7 +28,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,7 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -50,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -63,6 +69,7 @@ fun TrashDetailScreen(
     onBack: () -> Unit,
     onEntryRemoved: () -> Unit,
     onEntryRestored: (List<String>) -> Unit = { },
+    onShowNotice: (String, YingShiNoticeTone) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
@@ -76,7 +83,6 @@ fun TrashDetailScreen(
         return
     }
 
-    val context = LocalContext.current
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     val entry = FakeTrashRepository.resolveDetailEntry(route)
     var showPermanentDeleteConfirm by rememberSaveable(entry?.id) {
@@ -100,6 +106,7 @@ fun TrashDetailScreen(
             onBack = onBack,
             onEntryRemoved = onEntryRemoved,
             onEntryRestored = onEntryRestored,
+            onShowNotice = onShowNotice,
             modifier = modifier,
         )
         return
@@ -114,6 +121,7 @@ fun TrashDetailScreen(
             onBack = onBack,
             onEntryRemoved = onEntryRemoved,
             onEntryRestored = onEntryRestored,
+            onShowNotice = onShowNotice,
             modifier = modifier,
         )
         return
@@ -138,9 +146,10 @@ fun TrashDetailScreen(
             onRestore = {
                 val targetMediaIds = entry.restoreTargetMediaIds()
                 val result = FakeTrashRepository.restoreEntry(entry.id)
-                Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
                 if (result.success) {
                     onEntryRestored(targetMediaIds)
+                } else {
+                    onShowNotice(result.message, YingShiNoticeTone.WARNING)
                 }
             },
             onRemove = {
@@ -182,9 +191,10 @@ fun TrashDetailScreen(
                     onClick = {
                         showPermanentDeleteConfirm = false
                         if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
+                            onShowNotice("已永久删除回收站项目", YingShiNoticeTone.SUCCESS)
                             onEntryRemoved()
                         } else {
-                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onShowNotice("该删除项不存在或已被移出回收站。", YingShiNoticeTone.WARNING)
                             onBack()
                         }
                     },
@@ -206,13 +216,15 @@ private fun TrashMediaViewerDetailPagerScreen(
     onBack: () -> Unit,
     onEntryRemoved: () -> Unit,
     onEntryRestored: (List<String>) -> Unit,
+    onShowNotice: (String, YingShiNoticeTone) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val colors = YingShiThemeTokens.colors
     val viewerEntries = remember(entry.id, entry.type) {
         FakeTrashRepository.getEntries(entry.type)
             .filter { it.type == entry.type && it.mediaSnapshot != null }
             .ifEmpty { listOf(entry) }
+            .distinctBy { it.businessIdentityKey() }
     }
     val initialPage = viewerEntries.indexOfFirst { it.id == entry.id }
         .takeIf { it >= 0 } ?: 0
@@ -235,7 +247,7 @@ private fun TrashMediaViewerDetailPagerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF050608)),
+            .background(colors.viewerBackground),
     ) {
         HorizontalPager(
             state = pagerState,
@@ -278,7 +290,11 @@ private fun TrashMediaViewerDetailPagerScreen(
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TrashViewerOverlayButton(text = "<", onClick = onBack)
+            TrashViewerOverlayButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
             Box(modifier = Modifier.weight(1f))
             currentActorIdentity?.let { actorIdentity ->
                 CollaboratorMarkerBadge(
@@ -287,11 +303,13 @@ private fun TrashMediaViewerDetailPagerScreen(
                 )
             }
             TrashViewerOverlayButton(
-                text = "↩",
+                icon = Icons.AutoMirrored.Filled.Undo,
+                contentDescription = "恢复",
                 onClick = { showRestoreConfirm = true },
             )
             TrashViewerOverlayButton(
-                text = "🗑",
+                icon = Icons.Filled.Delete,
+                contentDescription = "永久删除",
                 destructive = true,
                 onClick = { onShowPermanentDeleteConfirmChange(true) },
             )
@@ -320,20 +338,7 @@ private fun TrashMediaViewerDetailPagerScreen(
                 )
             }
             if (currentEntry.type == TrashEntryType.MEDIA_REMOVED) {
-                Surface(
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = Color.Black.copy(alpha = 0.38f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-                ) {
-                    Text(
-                        text = trashViewerPostTitle(currentEntry),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White.copy(alpha = 0.92f),
-                    )
-                }
+                TrashViewerMetaCapsule(text = trashViewerPostTitle(currentEntry))
             }
         }
         TrashViewerCommentPreview(
@@ -359,9 +364,10 @@ private fun TrashMediaViewerDetailPagerScreen(
                     onClick = {
                         onShowPermanentDeleteConfirmChange(false)
                         if (FakeTrashRepository.permanentlyDeleteEntry(currentEntry.id)) {
+                            onShowNotice("已永久删除回收站项目", YingShiNoticeTone.SUCCESS)
                             onEntryRemoved()
                         } else {
-                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onShowNotice("该删除项不存在或已被移出回收站。", YingShiNoticeTone.WARNING)
                             onBack()
                         }
                     },
@@ -389,9 +395,13 @@ private fun TrashMediaViewerDetailPagerScreen(
                         showRestoreConfirm = false
                         val targetMediaIds = currentEntry.restoreTargetMediaIds()
                         val result = FakeTrashRepository.restoreEntry(currentEntry.id)
-                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
                         if (result.success) {
+                            if (targetMediaIds.isEmpty()) {
+                                onShowNotice("已恢复回照片页", YingShiNoticeTone.SUCCESS)
+                            }
                             onEntryRestored(targetMediaIds)
+                        } else {
+                            onShowNotice(result.message, YingShiNoticeTone.WARNING)
                         }
                     },
                 )
@@ -412,9 +422,10 @@ private fun TrashMediaViewerDetailScreen(
     onBack: () -> Unit,
     onEntryRemoved: () -> Unit,
     onEntryRestored: (List<String>) -> Unit,
+    onShowNotice: (String, YingShiNoticeTone) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
+    val colors = YingShiThemeTokens.colors
     val media = entry.mediaSnapshot
     val actorIdentity = resolveTrashActorIdentity(entry, directory)
     val comments = remember(media?.mediaId) {
@@ -426,7 +437,7 @@ private fun TrashMediaViewerDetailScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF07111F))
+            .background(colors.viewerBackground)
             .statusBarsPadding(),
     ) {
         if (media == null) {
@@ -445,7 +456,7 @@ private fun TrashMediaViewerDetailScreen(
                     .align(Alignment.Center)
                     .fillMaxWidth()
                     .aspectRatio(media.aspectRatio.coerceIn(0.45f, 2.2f)),
-                contentDescription = media.mediaId,
+                contentDescription = trashViewerMediaContentDescription(media),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                 requestSize = 1080,
                 showLoadingIndicator = true,
@@ -475,7 +486,11 @@ private fun TrashMediaViewerDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TrashViewerOverlayButton(text = "<", onClick = onBack)
+            TrashViewerOverlayButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
             Box(modifier = Modifier.weight(1f))
             actorIdentity?.let {
                 CollaboratorMarkerBadge(
@@ -484,18 +499,24 @@ private fun TrashMediaViewerDetailScreen(
                 )
             }
             TrashViewerOverlayButton(
-                text = "↩",
+                icon = Icons.AutoMirrored.Filled.Undo,
+                contentDescription = "恢复",
                 onClick = {
                     val targetMediaIds = entry.restoreTargetMediaIds()
                     val result = FakeTrashRepository.restoreEntry(entry.id)
-                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
                     if (result.success) {
+                        if (targetMediaIds.isEmpty()) {
+                            onShowNotice("已恢复回照片页", YingShiNoticeTone.SUCCESS)
+                        }
                         onEntryRestored(targetMediaIds)
+                    } else {
+                        onShowNotice(result.message, YingShiNoticeTone.WARNING)
                     }
                 },
             )
             TrashViewerOverlayButton(
-                text = "🗑",
+                icon = Icons.Filled.Delete,
+                contentDescription = "永久删除",
                 destructive = true,
                 onClick = { onShowPermanentDeleteConfirmChange(true) },
             )
@@ -524,20 +545,7 @@ private fun TrashMediaViewerDetailScreen(
                 )
             }
             if (entry.type == TrashEntryType.MEDIA_REMOVED) {
-                Surface(
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = Color.Black.copy(alpha = 0.38f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-                ) {
-                    Text(
-                        text = trashViewerPostTitle(entry),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White.copy(alpha = 0.92f),
-                    )
-                }
+                TrashViewerMetaCapsule(text = trashViewerPostTitle(entry))
             }
         }
         TrashViewerCommentPreview(
@@ -567,9 +575,10 @@ private fun TrashMediaViewerDetailScreen(
                     onClick = {
                         onShowPermanentDeleteConfirmChange(false)
                         if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
+                            onShowNotice("已永久删除回收站项目", YingShiNoticeTone.SUCCESS)
                             onEntryRemoved()
                         } else {
-                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onShowNotice("该删除项不存在或已被移出回收站。", YingShiNoticeTone.WARNING)
                             onBack()
                         }
                     },
@@ -584,28 +593,60 @@ private fun TrashMediaViewerDetailScreen(
 
 @Composable
 private fun TrashViewerOverlayButton(
-    text: String,
-    destructive: Boolean = false,
     onClick: () -> Unit,
+    text: String? = null,
+    icon: ImageVector? = null,
+    contentDescription: String = text.orEmpty(),
+    destructive: Boolean = false,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val contentColor = colors.viewerText.copy(alpha = 0.94f)
     Surface(
         modifier = Modifier
+            .then(
+                if (icon != null) {
+                    Modifier.size(44.dp)
+                } else {
+                    Modifier.defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                },
+            )
             .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (destructive) {
-            Color(0xFFE5484D).copy(alpha = 0.88f)
+            MaterialTheme.colorScheme.error.copy(alpha = 0.88f)
         } else {
-            Color.Black.copy(alpha = 0.38f)
+            colors.viewerSurface.copy(alpha = 0.82f)
         },
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+        border = BorderStroke(
+            1.dp,
+            if (destructive) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+            } else {
+                colors.viewerAccent.copy(alpha = 0.16f)
+            },
+        ),
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White.copy(alpha = 0.94f),
-        )
+        if (icon != null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = contentColor,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        } else {
+            Text(
+                text = text.orEmpty(),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor,
+            )
+        }
     }
 }
 
@@ -615,11 +656,12 @@ private fun TrashViewerCommentPreview(
     modifier: Modifier = Modifier,
 ) {
     if (comments.isEmpty()) return
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier.fillMaxWidth(0.62f),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        color = Color.Black.copy(alpha = 0.36f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+        color = colors.viewerSurface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
     ) {
         Column(
             modifier = Modifier.padding(YingShiThemeTokens.spacing.sm),
@@ -628,7 +670,7 @@ private fun TrashViewerCommentPreview(
             Text(
                 text = "媒体评论",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White.copy(alpha = 0.92f),
+                color = colors.viewerText.copy(alpha = 0.92f),
             )
             comments.take(2).forEach { comment ->
                 Text(
@@ -636,10 +678,40 @@ private fun TrashViewerCommentPreview(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.86f),
+                    color = colors.viewerTextSecondary.copy(alpha = 0.92f),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TrashViewerMetaCapsule(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = colors.viewerSurface.copy(alpha = 0.76f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.viewerText.copy(alpha = 0.92f),
+        )
+    }
+}
+
+private fun trashViewerMediaContentDescription(media: TrashMediaSnapshot): String {
+    return when (media.mediaType) {
+        AppMediaType.VIDEO -> "回收站视频"
+        AppMediaType.IMAGE -> "回收站照片"
     }
 }
 
@@ -652,9 +724,9 @@ private fun TrashPostViewerDetailScreen(
     onBack: () -> Unit,
     onEntryRemoved: () -> Unit,
     onEntryRestored: (List<String>) -> Unit,
+    onShowNotice: (String, YingShiNoticeTone) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val colors = YingShiThemeTokens.colors
     val snapshot = entry.postSnapshot
     val actorIdentity = resolveTrashActorIdentity(entry, directory)
@@ -671,9 +743,13 @@ private fun TrashPostViewerDetailScreen(
     fun restorePost() {
         val targetMediaIds = entry.restoreTargetMediaIds()
         val result = FakeTrashRepository.restoreEntry(entry.id)
-        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
         if (result.success) {
+            if (targetMediaIds.isEmpty()) {
+                onShowNotice("已恢复当前小相册", YingShiNoticeTone.SUCCESS)
+            }
             onEntryRestored(targetMediaIds)
+        } else {
+            onShowNotice(result.message, YingShiNoticeTone.WARNING)
         }
     }
 
@@ -793,9 +869,10 @@ private fun TrashPostViewerDetailScreen(
                     onClick = {
                         onShowPermanentDeleteConfirmChange(false)
                         if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
+                            onShowNotice("已永久删除回收站项目", YingShiNoticeTone.SUCCESS)
                             onEntryRemoved()
                         } else {
-                            Toast.makeText(context, "该删除项不存在或已被移出回收站。", Toast.LENGTH_SHORT).show()
+                            onShowNotice("该删除项不存在或已被移出回收站。", YingShiNoticeTone.WARNING)
                             onBack()
                         }
                     },
@@ -847,7 +924,11 @@ private fun TrashPostViewerTopBar(
         horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrashCircleButton(text = "<", onClick = onBack)
+        TrashCircleButton(
+            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "返回",
+            onClick = onBack,
+        )
         Row(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
@@ -857,7 +938,7 @@ private fun TrashPostViewerTopBar(
                 Text(
                     text = entry.type.label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = colors.memoryAccent,
+                    color = MaterialTheme.colorScheme.error,
                 )
                 Text(
                     text = "回收站小相册查看",
@@ -873,7 +954,7 @@ private fun TrashPostViewerTopBar(
             }
         }
         TrashActionChip(text = "恢复", emphasized = true, onClick = onRestore)
-        TrashActionChip(text = "删除", emphasized = false, onClick = onRemove)
+        TrashActionChip(text = "删除", emphasized = false, destructive = true, onClick = onRemove)
     }
 }
 
@@ -898,18 +979,18 @@ private fun TrashPostMediaGridTile(
             TrashDeletedMediaOverlay(modifier = Modifier.matchParentSize())
         }
         if (media.mediaType == AppMediaType.VIDEO) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(5.dp),
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                color = Color.Black.copy(alpha = 0.38f),
-            ) {
-                Text(
-                    text = formatVideoDurationLabel(media.videoDurationMillis) ?: "视频",
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White,
+            if (formatVideoDurationLabel(media.videoDurationMillis) != null) {
+                VideoDurationBadge(
+                    durationMillis = media.videoDurationMillis,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(5.dp),
+                )
+            } else {
+                VideoMediaMarker(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(5.dp),
                 )
             }
         }
@@ -931,7 +1012,7 @@ private fun TrashPostMediaViewerOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF07111F))
+            .background(YingShiThemeTokens.colors.viewerBackground)
             .statusBarsPadding(),
     ) {
         if (media == null || media.mediaSource == null) {
@@ -977,7 +1058,11 @@ private fun TrashPostMediaViewerOverlay(
             horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TrashViewerOverlayButton(text = "<", onClick = onBack)
+            TrashViewerOverlayButton(
+                icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
             Box(modifier = Modifier.weight(1f))
             actorIdentity?.let {
                 CollaboratorMarkerBadge(
@@ -985,8 +1070,17 @@ private fun TrashPostMediaViewerOverlay(
                     size = 18.dp,
                 )
             }
-            TrashViewerOverlayButton(text = "↩", onClick = onRestorePost)
-            TrashViewerOverlayButton(text = "删", destructive = true, onClick = onRequestDeletePost)
+            TrashViewerOverlayButton(
+                icon = Icons.AutoMirrored.Filled.Undo,
+                contentDescription = "恢复",
+                onClick = onRestorePost,
+            )
+            TrashViewerOverlayButton(
+                icon = Icons.Filled.Delete,
+                contentDescription = "永久删除",
+                destructive = true,
+                onClick = onRequestDeletePost,
+            )
         }
 
         Column(
@@ -1011,20 +1105,7 @@ private fun TrashPostMediaViewerOverlay(
                     },
                 )
             }
-            Surface(
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                color = Color.Black.copy(alpha = 0.38f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-            ) {
-                Text(
-                    text = entry.postSnapshot?.post?.title ?: entry.title,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White.copy(alpha = 0.92f),
-                )
-            }
+            TrashViewerMetaCapsule(text = entry.postSnapshot?.post?.title ?: entry.title)
         }
     }
 }
@@ -1036,13 +1117,13 @@ private fun TrashDeletedMediaOverlay(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
-            .background(Color.Black.copy(alpha = 0.44f)),
+            .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.84f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = "已删除",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White,
+            color = YingShiThemeTokens.colors.viewerText,
         )
     }
 }
@@ -1063,7 +1144,11 @@ private fun TrashDetailTopBar(
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrashCircleButton(text = "<", onClick = onBack)
+        TrashCircleButton(
+            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "返回",
+            onClick = onBack,
+        )
         Row(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -1073,7 +1158,7 @@ private fun TrashDetailTopBar(
                 Text(
                     text = entry.type.label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = colors.memoryAccent,
+                    color = MaterialTheme.colorScheme.error,
                 )
                 Text(
                     text = "回收站详情",
@@ -1092,6 +1177,7 @@ private fun TrashDetailTopBar(
         TrashActionChip(
             text = "永久删除",
             emphasized = false,
+            destructive = true,
             onClick = onRemove,
         )
     }
@@ -1377,7 +1463,7 @@ private fun TrashMediaCanvas(
                 .fillMaxWidth(0.46f)
                 .height(28.dp)
                 .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-                .background(Color.White.copy(alpha = 0.14f)),
+                .background(YingShiThemeTokens.colors.viewerSurface.copy(alpha = 0.18f)),
         )
     }
 }
@@ -1409,7 +1495,7 @@ private fun TrashViewerMediaCanvas(
                 modifier = Modifier
                     .width(fittedWidth)
                     .height(fittedHeight),
-                contentDescription = media.mediaId,
+                contentDescription = trashViewerMediaContentDescription(media),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                 requestSize = 1080,
                 showLoadingIndicator = true,
@@ -1463,7 +1549,7 @@ private fun TrashReadOnlyCommentCard(
                         Text(
                             text = "${comment.author} · ${formatTrashDetailTime(comment.createdAtMillis)}",
                             style = MaterialTheme.typography.labelMedium,
-                            color = colors.memoryAccent,
+                            color = colors.textSecondary,
                         )
                         Text(
                             text = comment.content,
@@ -1525,7 +1611,8 @@ private fun TrashMetaChipRows(items: List<String>) {
 
 @Composable
 private fun TrashCircleButton(
-    text: String,
+    icon: ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1533,7 +1620,7 @@ private fun TrashCircleButton(
 
     Surface(
         modifier = Modifier
-            .size(40.dp)
+            .size(44.dp)
             .yingShiClickable(
                 shape = shape,
                 pressedScale = 0.94f,
@@ -1544,10 +1631,11 @@ private fun TrashCircleButton(
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(22.dp),
             )
         }
     }
@@ -1557,6 +1645,7 @@ private fun TrashCircleButton(
 private fun TrashActionChip(
     text: String,
     emphasized: Boolean,
+    destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1569,17 +1658,17 @@ private fun TrashActionChip(
             onClick = onClick,
         ),
         shape = shape,
-        color = if (emphasized) {
-            colors.primaryContainer.copy(alpha = 0.78f)
-        } else {
-            colors.raisedSurface.copy(alpha = 0.94f)
+        color = when {
+            emphasized -> colors.primaryContainer.copy(alpha = 0.78f)
+            destructive -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f)
+            else -> colors.raisedSurface.copy(alpha = 0.94f)
         },
         border = BorderStroke(
             width = 1.dp,
-            color = if (emphasized) {
-                colors.glassStroke.copy(alpha = 0.68f)
-            } else {
-                colors.dividerSoft.copy(alpha = 0.66f)
+            color = when {
+                emphasized -> colors.glassStroke.copy(alpha = 0.68f)
+                destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+                else -> colors.dividerSoft.copy(alpha = 0.66f)
             },
         ),
     ) {
@@ -1590,7 +1679,11 @@ private fun TrashActionChip(
                 vertical = YingShiThemeTokens.spacing.xs,
             ),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = if (emphasized) colors.titleAccent else colors.textSecondary,
+            color = when {
+                emphasized -> colors.titleAccent
+                destructive -> MaterialTheme.colorScheme.onErrorContainer
+                else -> colors.textSecondary
+            },
         )
     }
 }

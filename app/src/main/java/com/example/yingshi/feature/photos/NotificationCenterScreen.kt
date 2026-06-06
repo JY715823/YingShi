@@ -1,28 +1,32 @@
 package com.example.yingshi.feature.photos
 
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,20 +35,28 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.model.RemotePostDetail
+import com.example.yingshi.data.model.RemotePostMedia
+import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -60,14 +72,50 @@ private data class NotificationCenterUiState(
     val notifications: List<NotificationCenterItemUiModel> = emptyList(),
 )
 
-private enum class NotificationCategoryFilter(
-    val label: String,
-) {
-    ALL("全部分类"),
-    COMMENT("评论"),
-    CONTENT_UPDATE("内容更新"),
-    DELETE_RESTORE("删除 / 恢复"),
-    SYSTEM("系统"),
+private data class NotificationResolvedPresentation(
+    val title: String,
+    val body: String,
+    val targetSummary: String,
+    val visual: NotificationVisual = NotificationVisual.None,
+)
+
+private sealed interface NotificationVisual {
+    data object None : NotificationVisual
+
+    data class Media(
+        val mediaSource: AppContentMediaSource?,
+        val mediaType: AppMediaType,
+        val palette: PhotoThumbnailPalette,
+    ) : NotificationVisual
+
+    data class SmallAlbum(
+        val title: String,
+        val metaLabel: String,
+        val palette: PhotoThumbnailPalette,
+        val previewMedia: List<AlbumPostPreviewMediaUiModel>,
+    ) : NotificationVisual
+}
+
+private object NotificationCenterMemoryCache {
+    private val uiStates = mutableMapOf<String, NotificationCenterUiState>()
+    private val presentations = mutableMapOf<String, NotificationResolvedPresentation>()
+
+    fun readUiState(sessionKey: String): NotificationCenterUiState? = uiStates[sessionKey]
+
+    fun hasUiState(sessionKey: String): Boolean = uiStates.containsKey(sessionKey)
+
+    fun writeUiState(sessionKey: String, state: NotificationCenterUiState) {
+        uiStates[sessionKey] = state
+    }
+
+    fun readPresentation(notificationId: String): NotificationResolvedPresentation? = presentations[notificationId]
+
+    fun writePresentation(
+        notificationId: String,
+        presentation: NotificationResolvedPresentation,
+    ) {
+        presentations[notificationId] = presentation
+    }
 }
 
 @Composable
@@ -83,42 +131,76 @@ fun NotificationCenterScreen(
             ),
         )
     },
+    onRouteSnapshotChange: (NotificationCenterRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val sessionKey = realBackendSessionKey("notification-center-${route.source}")
-    var selectedFilterName by rememberSaveable { mutableStateOf(NotificationCenterFilter.PHOTOS.name) }
-    var selectedCategoryName by rememberSaveable { mutableStateOf(NotificationCategoryFilter.ALL.name) }
+    var selectedFilterName by remember(route.source) { mutableStateOf(route.selectedFilterName) }
+    var selectedCategoryName by remember(route.source) { mutableStateOf(route.selectedCategoryName) }
     var uiState by remember(sessionKey) {
-        mutableStateOf(NotificationCenterUiState(isLoading = true))
+        mutableStateOf(
+            NotificationCenterMemoryCache.readUiState(sessionKey)
+                ?: NotificationCenterUiState(isLoading = true),
+        )
     }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by remember { mutableIntStateOf(0) }
+    var showClearListConfirm by remember(route.source) { mutableStateOf(false) }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = route.firstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = route.firstVisibleItemScrollOffset,
+    )
     val selectedFilter = NotificationCenterFilter.valueOf(selectedFilterName)
-    val selectedCategory = NotificationCategoryFilter.valueOf(selectedCategoryName)
+    val availableCategories = notificationCategoriesFor(selectedFilter)
+    val selectedCategory = availableCategories.firstOrNull { it.name == selectedCategoryName }
+        ?: NotificationCategoryFilter.ALL
     val filteredNotifications = uiState.notifications
         .filterBy(selectedFilter)
-        .filterBy(selectedCategory)
+        .filterBy(selectedFilter, selectedCategory)
     val unreadCount = filteredNotifications.count { !it.isRead }
+    val totalCount = filteredNotifications.size
+
+    fun showNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
+
+    fun updateUiState(nextState: NotificationCenterUiState) {
+        uiState = nextState
+        if (!nextState.isLoading || nextState.notifications.isNotEmpty() || nextState.errorMessage != null) {
+            NotificationCenterMemoryCache.writeUiState(sessionKey, nextState)
+        }
+    }
 
     fun refresh(showLoading: Boolean = true) {
         coroutineScope.launch {
-            uiState = uiState.copy(
-                isLoading = showLoading,
-                errorMessage = null,
+            updateUiState(
+                uiState.copy(
+                    isLoading = showLoading,
+                    errorMessage = null,
+                ),
             )
             when (val result = RepositoryProvider.notificationRepository.getNotifications(limit = 100)) {
                 is ApiResult.Success -> {
-                    uiState = NotificationCenterUiState(
-                        isLoading = false,
-                        notifications = result.data.map { it.toNotificationCenterItemUiModel() },
+                    updateUiState(
+                        NotificationCenterUiState(
+                            isLoading = false,
+                            notifications = result.data.map { it.toNotificationCenterItemUiModel() },
+                        ),
                     )
                 }
                 is ApiResult.Error -> {
-                    uiState = uiState.copy(
-                        isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取通知失败，请稍后重试。"),
+                    updateUiState(
+                        uiState.copy(
+                            isLoading = false,
+                            errorMessage = result.toBackendUiMessage("读取通知失败，请稍后重试。"),
+                        ),
                     )
                 }
                 ApiResult.Loading -> Unit
@@ -127,131 +209,225 @@ fun NotificationCenterScreen(
     }
 
     LaunchedEffect(sessionKey) {
-        refresh(showLoading = true)
+        if (!NotificationCenterMemoryCache.hasUiState(sessionKey)) {
+            refresh(showLoading = true)
+        }
     }
 
-    Column(
+    LaunchedEffect(selectedFilter, availableCategories) {
+        if (availableCategories.none { it.name == selectedCategoryName }) {
+            selectedCategoryName = NotificationCategoryFilter.ALL.name
+        }
+    }
+
+    LaunchedEffect(route.source, selectedFilterName, selectedCategoryName, listState) {
+        snapshotFlow {
+            NotificationCenterRoute(
+                source = route.source,
+                selectedFilterName = selectedFilterName,
+                selectedCategoryName = selectedCategoryName,
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+            )
+        }.collect { snapshot ->
+            onRouteSnapshotChange(snapshot)
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.appBackground)
-            .statusBarsPadding()
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+            .background(colors.appBackground),
     ) {
-        NotificationCenterTopBar(
-            selectedFilter = selectedFilter,
-            selectedCategory = selectedCategory,
-            notifications = uiState.notifications,
-            unreadCount = unreadCount,
-            markAllReadEnabled = unreadCount > 0 && !uiState.isMutating,
-            deleteAllEnabled = filteredNotifications.isNotEmpty() && !uiState.isMutating,
-            onBack = onBack,
-            onFilterSelected = { selectedFilterName = it.name },
-            onCategorySelected = { selectedCategoryName = it.name },
-            onMarkAllRead = {
-                coroutineScope.launch {
-                    uiState = uiState.copy(isMutating = true, errorMessage = null)
-                    when (val result = RepositoryProvider.notificationRepository.markAllRead()) {
-                        is ApiResult.Success -> {
-                            uiState = uiState.copy(
-                                isMutating = false,
-                                notifications = uiState.notifications.map { item ->
-                                    if (item.isRead) item else item.copy(isRead = true)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            NotificationCenterTopBar(
+                selectedFilter = selectedFilter,
+                selectedCategory = selectedCategory,
+                availableCategories = availableCategories,
+                notifications = uiState.notifications,
+                totalCount = totalCount,
+                unreadCount = unreadCount,
+                markAllReadEnabled = unreadCount > 0 && !uiState.isMutating,
+                deleteAllEnabled = filteredNotifications.isNotEmpty() && !uiState.isMutating,
+                onBack = onBack,
+                onFilterSelected = { selectedFilterName = it.name },
+                onCategorySelected = { selectedCategoryName = it.name },
+                onMarkAllRead = {
+                    coroutineScope.launch {
+                        updateUiState(uiState.copy(isMutating = true, errorMessage = null))
+                        when (val result = RepositoryProvider.notificationRepository.markAllRead()) {
+                            is ApiResult.Success -> {
+                                updateUiState(
+                                    uiState.copy(
+                                        isMutating = false,
+                                        notifications = uiState.notifications.map { item ->
+                                            if (item.isRead) item else item.copy(isRead = true)
+                                        },
+                                    ),
+                                )
+                                showNotice(
+                                    message = if (result.data.affectedCount > 0) {
+                                        "已全部标记为已读"
+                                    } else {
+                                        "当前没有新的未读通知"
+                                    },
+                                    tone = if (result.data.affectedCount > 0) {
+                                        YingShiNoticeTone.SUCCESS
+                                    } else {
+                                        YingShiNoticeTone.INFO
+                                    },
+                                )
+                            }
+                            is ApiResult.Error -> {
+                                updateUiState(
+                                    uiState.copy(
+                                        isMutating = false,
+                                        errorMessage = result.toBackendUiMessage("全部标记已读失败，请稍后重试。"),
+                                    ),
+                                )
+                            }
+                            ApiResult.Loading -> Unit
+                        }
+                    }
+                },
+                onDeleteAll = {
+                    if (filteredNotifications.isNotEmpty()) {
+                        showClearListConfirm = true
+                    }
+                },
+            )
+
+            uiState.errorMessage?.let { message ->
+                NotificationCenterMessageCard(
+                    message = message,
+                    actionLabel = "重试",
+                    onAction = { refresh(showLoading = uiState.notifications.isEmpty()) },
+                )
+            }
+
+            when {
+                uiState.isLoading && uiState.notifications.isEmpty() -> {
+                    NotificationCenterLoadingState(
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                filteredNotifications.isEmpty() -> {
+                    NotificationCenterEmptyState(
+                        filter = selectedFilter,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                else -> {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        items(
+                            items = filteredNotifications,
+                            key = NotificationCenterItemUiModel::id,
+                        ) { item ->
+                            NotificationCenterItemRow(
+                                item = item,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        val targetItem = if (item.isRead) {
+                                            item
+                                        } else {
+                                            when (val result = RepositoryProvider.notificationRepository.markRead(item.id)) {
+                                                is ApiResult.Success -> {
+                                                    val updatedItem = result.data.toNotificationCenterItemUiModel()
+                                                    updateUiState(uiState.replaceNotification(updatedItem))
+                                                    updatedItem
+                                                }
+                                                is ApiResult.Error -> {
+                                                    updateUiState(
+                                                        uiState.copy(
+                                                            errorMessage = result.toBackendUiMessage("标记通知已读失败。"),
+                                                        ),
+                                                    )
+                                                    updateUiState(uiState.replaceNotification(item.copy(isRead = true)))
+                                                    item.copy(isRead = true)
+                                                }
+                                                ApiResult.Loading -> item.copy(isRead = true)
+                                            }
+                                        }
+                                        onOpenNotificationTarget(targetItem)
+                                    }
                                 },
                             )
-                            Toast.makeText(
-                                context,
-                                if (result.data.affectedCount > 0) {
-                                    "已全部标记为已读"
-                                } else {
-                                    "当前没有新的未读通知"
-                                },
-                                Toast.LENGTH_SHORT,
-                            ).show()
                         }
-                        is ApiResult.Error -> {
-                            uiState = uiState.copy(
-                                isMutating = false,
-                                errorMessage = result.toBackendUiMessage("全部标记已读失败，请稍后重试。"),
-                            )
-                        }
-                        ApiResult.Loading -> Unit
                     }
                 }
+            }
+        }
+
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
             },
-            onDeleteAll = {
-                val deleteIds = filteredNotifications.map { it.id }.toSet()
-                if (deleteIds.isEmpty()) return@NotificationCenterTopBar
-                uiState = uiState.copy(
-                    notifications = uiState.notifications.filterNot { it.id in deleteIds },
-                    errorMessage = null,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = spacing.md),
+        )
+    }
+
+    if (showClearListConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearListConfirm = false },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            title = {
+                Text(
+                    text = "清空当前通知列表？",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
-                Toast.makeText(context, "已删除当前模块通知", Toast.LENGTH_SHORT).show()
+            },
+            text = {
+                Text(
+                    text = "只会把当前筛选结果从本地列表里移除，不会删除后端通知记录。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TrashDialogActionButton(
+                    text = "继续清空",
+                    emphasized = true,
+                    onClick = {
+                        val deleteIds = filteredNotifications.map(NotificationCenterItemUiModel::id).toSet()
+                        showClearListConfirm = false
+                        if (deleteIds.isNotEmpty()) {
+                            updateUiState(
+                                uiState.copy(
+                                    notifications = uiState.notifications.filterNot { it.id in deleteIds },
+                                    errorMessage = null,
+                                ),
+                            )
+                            showNotice(
+                                message = "已清空当前筛选结果",
+                                tone = YingShiNoticeTone.SUCCESS,
+                            )
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                TrashDialogActionButton(text = "取消", onClick = { showClearListConfirm = false })
             },
         )
-
-        uiState.errorMessage?.let { message ->
-            NotificationCenterMessageCard(
-                message = message,
-                actionLabel = "重试",
-                onAction = { refresh(showLoading = uiState.notifications.isEmpty()) },
-            )
-        }
-
-        when {
-            uiState.isLoading && uiState.notifications.isEmpty() -> {
-                NotificationCenterLoadingState(
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            filteredNotifications.isEmpty() -> {
-                NotificationCenterEmptyState(
-                    filter = selectedFilter,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                ) {
-                    items(
-                        items = filteredNotifications,
-                        key = NotificationCenterItemUiModel::id,
-                    ) { item ->
-                        NotificationCenterItemRow(
-                            item = item,
-                            onClick = {
-                                coroutineScope.launch {
-                                    val targetItem = if (item.isRead) {
-                                        item
-                                    } else {
-                                        when (val result = RepositoryProvider.notificationRepository.markRead(item.id)) {
-                                            is ApiResult.Success -> {
-                                                val updatedItem = result.data.toNotificationCenterItemUiModel()
-                                                uiState = uiState.replaceNotification(updatedItem)
-                                                updatedItem
-                                            }
-                                            is ApiResult.Error -> {
-                                                uiState = uiState.copy(
-                                                    errorMessage = result.toBackendUiMessage("标记通知已读失败。"),
-                                                )
-                                                uiState = uiState.replaceNotification(item.copy(isRead = true))
-                                                item.copy(isRead = true)
-                                            }
-                                            ApiResult.Loading -> item.copy(isRead = true)
-                                        }
-                                    }
-                                    onOpenNotificationTarget(targetItem)
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -259,7 +435,9 @@ fun NotificationCenterScreen(
 private fun NotificationCenterTopBar(
     selectedFilter: NotificationCenterFilter,
     selectedCategory: NotificationCategoryFilter,
+    availableCategories: List<NotificationCategoryFilter>,
     notifications: List<NotificationCenterItemUiModel>,
+    totalCount: Int,
     unreadCount: Int,
     markAllReadEnabled: Boolean,
     deleteAllEnabled: Boolean,
@@ -271,252 +449,196 @@ private fun NotificationCenterTopBar(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-    var categoryExpanded by rememberSaveable { mutableStateOf(false) }
-    var moduleExpanded by rememberSaveable { mutableStateOf(false) }
 
-    Column(
+    YingShiToolSurface(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.md),
+        highlighted = unreadCount > 0,
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            NotificationIconButton(
-                icon = Icons.Default.ArrowBack,
-                contentDescription = "返回",
-                onClick = onBack,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "通知",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                Text(
-                    text = if (unreadCount > 0) {
-                        "${selectedFilter.label} · ${selectedCategory.label} · $unreadCount 条未读"
-                    } else {
-                        "${selectedFilter.label} · ${selectedCategory.label} · 已读完"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                )
-            }
             Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                verticalAlignment = Alignment.Top,
+            ) {
+                NotificationIconButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    onClick = onBack,
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "通知",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                        NotificationActionPill(
+                            text = "一键已读",
+                            enabled = markAllReadEnabled,
+                            onClick = onMarkAllRead,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "共 $totalCount 条通知",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary,
+                            )
+                            Text(
+                                text = if (unreadCount > 0) "$unreadCount 条未读" else "全部已读",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = if (unreadCount > 0) {
+                                    colors.memoryAccent
+                                } else {
+                                    colors.textSecondary
+                                },
+                            )
+                        }
+                        NotificationActionPill(
+                            text = "清空",
+                            enabled = deleteAllEnabled,
+                            onClick = onDeleteAll,
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NotificationTopIconButton(
-                    icon = Icons.Default.Menu,
-                    contentDescription = "通知分类",
-                    selected = categoryExpanded,
-                    onClick = {
-                        categoryExpanded = !categoryExpanded
-                        if (categoryExpanded) moduleExpanded = false
-                    },
-                )
-                NotificationTopIconButton(
-                    icon = if (moduleExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = "模块选择",
-                    selected = moduleExpanded,
-                    onClick = {
-                        moduleExpanded = !moduleExpanded
-                        if (moduleExpanded) categoryExpanded = false
-                    },
-                )
-            }
-        }
-
-        AnimatedVisibility(visible = categoryExpanded) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                NotificationCategoryFilter.entries.forEach { category ->
-                    NotificationCategoryOption(
-                        category = category,
-                        selected = category == selectedCategory,
-                        unreadCount = notifications
-                            .filterBy(selectedFilter)
-                            .filterBy(category)
-                            .count { !it.isRead },
-                        onClick = {
-                            onCategorySelected(category)
-                            categoryExpanded = false
-                        },
-                    )
+                NotificationFilterSectionLabel(text = "模块")
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    NotificationCenterFilter.entries.forEach { filter ->
+                        NotificationFilterChip(
+                            text = filter.label,
+                            selected = filter == selectedFilter,
+                            count = notifications.unreadCount(filter),
+                            onClick = { onFilterSelected(filter) },
+                        )
+                    }
                 }
             }
-        }
 
-        AnimatedVisibility(visible = moduleExpanded) {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                NotificationCenterFilter.entries.forEach { filter ->
-                    NotificationModuleOption(
-                        filter = filter,
-                        selected = filter == selectedFilter,
-                        unreadCount = notifications.unreadCount(filter),
-                        onClick = {
-                            onFilterSelected(filter)
-                            moduleExpanded = false
-                        },
-                    )
+                NotificationFilterSectionLabel(text = "分类")
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    availableCategories.forEach { category ->
+                        NotificationFilterChip(
+                            text = category.displayLabel(selectedFilter),
+                            selected = category == selectedCategory,
+                            count = notifications
+                                .filterBy(selectedFilter)
+                                .filterBy(selectedFilter, category)
+                                .count { !it.isRead },
+                            onClick = { onCategorySelected(category) },
+                        )
+                    }
                 }
             }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NotificationActionPill(
-                text = "一键已读",
-                enabled = markAllReadEnabled,
-                modifier = Modifier.weight(1f),
-                onClick = onMarkAllRead,
-            )
-            NotificationActionPill(
-                text = "一键删除",
-                enabled = deleteAllEnabled,
-                modifier = Modifier.weight(1f),
-                onClick = onDeleteAll,
-            )
         }
     }
 }
 
 @Composable
-private fun NotificationTopIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    selected: Boolean,
-    onClick: () -> Unit,
+private fun NotificationFilterSectionLabel(
+    text: String,
 ) {
-    val colors = YingShiThemeTokens.colors
-
-    Surface(
-        modifier = Modifier
-            .size(42.dp)
-            .yingShiClickable(shape = RoundedCornerShape(16.dp), pressedScale = 0.94f, onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) colors.primaryContainer.copy(alpha = 0.92f) else colors.sectionBackground.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, if (selected) colors.glassStroke.copy(alpha = 0.86f) else colors.dividerSoft.copy(alpha = 0.70f)),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = colors.onPrimaryContainer,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = YingShiThemeTokens.colors.textSecondary,
+    )
 }
 
 @Composable
-private fun NotificationCategoryOption(
-    category: NotificationCategoryFilter,
+private fun NotificationFilterChip(
+    text: String,
     selected: Boolean,
-    unreadCount: Int,
+    count: Int,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier
-            .fillMaxWidth()
             .yingShiClickable(
-                shape = RoundedCornerShape(radius.lg),
-                pressedScale = 0.98f,
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                pressedScale = 0.97f,
                 onClick = onClick,
             ),
-        shape = RoundedCornerShape(radius.lg),
-        color = if (selected) colors.softGreenContainer.copy(alpha = 0.66f) else colors.raisedSurface.copy(alpha = 0.88f),
-        border = BorderStroke(1.dp, if (selected) colors.softGreenAction.copy(alpha = 0.24f) else colors.dividerSoft.copy(alpha = 0.46f)),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (selected) {
+            colors.primaryContainer.copy(alpha = 0.88f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                colors.glassStroke.copy(alpha = 0.78f)
+            } else {
+                colors.dividerSoft.copy(alpha = 0.64f)
+            },
+        ),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = category.label,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyLarge.copy(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 ),
                 color = colors.titleAccent,
             )
-            if (unreadCount > 0) {
+            if (count > 0) {
                 Surface(
-                    shape = RoundedCornerShape(radius.capsule),
-                    color = colors.memoryContainer.copy(alpha = 0.88f),
-                    border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.18f)),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = colors.memoryContainer.copy(alpha = 0.90f),
+                    border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.22f)),
                 ) {
                     Text(
-                        text = unreadCount.toString(),
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.onMemoryContainer,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NotificationModuleOption(
-    filter: NotificationCenterFilter,
-    selected: Boolean,
-    unreadCount: Int,
-    onClick: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val colors = YingShiThemeTokens.colors
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .yingShiClickable(
-                shape = RoundedCornerShape(radius.lg),
-                pressedScale = 0.98f,
-                onClick = onClick,
-            ),
-        shape = RoundedCornerShape(radius.lg),
-        color = if (selected) colors.primaryContainer.copy(alpha = 0.62f) else colors.raisedSurface.copy(alpha = 0.88f),
-        border = BorderStroke(1.dp, if (selected) colors.glassStroke.copy(alpha = 0.70f) else colors.dividerSoft.copy(alpha = 0.46f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = filter.label,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                ),
-                color = colors.titleAccent,
-            )
-            if (unreadCount > 0) {
-                Surface(
-                    shape = RoundedCornerShape(radius.capsule),
-                    color = colors.memoryContainer.copy(alpha = 0.88f),
-                    border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.18f)),
-                ) {
-                    Text(
-                        text = unreadCount.toString(),
+                        text = count.toString(),
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.onMemoryContainer,
@@ -534,6 +656,7 @@ private fun NotificationCenterItemRow(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
+    val presentation = rememberNotificationPresentation(item)
 
     Surface(
         modifier = Modifier
@@ -544,14 +667,14 @@ private fun NotificationCenterItemRow(
         color = if (item.isRead) {
             colors.raisedSurface.copy(alpha = 0.94f)
         } else {
-            colors.primaryContainer.copy(alpha = 0.58f)
+            colors.memoryWash.copy(alpha = 0.96f)
         },
         border = BorderStroke(
             1.dp,
             if (item.isRead) {
                 colors.dividerSoft.copy(alpha = 0.54f)
             } else {
-                colors.glassStroke.copy(alpha = 0.74f)
+                colors.memoryAccent.copy(alpha = 0.24f)
             },
         ),
     ) {
@@ -588,36 +711,196 @@ private fun NotificationCenterItemRow(
                             .padding(top = 6.dp)
                             .size(8.dp)
                             .clip(CircleShape)
-                            .background(colors.softGreenAction),
+                            .background(colors.memoryAccent),
                     )
                 }
                 Column(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = presentation.visual == NotificationVisual.None),
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = item.title,
+                        text = presentation.title,
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.titleAccent,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = item.body,
+                        text = presentation.body,
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.textSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = item.targetSummary,
+                        text = presentation.targetSummary,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (item.isRead) {
                             colors.titleAccent.copy(alpha = 0.82f)
                         } else {
-                            colors.softGreenAction
+                            colors.memoryAccent
                         },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (presentation.visual != NotificationVisual.None) {
+                    NotificationVisualPane(
+                        visual = presentation.visual,
+                        modifier = Modifier
+                            .width(96.dp)
+                            .height(96.dp),
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun NotificationVisualPane(
+    visual: NotificationVisual,
+    modifier: Modifier = Modifier,
+) {
+    when (visual) {
+        NotificationVisual.None -> Unit
+        is NotificationVisual.Media -> NotificationMediaVisualPane(
+            visual = visual,
+            modifier = modifier,
+        )
+        is NotificationVisual.SmallAlbum -> NotificationSmallAlbumVisualPane(
+            visual = visual,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun NotificationMediaVisualPane(
+    visual: NotificationVisual.Media,
+    modifier: Modifier = Modifier,
+) {
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.sectionBackground.copy(alpha = 0.54f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.60f)),
+    ) {
+        AppContentMediaThumbnail(
+            mediaSource = visual.mediaSource,
+            mediaType = visual.mediaType,
+            palette = visual.palette,
+            modifier = Modifier.fillMaxSize(),
+            contentDescription = if (visual.mediaType == AppMediaType.VIDEO) "通知视频预览" else "通知图片预览",
+            requestSize = 360,
+            showLoadingIndicator = true,
+            showStatusBadge = true,
+            showVideoPlayOverlay = false,
+        )
+    }
+}
+
+@Composable
+private fun NotificationSmallAlbumVisualPane(
+    visual: NotificationVisual.SmallAlbum,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    val previewMedia = visual.previewMedia.distinctBy(AlbumPostPreviewMediaUiModel::id).take(2)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.raisedSurface.copy(alpha = 0.98f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.60f)),
+        shadowElevation = 1.dp,
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (previewMedia.isNotEmpty()) {
+                if (previewMedia.size == 1) {
+                    NotificationSmallAlbumPreviewTile(
+                        media = previewMedia.first(),
+                        title = visual.title,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        NotificationSmallAlbumPreviewTile(
+                            media = previewMedia[0],
+                            title = visual.title,
+                            modifier = Modifier
+                                .weight(1.35f)
+                                .fillMaxHeight(),
+                        )
+                        NotificationSmallAlbumPreviewTile(
+                            media = previewMedia[1],
+                            title = visual.title,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                        )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .background(colors.sectionBackground.copy(alpha = 0.50f)),
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.sm, vertical = spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = visual.title,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = visual.metaLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationSmallAlbumPreviewTile(
+    media: AlbumPostPreviewMediaUiModel,
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    AppContentMediaThumbnail(
+        mediaSource = media.mediaSource,
+        mediaType = media.mediaType,
+        palette = media.palette,
+        modifier = modifier,
+        contentDescription = title,
+        requestSize = 320,
+        showLoadingIndicator = true,
+        showStatusBadge = true,
+        showVideoPlayOverlay = false,
+    )
 }
 
 @Composable
@@ -660,12 +943,12 @@ private fun NotificationStatusBadge(
     Surface(
         shape = RoundedCornerShape(radius.capsule),
         color = if (emphasized) {
-            colors.softGreenContainer
+            colors.memoryContainer
         } else {
             colors.sectionBackground.copy(alpha = 0.58f)
         },
         border = if (emphasized) {
-            BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.22f))
+            BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.22f))
         } else {
             BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.42f))
         },
@@ -677,7 +960,7 @@ private fun NotificationStatusBadge(
                 fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
             ),
             color = if (emphasized) {
-                colors.softGreenAction
+                colors.onMemoryContainer
             } else {
                 colors.textSecondary
             },
@@ -796,7 +1079,7 @@ private fun NotificationIconButton(
     val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
-            .size(42.dp)
+            .size(44.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = colors.sectionBackground.copy(alpha = 0.78f),
@@ -833,14 +1116,14 @@ private fun NotificationActionPill(
             onClick = onClick,
         ),
         shape = RoundedCornerShape(radius.capsule),
-        color = if (enabled) colors.softGreenContainer.copy(alpha = 0.90f) else colors.sectionBackground.copy(alpha = 0.52f),
-        border = BorderStroke(1.dp, if (enabled) colors.softGreenAction.copy(alpha = 0.26f) else colors.dividerSoft.copy(alpha = 0.56f)),
+        color = if (enabled) colors.primaryContainer.copy(alpha = 0.90f) else colors.sectionBackground.copy(alpha = 0.52f),
+        border = BorderStroke(1.dp, if (enabled) colors.glassStroke.copy(alpha = 0.30f) else colors.dividerSoft.copy(alpha = 0.56f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = if (enabled) colors.softGreenAction else colors.textSecondary,
+            color = if (enabled) colors.titleAccent else colors.textSecondary,
         )
     }
 }
@@ -861,13 +1144,275 @@ private fun List<NotificationCenterItemUiModel>.filterBy(
     return filter { it.matchesModule(filter) }
 }
 
+@Composable
+private fun rememberNotificationPresentation(
+    item: NotificationCenterItemUiModel,
+): NotificationResolvedPresentation {
+    val rawPresentation = remember(item.id, item.title, item.body, item.targetSummary) {
+        item.toResolvedPresentation()
+    }
+    val cachedPresentation = NotificationCenterMemoryCache.readPresentation(item.id)
+    val resolvedPresentation by produceState(
+        initialValue = cachedPresentation ?: rawPresentation,
+        item.id,
+        item.title,
+        item.body,
+        item.targetSummary,
+    ) {
+        if (cachedPresentation == null) {
+            val presentation = resolveNotificationPresentation(item)
+            NotificationCenterMemoryCache.writePresentation(item.id, presentation)
+            value = presentation
+        }
+    }
+    return resolvedPresentation
+}
+
+private fun NotificationCenterItemUiModel.toResolvedPresentation(): NotificationResolvedPresentation {
+    return NotificationResolvedPresentation(
+        title = title.ifBlank { type.label },
+        body = body.ifBlank { "点开查看通知详情" },
+        targetSummary = targetSummary.withNotificationTargetFallback(),
+    )
+}
+
+private suspend fun resolveNotificationPresentation(
+    item: NotificationCenterItemUiModel,
+): NotificationResolvedPresentation {
+    val rawPresentation = item.toResolvedPresentation()
+    val postVisual = item.postId?.let { postId ->
+        loadNotificationPostVisual(postId = postId, focusMediaId = item.mediaId)
+    }
+    val trashVisual = item.trashItemId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { trashItemId -> loadNotificationTrashVisual(trashItemId) }
+    val visual = when {
+        item.type == NotificationCenterItemType.COMMENT -> NotificationVisual.None
+        item.mediaId != null && postVisual?.mediaVisual != null -> postVisual.mediaVisual
+        postVisual?.smallAlbumVisual != null -> postVisual.smallAlbumVisual
+        trashVisual?.mediaVisual != null -> trashVisual.mediaVisual
+        trashVisual?.smallAlbumVisual != null -> trashVisual.smallAlbumVisual
+        else -> NotificationVisual.None
+    }
+    val resolvedTargetSummary = when {
+        !item.targetSummary.shouldReplaceWithFriendlyCopy() -> item.targetSummary
+        postVisual != null -> postVisual.title
+        trashVisual != null -> trashVisual.targetSummary
+        item.isLifeLedgerTarget() -> "记账"
+        item.isLifeChatTarget() -> "聊天导入"
+        item.isLifeConsoleTarget() -> "今日痕迹"
+        item.targetType.equals("UPLOAD", ignoreCase = true) -> "传输中心"
+        else -> item.targetSummary.withNotificationTargetFallback()
+    }
+    val resolvedTitle = if (rawPresentation.title.shouldReplaceWithFriendlyCopy()) {
+        item.buildFriendlyTitle(
+            resolvedTargetSummary = resolvedTargetSummary,
+            postTitle = postVisual?.title,
+        )
+    } else {
+        rawPresentation.title
+    }
+    val resolvedBody = if (rawPresentation.body.shouldReplaceWithFriendlyCopy()) {
+        item.buildFriendlyBody(
+            resolvedTargetSummary = resolvedTargetSummary,
+            postTitle = postVisual?.title,
+            rawBody = rawPresentation.body,
+        )
+    } else {
+        rawPresentation.body
+    }
+    return NotificationResolvedPresentation(
+        title = resolvedTitle,
+        body = resolvedBody,
+        targetSummary = resolvedTargetSummary.withNotificationTargetFallback(),
+        visual = visual,
+    )
+}
+
+private data class NotificationPostVisual(
+    val title: String,
+    val mediaVisual: NotificationVisual.Media?,
+    val smallAlbumVisual: NotificationVisual.SmallAlbum?,
+)
+
+private data class NotificationTrashVisual(
+    val targetSummary: String,
+    val mediaVisual: NotificationVisual.Media?,
+    val smallAlbumVisual: NotificationVisual.SmallAlbum?,
+)
+
+private suspend fun loadNotificationPostVisual(
+    postId: String,
+    focusMediaId: String?,
+): NotificationPostVisual? {
+    val detail = when (val result = RepositoryProvider.postRepository.getPostDetail(postId)) {
+        is ApiResult.Success -> result.data
+        else -> return null
+    }
+    val previewMedia = detail.mediaItems
+        .distinctBy(RemotePostMedia::mediaId)
+        .take(2)
+        .map(RemotePostMedia::toNotificationPreviewMedia)
+    val coverMedia = detail.mediaItems.firstOrNull { it.mediaId == focusMediaId }
+        ?: detail.mediaItems.firstOrNull { it.isCover }
+        ?: detail.mediaItems.firstOrNull { it.mediaId == detail.coverMediaId }
+        ?: detail.mediaItems.firstOrNull()
+    return NotificationPostVisual(
+        title = detail.title.ifBlank { "小相册" },
+        mediaVisual = coverMedia?.toNotificationMediaVisual(),
+        smallAlbumVisual = NotificationVisual.SmallAlbum(
+            title = detail.title.ifBlank { "小相册" },
+            metaLabel = buildNotificationSmallAlbumMeta(detail),
+            palette = realPaletteFor(detail.coverMediaId ?: coverMedia?.mediaId ?: detail.postId),
+            previewMedia = previewMedia,
+        ),
+    )
+}
+
+private suspend fun loadNotificationTrashVisual(trashItemId: String): NotificationTrashVisual? {
+    val item = when (val result = RepositoryProvider.trashRepository.getTrashDetail(trashItemId)) {
+        is ApiResult.Success -> result.data.item
+        else -> return null
+    }
+    val entry = item.toTrashEntryUiModel()
+    val mediaVisual = entry.mediaSnapshot?.let { media ->
+        NotificationVisual.Media(
+            mediaSource = media.mediaSource
+                ?: realTrashMediaSource(
+                    mediaId = media.mediaId,
+                    mediaType = media.mediaType,
+                    width = media.width,
+                    height = media.height,
+                    durationMillis = media.videoDurationMillis,
+                ),
+            mediaType = media.mediaType,
+            palette = media.palette,
+        )
+    }
+    val smallAlbumVisual = if (entry.type == TrashEntryType.POST_DELETED) {
+        NotificationVisual.SmallAlbum(
+            title = entry.title.ifBlank { "回收站小相册" },
+            metaLabel = "${formatNotificationTime(entry.deletedAtMillis)} · ${entry.relatedMediaIds.size.takeIf { it > 0 } ?: 0} 项",
+            palette = entry.palette,
+            previewMedia = emptyList(),
+        )
+    } else {
+        null
+    }
+    return NotificationTrashVisual(
+        targetSummary = when {
+            item.sourcePostId != null -> entry.title
+            item.sourceMediaId != null -> "回收站"
+            else -> "回收站"
+        },
+        mediaVisual = mediaVisual,
+        smallAlbumVisual = smallAlbumVisual,
+    )
+}
+
+private fun RemotePostMedia.toNotificationPreviewMedia(): AlbumPostPreviewMediaUiModel {
+    val mediaType = resolveAppMediaType(
+        rawType = mediaType,
+        mimeType = mimeType,
+        thumbnailUrl = thumbnailUrl ?: previewUrl,
+        mediaUrl = mediaUrl,
+        videoUrl = videoUrl,
+        coverUrl = coverUrl,
+        originalUrl = originalUrl,
+    )
+    return AlbumPostPreviewMediaUiModel(
+        id = mediaId,
+        palette = realPaletteFor(mediaId),
+        mediaType = mediaType,
+        aspectRatio = resolveAppContentAspectRatio(
+            aspectRatio = aspectRatio,
+            width = width,
+            height = height,
+            mediaType = mediaType,
+        ),
+        mediaSource = toAppContentMediaSource(),
+    )
+}
+
+private fun RemotePostMedia.toNotificationMediaVisual(): NotificationVisual.Media {
+    val resolvedType = resolveAppMediaType(
+        rawType = mediaType,
+        mimeType = mimeType,
+        thumbnailUrl = thumbnailUrl ?: previewUrl,
+        mediaUrl = mediaUrl,
+        videoUrl = videoUrl,
+        coverUrl = coverUrl,
+        originalUrl = originalUrl,
+    )
+    return NotificationVisual.Media(
+        mediaSource = toAppContentMediaSource(),
+        mediaType = resolvedType,
+        palette = realPaletteFor(mediaId),
+    )
+}
+
+private fun buildNotificationSmallAlbumMeta(detail: RemotePostDetail): String {
+    return "${formatNotificationTime(detail.displayTimeMillis)} · ${detail.mediaItems.size} 张"
+}
+
+private fun NotificationCenterItemUiModel.buildFriendlyTitle(
+    resolvedTargetSummary: String,
+    postTitle: String?,
+): String {
+    val targetLabel = postTitle?.takeIf { it.isNotBlank() } ?: resolvedTargetSummary.withNotificationTargetFallback()
+    return when {
+        isLifeLedgerTarget() -> "记账有新动态"
+        isLifeChatTarget() -> "聊天导入有新动态"
+        isLifeConsoleTarget() -> "今日痕迹有新更新"
+        targetType.equals("UPLOAD", ignoreCase = true) -> "传输中心有新进度"
+        type == NotificationCenterItemType.COMMENT -> "「$targetLabel」有新评论"
+        type == NotificationCenterItemType.CONTENT_UPDATE && targetType.equals("ALBUM", ignoreCase = true) -> "相册目录有更新"
+        type == NotificationCenterItemType.CONTENT_UPDATE -> "「$targetLabel」有内容更新"
+        type == NotificationCenterItemType.DELETE_RESTORE -> "$targetLabel 有回收站变动"
+        else -> if (targetLabel.isNotBlank()) "$targetLabel 有新提醒" else type.label
+    }
+}
+
+private fun NotificationCenterItemUiModel.buildFriendlyBody(
+    resolvedTargetSummary: String,
+    postTitle: String?,
+    rawBody: String,
+): String {
+    val targetLabel = postTitle?.takeIf { it.isNotBlank() } ?: resolvedTargetSummary.withNotificationTargetFallback()
+    return when {
+        isLifeLedgerTarget() -> "点开可直接查看对应的账本统计和最近变化。"
+        isLifeChatTarget() -> "点开可查看最新导入的聊天内容。"
+        isLifeConsoleTarget() -> "点开可查看今天新增的生活记录。"
+        targetType.equals("UPLOAD", ignoreCase = true) -> "点开可查看当前文件传输状态。"
+        type == NotificationCenterItemType.COMMENT -> "点开可直接回到 $targetLabel 查看评论上下文。"
+        type == NotificationCenterItemType.DELETE_RESTORE -> "点开可查看回收站中的对应条目，并继续恢复或删除。"
+        type == NotificationCenterItemType.CONTENT_UPDATE -> "点开可回到 $targetLabel 查看最新内容。"
+        rawBody.isNotBlank() -> rawBody
+        else -> "点开查看相关内容。"
+    }
+}
+
+private fun String?.shouldReplaceWithFriendlyCopy(): Boolean {
+    val value = this?.trim().orEmpty()
+    if (value.isBlank()) return true
+    if (value.any { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN }) return false
+    val looksFileName = value.contains('.') && value.any(Char::isDigit)
+    val looksIdentifier = Regex("[A-Za-z0-9_-]{12,}").containsMatchIn(value)
+    return looksFileName || looksIdentifier || value.all { it.code in 32..126 }
+}
+
+private fun String?.withNotificationTargetFallback(): String {
+    return this?.takeIf { it.isNotBlank() } ?: "查看相关内容"
+}
+
 private fun List<NotificationCenterItemUiModel>.filterBy(
+    filter: NotificationCenterFilter,
     category: NotificationCategoryFilter,
 ): List<NotificationCenterItemUiModel> {
     return if (category == NotificationCategoryFilter.ALL) {
         this
     } else {
-        filter { it.type.name == category.name }
+        filter { it.matchesCategory(filter, category) }
     }
 }
 
@@ -892,6 +1437,77 @@ private fun NotificationCenterItemUiModel.matchesModule(
     return when (filter) {
         NotificationCenterFilter.LIFE -> isLife
         NotificationCenterFilter.PHOTOS -> !isLife
+    }
+}
+
+private fun NotificationCenterItemUiModel.matchesCategory(
+    filter: NotificationCenterFilter,
+    category: NotificationCategoryFilter,
+): Boolean {
+    return when (filter) {
+        NotificationCenterFilter.PHOTOS -> when (category) {
+            NotificationCategoryFilter.ALL -> true
+            NotificationCategoryFilter.COMMENT -> type == NotificationCenterItemType.COMMENT
+            NotificationCategoryFilter.CONTENT_UPDATE -> type == NotificationCenterItemType.CONTENT_UPDATE
+            NotificationCategoryFilter.DELETE_RESTORE -> type == NotificationCenterItemType.DELETE_RESTORE
+            NotificationCategoryFilter.SYSTEM -> type == NotificationCenterItemType.SYSTEM
+            NotificationCategoryFilter.LEDGER,
+            NotificationCategoryFilter.CHAT,
+            NotificationCategoryFilter.TRACE,
+            -> false
+        }
+
+        NotificationCenterFilter.LIFE -> when (category) {
+            NotificationCategoryFilter.ALL -> true
+            NotificationCategoryFilter.LEDGER -> isLifeLedgerTarget()
+            NotificationCategoryFilter.CHAT -> isLifeChatTarget()
+            NotificationCategoryFilter.TRACE -> isLifeConsoleTarget()
+            NotificationCategoryFilter.SYSTEM -> {
+                matchesModule(NotificationCenterFilter.LIFE) &&
+                    !isLifeLedgerTarget() &&
+                    !isLifeChatTarget() &&
+                    !isLifeConsoleTarget()
+            }
+            NotificationCategoryFilter.COMMENT,
+            NotificationCategoryFilter.CONTENT_UPDATE,
+            NotificationCategoryFilter.DELETE_RESTORE,
+            -> false
+        }
+    }
+}
+
+private fun notificationCategoriesFor(
+    filter: NotificationCenterFilter,
+): List<NotificationCategoryFilter> {
+    return when (filter) {
+        NotificationCenterFilter.PHOTOS -> listOf(
+            NotificationCategoryFilter.ALL,
+            NotificationCategoryFilter.COMMENT,
+            NotificationCategoryFilter.CONTENT_UPDATE,
+            NotificationCategoryFilter.DELETE_RESTORE,
+            NotificationCategoryFilter.SYSTEM,
+        )
+
+        NotificationCenterFilter.LIFE -> listOf(
+            NotificationCategoryFilter.ALL,
+            NotificationCategoryFilter.LEDGER,
+            NotificationCategoryFilter.CHAT,
+            NotificationCategoryFilter.TRACE,
+            NotificationCategoryFilter.SYSTEM,
+        )
+    }
+}
+
+private fun NotificationCategoryFilter.displayLabel(
+    filter: NotificationCenterFilter,
+): String {
+    return when (filter) {
+        NotificationCenterFilter.PHOTOS -> label
+        NotificationCenterFilter.LIFE -> when (this) {
+            NotificationCategoryFilter.CHAT -> "聊天导入"
+            NotificationCategoryFilter.SYSTEM -> "同步提醒"
+            else -> label
+        }
     }
 }
 

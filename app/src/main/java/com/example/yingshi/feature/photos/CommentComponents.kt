@@ -71,22 +71,23 @@ fun CommentInputBar(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     var value by rememberSaveable(stateKey) { mutableStateOf("") }
     val sendEnabled = value.trim().isNotEmpty()
     val containerColor = if (darkMode) {
-        Color.White.copy(alpha = 0.08f)
+        colors.viewerSurface.copy(alpha = 0.72f)
     } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+        colors.sectionBackground.copy(alpha = 0.62f)
     }
     val textColor = if (darkMode) {
-        Color.White.copy(alpha = 0.88f)
+        colors.viewerText.copy(alpha = 0.88f)
     } else {
-        MaterialTheme.colorScheme.onSurface
+        colors.textPrimary
     }
     val placeholderColor = if (darkMode) {
-        Color.White.copy(alpha = 0.42f)
+        colors.viewerTextSecondary.copy(alpha = 0.86f)
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+        colors.textSecondary
     }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -179,18 +180,21 @@ fun CommentListItem(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val density = LocalDensity.current
-    val textColor = if (darkMode) Color.White.copy(alpha = 0.86f) else MaterialTheme.colorScheme.onSurface
-    val metaColor = if (darkMode) Color.White.copy(alpha = 0.58f) else MaterialTheme.colorScheme.onSurfaceVariant
+    val colors = YingShiThemeTokens.colors
+    val textColor = if (darkMode) colors.viewerText.copy(alpha = 0.86f) else colors.textPrimary
+    val metaColor = if (darkMode) colors.viewerTextSecondary.copy(alpha = 0.90f) else colors.textSecondary
     val authorColor = if (darkMode) {
-        Color.White.copy(alpha = 0.94f)
+        colors.viewerText.copy(alpha = 0.94f)
     } else {
-        YingShiThemeTokens.colors.goldAccent.copy(alpha = 0.96f)
+        colors.goldAccent.copy(alpha = 0.96f)
     }
+    val editFocusRequester = remember(comment.id) { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val activeBackground = when {
-        selectionMode && darkMode -> Color.White.copy(alpha = 0.10f)
-        selectionMode -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-        highlighted && darkMode -> Color.White.copy(alpha = 0.08f)
-        highlighted -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        selectionMode && darkMode -> colors.viewerAccent.copy(alpha = 0.14f)
+        selectionMode -> colors.primaryContainer.copy(alpha = 0.42f)
+        highlighted && darkMode -> colors.viewerText.copy(alpha = 0.08f)
+        highlighted -> colors.memoryWash.copy(alpha = 0.92f)
         else -> Color.Transparent
     }
     var itemBounds by remember(comment.id) { mutableStateOf<IntRect?>(null) }
@@ -201,6 +205,13 @@ fun CommentListItem(
                 horizontalMarginPx = with(density) { 12.dp.roundToPx() },
                 verticalMarginPx = with(density) { 8.dp.roundToPx() },
             )
+        }
+    }
+
+    LaunchedEffect(comment.id, isEditing) {
+        if (isEditing) {
+            editFocusRequester.requestFocus()
+            keyboardController?.show()
         }
     }
 
@@ -256,9 +267,9 @@ fun CommentListItem(
                     Surface(
                         shape = RoundedCornerShape(radius.md),
                         color = if (darkMode) {
-                            Color.White.copy(alpha = 0.08f)
+                            colors.viewerSurface.copy(alpha = 0.72f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)
+                            colors.sectionBackground.copy(alpha = 0.62f)
                         },
                     ) {
                         BasicTextField(
@@ -266,6 +277,7 @@ fun CommentListItem(
                             onValueChange = onEditingValueChange,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .focusRequester(editFocusRequester)
                                 .padding(horizontal = spacing.md, vertical = spacing.sm),
                             textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
                             cursorBrush = SolidColor(textColor),
@@ -341,15 +353,16 @@ private fun CommentInlineActionMenu(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val containerColor = if (darkMode) {
-        Color.Black.copy(alpha = 0.76f)
+        colors.viewerSurface.copy(alpha = 0.94f)
     } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+        colors.raisedSurface.copy(alpha = 0.96f)
     }
     val borderColor = if (darkMode) {
-        Color.White.copy(alpha = 0.10f)
+        colors.viewerAccent.copy(alpha = 0.14f)
     } else {
-        MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
+        colors.dividerSoft.copy(alpha = 0.62f)
     }
 
     Surface(
@@ -365,7 +378,7 @@ private fun CommentInlineActionMenu(
             InlineActionMenuItem(label = "复制", darkMode = darkMode, onClick = onCopy)
             InlineActionMenuItem(label = "选择", darkMode = darkMode, onClick = onSelect)
             InlineActionMenuItem(label = "编辑", darkMode = darkMode, onClick = onEdit)
-            InlineActionMenuItem(label = "删除", darkMode = darkMode, onClick = onDelete)
+            InlineActionMenuItem(label = "删除", darkMode = darkMode, danger = true, onClick = onDelete)
         }
     }
 }
@@ -374,13 +387,17 @@ private fun CommentInlineActionMenu(
 private fun InlineActionMenuItem(
     label: String,
     darkMode: Boolean,
+    danger: Boolean = false,
     onClick: (() -> Unit)?,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val textColor = if (darkMode) {
-        Color.White.copy(alpha = 0.92f)
+    val colors = YingShiThemeTokens.colors
+    val textColor = if (danger) {
+        if (darkMode) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.error
+    } else if (darkMode) {
+        colors.viewerText.copy(alpha = 0.92f)
     } else {
-        MaterialTheme.colorScheme.onSurface
+        colors.textPrimary
     }
 
     Text(
@@ -403,7 +420,8 @@ private fun CommentSelectableText(
     onValueChange: (TextFieldValue) -> Unit,
     onCopySelection: (() -> Unit)?,
 ) {
-    val textColor = if (darkMode) Color.White.copy(alpha = 0.88f) else MaterialTheme.colorScheme.onSurface
+    val colors = YingShiThemeTokens.colors
+    val textColor = if (darkMode) colors.viewerText.copy(alpha = 0.88f) else colors.textPrimary
     val focusRequester = FocusRequester()
     val keyboardController = LocalSoftwareKeyboardController.current
     val selectedText = value.selectedTextOrNull()
@@ -458,16 +476,16 @@ private fun CommentActionButton(
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     val containerColor = when {
-        darkMode && emphasized -> Color.White.copy(alpha = 0.16f)
-        darkMode -> Color.White.copy(alpha = 0.08f)
+        darkMode && emphasized -> colors.viewerAccent.copy(alpha = 0.24f)
+        darkMode -> colors.viewerSurface.copy(alpha = 0.72f)
         !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
         emphasized -> colors.primaryContainer.copy(alpha = 0.86f)
         else -> colors.sectionBackground.copy(alpha = 0.72f)
     }
     val contentColor = when {
-        !enabled && darkMode -> Color.White.copy(alpha = 0.36f)
+        !enabled && darkMode -> colors.viewerText.copy(alpha = 0.36f)
         !enabled -> colors.textSecondary.copy(alpha = 0.55f)
-        darkMode -> Color.White.copy(alpha = 0.92f)
+        darkMode -> colors.viewerText.copy(alpha = 0.92f)
         emphasized -> colors.titleAccent
         else -> colors.textSecondary
     }
@@ -478,7 +496,7 @@ private fun CommentActionButton(
         color = containerColor,
         border = BorderStroke(
             1.dp,
-            if (darkMode) Color.White.copy(alpha = 0.10f) else colors.dividerSoft.copy(alpha = 0.68f),
+            if (darkMode) colors.viewerAccent.copy(alpha = 0.14f) else colors.dividerSoft.copy(alpha = 0.68f),
         ),
         shadowElevation = 0.dp,
     ) {

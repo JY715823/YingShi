@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
@@ -136,12 +137,12 @@ fun YingShiNoticeHost(
         val container = when (activeNotice.tone) {
             YingShiNoticeTone.INFO -> colors.raisedSurface.copy(alpha = 0.94f)
             YingShiNoticeTone.SUCCESS -> colors.memoryContainer.copy(alpha = 0.95f)
-            YingShiNoticeTone.WARNING -> colors.memoryWash.copy(alpha = 0.96f)
+            YingShiNoticeTone.WARNING -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.96f)
         }
         val content = when (activeNotice.tone) {
             YingShiNoticeTone.INFO -> colors.titleAccent
             YingShiNoticeTone.SUCCESS -> colors.onMemoryContainer
-            YingShiNoticeTone.WARNING -> colors.memoryAccent
+            YingShiNoticeTone.WARNING -> MaterialTheme.colorScheme.onErrorContainer
         }
         Surface(
             modifier = Modifier
@@ -151,10 +152,10 @@ fun YingShiNoticeHost(
             color = container,
             border = BorderStroke(
                 1.dp,
-                if (activeNotice.tone == YingShiNoticeTone.INFO) {
-                    colors.glassStroke.copy(alpha = 0.68f)
-                } else {
-                    colors.memoryAccent.copy(alpha = 0.22f)
+                when (activeNotice.tone) {
+                    YingShiNoticeTone.INFO -> colors.glassStroke.copy(alpha = 0.68f)
+                    YingShiNoticeTone.SUCCESS -> colors.memoryAccent.copy(alpha = 0.22f)
+                    YingShiNoticeTone.WARNING -> MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
                 },
             ),
             shadowElevation = 2.dp,
@@ -164,7 +165,7 @@ fun YingShiNoticeHost(
                     .background(
                         Brush.horizontalGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.34f),
+                                colors.raisedSurface.copy(alpha = 0.34f),
                                 colors.glowWash.copy(alpha = 0.18f),
                                 Color.Transparent,
                             ),
@@ -321,7 +322,7 @@ private fun MistWaveCanvas(modifier: Modifier = Modifier) {
         }
         drawPath(
             path = mainPath,
-            color = Color.White.copy(alpha = 0.76f),
+            color = colors.raisedSurface.copy(alpha = 0.76f),
             style = Stroke(width = 30f, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
         drawPath(
@@ -342,7 +343,7 @@ private fun MistWaveCanvas(modifier: Modifier = Modifier) {
         }
         drawPath(
             path = sidePath,
-            color = Color.White.copy(alpha = 0.62f),
+            color = colors.raisedSurface.copy(alpha = 0.62f),
             style = Stroke(width = 20f, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
         drawPath(
@@ -444,10 +445,10 @@ fun YingShiPrimaryMistButton(
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.58f),
+                            colors.raisedSurface.copy(alpha = 0.58f),
                             colors.glowWash.copy(alpha = 0.60f),
                             colors.primaryContainer.copy(alpha = 0.44f),
-                            Color.White.copy(alpha = 0.34f),
+                            colors.raisedSurface.copy(alpha = 0.34f),
                         ),
                     ),
                 )
@@ -644,10 +645,11 @@ fun YingShiEntryCard(
                     )
                 }
             }
-            Text(
-                text = ">",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
-                color = colors.textSecondary.copy(alpha = 0.72f),
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.textSecondary.copy(alpha = 0.72f),
+                modifier = Modifier.size(20.dp),
             )
         }
     }

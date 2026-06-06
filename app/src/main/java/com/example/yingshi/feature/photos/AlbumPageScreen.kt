@@ -842,9 +842,7 @@ private fun AlbumSwitchChip(
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(16.dp)
     val title = remember(album.title) {
-        album.title.trim().let { original ->
-            if (original.length <= 4) original else original.take(4)
-        }
+        album.title.trim().ifBlank { "未命名相册" }
     }
 
     Surface(
@@ -1103,7 +1101,7 @@ private fun AlbumPostCard(
                             Brush.verticalGradient(
                                 colors = listOf(
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.52f),
+                                    colors.viewerBackground.copy(alpha = 0.52f),
                                 ),
                             ),
                         )
@@ -1113,7 +1111,7 @@ private fun AlbumPostCard(
                         Text(
                             text = post.title,
                             style = titleStyle,
-                            color = Color.White.copy(alpha = 0.96f),
+                            color = colors.viewerText.copy(alpha = 0.96f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -1124,7 +1122,7 @@ private fun AlbumPostCard(
                             Text(
                                 text = formatAlbumPostTime(post.postDisplayTimeMillis),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.78f),
+                                color = colors.viewerText.copy(alpha = 0.78f),
                                 maxLines = 1,
                             )
                             Text(
@@ -1225,7 +1223,7 @@ fun PostDetailPlaceholderScreen(
         ) {
             Surface(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .clip(CircleShape)
                     .clickable(onClick = onBack),
                 shape = CircleShape,

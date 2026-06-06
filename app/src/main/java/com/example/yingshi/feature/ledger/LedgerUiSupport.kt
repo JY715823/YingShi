@@ -91,31 +91,46 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.CollaboratorMarkerBadge
 import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.ui.theme.YingShiAppBackground
+import com.example.yingshi.ui.theme.YingShiDividerSoft
+import com.example.yingshi.ui.theme.YingShiGlassStroke
+import com.example.yingshi.ui.theme.YingShiGlowWash
+import com.example.yingshi.ui.theme.YingShiGoldAccent
+import com.example.yingshi.ui.theme.YingShiMemoryContainer
+import com.example.yingshi.ui.theme.YingShiMemoryWash
+import com.example.yingshi.ui.theme.YingShiOnPrimaryContainer
+import com.example.yingshi.ui.theme.YingShiPrimaryActionPressed
+import com.example.yingshi.ui.theme.YingShiPrimaryContainer
+import com.example.yingshi.ui.theme.YingShiRaisedSurface
+import com.example.yingshi.ui.theme.YingShiSectionBackground
+import com.example.yingshi.ui.theme.YingShiSoftGreenContainer
+import com.example.yingshi.ui.theme.YingShiTextSecondary
+import com.example.yingshi.ui.theme.YingShiTitleAccent
 import com.example.yingshi.feature.ledger.data.LedgerAccount
 import com.example.yingshi.feature.ledger.data.LedgerAccountType
 import com.example.yingshi.feature.ledger.data.LedgerBook
 import com.example.yingshi.feature.ledger.data.ledgerBookTemplateLabel
 import java.time.YearMonth
 
-val LedgerHeaderGreen = Color(0xFF26313A)
+val LedgerHeaderGreen = YingShiTitleAccent
 val LedgerGreen = LedgerHeaderGreen
-val LedgerPrimaryAction = Color(0xFFBDEFFF)
-val LedgerPrimaryActionPressed = Color(0xFFA7E9FF)
-val LedgerOnPrimaryAction = Color(0xFF1F2933)
-val LedgerRaisedSurface = Color(0xFFFFFFFC)
-val LedgerGreenSoft = Color(0xFFD8F2E6)
+val LedgerPrimaryAction = YingShiPrimaryContainer
+val LedgerPrimaryActionPressed = YingShiPrimaryActionPressed
+val LedgerOnPrimaryAction = YingShiOnPrimaryContainer
+val LedgerRaisedSurface = YingShiRaisedSurface
+val LedgerGreenSoft = YingShiSoftGreenContainer
 val LedgerIncomeGreen = Color(0xFF3F8067)
 val LedgerExpenseRed = Color(0xFFA94C42)
-val LedgerMemoryContainer = Color(0xFFFFE1DA)
-val LedgerMemoryWash = Color(0xFFFFF1EE)
-val LedgerGoldAccent = Color(0xFF9A6A2A)
-val LedgerPageBackground = Color(0xFFF1FBFD)
-val LedgerGroupedHeader = Color(0xFFDFF5F4)
-val LedgerDivider = Color(0xFFC7E6EC)
-val LedgerGlassStroke = Color(0xFFA9E5F2)
-val LedgerGlowWash = Color(0xFFE7FAFF)
-val LedgerMuted = Color(0xFF5E7580)
-val LedgerSubtleText = Color(0xFF5E7580)
+val LedgerMemoryContainer = YingShiMemoryContainer
+val LedgerMemoryWash = YingShiMemoryWash
+val LedgerGoldAccent = YingShiGoldAccent
+val LedgerPageBackground = YingShiAppBackground
+val LedgerGroupedHeader = YingShiSectionBackground
+val LedgerDivider = YingShiDividerSoft
+val LedgerGlassStroke = YingShiGlassStroke
+val LedgerGlowWash = YingShiGlowWash
+val LedgerMuted = YingShiTextSecondary
+val LedgerSubtleText = YingShiTextSecondary
 
 fun ledgerColor(raw: Long): Color = Color(raw)
 
@@ -239,10 +254,10 @@ fun LedgerBottomSheetDialog(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.36f))
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.24f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
+                        indication = androidx.compose.foundation.LocalIndication.current,
                         onClick = onDismiss,
                     ),
             )
@@ -274,13 +289,13 @@ fun LedgerDialogActionButton(
     val shape = RoundedCornerShape(999.dp)
     val container = when {
         !enabled -> LedgerGroupedHeader.copy(alpha = 0.50f)
-        danger -> LedgerMemoryContainer.copy(alpha = 0.82f)
+        danger -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f)
         emphasized -> LedgerPrimaryAction.copy(alpha = 0.88f)
         else -> LedgerRaisedSurface.copy(alpha = 0.94f)
     }
     val content = when {
         !enabled -> LedgerMuted.copy(alpha = 0.62f)
-        danger -> LedgerExpenseRed
+        danger -> MaterialTheme.colorScheme.onErrorContainer
         else -> LedgerHeaderGreen
     }
     Surface(
@@ -292,7 +307,10 @@ fun LedgerDialogActionButton(
         ),
         shape = shape,
         color = container,
-        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.66f)),
+        border = BorderStroke(
+            1.dp,
+            if (danger) MaterialTheme.colorScheme.error.copy(alpha = 0.20f) else LedgerDivider.copy(alpha = 0.66f),
+        ),
         shadowElevation = 0.dp,
     ) {
         Text(
@@ -327,12 +345,12 @@ fun LedgerBookPickerSheet(
                 fontWeight = FontWeight.Bold,
             )
             books.forEach { book ->
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable { onSelectBook(book.id) },
-                    color = if (book.id == selectedBookId) LedgerGreenSoft else Color.White,
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable { onSelectBook(book.id) },
+                    color = if (book.id == selectedBookId) LedgerGreenSoft else LedgerRaisedSurface,
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
@@ -400,7 +418,7 @@ fun LedgerBookPickerSheet(
                             onDismiss()
                             manageBooks()
                         },
-                    color = Color(0xFFF8F8F9),
+                    color = LedgerRaisedSurface,
                 ) {
                     Text(
                         text = "账本管理",
@@ -537,7 +555,7 @@ fun LedgerAccountPickerSheet(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFF2F2F2)),
+                                .background(LedgerGroupedHeader.copy(alpha = 0.68f)),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(accountIcon(account.type), contentDescription = null, tint = ledgerColor(account.color))
@@ -556,7 +574,7 @@ fun LedgerAccountPickerSheet(
                         Icon(
                             if (account.id == selectedAccountId) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
                             contentDescription = null,
-                            tint = if (account.id == selectedAccountId) Color(0xFF33A8FF) else LedgerMuted,
+                            tint = if (account.id == selectedAccountId) LedgerHeaderGreen else LedgerMuted,
                         )
                     }
                 }
@@ -674,7 +692,7 @@ fun LedgerSegmentChip(
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(22.dp)
-    val selectedContentColor = if (selectedColor == LedgerPrimaryAction) LedgerOnPrimaryAction else Color.White
+    val selectedContentColor = if (selectedColor == LedgerPrimaryAction) LedgerOnPrimaryAction else LedgerRaisedSurface
     val containerColor by animateColorAsState(
         targetValue = if (selected) selectedColor else LedgerRaisedSurface,
         animationSpec = tween(durationMillis = 150),
@@ -744,7 +762,7 @@ private fun LedgerYearMonthWheelColumn(
         Spacer(Modifier.height(8.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFFF8F8F9),
+            color = LedgerRaisedSurface,
             shape = RoundedCornerShape(22.dp),
         ) {
             LazyColumn(

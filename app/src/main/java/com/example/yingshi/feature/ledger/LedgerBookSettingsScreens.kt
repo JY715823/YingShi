@@ -91,7 +91,7 @@ fun LedgerBooksScreen(
         ) {
             item {
                 Surface(
-                    color = Color.White,
+                    color = LedgerRaisedSurface,
                     shape = RoundedCornerShape(22.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -310,7 +310,7 @@ private fun LedgerBookRow(
     onClick: () -> Unit,
 ) {
     Surface(
-        color = if (archived) Color(0xFFF7F7F8) else Color.White,
+        color = if (archived) LedgerGroupedHeader else LedgerRaisedSurface,
         shape = RoundedCornerShape(22.dp),
         modifier = Modifier
             .fillMaxWidth()
@@ -434,7 +434,7 @@ private fun LedgerBookEditorSheet(
                 }
             } else {
                 Surface(
-                    color = Color(0xFFF8F8F9),
+                    color = LedgerGroupedHeader,
                     shape = RoundedCornerShape(18.dp),
                 ) {
                     Text(
@@ -460,7 +460,7 @@ private fun LedgerBookEditorSheet(
                         color = ledgerColor(option),
                         border = BorderStroke(
                             width = if (coverColor == option) 2.dp else 0.dp,
-                            color = if (coverColor == option) Color.Black.copy(alpha = 0.14f) else Color.Transparent,
+                            color = if (coverColor == option) LedgerMuted.copy(alpha = 0.22f) else Color.Transparent,
                         ),
                     ) {
                         Box(modifier = Modifier.fillMaxSize())
@@ -478,7 +478,7 @@ private fun LedgerSettingsSection(
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
-        color = Color.White,
+        color = LedgerRaisedSurface,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -527,7 +527,7 @@ private fun LedgerSettingsRow(
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = if (enabled) Color.Black else LedgerMuted,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else LedgerMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

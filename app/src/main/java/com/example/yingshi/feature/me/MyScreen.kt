@@ -93,18 +93,13 @@ fun MyScreen(
                 ) {
                     Text(
                         text = "映世",
-                        style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Light),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                         color = colors.titleAccent,
                     )
                     Text(
                         text = "我的",
-                        style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.titleAccent,
-                    )
-                    Text(
-                        text = "只放你们需要知道的事",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = colors.textSecondary,
                     )
                 }
             }

@@ -1,6 +1,4 @@
 ﻿package com.example.yingshi.feature.photos
-
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -50,9 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -71,6 +67,9 @@ import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -105,7 +104,6 @@ fun PhotosRootScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-    val context = LocalContext.current
     val transferTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val hasTransferFailure = transferTasks.any { it.canRetry || it.state == UploadState.FAILURE }
     val runningTransferCount = transferTasks.count {
@@ -141,6 +139,8 @@ fun PhotosRootScreen(
     var isCreatingAlbum by rememberSaveable {
         mutableStateOf(false)
     }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by remember { mutableIntStateOf(0) }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = FakeAlbumRepository.getAlbums()
     val albumPosts = FakeAlbumRepository.getPosts()
@@ -158,6 +158,14 @@ fun PhotosRootScreen(
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
     val isTrashSelectionMode =
         selectedSection == PhotosTopDestination.TRASH && trashSelectionMode
+
+    fun showNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
 
     LaunchedEffect(pagerState.currentPage) {
         val pageName = PhotosTopDestination.entries[pagerState.currentPage].name
@@ -255,7 +263,7 @@ fun PhotosRootScreen(
                                     createAlbumTitle = ""
                                     createAlbumSubtitle = ""
                                     createAlbumErrorMessage = null
-                                    Toast.makeText(context, "已创建大相册", Toast.LENGTH_SHORT).show()
+                                    showNotice("已创建大相册", YingShiNoticeTone.SUCCESS)
                                 }
 
                                 is ApiResult.Error -> {
@@ -331,11 +339,7 @@ fun PhotosRootScreen(
                                 val feedItems = FakePhotoFeedRepository.getPhotoFeed()
                                 val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
                                 if (selectedMedia.isEmpty()) {
-                                    Toast.makeText(
-                                        context,
-                                        "没有找到可删除的媒体，可能已经被移除。",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    showNotice("没有找到可删除的媒体，可能已经被移除。", YingShiNoticeTone.WARNING)
                                 } else {
                                     val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
                                     val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(
@@ -370,11 +374,7 @@ fun PhotosRootScreen(
                                     val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
                                     FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
                                     photoSelectionState = photoSelectionState.without(selectedIds)
-                                    Toast.makeText(
-                                        context,
-                                        "已删除 $selectedCount 项媒体，并写入回收站。",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    showNotice("已删除 $selectedCount 项媒体，并写入回收站。", YingShiNoticeTone.SUCCESS)
                                 }
                             },
                         )
@@ -421,11 +421,7 @@ fun PhotosRootScreen(
                     showAddToPostDialog = false
                     addToPostDialogMessage = null
                     photoSelectionState = photoSelectionState.without(selectedItemIds.toSet())
-                    Toast.makeText(
-                        context,
-                        "已加入小相册",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    showNotice("已加入小相册", YingShiNoticeTone.SUCCESS)
                     val addedMediaIds = selectedItemIds
                         .distinct()
                         .filterNot { existingMediaIds.contains(it) }
@@ -501,6 +497,7 @@ fun PhotosRootScreen(
                                         onOpenViewer = onOpenViewer,
                                         scrollTrigger = photoFeedScrollTrigger,
                                         inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                                        onShowNotice = { message -> showNotice(message) },
                                     )
 
                                     androidx.compose.animation.AnimatedVisibility(
@@ -594,12 +591,22 @@ fun PhotosRootScreen(
                     }
                 }
             }
-
+            YingShiNoticeHost(
+                notice = notice,
+                onExpired = { nonce ->
+                    if (notice?.nonce == nonce) {
+                        notice = null
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = spacing.sm),
+            )
         }
     }
-    }
-
 }
+}
+
 
 @Composable
 private fun PhotoTopBar(
@@ -731,30 +738,25 @@ private fun PhotoBrandTabs(
                         null
                     },
                     tonalElevation = if (selected) 2.dp else 0.dp,
-                    shadowElevation = if (selected) 15.dp else 0.dp,
+                    shadowElevation = if (selected) 6.dp else 0.dp,
                 ) {
                     Text(
                         text = destination.label,
                         modifier = Modifier.padding(
-                            horizontal = if (selected) 18.dp else 7.dp,
-                            vertical = if (selected) 11.dp else 8.dp,
+                            horizontal = if (selected) 16.dp else 7.dp,
+                            vertical = if (selected) 10.dp else 8.dp,
                         ),
                         textAlign = TextAlign.Center,
                         style = if (selected) {
                             MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 28.sp,
-                                lineHeight = 32.sp,
-                                fontWeight = FontWeight.Black,
-                                shadow = Shadow(
-                                    color = colors.raisedSurface.copy(alpha = 0.92f),
-                                    offset = Offset(-1.2f, -1.2f),
-                                    blurRadius = 0.5f,
-                                ),
+                                fontSize = 24.sp,
+                                lineHeight = 28.sp,
+                                fontWeight = FontWeight.ExtraBold,
                             )
                         } else {
                             MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 19.sp,
-                                lineHeight = 23.sp,
+                                fontSize = 18.sp,
+                                lineHeight = 22.sp,
                                 fontWeight = FontWeight.Bold,
                             )
                         },
@@ -771,8 +773,8 @@ private fun PhotoBrandTabs(
                     Box(
                         modifier = Modifier
                             .offset(y = (-1).dp)
-                            .width(38.dp)
-                            .height(5.dp)
+                            .width(34.dp)
+                            .height(4.dp)
                             .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
                             .background(colors.titleAccent.copy(alpha = 0.20f)),
                     )
@@ -842,10 +844,18 @@ private fun PhotoCircleToolButton(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    val badgeBackground = if (badgeIsError) MaterialTheme.colorScheme.error else colors.memoryContainer
-    val badgeForeground = if (badgeIsError) Color.White else colors.onMemoryContainer
+    val badgeBackground = if (badgeIsError) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        colors.memoryContainer
+    }
+    val badgeForeground = if (badgeIsError) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        colors.onMemoryContainer
+    }
     val badgeBorder = if (badgeIsError) {
-        MaterialTheme.colorScheme.error
+        MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
     } else {
         colors.memoryAccent.copy(alpha = 0.20f)
     }
@@ -858,7 +868,7 @@ private fun PhotoCircleToolButton(
         Surface(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(40.dp)
+                .size(44.dp)
                 .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
             shape = CircleShape,
             color = colors.sectionBackground.copy(alpha = 0.76f),
@@ -912,7 +922,7 @@ private fun PhotoBellButton(
 
     Surface(
         modifier = Modifier
-            .size(34.dp)
+            .size(44.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = colors.raisedSurface.copy(alpha = 0.96f),
@@ -1082,7 +1092,7 @@ private fun SelectionActionChip(
         shape = shape,
         color = when {
             !enabled -> colors.sectionBackground.copy(alpha = 0.54f)
-            destructive -> colors.memoryContainer.copy(alpha = 0.92f)
+            destructive -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f)
             emphasized -> colors.primaryContainer.copy(alpha = 0.76f)
             else -> colors.raisedSurface.copy(alpha = 0.92f)
         },
@@ -1090,7 +1100,7 @@ private fun SelectionActionChip(
             1.dp,
             when {
                 !enabled -> colors.dividerSoft.copy(alpha = 0.46f)
-                destructive -> colors.memoryAccent.copy(alpha = 0.28f)
+                destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
                 emphasized -> colors.glassStroke.copy(alpha = 0.72f)
                 else -> colors.dividerSoft.copy(alpha = 0.66f)
             },
@@ -1102,7 +1112,7 @@ private fun SelectionActionChip(
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
             color = when {
                 !enabled -> colors.textSecondary.copy(alpha = 0.70f)
-                destructive -> colors.memoryAccent
+                destructive -> MaterialTheme.colorScheme.onErrorContainer
                 emphasized -> colors.titleAccent
                 else -> colors.textSecondary
             },

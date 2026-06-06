@@ -44,7 +44,7 @@ internal fun YingShiMediaFrame(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = topScrimAlpha),
+                            colors.viewerBackground.copy(alpha = topScrimAlpha),
                             Color.Transparent,
                         ),
                     ),
@@ -60,7 +60,7 @@ internal fun YingShiMediaFrame(
                         colors = listOf(
                             Color.Transparent,
                             colors.glowWash.copy(alpha = bottomGlowAlpha),
-                            Color.White.copy(alpha = 0.08f),
+                            colors.viewerText.copy(alpha = 0.08f),
                         ),
                     ),
                 ),
@@ -84,7 +84,7 @@ internal fun YingShiMediaFrame(
                 .padding(1.dp)
                 .border(
                     width = 1.dp,
-                    color = Color.White.copy(alpha = if (memoryActive) 0.22f else 0.14f),
+                    color = colors.viewerText.copy(alpha = if (memoryActive) 0.22f else 0.14f),
                     shape = shape,
                 ),
         )

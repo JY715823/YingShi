@@ -328,13 +328,13 @@ private fun CacheActionRow(
             .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
         color = if (danger) {
-            colors.memoryContainer.copy(alpha = 0.58f)
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.58f)
         } else {
             colors.softGreenContainer.copy(alpha = 0.50f)
         },
         border = BorderStroke(
             1.dp,
-            if (danger) colors.memoryAccent.copy(alpha = 0.26f) else colors.dividerSoft.copy(alpha = 0.48f),
+            if (danger) MaterialTheme.colorScheme.error.copy(alpha = 0.26f) else colors.dividerSoft.copy(alpha = 0.48f),
         ),
     ) {
         Column(
@@ -344,7 +344,7 @@ private fun CacheActionRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) colors.memoryAccent else colors.textPrimary,
+                color = if (danger) MaterialTheme.colorScheme.onErrorContainer else colors.textPrimary,
             )
             Text(
                 text = subtitle,

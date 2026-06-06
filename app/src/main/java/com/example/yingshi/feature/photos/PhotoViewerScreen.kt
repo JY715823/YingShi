@@ -9,7 +9,6 @@ import android.view.WindowInsetsAnimationController
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -21,6 +20,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -67,7 +67,8 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -127,6 +128,10 @@ import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.yingShiMediaEnterMotion
 import com.example.yingshi.ui.components.yingShiSoftReveal
+import com.example.yingshi.ui.theme.YingShiViewerAccent
+import com.example.yingshi.ui.theme.YingShiViewerBackground
+import com.example.yingshi.ui.theme.YingShiViewerSurface
+import com.example.yingshi.ui.theme.YingShiViewerText
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -135,11 +140,11 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private val ViewerNightTop = Color(0xFF1D333C)
-private val ViewerNightBottom = Color(0xFF101F26)
-private val ViewerNightMiddle = Color(0xFF182B33)
-private val ViewerSurface = Color(0xFFF4FBFC)
-private val ViewerAccent = Color(0xFFBDEFFF)
+private val ViewerNightTop = YingShiViewerSurface
+private val ViewerNightBottom = YingShiViewerBackground
+private val ViewerNightMiddle = YingShiViewerSurface.copy(alpha = 0.92f)
+private val ViewerSurface = YingShiViewerText
+private val ViewerAccent = YingShiViewerAccent
 private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
@@ -149,7 +154,7 @@ private object ViewerLayoutTuning {
     val topBarStartInset = 4.dp
     val topBarEndInset = 10.dp
     val topBarTopInset = 6.dp
-    val backButtonTouchSize = 42.dp
+    val backButtonTouchSize = 44.dp
     val canvasHorizontalPadding = 0.dp
     val canvasTopPadding = 68.dp
     val canvasBottomPadding = 104.dp
@@ -589,10 +594,46 @@ fun PhotoViewerScreen(
         }
         lastNotifiedOriginalState = currentOriginalState
     }
-    val relatedPosts = remember(currentItem, route.sourcePostRoute) {
+    var relatedPostRoutes by remember(currentItem.mediaId, route.sourcePostRoute) {
+        mutableStateOf<Map<String, PostDetailPlaceholderRoute>>(emptyMap())
+    }
+    LaunchedEffect(currentItem.mediaId, currentItem.postIds, route.sourcePostRoute) {
+        val postIds = currentItem.postIds.distinct()
+        val fallbackRoutes = postIds.associateWith { postId ->
+            buildViewerRelatedPostRoute(
+                media = currentItem,
+                postId = postId,
+                sourcePostRoute = route.sourcePostRoute,
+            )
+        }
+        relatedPostRoutes = fallbackRoutes
+        if (RepositoryProvider.currentMode != RepositoryMode.REAL || postIds.isEmpty()) {
+            return@LaunchedEffect
+        }
+        when (val result = RepositoryProvider.postRepository.getPosts()) {
+            is ApiResult.Success -> {
+                val summariesById = result.data.associateBy { it.postId }
+                relatedPostRoutes = postIds.associateWith { postId ->
+                    when {
+                        route.sourcePostRoute?.postId == postId -> route.sourcePostRoute
+                        else -> summariesById[postId]?.toPostDetailPlaceholderRoute(
+                            selectedAlbumId = summariesById[postId]
+                                ?.albumIds
+                                ?.firstOrNull()
+                                .orEmpty()
+                                .ifBlank { route.sourcePostRoute?.albumId ?: "viewer-related" },
+                        )
+                    } ?: fallbackRoutes.getValue(postId)
+                }
+            }
+            else -> Unit
+        }
+    }
+    val relatedPosts = remember(currentItem, route.sourcePostRoute, relatedPostRoutes) {
         buildViewerRelatedPosts(
             media = currentItem,
             sourcePostRoute = route.sourcePostRoute,
+            routeOverrides = relatedPostRoutes,
         )
     }
     val overlayUiModel = remember(
@@ -1109,6 +1150,9 @@ fun PhotoViewerScreen(
                 onCreateComment = commentBindings.onCreateComment,
                 onUpdateComment = commentBindings.onUpdateComment,
                 onDeleteComment = commentBindings.onDeleteComment,
+                onShowNotice = { message, emphasized ->
+                    showViewerNotice(message, emphasized)
+                },
             )
         }
 
@@ -1444,10 +1488,11 @@ private fun PhotoViewerTopBar(
             border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "<",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = ViewerSurface.copy(alpha = 0.94f),
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = ViewerSurface.copy(alpha = 0.94f),
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
@@ -1464,8 +1509,8 @@ private fun PhotoViewerTopBar(
                 )
             }
             ViewerIconCircle(
-                icon = Icons.Rounded.Download,
-                contentDescription = "下载",
+                icon = Icons.Default.IosShare,
+                contentDescription = "分享",
                 onClick = onShare,
             )
             Box(
@@ -1496,17 +1541,17 @@ private fun PhotoViewerTopBar(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text(text = "删除媒体") },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
-                        },
-                    )
-                    DropdownMenuItem(
                         text = { Text(text = "所属小相册") },
                         onClick = {
                             menuExpanded = false
                             onOpenRelatedPosts()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(text = "删除媒体", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            menuExpanded = false
+                            onDelete()
                         },
                     )
                 }
@@ -1658,7 +1703,7 @@ private fun PhotoViewerCanvas(
                                 .matchParentSize()
                                 .clickable(
                                     interactionSource = revealInteractionSource,
-                                    indication = null,
+                                    indication = LocalIndication.current,
                                     onClick = onVideoAreaClick,
                                 ),
                         )
@@ -2305,14 +2350,16 @@ internal fun ViewerVideoControls(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Surface(
-                    modifier = Modifier.clickable(onClick = onTogglePlayback),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clickable(onClick = onTogglePlayback),
                     shape = CircleShape,
                     color = ViewerSurface.copy(alpha = 0.14f),
                     border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .fillMaxSize()
                             .padding(11.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -2747,9 +2794,9 @@ private fun PhotoViewerCommentSheet(
     onCreateComment: (String) -> Unit,
     onUpdateComment: (String, String) -> Unit,
     onDeleteComment: (String) -> Unit,
+    onShowNotice: (String, Boolean) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val context = LocalContext.current
     val copyComment = rememberCommentCopyHandler()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var expanded by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf(false) }
@@ -2880,7 +2927,7 @@ private fun PhotoViewerCommentSheet(
                                 editingDraft = ""
                             }
                             actionCommentId = null
-                            Toast.makeText(context, "评论操作已提交", Toast.LENGTH_SHORT).show()
+                            onShowNotice("评论操作已提交", true)
                         },
                         isEditing = editingCommentId == comment.id,
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
@@ -2890,7 +2937,7 @@ private fun PhotoViewerCommentSheet(
                             editingCommentId = null
                             editingDraft = ""
                             actionCommentId = null
-                            Toast.makeText(context, "评论操作已提交", Toast.LENGTH_SHORT).show()
+                            onShowNotice("评论操作已提交", true)
                         },
                         onCancelEdit = {
                             editingCommentId = null
@@ -3020,9 +3067,10 @@ private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<CommentUiModel
 private fun buildViewerRelatedPosts(
     media: PhotoFeedItem,
     sourcePostRoute: PostDetailPlaceholderRoute?,
+    routeOverrides: Map<String, PostDetailPlaceholderRoute> = emptyMap(),
 ): List<ViewerRelatedPostUiModel> {
     return media.postIds.distinct().map { postId ->
-        val route = buildViewerRelatedPostRoute(
+        val route = routeOverrides[postId] ?: buildViewerRelatedPostRoute(
             media = media,
             postId = postId,
             sourcePostRoute = sourcePostRoute,

@@ -120,3 +120,17 @@ fun TrashEntryUiModel.restoreTargetMediaIds(): List<String> {
         addAll(relatedMediaIds.filter { it.isNotBlank() })
     }.distinct()
 }
+
+fun TrashEntryUiModel.businessIdentityKey(): String {
+    return listOf(
+        type.name,
+        sourcePostId.orEmpty(),
+        sourceMediaId.orEmpty(),
+        commentTargetMediaId.orEmpty(),
+        title,
+        previewInfo,
+        deletedAtMillis.toString(),
+        relatedPostIds.sorted().joinToString(","),
+        relatedMediaIds.sorted().joinToString(","),
+    ).joinToString("|")
+}

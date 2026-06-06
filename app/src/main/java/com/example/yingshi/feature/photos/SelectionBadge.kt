@@ -29,17 +29,17 @@ fun AppMediaSelectionBadge(
             .clip(CircleShape)
             .background(
                 when {
-                    disabled -> Color.White.copy(alpha = 0.24f)
+                    disabled -> colors.viewerText.copy(alpha = 0.24f)
                     selected -> colors.primaryContainer
-                    else -> Color.Black.copy(alpha = 0.10f)
+                    else -> colors.viewerBackground.copy(alpha = 0.14f)
                 },
             )
             .border(
                 width = 1.5.dp,
                 color = when {
-                    disabled -> Color.White.copy(alpha = 0.54f)
+                    disabled -> colors.viewerText.copy(alpha = 0.54f)
                     selected -> colors.glassStroke
-                    else -> Color.White.copy(alpha = 0.88f)
+                    else -> colors.viewerText.copy(alpha = 0.88f)
                 },
                 shape = CircleShape,
             ),
@@ -55,7 +55,7 @@ fun AppMediaSelectionBadge(
             Text(
                 text = "·",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                color = Color.White.copy(alpha = 0.92f),
+                color = colors.viewerText.copy(alpha = 0.92f),
             )
         }
     }

@@ -27,7 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -289,10 +290,10 @@ private fun LedgerAssetsScopePage(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("净资产", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                Text("净资产", color = LedgerRaisedSurface.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
                 Text(
                     formatAmountValue(scopedNetAssetCents),
-                    color = Color.White,
+                    color = LedgerRaisedSurface,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -330,7 +331,7 @@ private fun AccountRow(
     onMoreClick: () -> Unit,
 ) {
     Surface(
-        color = Color.White,
+        color = LedgerRaisedSurface,
         shape = RoundedCornerShape(22.dp),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
@@ -346,7 +347,7 @@ private fun AccountRow(
                     .background(ledgerColor(account.color)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(accountIcon(account.type), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(accountIcon(account.type), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -575,8 +576,8 @@ private fun LedgerStatsTopBar(
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "返回", modifier = Modifier.size(18.dp))
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", modifier = Modifier.size(18.dp))
         }
         Text(
             text = "统计",
@@ -585,7 +586,7 @@ private fun LedgerStatsTopBar(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
-        IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onShare, modifier = Modifier.size(44.dp)) {
             Icon(Icons.Default.IosShare, contentDescription = "分享", modifier = Modifier.size(18.dp))
         }
     }
@@ -625,7 +626,7 @@ private fun StatsSummaryCard(
     onShiftPeriod: (Int) -> Unit,
     onBookClick: () -> Unit,
 ) {
-    Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (uiState.selectedStatsMode == LedgerStatsMode.WEEK || uiState.selectedStatsMode == LedgerStatsMode.MONTH || uiState.selectedStatsMode == LedgerStatsMode.YEAR) {
@@ -684,7 +685,7 @@ private fun StatsTrendCard(
     selectedLineKeys: Set<String>,
     onToggleKey: (String) -> Unit,
 ) {
-    Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("收支统计", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -692,7 +693,7 @@ private fun StatsTrendCard(
                 Spacer(Modifier.width(6.dp))
                 StatsToggleChip("收入", "income", selectedLineKeys.contains("income"), LedgerHeaderGreen, onToggleKey)
                 Spacer(Modifier.width(6.dp))
-                StatsToggleChip("结余", "balance", selectedLineKeys.contains("balance"), Color(0xFF7E8E88), onToggleKey)
+                StatsToggleChip("结余", "balance", selectedLineKeys.contains("balance"), LedgerMuted, onToggleKey)
             }
             LedgerTrendChart(
                 dailyStats = uiState.stats.dailyStats,
@@ -712,7 +713,7 @@ private fun StatsToggleChip(
 ) {
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = if (selected) color.copy(alpha = 0.14f) else Color(0xFFF5F5F7),
+        color = if (selected) color.copy(alpha = 0.14f) else LedgerGroupedHeader,
         modifier = Modifier.clickable { onToggleKey(key) },
     ) {
         Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)) {
@@ -750,20 +751,20 @@ private fun LedgerTrendChart(
         repeat(5) { index ->
             val y = graphTop + graphHeight / 4f * index
             drawLine(
-                color = Color(0xFFF1F1F4),
+                color = LedgerGroupedHeader,
                 start = Offset(graphLeft, y),
                 end = Offset(graphRight, y),
                 strokeWidth = if (kotlin.math.abs(y - zeroY) < 1f) 2.4f else 1.4f,
             )
         }
         drawLine(
-            color = Color(0xFFD9DCE3),
+            color = LedgerDivider,
             start = Offset(graphLeft, graphTop),
             end = Offset(graphLeft, graphBottom),
             strokeWidth = 2.4f,
         )
         drawLine(
-            color = Color(0xFFD9DCE3),
+            color = LedgerDivider,
             start = Offset(graphLeft, zeroY),
             end = Offset(graphRight, zeroY),
             strokeWidth = 2.4f,
@@ -785,13 +786,13 @@ private fun LedgerTrendChart(
         }
         if (selectedLineKeys.contains("expense")) drawSeries(displayStats.map { it.expenseCents }, LedgerExpenseRed)
         if (selectedLineKeys.contains("income")) drawSeries(displayStats.map { it.incomeCents }, LedgerHeaderGreen)
-        if (selectedLineKeys.contains("balance")) drawSeries(displayStats.map { it.incomeCents - it.expenseCents }, Color(0xFF7E8E88))
+        if (selectedLineKeys.contains("balance")) drawSeries(displayStats.map { it.incomeCents - it.expenseCents }, LedgerMuted)
 
         val textPaint = android.graphics.Paint().apply {
             isAntiAlias = true
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = 11.sp.toPx()
-            color = android.graphics.Color.parseColor("#B3B6BE")
+            color = LedgerMuted.copy(alpha = 0.72f).toArgb()
         }
         drawContext.canvas.nativeCanvas.apply {
             drawText("0", graphLeft - 10.dp.toPx(), zeroY + textPaint.textSize / 3f, textPaint)
@@ -817,7 +818,7 @@ private fun StatsCategoryCard(
     onCategoryTypeChange: (LedgerCategoryType) -> Unit,
     onCategoryClick: (LedgerCategoryStat) -> Unit,
 ) {
-    Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+                Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("分类统计", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -833,15 +834,15 @@ private fun StatsCategoryCard(
                     onClick = { onCategoryTypeChange(LedgerCategoryType.INCOME) },
                 )
             }
+            LedgerDonutChart(
+                categoryStats = categoryStats,
+                uiState = uiState,
+                categoryType = categoryType,
+                onCategoryTypeChange = onCategoryTypeChange,
+            )
             if (categoryStats.isEmpty()) {
                 LedgerEmptyStateCompact("暂无分类数据")
             } else {
-                LedgerDonutChart(
-                    categoryStats = categoryStats,
-                    uiState = uiState,
-                    categoryType = categoryType,
-                    onCategoryTypeChange = onCategoryTypeChange,
-                )
                 categoryStats.forEach { stat ->
                     LedgerCategoryStatRow(stat = stat, onClick = { onCategoryClick(stat) })
                 }
@@ -897,7 +898,7 @@ private fun LedgerDonutChart(
             val textPaint = android.graphics.Paint().apply {
                 isAntiAlias = true
                 textSize = 10.sp.toPx()
-                color = android.graphics.Color.parseColor("#426E70")
+                color = LedgerMuted.toArgb()
                 typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             }
             var startAngle = rotation
@@ -948,8 +949,9 @@ private fun LedgerDonutChart(
                     } else {
                         android.graphics.Paint.Align.RIGHT
                     }
+                    val categoryLabel = stat.category?.name ?: "未分类"
                     drawText(
-                        "${String.format("%.1f", stat.percent * 100)}%",
+                        "$categoryLabel ${String.format("%.1f", stat.percent * 100)}%",
                         labelX,
                         lineBend.y + 4.dp.toPx(),
                         textPaint,
@@ -987,7 +989,7 @@ private fun LedgerDonutChart(
                     Icon(
                         Icons.Default.SwapHoriz,
                         contentDescription = "切换统计类型",
-                        tint = Color.White,
+                        tint = LedgerRaisedSurface,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -1005,7 +1007,7 @@ private fun LedgerCategoryStatRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = Color.White,
+        color = LedgerRaisedSurface,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1016,7 +1018,7 @@ private fun LedgerCategoryStatRow(
                         .background(ledgerColor(stat.category?.color ?: 0xFF8D99A6)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(ledgerIcon(stat.category?.iconKey ?: "more_horiz"), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(ledgerIcon(stat.category?.iconKey ?: "more_horiz"), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
                 }
                 Text(stat.category?.name ?: "未分类", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                 Text("${stat.count}笔", color = LedgerSubtleText, style = MaterialTheme.typography.bodySmall)
@@ -1030,7 +1032,7 @@ private fun LedgerCategoryStatRow(
                     .fillMaxWidth()
                     .height(3.dp),
                 color = ledgerColor(stat.category?.color ?: 0xFF8D99A6),
-                trackColor = Color(0xFFF6F6F8),
+                trackColor = LedgerGroupedHeader,
             )
         }
     }
@@ -1043,7 +1045,7 @@ private fun StatsCompareCard(uiState: LedgerUiState) {
     val currentLabel = ledgerStatsCurrentShortLabel(uiState)
     val previousLabel = ledgerStatsPreviousShortLabel(uiState)
     val delta = lastMonth?.let { thisMonth - it }
-    Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 if (delta != null && previousLabel != null) {
@@ -1058,7 +1060,7 @@ private fun StatsCompareCard(uiState: LedgerUiState) {
             Text(formatAmountValue(thisMonth), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             LedgerTag(currentLabel, LedgerHeaderGreen)
             Text(lastMonth?.let(::formatAmountValue) ?: "--", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            LedgerTag(previousLabel ?: "无可比", Color(0xFFF3F4FA))
+            LedgerTag(previousLabel ?: "无可比", LedgerGroupedHeader)
         }
     }
 }
@@ -1072,7 +1074,7 @@ private fun LedgerTag(text: String, backgroundColor: Color) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            color = if (backgroundColor == LedgerHeaderGreen) Color.White else Color.Black,
+            color = if (backgroundColor == LedgerHeaderGreen) LedgerRaisedSurface else MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Bold,
         )
@@ -1081,7 +1083,7 @@ private fun LedgerTag(text: String, backgroundColor: Color) {
 
 @Composable
 private fun StatsReportCard(uiState: LedgerUiState) {
-    Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("报表统计", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -1185,8 +1187,8 @@ fun LedgerBudgetScreen(
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "返回", modifier = Modifier.size(18.dp))
+            IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", modifier = Modifier.size(18.dp))
             }
             Row(
                 modifier = Modifier
@@ -1205,7 +1207,7 @@ fun LedgerBudgetScreen(
                 )
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", modifier = Modifier.size(14.dp))
             }
-            Box(modifier = Modifier.width(32.dp))
+            Box(modifier = Modifier.width(44.dp))
         }
         LazyColumn(
             modifier = Modifier
@@ -1233,7 +1235,7 @@ fun LedgerBudgetScreen(
                 }
             }
             item {
-                Surface(color = Color.White, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -1262,7 +1264,7 @@ fun LedgerBudgetScreen(
                                 .fillMaxWidth()
                                 .height(5.dp),
                             color = if (uiState.totalBudgetRemainingCents < 0) LedgerExpenseRed else LedgerHeaderGreen,
-                            trackColor = Color(0xFFF4F5F7),
+                            trackColor = LedgerGroupedHeader,
                         )
                         Text(
                             "已用 ${formatAmountValue(uiState.totalBudgetUsedCents)} · 剩余 ${formatAmountValue(uiState.totalBudgetRemainingCents)}",
@@ -1275,7 +1277,7 @@ fun LedgerBudgetScreen(
             items(budgetCategories, key = { it.id }) { category ->
                 val categoryBudget = uiState.categoryBudgets.firstOrNull { it.category?.id == category.id }
                 Surface(
-                    color = Color.White,
+                    color = LedgerRaisedSurface,
                     shape = RoundedCornerShape(22.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1311,7 +1313,7 @@ fun LedgerBudgetScreen(
                                 .fillMaxWidth()
                                 .height(3.dp),
                             color = if (progress > 1f) LedgerExpenseRed else LedgerHeaderGreen,
-                            trackColor = Color(0xFFF4F5F7),
+                            trackColor = LedgerGroupedHeader,
                         )
                         Text(
                             "已用 ${formatAmountValue(categoryBudget?.usedCents ?: 0L)} · ${categoryBudget?.transactionCount ?: 0}笔",
@@ -1403,7 +1405,7 @@ fun LedgerCalendarScreen(
         uiState.transactions.filter { dayStart(it.occurredAtMillis) == selectedDayStart }
     }
     LedgerPageScaffold(title = uiState.bookName, creatorUserId = uiState.bookCreatorUserId, onBack = onBack, action = {
-        IconButton(onClick = onAdd, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onAdd, modifier = Modifier.size(44.dp)) {
             Icon(LedgerActionIcons.Add, contentDescription = "补记一笔", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
         }
     }) {
@@ -1420,7 +1422,7 @@ fun LedgerCalendarScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    IconButton(onClick = { onSelectMonth(uiState.selectedMonth.minusMonths(1)) }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { onSelectMonth(uiState.selectedMonth.minusMonths(1)) }, modifier = Modifier.size(44.dp)) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "上个月", tint = LedgerHeaderGreen)
                     }
                     Text(
@@ -1430,7 +1432,7 @@ fun LedgerCalendarScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    IconButton(onClick = { onSelectMonth(uiState.selectedMonth.plusMonths(1)) }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { onSelectMonth(uiState.selectedMonth.plusMonths(1)) }, modifier = Modifier.size(44.dp)) {
                         Icon(Icons.Default.ChevronRight, contentDescription = "下个月", tint = LedgerHeaderGreen)
                     }
                 }
@@ -1747,7 +1749,7 @@ fun LedgerSearchScreen(
                     )
                 }
                 item {
-                    Surface(color = Color.White, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1980,7 +1982,7 @@ private fun SearchTransactionRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Surface(color = Color.White, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (selectionMode) {
                 Icon(
@@ -2023,7 +2025,7 @@ fun LedgerCategoriesScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(LedgerRaisedSurface)
             .statusBarsPadding(),
     ) {
         Row(
@@ -2032,14 +2034,14 @@ fun LedgerCategoriesScreen(
                 .padding(horizontal = 6.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "返回", modifier = Modifier.size(18.dp))
+            IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", modifier = Modifier.size(18.dp))
             }
             Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("分类管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("长按可拖动排序", style = MaterialTheme.typography.bodySmall, color = LedgerMuted)
             }
-            Box(modifier = Modifier.width(32.dp))
+            Box(modifier = Modifier.width(44.dp))
         }
         Row(modifier = Modifier.fillMaxWidth()) {
             CategoryManageTab("支出", selected = type == LedgerCategoryType.EXPENSE, modifier = Modifier.weight(1f)) {
@@ -2071,7 +2073,7 @@ fun LedgerCategoriesScreen(
                         .background(ledgerColor(category.color)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
                 }
                 Row(
                     modifier = Modifier.weight(1f),
@@ -2094,7 +2096,7 @@ fun LedgerCategoriesScreen(
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Color.White,
+            color = LedgerRaisedSurface,
             shadowElevation = 6.dp,
         ) {
             Row(
@@ -2165,7 +2167,7 @@ private fun CategoryManageTab(
     ) {
         Text(
             text = text,
-            color = if (selected) LedgerHeaderGreen else Color.Black,
+            color = if (selected) LedgerHeaderGreen else MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -2198,7 +2200,7 @@ fun LedgerTrashScreen(
                 item { LedgerEmptyStateCompact("回收站为空") }
             } else {
                 items(uiState.deletedItems, key = { it.id }) { item ->
-                    Surface(color = Color.White, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -2219,7 +2221,7 @@ fun LedgerTrashScreen(
 
 @Composable
 private fun LedgerEmptyStateCompact(text: String) {
-    Surface(color = Color.White, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = LedgerRaisedSurface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
         Box(modifier = Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
             Text(text, color = LedgerMuted, style = MaterialTheme.typography.bodySmall)
         }

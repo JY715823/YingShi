@@ -627,6 +627,7 @@ private fun PostMediaViewerScreen(
     val zoomState = remember { PostMediaViewerZoomState() }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val zoomEnabled = item.mediaType == AppMediaType.IMAGE
+    val colors = YingShiThemeTokens.colors
 
     ViewerStatusBarEffect(immersive = true)
 
@@ -638,13 +639,13 @@ private fun PostMediaViewerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(colors.viewerBackground),
     ) {
         PostMediaListThumbnail(
             item = item,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(colors.viewerBackground)
                 .onSizeChanged { canvasSize = it }
                 .then(
                     if (zoomEnabled) {
@@ -717,6 +718,7 @@ private fun PostMediaViewerActionButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
         modifier = Modifier.yingShiClickable(
@@ -726,14 +728,14 @@ private fun PostMediaViewerActionButton(
             onClick = onClick,
         ),
         shape = shape,
-        color = Color.Black.copy(alpha = if (enabled) 0.46f else 0.28f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (enabled) 0.18f else 0.08f)),
+        color = colors.viewerBackground.copy(alpha = if (enabled) 0.46f else 0.28f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = if (enabled) 0.18f else 0.08f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White.copy(alpha = if (enabled) 0.94f else 0.54f),
+            color = colors.viewerText.copy(alpha = if (enabled) 0.94f else 0.54f),
         )
     }
 }
@@ -830,12 +832,13 @@ private fun PostMediaListCard(
                             .align(Alignment.BottomStart)
                             .padding(start = spacing.xs, bottom = spacing.xs),
                         shape = RoundedCornerShape(radius.capsule),
-                        color = Color.Black.copy(alpha = 0.36f),
+                        color = colors.viewerBackground.copy(alpha = 0.36f),
+                        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.12f)),
                     ) {
                         VideoGlyph(
                             state = VideoGlyphState.PLAY,
                             modifier = Modifier.padding(spacing.xs),
-                            tint = Color.White.copy(alpha = 0.92f),
+                            tint = colors.viewerText.copy(alpha = 0.92f),
                         )
                     }
                 }
@@ -917,12 +920,13 @@ private fun PostMediaDragOverlay(
                         .align(Alignment.BottomStart)
                         .padding(start = spacing.xs, bottom = spacing.xs),
                     shape = RoundedCornerShape(radius.capsule),
-                    color = Color.Black.copy(alpha = 0.36f),
+                    color = colors.viewerBackground.copy(alpha = 0.36f),
+                    border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.12f)),
                 ) {
                     VideoGlyph(
                         state = VideoGlyphState.PLAY,
                         modifier = Modifier.padding(spacing.xs),
-                        tint = Color.White.copy(alpha = 0.92f),
+                        tint = colors.viewerText.copy(alpha = 0.92f),
                     )
                 }
             }
@@ -987,6 +991,7 @@ private fun PostMediaDeleteButton(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier
             .size(28.dp)
@@ -995,13 +1000,14 @@ private fun PostMediaDeleteButton(
                 onLongClick = onLongClick,
             ),
         shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.48f),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.18f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = "×",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onErrorContainer,
             )
         }
     }
@@ -1014,6 +1020,11 @@ private fun TrashIconButton(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
+    val iconColor = if (enabled) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        colors.textSecondary.copy(alpha = 0.62f)
+    }
     Surface(
         modifier = Modifier
             .size(40.dp)
@@ -1023,22 +1034,21 @@ private fun TrashIconButton(
         ),
         shape = CircleShape,
         color = if (enabled) {
-            colors.memoryContainer.copy(alpha = 0.84f)
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.84f)
         } else {
             colors.sectionBackground.copy(alpha = 0.56f)
         },
         border = BorderStroke(
             1.dp,
-            if (enabled) colors.memoryAccent.copy(alpha = 0.20f) else colors.dividerSoft.copy(alpha = 0.46f),
+            if (enabled) MaterialTheme.colorScheme.error.copy(alpha = 0.20f) else colors.dividerSoft.copy(alpha = 0.46f),
         ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {
-            val color = if (enabled) colors.memoryAccent else colors.textSecondary.copy(alpha = 0.62f)
-            drawLine(color, Offset(size.width * 0.25f, size.height * 0.28f), Offset(size.width * 0.75f, size.height * 0.28f), strokeWidth = 2.2f, cap = StrokeCap.Round)
-            drawLine(color, Offset(size.width * 0.42f, size.height * 0.14f), Offset(size.width * 0.58f, size.height * 0.14f), strokeWidth = 2.2f, cap = StrokeCap.Round)
-            drawLine(color, Offset(size.width * 0.34f, size.height * 0.34f), Offset(size.width * 0.40f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)
-            drawLine(color, Offset(size.width * 0.66f, size.height * 0.34f), Offset(size.width * 0.60f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)
-            drawLine(color, Offset(size.width * 0.40f, size.height * 0.86f), Offset(size.width * 0.60f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)
+            drawLine(iconColor, Offset(size.width * 0.25f, size.height * 0.28f), Offset(size.width * 0.75f, size.height * 0.28f), strokeWidth = 2.2f, cap = StrokeCap.Round)
+            drawLine(iconColor, Offset(size.width * 0.42f, size.height * 0.14f), Offset(size.width * 0.58f, size.height * 0.14f), strokeWidth = 2.2f, cap = StrokeCap.Round)
+            drawLine(iconColor, Offset(size.width * 0.34f, size.height * 0.34f), Offset(size.width * 0.40f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)
+            drawLine(iconColor, Offset(size.width * 0.66f, size.height * 0.34f), Offset(size.width * 0.60f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)
+            drawLine(iconColor, Offset(size.width * 0.40f, size.height * 0.86f), Offset(size.width * 0.60f, size.height * 0.86f), strokeWidth = 2.2f, cap = StrokeCap.Round)
         }
     }
 }

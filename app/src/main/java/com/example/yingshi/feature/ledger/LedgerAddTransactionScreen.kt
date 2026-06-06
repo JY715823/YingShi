@@ -515,8 +515,8 @@ private fun LedgerAddTopBar(
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(30.dp)) {
-            Icon(LedgerActionIcons.Back, contentDescription = "返回", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
+        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+            Icon(LedgerActionIcons.Back, contentDescription = "返回", tint = LedgerHeaderGreen, modifier = Modifier.size(20.dp))
         }
         Row(
             modifier = Modifier
@@ -535,8 +535,8 @@ private fun LedgerAddTopBar(
             )
             Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(13.dp))
         }
-        IconButton(onClick = onManageClick, modifier = Modifier.size(30.dp)) {
-            Icon(Icons.Default.Add, contentDescription = "分类管理", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
+        IconButton(onClick = onManageClick, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.Default.Add, contentDescription = "分类管理", tint = LedgerHeaderGreen, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -603,8 +603,8 @@ private fun LedgerCategoryGridItem(
                     .clip(CircleShape)
                     .background(ledgerColor(category.color).copy(alpha = 0.88f)),
                 contentAlignment = Alignment.Center,
-            ) {
-                Icon(ledgerIcon(category.iconKey), contentDescription = category.name, tint = Color.White, modifier = Modifier.size(22.dp))
+                ) {
+                Icon(ledgerIcon(category.iconKey), contentDescription = category.name, tint = LedgerRaisedSurface, modifier = Modifier.size(22.dp))
             }
         }
         Text(
@@ -645,8 +645,8 @@ private fun LedgerTransferSelector(
                 color = LedgerPrimaryAction,
                 border = BorderStroke(1.dp, LedgerGlassStroke),
             ) {
-                IconButton(onClick = onSwapClick, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = "交换账户", tint = LedgerOnPrimaryAction, modifier = Modifier.size(18.dp))
+                IconButton(onClick = onSwapClick, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Default.SwapHoriz, contentDescription = "交换账户", tint = LedgerOnPrimaryAction, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -931,16 +931,16 @@ private fun LedgerKeyboardKey(
     val isDeleteKey = text == "⌫"
     val background = when {
         !enabled -> if (filled) LedgerPrimaryAction.copy(alpha = 0.42f) else LedgerDivider.copy(alpha = 0.28f)
-        isDeleteKey -> Color(0xFF273036)
+        isDeleteKey -> LedgerHeaderGreen
         filled -> LedgerPrimaryAction
-        danger -> LedgerMemoryWash
+        danger -> MaterialTheme.colorScheme.errorContainer
         else -> LedgerRaisedSurface
     }
     val contentColor = when {
         !enabled -> LedgerMuted.copy(alpha = 0.62f)
-        isDeleteKey -> Color.White
+        isDeleteKey -> LedgerRaisedSurface
         filled -> LedgerOnPrimaryAction
-        danger -> LedgerExpenseRed
+        danger -> MaterialTheme.colorScheme.onErrorContainer
         else -> LedgerHeaderGreen
     }
     val animatedBackground by animateColorAsState(

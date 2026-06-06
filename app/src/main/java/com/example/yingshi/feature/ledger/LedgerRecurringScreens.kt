@@ -103,7 +103,7 @@ fun LedgerRecurringScreen(
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
                 Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(18.dp))
             }
             Row(
@@ -126,7 +126,7 @@ fun LedgerRecurringScreen(
             IconButton(onClick = {
                 editingRule = null
                 showEditor = true
-            }, modifier = Modifier.size(32.dp)) {
+            }, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Default.Add, contentDescription = "新增规则", modifier = Modifier.size(18.dp))
             }
         }
@@ -233,7 +233,7 @@ private fun LedgerRecurringSectionCard(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color.White,
+        color = LedgerRaisedSurface,
         shape = RoundedCornerShape(22.dp),
     ) {
         Column(
@@ -265,7 +265,7 @@ private fun LedgerRecurringRuleRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = Color(0xFFF8F8F9),
+        color = LedgerGroupedHeader,
         shape = RoundedCornerShape(18.dp),
     ) {
         Row(
@@ -283,7 +283,7 @@ private fun LedgerRecurringRuleRow(
                 Icon(
                     ledgerIcon(rule.category?.iconKey ?: "timelapse"),
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = LedgerRaisedSurface,
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -678,7 +678,7 @@ private fun LedgerRecurringPickerRow(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
-        color = Color(0xFFF8F8F9),
+        color = LedgerGroupedHeader,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

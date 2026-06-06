@@ -61,12 +61,12 @@ fun HomeScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = "映世",
-                        style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.titleAccent,
                     )
                     Text(
                         text = "欢迎回来",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = colors.textSecondary,
                     )
                 }

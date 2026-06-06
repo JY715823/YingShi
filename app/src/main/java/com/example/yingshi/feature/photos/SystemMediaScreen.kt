@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -25,6 +24,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,18 +46,15 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -102,6 +99,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -176,6 +176,8 @@ fun SystemMediaScreen(
     var pendingSystemTrashItems by remember {
         mutableStateOf<List<SystemMediaItem>>(emptyList())
     }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by remember { mutableIntStateOf(0) }
     var densityName by rememberSaveable {
         mutableStateOf(PhotoFeedDensity.DENSE_4.name)
     }
@@ -203,6 +205,15 @@ fun SystemMediaScreen(
     val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
     val density = PhotoFeedDensity.valueOf(densityName)
+
+    fun showNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
+
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
         !selectionMode &&
         density.columns <= 4
@@ -485,23 +496,22 @@ fun SystemMediaScreen(
             selectionMode = false
             selectedIds = emptyList()
             viewModel.refresh(forceRefresh = true)
-            Toast.makeText(
-                context,
-                if (hiddenCount > 0) {
+            showNotice(
+                message = if (hiddenCount > 0) {
                     "已移到系统回收站。"
                 } else {
                     "这些媒体已经处理过了。"
                 },
-                Toast.LENGTH_SHORT,
-            ).show()
+                tone = if (hiddenCount > 0) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.INFO,
+            )
         } else {
-            Toast.makeText(context, "已取消移到系统回收站。", Toast.LENGTH_SHORT).show()
+            showNotice("已取消移到系统回收站。")
         }
     }
 
     fun launchSystemTrashRequest(items: List<SystemMediaItem>) {
         if (items.isEmpty()) {
-            Toast.makeText(context, "请先选择要移到系统回收站的媒体。", Toast.LENGTH_SHORT).show()
+            showNotice("请先选择要移到系统回收站的媒体。", YingShiNoticeTone.WARNING)
             return
         }
         createSystemMediaTrashRequest(context, items)
@@ -513,19 +523,17 @@ fun SystemMediaScreen(
                     )
                 }.onFailure { throwable ->
                     pendingTrashIds = emptyList()
-                    Toast.makeText(
-                        context,
+                    showNotice(
                         throwable.message ?: "无法拉起系统回收站确认流程。",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                        YingShiNoticeTone.WARNING,
+                    )
                 }
             }
             .onFailure { throwable ->
-                Toast.makeText(
-                    context,
+                showNotice(
                     throwable.message ?: systemMediaTrashUnsupportedMessage(),
-                    Toast.LENGTH_SHORT,
-                ).show()
+                    YingShiNoticeTone.WARNING,
+                )
             }
     }
 
@@ -599,11 +607,10 @@ fun SystemMediaScreen(
                     addToPostError = null
                     selectedIds = emptyList()
                     selectionMode = false
-                    Toast.makeText(
-                        context,
+                    showNotice(
                         "已加入上传队列，成功项会进入目标小相册。",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                        YingShiNoticeTone.SUCCESS,
+                    )
                 } else {
                     addToPostError = "这些媒体已经在目标小相册里，或没有可添加的媒体。"
                 }
@@ -620,11 +627,10 @@ fun SystemMediaScreen(
                     addToPostError = null
                     selectedIds = emptyList()
                     selectionMode = false
-                    Toast.makeText(
-                        context,
+                    showNotice(
                         "已加入上传队列，成功项会进入目标小相册。",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                        YingShiNoticeTone.SUCCESS,
+                    )
                 } else {
                     addToPostError = "这些媒体已经在目标小相册里，或没有可添加的媒体。"
                 }
@@ -637,15 +643,11 @@ fun SystemMediaScreen(
         AlertDialog(
             onDismissRequest = { pendingSystemTrashItems = emptyList() },
             title = { Text("移到系统相册回收站？") },
-            text = {
-                Text(
-                    "将对已选 $trashCount 项系统相册媒体发起 Android 系统回收站操作。它们不会进入映世回收站，也不会影响照片流中已经导入的内容；确认后还会出现 Android 系统确认框。",
-                )
-            },
             confirmButton = {
                 SystemMediaActionChip(
-                    text = "继续",
-                    emphasized = true,
+                    text = "继续移到回收站",
+                    emphasized = false,
+                    danger = true,
                     onClick = {
                         val items = pendingSystemTrashItems
                         pendingSystemTrashItems = emptyList()
@@ -929,29 +931,29 @@ fun SystemMediaScreen(
             SystemMediaSelectionBar(
                 selectedCount = selectedIds.size,
                 onImportToApp = {
+                    if (selectedItems.isEmpty()) {
+                        showNotice("请先选择要导入照片流的媒体。", YingShiNoticeTone.WARNING)
+                        return@SystemMediaSelectionBar
+                    }
                     val importedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
                         context = context,
                         mediaItems = selectedItems,
                     )
-                    selectedIds = emptyList()
-                    selectionMode = false
-                    Toast.makeText(
-                        context,
-                        if (importedCount > 0) {
-                            "已加入导入队列，完成后会出现在照片流。"
-                        } else {
-                            "请先选择要导入照片流的媒体。"
-                        },
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    if (importedCount > 0) {
+                        selectedIds = emptyList()
+                        selectionMode = false
+                        showNotice("已加入导入队列，完成后会出现在照片流。", YingShiNoticeTone.SUCCESS)
+                    } else {
+                        showNotice("这些媒体已经在导入队列里，或没有可导入的媒体。", YingShiNoticeTone.WARNING)
+                    }
                 },
                 onCreatePost = {
                     val selectedSnapshot = selectedItems
-                    selectedIds = emptyList()
-                    selectionMode = false
                     if (selectedSnapshot.isEmpty()) {
-                        Toast.makeText(context, "请先选择要新建小相册的媒体。", Toast.LENGTH_SHORT).show()
+                        showNotice("请先选择要新建小相册的媒体。", YingShiNoticeTone.WARNING)
                     } else {
+                        selectedIds = emptyList()
+                        selectionMode = false
                         onOpenCreatePost(
                             CreatePostRoute(
                                 source = "system-media-selection",
@@ -961,14 +963,23 @@ fun SystemMediaScreen(
                     }
                 },
                 onAddToPost = {
+                    if (selectedItems.isEmpty()) {
+                        showNotice("请先选择要加入小相册的媒体。", YingShiNoticeTone.WARNING)
+                        return@SystemMediaSelectionBar
+                    }
                     addToPostError = null
-                    if (destinationUiState.errorMessage != null && posts.isEmpty()) {
-                        Toast.makeText(context, destinationUiState.errorMessage, Toast.LENGTH_SHORT).show()
+                    val destinationError = destinationUiState.errorMessage
+                    if (destinationError != null && posts.isEmpty()) {
+                        showNotice(destinationError, YingShiNoticeTone.WARNING)
                     } else {
                         showAddToPostDialog = true
                     }
                 },
                 onMoveToTrash = {
+                    if (selectedItems.isEmpty()) {
+                        showNotice("请先选择要移到系统回收站的媒体。", YingShiNoticeTone.WARNING)
+                        return@SystemMediaSelectionBar
+                    }
                     pendingSystemTrashItems = selectedItems
                 },
                 onCancel = {
@@ -977,6 +988,19 @@ fun SystemMediaScreen(
                 },
             )
         }
+
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = spacing.md),
+        )
 
     }
 }
@@ -1036,195 +1060,120 @@ private fun SystemMediaTopBar(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-
-    YingShiToolSurface(
+	
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
-        highlighted = selectionMode,
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
-        Row(
+        YingShiToolSurface(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+            contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
+            highlighted = selectionMode,
         ) {
-            SystemMediaIconButton(
-                icon = Icons.Default.ArrowBack,
-                contentDescription = "返回",
-                onClick = onBack,
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SystemMediaIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        onClick = onBack,
+                    )
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "系统媒体",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                Text(
-                    text = if (selectionMode) {
-                        if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
-                    } else {
-                        selectedFilter.label
-                    },
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = colors.textSecondary,
-                )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "系统媒体",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                        Text(
+                            text = if (selectionMode) {
+                                if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
+                            } else {
+                                "当前筛选：${selectedFilter.label}"
+                            },
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = colors.textSecondary,
+                        )
+                    }
+
+                    SystemMediaIconButton(
+                        icon = Icons.Default.Refresh,
+                        contentDescription = "刷新媒体",
+                        onClick = onRefresh,
+                    )
+                    SystemMediaActionChip(
+                        text = if (selectionMode) "取消多选" else "多选",
+                        emphasized = selectionMode,
+                        compact = true,
+                        onClick = onToggleSelectionMode,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    SystemMediaFilter.entries.forEach { filter ->
+                        SystemMediaFilterChip(
+                            text = filter.label,
+                            selected = filter == selectedFilter,
+                            onClick = { onFilterSelected(filter) },
+                        )
+                    }
+                }
             }
+        }
 
-            SystemMediaFilterMenuButton(
-                selectedFilter = selectedFilter,
-                selectionMode = selectionMode,
-                onFilterSelected = onFilterSelected,
-                onRefresh = onRefresh,
-                onToggleSelectionMode = onToggleSelectionMode,
+        if (selectionMode) {
+            YingShiStatusPill(
+                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
+                selected = true,
             )
         }
     }
 }
 
 @Composable
-private fun SystemMediaFilterMenuButton(
-    selectedFilter: SystemMediaFilter,
-    selectionMode: Boolean,
-    onFilterSelected: (SystemMediaFilter) -> Unit,
-    onRefresh: () -> Unit,
-    onToggleSelectionMode: () -> Unit,
+private fun SystemMediaFilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
-    var expanded by remember { mutableStateOf(false) }
-
-    Box {
-        Surface(
-            modifier = Modifier
-                .size(46.dp)
-                .yingShiClickable(shape = RoundedCornerShape(14.dp), pressedScale = 0.94f) {
-                    expanded = true
-                },
-            shape = RoundedCornerShape(14.dp),
-            color = colors.primaryContainer.copy(alpha = 0.82f),
-            border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.76f)),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Menu,
-                    contentDescription = "系统媒体菜单",
-                    tint = colors.onPrimaryContainer,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            SystemMediaFilter.entries.forEach { filter ->
-                val selected = filter == selectedFilter
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    if (selected) colors.primaryContainer.copy(alpha = 0.52f) else Color.Transparent,
-                                    RoundedCornerShape(radius.md),
-                                )
-                                .padding(horizontal = spacing.xs, vertical = spacing.xxs),
-                            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = filter.label,
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                ),
-                                color = colors.titleAccent,
-                            )
-                            if (selected) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = colors.titleAccent,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onFilterSelected(filter)
-                    },
-                )
-            }
-            DropdownMenuItem(
-                text = {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                colors.sectionBackground.copy(alpha = 0.54f),
-                                RoundedCornerShape(radius.md),
-                            )
-                            .padding(horizontal = spacing.xs, vertical = spacing.xxs),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "刷新媒体",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = colors.titleAccent,
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = null,
-                            tint = colors.titleAccent,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                },
-                onClick = {
-                    expanded = false
-                    onRefresh()
-                },
-            )
-            DropdownMenuItem(
-                text = {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                if (selectionMode) colors.softGreenContainer.copy(alpha = 0.62f) else colors.primaryContainer.copy(alpha = 0.42f),
-                                RoundedCornerShape(radius.md),
-                            )
-                            .padding(horizontal = spacing.xs, vertical = spacing.xxs),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = if (selectionMode) "取消多选" else "进入多选",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.titleAccent,
-                        )
-                        if (selectionMode) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = colors.titleAccent,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-                    }
-                },
-                onClick = {
-                    expanded = false
-                    onToggleSelectionMode()
-                },
-            )
-        }
+    Surface(
+        modifier = Modifier.yingShiClickable(
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            pressedScale = 0.97f,
+            onClick = onClick,
+        ),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (selected) {
+            colors.primaryContainer.copy(alpha = 0.84f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) colors.glassStroke.copy(alpha = 0.76f) else colors.dividerSoft.copy(alpha = 0.62f),
+        ),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = colors.titleAccent,
+        )
     }
 }
 
@@ -1357,7 +1306,7 @@ private fun SystemMediaCard(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = if (selected) 0.18f else 0.06f)),
+                    .background(colors.viewerBackground.copy(alpha = if (selected) 0.18f else 0.06f)),
             )
             if (selectionHotspotOnly) {
                 Box(
@@ -1490,6 +1439,7 @@ private fun SystemMediaSelectionBar(
                     SystemMediaActionChip(
                         text = "移到系统回收站",
                         emphasized = false,
+                        danger = true,
                         modifier = Modifier.weight(1f),
                         onClick = onMoveToTrash,
                     )
@@ -1503,6 +1453,7 @@ private fun SystemMediaSelectionBar(
 private fun SystemMediaActionChip(
     text: String,
     emphasized: Boolean,
+    danger: Boolean = false,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     onClick: () -> Unit,
@@ -1515,14 +1466,18 @@ private fun SystemMediaActionChip(
             onClick = onClick,
         ),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (emphasized) {
+        color = if (danger) {
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.90f)
+        } else if (emphasized) {
             colors.primaryContainer.copy(alpha = 0.88f)
         } else {
             colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             width = 1.dp,
-            color = if (emphasized) {
+            color = if (danger) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+            } else if (emphasized) {
                 colors.glassStroke.copy(alpha = 0.72f)
             } else {
                 colors.dividerSoft.copy(alpha = 0.62f)
@@ -1536,7 +1491,9 @@ private fun SystemMediaActionChip(
                 .padding(horizontal = if (compact) 12.dp else 14.dp, vertical = if (compact) 7.dp else 10.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             textAlign = TextAlign.Center,
-            color = if (emphasized) {
+            color = if (danger) {
+                MaterialTheme.colorScheme.onErrorContainer
+            } else if (emphasized) {
                 colors.titleAccent
             } else {
                 colors.titleAccent
@@ -1554,7 +1511,7 @@ private fun SystemMediaIconButton(
     val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier
-            .size(42.dp)
+            .size(44.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = colors.sectionBackground.copy(alpha = 0.80f),
@@ -1684,9 +1641,9 @@ private fun SystemMediaMonthHeaderRow(title: String) {
             .fillMaxWidth()
             .padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
         style = MaterialTheme.typography.headlineSmall.copy(
-            fontSize = 32.sp,
-            lineHeight = 36.sp,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = 28.sp,
+            lineHeight = 32.sp,
+            fontWeight = FontWeight.Bold,
         ),
         color = YingShiThemeTokens.colors.titleAccent,
     )
@@ -1700,8 +1657,8 @@ private fun SystemMediaDayHeaderRow(title: String) {
             .fillMaxWidth()
             .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
         style = MaterialTheme.typography.titleLarge.copy(
-            fontSize = 24.sp,
-            lineHeight = 28.sp,
+            fontSize = 20.sp,
+            lineHeight = 24.sp,
             fontWeight = FontWeight.Bold,
         ),
         color = YingShiThemeTokens.colors.textPrimary.copy(alpha = 0.88f),

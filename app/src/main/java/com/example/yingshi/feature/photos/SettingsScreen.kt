@@ -1,5 +1,10 @@
 package com.example.yingshi.feature.photos
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -26,10 +32,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.repository.fakeAuthCurrentProfile
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -47,14 +58,23 @@ fun SettingsScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val settingsState = FakeSettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
+    val currentUser = CollaboratorDirectoryStore.currentUser ?: fakeAuthCurrentProfile()
     val loginStatusValue = if (AuthSessionManager.isLoggedIn) {
         "已连接"
     } else {
         "未连接"
     }
+    val sharedSpaceValue = resolveSharedSpaceStatus(currentUser)
+    val systemMediaAccessValue = if (hasSystemMediaReadAccess(context)) {
+        "已授权"
+    } else {
+        "未授权"
+    }
+    val notificationPermissionValue = resolveNotificationPermissionStatus(context)
 
     YingShiMistBackground(modifier = modifier, showWaves = false) {
         Column(
@@ -77,7 +97,7 @@ fun SettingsScreen(
                 SettingsInfoRow(
                     title = "共享空间",
                     subtitle = "映世双人空间",
-                    value = "默认",
+                    value = sharedSpaceValue,
                 )
                 SettingsInfoRow(
                     title = "登录状态",
@@ -144,12 +164,12 @@ fun SettingsScreen(
                 SettingsInfoRow(
                     title = "系统媒体访问",
                     subtitle = "系统媒体工具区会根据权限结果显示空态、错误态或授权提示。",
-                    value = "按运行时状态处理",
+                    value = systemMediaAccessValue,
                 )
                 SettingsInfoRow(
                     title = "通知权限",
                     subtitle = "通知中心会显示评论、内容更新和回收站变更。",
-                    value = "可用",
+                    value = notificationPermissionValue,
                 )
             }
 
@@ -169,6 +189,29 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+private fun resolveSharedSpaceStatus(currentUser: RemoteCurrentUser?): String {
+    return when {
+        !AuthSessionManager.isLoggedIn -> "未登录"
+        currentUser == null -> "读取中"
+        currentUser.partner != null -> currentUser.libraryDisplayName?.takeIf { it.isNotBlank() } ?: "双人空间"
+        else -> "仅当前账号"
+    }
+}
+
+private fun resolveNotificationPermissionStatus(context: Context): String {
+    val notificationPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    } else {
+        true
+    }
+    val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    return when {
+        !notificationPermissionGranted -> "未授权"
+        notificationsEnabled -> "已开启"
+        else -> "已关闭"
     }
 }
 
@@ -350,8 +393,8 @@ private fun SettingsSwitchRow(
                 onCheckedChange = onCheckedChange,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = colors.raisedSurface,
-                    checkedTrackColor = colors.softGreenAction,
-                    checkedBorderColor = colors.softGreenAction,
+                    checkedTrackColor = colors.primaryContainer.copy(alpha = 0.96f),
+                    checkedBorderColor = colors.glassStroke.copy(alpha = 0.82f),
                     uncheckedThumbColor = colors.raisedSurface,
                     uncheckedTrackColor = colors.dividerSoft.copy(alpha = 0.72f),
                     uncheckedBorderColor = colors.dividerSoft,
@@ -425,14 +468,14 @@ private fun SettingsEntryRow(
             .yingShiHapticClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
         color = if (destructive) {
-            colors.memoryContainer.copy(alpha = 0.70f)
+            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.70f)
         } else {
             colors.softGreenContainer.copy(alpha = 0.54f)
         },
         border = BorderStroke(
             1.dp,
             if (destructive) {
-                colors.memoryAccent.copy(alpha = 0.18f)
+                MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
             } else {
                 colors.dividerSoft.copy(alpha = 0.48f)
             },
@@ -452,7 +495,7 @@ private fun SettingsEntryRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (destructive) colors.memoryAccent else colors.textPrimary,
+                    color = if (destructive) MaterialTheme.colorScheme.onErrorContainer else colors.textPrimary,
                 )
                 Text(
                     text = subtitle,
@@ -460,10 +503,15 @@ private fun SettingsEntryRow(
                     color = colors.textSecondary,
                 )
             }
-            Text(
-                text = ">",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = if (destructive) colors.memoryAccent else colors.softGreenAction,
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = if (destructive) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    colors.titleAccent.copy(alpha = 0.72f)
+                },
+                modifier = Modifier.padding(end = spacing.xxs),
             )
         }
     }

@@ -36,13 +36,15 @@ internal fun VideoMediaMarker(
     modifier: Modifier = Modifier,
     showLabel: Boolean = false,
 ) {
+    val colors = YingShiThemeTokens.colors
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
 
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(radius.capsule),
-        color = Color.Black.copy(alpha = 0.24f),
+        color = colors.viewerBackground.copy(alpha = 0.28f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.12f)),
     ) {
         Row(
             modifier = Modifier.padding(
@@ -55,12 +57,12 @@ internal fun VideoMediaMarker(
             Box(
                 modifier = Modifier
                     .size(if (showLabel) 18.dp else 16.dp)
-                    .background(Color.White.copy(alpha = 0.16f), CircleShape),
+                    .background(colors.viewerSurface.copy(alpha = 0.34f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 VideoGlyph(
                     state = VideoGlyphState.PLAY,
-                    tint = Color.White.copy(alpha = 0.94f),
+                    tint = colors.viewerText.copy(alpha = 0.94f),
                     modifier = Modifier.size(if (showLabel) 12.dp else 10.dp),
                 )
             }
@@ -68,7 +70,7 @@ internal fun VideoMediaMarker(
                 Text(
                     text = "VIDEO",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = Color.White.copy(alpha = 0.90f),
+                    color = colors.viewerText.copy(alpha = 0.90f),
                 )
             }
         }
@@ -82,13 +84,14 @@ internal fun InlineVideoPlaybackButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = if (enabled) modifier.clickable(onClick = onClick) else modifier,
         shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.34f),
+        color = colors.viewerBackground.copy(alpha = 0.34f),
         border = BorderStroke(
             width = 1.dp,
-            color = Color.White.copy(alpha = 0.20f),
+            color = colors.viewerAccent.copy(alpha = 0.18f),
         ),
     ) {
         Box(
@@ -99,7 +102,7 @@ internal fun InlineVideoPlaybackButton(
         ) {
             VideoGlyph(
                 state = if (isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
-                tint = Color.White.copy(alpha = 0.94f),
+                tint = colors.viewerText.copy(alpha = 0.94f),
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -111,18 +114,19 @@ internal fun VideoDurationBadge(
     durationMillis: Long?,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     val label = formatVideoDurationLabel(durationMillis) ?: return
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = Color.Black.copy(alpha = 0.36f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        color = colors.viewerBackground.copy(alpha = 0.36f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
     ) {
         Text(
             text = label,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White.copy(alpha = 0.92f),
+            color = colors.viewerText.copy(alpha = 0.92f),
         )
     }
 }

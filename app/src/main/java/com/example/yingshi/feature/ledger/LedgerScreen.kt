@@ -1,7 +1,6 @@
 package com.example.yingshi.feature.ledger
 
 import android.app.Application
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -83,6 +82,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
@@ -129,12 +131,21 @@ fun LedgerScreen(
     )
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     var route by rememberSaveable { mutableStateOf(LedgerRoute.HOME.name) }
     var editingTransactionId by rememberSaveable { mutableStateOf<String?>(null) }
     var draftOccurredAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
     var lastOpenHomeNonce by rememberSaveable { mutableStateOf(0) }
     var lastOpenAddNonce by rememberSaveable { mutableStateOf(0) }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by remember { mutableStateOf(0) }
+
+    fun showNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
 
     LaunchedEffect(Unit) {
         viewModel.handleLedgerEntry()
@@ -160,7 +171,7 @@ fun LedgerScreen(
     }
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            showNotice(it)
             viewModel.consumeMessage()
         }
     }
@@ -326,6 +337,9 @@ fun LedgerScreen(
                         onBack = { route = LedgerRoute.HOME.name },
                         onImport = viewModel::importTransactions,
                         exportTextProvider = viewModel::exportCurrentBookTransactionsText,
+                        onExportCopied = {
+                            showNotice("已复制当前账本数据", YingShiNoticeTone.SUCCESS)
+                        },
                     )
 
                     LedgerRoute.CALENDAR -> LedgerCalendarScreen(
@@ -394,6 +408,16 @@ fun LedgerScreen(
                     )
                 }
             }
+
+            YingShiNoticeHost(
+                notice = notice,
+                modifier = Modifier.align(Alignment.TopCenter),
+                onExpired = {
+                    if (notice?.nonce == it) {
+                        notice = null
+                    }
+                },
+            )
         }
     }
 }
@@ -737,11 +761,11 @@ private fun LedgerHomeHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.width(78.dp),
+                modifier = Modifier.width(112.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(38.dp)) {
-                    Icon(LedgerActionIcons.Menu, contentDescription = "菜单", tint = LedgerHeaderGreen, modifier = Modifier.size(25.dp))
+                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(44.dp)) {
+                    Icon(LedgerActionIcons.Menu, contentDescription = "菜单", tint = LedgerHeaderGreen, modifier = Modifier.size(22.dp))
                 }
             }
             Row(
@@ -762,7 +786,7 @@ private fun LedgerHomeHeader(
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
             }
             Box(
-                modifier = Modifier.width(78.dp),
+                modifier = Modifier.width(112.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Surface(
@@ -771,20 +795,20 @@ private fun LedgerHomeHeader(
                     border = BorderStroke(1.dp, LedgerGlassStroke),
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        IconButton(onClick = onMoreClick, modifier = Modifier.size(26.dp)) {
-                            Icon(Icons.Default.MoreHoriz, contentDescription = "更多", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
+                        IconButton(onClick = onMoreClick, modifier = Modifier.size(44.dp)) {
+                            Icon(Icons.Default.MoreHoriz, contentDescription = "更多", tint = LedgerHeaderGreen, modifier = Modifier.size(20.dp))
                         }
                         Box(
                             modifier = Modifier
-                                .height(18.dp)
+                                .height(22.dp)
                                 .width(1.dp)
                                 .background(LedgerDivider),
                         )
-                        IconButton(onClick = onCloseLedger, modifier = Modifier.size(26.dp)) { LedgerCloseCircleIcon() }
+                        IconButton(onClick = onCloseLedger, modifier = Modifier.size(44.dp)) { LedgerCloseCircleIcon() }
                     }
                 }
             }
@@ -1009,7 +1033,7 @@ fun LedgerTransactionListRow(
                     ledgerIcon(transaction.category?.iconKey ?: "more_horiz")
                 },
                 contentDescription = null,
-                tint = Color.White,
+                tint = LedgerRaisedSurface,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -1145,7 +1169,7 @@ private fun LedgerDrawer(
         modifier = Modifier
             .fillMaxWidth(0.78f)
             .fillMaxSize(),
-        color = Color.White,
+        color = LedgerRaisedSurface,
     ) {
         LazyColumn(
             modifier = Modifier
@@ -1163,7 +1187,7 @@ private fun LedgerDrawer(
                             .background(LedgerHeaderGreen),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(ledgerIcon("wallet"), contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                        Icon(ledgerIcon("wallet"), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
@@ -1289,9 +1313,9 @@ private fun LedgerImportScreen(
     onBack: () -> Unit,
     onImport: (LedgerImportPreview, () -> Unit) -> Unit,
     exportTextProvider: () -> String,
+    onExportCopied: () -> Unit,
 ) {
     val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
     var importText by rememberSaveable { mutableStateOf("") }
     val sampleText = remember(uiState.categories, uiState.accounts) {
         val expenseCategory = uiState.categories.firstOrNull { it.type == LedgerCategoryType.EXPENSE }?.name ?: "餐饮"
@@ -1315,9 +1339,9 @@ private fun LedgerImportScreen(
             IconButton(
                 onClick = {
                     clipboardManager.setText(AnnotatedString(exportTextProvider()))
-                    Toast.makeText(context, "已复制当前账本数据", Toast.LENGTH_SHORT).show()
+                    onExportCopied()
                 },
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(44.dp),
             ) {
                 Icon(ledgerIcon("import"), contentDescription = "复制导出", tint = LedgerHeaderGreen, modifier = Modifier.size(18.dp))
             }

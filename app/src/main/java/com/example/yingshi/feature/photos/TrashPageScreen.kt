@@ -119,14 +119,14 @@ fun TrashPageScreen(
     var previousSelectedTypeName by rememberSaveable {
         mutableStateOf(selectedTypeName)
     }
-    var savedSelectedCollaboratorUserIds by rememberSaveable(selectedTypeName) {
+    var savedSelectedCollaboratorUserIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
-    var collaboratorSelectionInitialized by rememberSaveable(selectedTypeName) {
+    var collaboratorSelectionInitialized by rememberSaveable {
         mutableStateOf(false)
     }
     val selectedType = TrashEntryType.valueOf(selectedTypeName)
-    LaunchedEffect(allCollaboratorUserIds) {
+    LaunchedEffect(allCollaboratorUserIds, selectedTypeName) {
         if (allCollaboratorUserIds.isEmpty()) return@LaunchedEffect
         savedSelectedCollaboratorUserIds = if (!collaboratorSelectionInitialized) {
             defaultCollaboratorSelection(allCollaboratorUserIds).toList()
@@ -151,7 +151,7 @@ fun TrashPageScreen(
             directory = collaboratorDirectory,
             selectedUserIds = selectedCollaboratorUserIds,
             allUserIds = allCollaboratorUserIds,
-        )
+        ).distinctBy { it.businessIdentityKey() }
     }
     val showActorBadge = isAllCollaboratorsSelected(
         selectedUserIds = selectedCollaboratorUserIds,
@@ -239,6 +239,10 @@ fun TrashPageScreen(
     LaunchedEffect(selectedTypeName) {
         if (selectedTypeName != previousSelectedTypeName) {
             onSelectionStateChange(false, emptySet())
+            if (selectedCollaboratorUserIds.isEmpty() && allCollaboratorUserIds.isNotEmpty()) {
+                savedSelectedCollaboratorUserIds = defaultCollaboratorSelection(allCollaboratorUserIds).toList()
+                collaboratorSelectionInitialized = true
+            }
             previousSelectedTypeName = selectedTypeName
         }
     }
@@ -702,14 +706,19 @@ private fun TrashIconActionButton(
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     val containerColor = when {
         !enabled -> colors.sectionBackground.copy(alpha = 0.52f)
-        danger -> colors.memoryContainer.copy(alpha = 0.78f)
+        danger -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.88f)
         emphasized -> colors.primaryContainer.copy(alpha = 0.78f)
         else -> colors.raisedSurface.copy(alpha = 0.96f)
     }
     val contentColor = when {
         !enabled -> colors.textSecondary.copy(alpha = 0.64f)
-        danger -> colors.memoryAccent
+        danger -> MaterialTheme.colorScheme.onErrorContainer
         else -> colors.titleAccent
+    }
+    val borderColor = if (danger) {
+        MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+    } else {
+        colors.dividerSoft.copy(alpha = 0.66f)
     }
     Surface(
         modifier = (if (icon != null) Modifier.size(48.dp) else Modifier)
@@ -721,7 +730,7 @@ private fun TrashIconActionButton(
             ),
         shape = shape,
         color = containerColor,
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
+        border = BorderStroke(1.dp, borderColor),
     ) {
         if (icon != null) {
             Box(
@@ -839,26 +848,14 @@ private fun TrashMediaGridCell(
                     .padding(top = 5.dp, end = 5.dp),
             )
             if (media?.mediaType == AppMediaType.VIDEO) {
-                Surface(
+                InlineVideoPlaybackButton(
+                    isPlaying = false,
+                    onClick = {},
+                    enabled = false,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 6.dp, bottom = 6.dp),
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = Color.Black.copy(alpha = 0.32f),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .padding(9.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        VideoGlyph(
-                            state = VideoGlyphState.PLAY,
-                            tint = Color.White.copy(alpha = 0.94f),
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
+                )
             }
             TrashSelectionOverlay(
                 selected = selected,
@@ -904,17 +901,33 @@ private fun TrashDaysBadge(
     modifier: Modifier = Modifier,
 ) {
     val danger = days > 25
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (danger) Color(0xFFE5484D).copy(alpha = 0.88f) else Color.Black.copy(alpha = 0.36f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        color = if (danger) {
+            MaterialTheme.colorScheme.error.copy(alpha = 0.88f)
+        } else {
+            colors.viewerBackground.copy(alpha = 0.36f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (danger) {
+                MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
+            } else {
+                colors.viewerAccent.copy(alpha = 0.14f)
+            },
+        ),
     ) {
         Text(
             text = "${days.coerceAtLeast(0)}天",
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = Color.White,
+            color = if (danger) {
+                MaterialTheme.colorScheme.onError
+            } else {
+                colors.viewerText.copy(alpha = 0.92f)
+            },
         )
     }
 }
@@ -982,7 +995,7 @@ private fun TrashEntryRow(
                 Text(
                     text = entry.type.label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = colors.memoryAccent,
+                    color = MaterialTheme.colorScheme.error,
                 )
                 Text(
                     text = entry.title,

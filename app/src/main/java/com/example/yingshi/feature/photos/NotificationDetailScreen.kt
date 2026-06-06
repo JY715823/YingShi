@@ -53,6 +53,7 @@ private data class NotificationDetailUiState(
 fun NotificationDetailScreen(
     route: NotificationDetailRoute,
     onBack: () -> Unit,
+    onOpenTarget: (NotificationCenterItemUiModel) -> Unit = { },
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -113,7 +114,10 @@ fun NotificationDetailScreen(
             .padding(horizontal = spacing.lg, vertical = spacing.md),
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
-        NotificationDetailTopBar(onBack = onBack)
+        NotificationDetailTopBar(
+            route = route,
+            onBack = onBack,
+        )
 
         when {
             uiState.isLoading && uiState.item == null -> {
@@ -121,7 +125,13 @@ fun NotificationDetailScreen(
             }
 
             uiState.item != null -> {
-                NotificationDetailPrimaryCard(item = requireNotNull(uiState.item))
+                val item = requireNotNull(uiState.item)
+                NotificationDetailPrimaryCard(item = item)
+                NotificationDetailTargetCard(
+                    item = item,
+                    sourceLabel = route.source.toNotificationDetailSourceLabel(),
+                    onOpenTarget = { onOpenTarget(item) },
+                )
                 uiState.errorMessage?.let { message ->
                     NotificationDetailMessageCard(
                         message = message,
@@ -148,6 +158,7 @@ fun NotificationDetailScreen(
 
 @Composable
 private fun NotificationDetailTopBar(
+    route: NotificationDetailRoute,
     onBack: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -164,6 +175,11 @@ private fun NotificationDetailTopBar(
                 text = "通知详情",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
+            )
+            Text(
+                text = route.source.toNotificationDetailSourceLabel(),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.textSecondary,
             )
         }
     }
@@ -188,25 +204,16 @@ private fun NotificationDetailPrimaryCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    shape = RoundedCornerShape(radius.capsule),
-                    color = colors.primaryContainer.copy(alpha = 0.58f),
-                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.42f)),
-                ) {
-                    Text(
-                        text = item.type.label,
-                        modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.titleAccent,
-                    )
-                }
-                Text(
-                    text = formatNotificationDetailTime(item.createdAtMillis),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.textSecondary,
+                NotificationDetailPill(
+                    text = item.type.label,
+                    selected = true,
+                )
+                NotificationDetailPill(
+                    text = if (item.isRead) "已读" else "未读",
+                    warm = !item.isRead,
                 )
             }
             Text(
@@ -219,7 +226,121 @@ private fun NotificationDetailPrimaryCard(
                 style = MaterialTheme.typography.bodyLarge,
                 color = colors.textSecondary,
             )
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                NotificationDetailMetaRow(
+                    label = "相关位置",
+                    value = item.targetSummary,
+                )
+                NotificationDetailMetaRow(
+                    label = "打开后会进入",
+                    value = item.notificationTargetLabel(),
+                )
+                NotificationDetailMetaRow(
+                    label = "收到时间",
+                    value = formatNotificationDetailTime(item.createdAtMillis),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun NotificationDetailTargetCard(
+    item: NotificationCenterItemUiModel,
+    sourceLabel: String,
+    onOpenTarget: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    Surface(
+        shape = RoundedCornerShape(radius.xl),
+        color = colors.sectionBackground.copy(alpha = 0.44f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "下一步",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+            Text(
+                text = item.notificationTargetDescription(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
+            )
+            NotificationDetailMetaRow(
+                label = "通知来自",
+                value = sourceLabel,
+            )
+            if (item.hasNotificationTargetAction()) {
+                NotificationDetailActionChip(
+                    text = item.notificationActionLabel(),
+                    modifier = Modifier.align(Alignment.End),
+                    onClick = onOpenTarget,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationDetailPill(
+    text: String,
+    selected: Boolean = false,
+    warm: Boolean = false,
+) {
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    Surface(
+        shape = RoundedCornerShape(radius.capsule),
+        color = when {
+            warm -> colors.memoryContainer.copy(alpha = 0.92f)
+            selected -> colors.primaryContainer.copy(alpha = 0.78f)
+            else -> colors.sectionBackground.copy(alpha = 0.74f)
+        },
+        border = BorderStroke(
+            1.dp,
+            when {
+                warm -> colors.memoryAccent.copy(alpha = 0.20f)
+                selected -> colors.glassStroke.copy(alpha = 0.42f)
+                else -> colors.dividerSoft.copy(alpha = 0.52f)
+            },
+        ),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = YingShiThemeTokens.spacing.sm, vertical = YingShiThemeTokens.spacing.xs),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = if (warm) colors.memoryAccent else colors.titleAccent,
+        )
+    }
+}
+
+@Composable
+private fun NotificationDetailMetaRow(
+    label: String,
+    value: String,
+) {
+    val colors = YingShiThemeTokens.colors
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.textSecondary,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textPrimary,
+        )
     }
 }
 
@@ -367,6 +488,15 @@ private fun NotificationDetailActionChip(
 
 private fun formatNotificationDetailTime(timeMillis: Long): String {
     return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
+}
+
+private fun String.toNotificationDetailSourceLabel(): String {
+    return when (this) {
+        "notification-center" -> "通知中心"
+        "photos-top-bar" -> "照片页顶部"
+        "photos-home" -> "照片页"
+        else -> "通知详情"
+    }
 }
 
 @Preview(showBackground = true)

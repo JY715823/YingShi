@@ -78,10 +78,14 @@ class RealTrashListViewModel(
             val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
             successItems.forEach(TrashActorHintStore::record)
 
+            val deduplicatedEntries = successItems
+                .map { it.toTrashEntryUiModel() }
+                .distinctBy { it.businessIdentityKey() }
+
             _uiState.value = RealTrashListUiState(
                 isLoading = false,
                 errorMessage = itemError,
-                entries = successItems.map { it.toTrashEntryUiModel() },
+                entries = deduplicatedEntries,
                 pendingEntries = emptyList(),
                 statusMessage = _uiState.value.statusMessage,
             )

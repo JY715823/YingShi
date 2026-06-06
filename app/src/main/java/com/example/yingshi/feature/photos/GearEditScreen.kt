@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -922,7 +923,9 @@ private fun GearEditChip(
 ) {
     val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier
+            .defaultMinSize(minHeight = 44.dp)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = colors.primaryContainer.copy(alpha = 0.68f),
         border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.70f)),
@@ -947,7 +950,9 @@ private fun SelectableGearEditChip(
 ) {
     val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier
+            .defaultMinSize(minHeight = 44.dp)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
         color = if (selected) {
             colors.primaryContainer.copy(alpha = 0.72f)

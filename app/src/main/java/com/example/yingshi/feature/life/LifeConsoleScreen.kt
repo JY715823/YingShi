@@ -1,6 +1,5 @@
 package com.example.yingshi.feature.life
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -35,6 +34,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,8 +76,12 @@ import com.example.yingshi.feature.photos.AppMediaType
 import com.example.yingshi.feature.photos.PhotoThumbnailPalette
 import com.example.yingshi.feature.photos.resolveAppMediaType
 import com.example.yingshi.feature.photos.toAppContentMediaSource
+import com.example.yingshi.feature.photos.TrashDialogActionButton
 import com.example.yingshi.ui.components.ShellPage
 import com.example.yingshi.ui.components.TitleTabs
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -117,7 +121,18 @@ fun LifeConsoleScreen(
     var pendingUploadCategory by remember { mutableStateOf<String?>(null) }
     var historyRange by remember { mutableStateOf(LifeConsoleHistoryRange.ALL) }
     var showHistoryPage by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by remember { mutableStateOf(0) }
+    var pendingDeleteTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
     val currentHistoryRange by rememberUpdatedState(historyRange)
+
+    fun showNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
 
     fun loadToday() {
         val requestedDate = currentLifeConsoleDate(zoneId)
@@ -168,12 +183,12 @@ fun LifeConsoleScreen(
                 is ApiResult.Success -> {
                     snapshot = result.data
                     LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, result.data)
-                    Toast.makeText(context, "已上传到今日痕迹", Toast.LENGTH_SHORT).show()
+                    actionMessage = null
+                    showNotice("已上传到今日痕迹", YingShiNoticeTone.SUCCESS)
                     loadHistory()
                 }
                 is ApiResult.Error -> {
                     actionMessage = result.message
-                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
                 }
                 ApiResult.Loading -> Unit
             }
@@ -229,87 +244,189 @@ fun LifeConsoleScreen(
     }
     BackHandler(onBack = onBack)
 
-    ShellPage(
-        title = "今日痕迹",
-        summary = "",
-        onBack = onBack,
-        modifier = modifier,
-        headerContent = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                LifeConsolePillAction(
-                    text = "刷新",
-                    icon = Icons.Filled.Refresh,
-                    onClick = {
-                        loadToday()
-                        loadHistory(historyRange.limitDays)
-                    },
-                    enabled = !isLoading && !isHistoryLoading,
-                    containerColor = YingShiThemeTokens.colors.primaryContainer.copy(alpha = 0.78f),
-                    contentColor = YingShiThemeTokens.colors.titleAccent,
-                )
-                LifeConsolePillAction(
-                    text = "历史记录",
-                    onClick = { showHistoryPage = true },
-                    enabled = !isHistoryLoading,
-                    containerColor = YingShiThemeTokens.colors.sectionBackground.copy(alpha = 0.90f),
-                    contentColor = YingShiThemeTokens.colors.titleAccent,
-                )
-            }
-            if (actionMessage != null) {
-                Text(
-                    text = actionMessage.orEmpty(),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-    ) {
-        when {
-            isLoading && snapshot == null -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp),
-                    contentAlignment = Alignment.Center,
+    Box(modifier = modifier.fillMaxSize()) {
+        ShellPage(
+            title = "今日痕迹",
+            summary = "",
+            onBack = onBack,
+            modifier = Modifier.fillMaxSize(),
+            headerContent = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(color = colors.primaryAction)
+                    LifeConsolePillAction(
+                        text = "刷新",
+                        icon = Icons.Filled.Refresh,
+                        onClick = {
+                            loadToday()
+                            loadHistory(historyRange.limitDays)
+                        },
+                        enabled = !isLoading && !isHistoryLoading,
+                        containerColor = YingShiThemeTokens.colors.primaryContainer.copy(alpha = 0.78f),
+                        contentColor = YingShiThemeTokens.colors.titleAccent,
+                    )
+                    LifeConsolePillAction(
+                        text = "历史记录",
+                        onClick = { showHistoryPage = true },
+                        enabled = !isHistoryLoading,
+                        containerColor = YingShiThemeTokens.colors.sectionBackground.copy(alpha = 0.90f),
+                        contentColor = YingShiThemeTokens.colors.titleAccent,
+                    )
+                }
+                if (actionMessage != null) {
+                    Text(
+                        text = actionMessage.orEmpty(),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+        ) {
+            when {
+                isLoading && snapshot == null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = colors.primaryAction)
+                    }
+                }
+                snapshot == null -> {
+                    Text(
+                        text = "今天还没有记录。",
+                        color = colors.textSecondary,
+                    )
+                }
+                else -> {
+                    val today = requireNotNull(snapshot)
+                    LifeConsoleGrid(
+                        snapshot = today,
+                        isBusy = isLoading,
+                        initialSlotKey = initialSlotKey,
+                        initialMediaId = initialMediaId,
+                        onOpenMedia = { media ->
+                            context.startActivity(LifeMediaQuickViewerActivity.intent(context, media))
+                        },
+                        onUpload = { category ->
+                            pendingUploadCategory = category
+                            pickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                            )
+                        },
+                        onDelete = { category, mediaId ->
+                            pendingDeleteTarget = category to mediaId
+                        },
+                    )
+                    BowelCard(
+                        snapshot = today,
+                        isBusy = isLoading,
+                        onAdd = {
+                            val restored = snapshot ?: return@BowelCard
+                            val optimistic = restored.withOptimisticBowelDelta(delta = 1) ?: return@BowelCard
+                            snapshot = optimistic
+                            LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, optimistic)
+                            scope.launch {
+                                when (val result = RepositoryProvider.lifeConsoleRepository.addBowelEvent()) {
+                                    is ApiResult.Success -> {
+                                        val current = snapshot
+                                        if (current != null) {
+                                            val next = current.copy(bowel = result.data.bowel)
+                                            snapshot = next
+                                            LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
+                                        }
+                                        loadHistory(historyRange.limitDays)
+                                    }
+                                    is ApiResult.Error -> {
+                                        snapshot = restored
+                                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, restored)
+                                        actionMessage = result.message
+                                    }
+                                    ApiResult.Loading -> Unit
+                                }
+                            }
+                        },
+                        onRemove = {
+                            val restored = snapshot ?: return@BowelCard
+                            val optimistic = restored.withOptimisticBowelDelta(delta = -1) ?: return@BowelCard
+                            snapshot = optimistic
+                            LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, optimistic)
+                            scope.launch {
+                                when (val result = RepositoryProvider.lifeConsoleRepository.deleteLatestBowelEvent()) {
+                                    is ApiResult.Success -> {
+                                        val current = snapshot
+                                        if (current != null) {
+                                            val next = current.copy(bowel = result.data.bowel)
+                                            snapshot = next
+                                            LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
+                                        }
+                                        loadHistory(historyRange.limitDays)
+                                    }
+                                    is ApiResult.Error -> {
+                                        snapshot = restored
+                                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, restored)
+                                        actionMessage = result.message
+                                    }
+                                    ApiResult.Loading -> Unit
+                                }
+                            }
+                        },
+                    )
                 }
             }
-            snapshot == null -> {
+        }
+
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = YingShiThemeTokens.spacing.md),
+        )
+    }
+
+    pendingDeleteTarget?.let { (category, mediaId) ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteTarget = null },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            title = {
                 Text(
-                    text = "今天还没有记录。",
-                    color = colors.textSecondary,
+                    text = "从今日痕迹移除这张媒体？",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
-            }
-            else -> {
-                val today = requireNotNull(snapshot)
-                LifeConsoleGrid(
-                    snapshot = today,
-                    isBusy = isLoading,
-                    initialSlotKey = initialSlotKey,
-                    initialMediaId = initialMediaId,
-                    onOpenMedia = { media ->
-                        context.startActivity(LifeMediaQuickViewerActivity.intent(context, media))
-                    },
-                    onUpload = { category ->
-                        pendingUploadCategory = category
-                        pickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
-                        )
-                    },
-                    onDelete = { category, mediaId ->
+            },
+            text = {
+                Text(
+                    text = "移除后会从今天的人物或吃饭格子里消失，但不会影响已经导入照片流的内容。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TrashDialogActionButton(
+                    text = "继续移除",
+                    emphasized = true,
+                    onClick = {
+                        pendingDeleteTarget = null
                         scope.launch {
                             isLoading = true
                             when (val result = RepositoryProvider.lifeConsoleRepository.deleteMedia(category, mediaId)) {
                                 is ApiResult.Success -> {
+                                    actionMessage = null
                                     snapshot?.withoutMedia(mediaId)?.let { next ->
                                         snapshot = next
                                         LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                     }
+                                    showNotice("已从今日痕迹移除", YingShiNoticeTone.SUCCESS)
                                     loadToday()
                                     loadHistory(historyRange.limitDays)
                                 }
@@ -320,62 +437,11 @@ fun LifeConsoleScreen(
                         }
                     },
                 )
-                BowelCard(
-                    snapshot = today,
-                    isBusy = isLoading,
-                    onAdd = {
-                        val restored = snapshot ?: return@BowelCard
-                        val optimistic = restored.withOptimisticBowelDelta(delta = 1) ?: return@BowelCard
-                        snapshot = optimistic
-                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, optimistic)
-                        scope.launch {
-                            when (val result = RepositoryProvider.lifeConsoleRepository.addBowelEvent()) {
-                                is ApiResult.Success -> {
-                                    val current = snapshot
-                                    if (current != null) {
-                                        val next = current.copy(bowel = result.data.bowel)
-                                        snapshot = next
-                                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
-                                    }
-                                    loadHistory(historyRange.limitDays)
-                                }
-                                is ApiResult.Error -> {
-                                    snapshot = restored
-                                    LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, restored)
-                                    actionMessage = result.message
-                                }
-                                ApiResult.Loading -> Unit
-                            }
-                        }
-                    },
-                    onRemove = {
-                        val restored = snapshot ?: return@BowelCard
-                        val optimistic = restored.withOptimisticBowelDelta(delta = -1) ?: return@BowelCard
-                        snapshot = optimistic
-                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, optimistic)
-                        scope.launch {
-                            when (val result = RepositoryProvider.lifeConsoleRepository.deleteLatestBowelEvent()) {
-                                is ApiResult.Success -> {
-                                    val current = snapshot
-                                    if (current != null) {
-                                        val next = current.copy(bowel = result.data.bowel)
-                                        snapshot = next
-                                        LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
-                                    }
-                                    loadHistory(historyRange.limitDays)
-                                }
-                                is ApiResult.Error -> {
-                                    snapshot = restored
-                                    LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, restored)
-                                    actionMessage = result.message
-                                }
-                                ApiResult.Loading -> Unit
-                            }
-                        }
-                    },
-                )
-            }
-        }
+            },
+            dismissButton = {
+                TrashDialogActionButton(text = "取消", onClick = { pendingDeleteTarget = null })
+            },
+        )
     }
 }
 
@@ -746,7 +812,7 @@ private fun LifeConsoleBackButton(
     val shape = RoundedCornerShape(14.dp)
     Surface(
         modifier = Modifier
-            .size(40.dp)
+            .size(44.dp)
             .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
         shape = shape,
         color = colors.sectionBackground.copy(alpha = 0.80f),
@@ -935,8 +1001,9 @@ private fun LifeMediaFrame(
                                 }
                             },
                             enabled = !isBusy && currentMedia != null,
-                            containerColor = colors.memoryContainer.copy(alpha = 0.82f),
-                            contentColor = colors.memoryAccent,
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f),
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.20f),
                         )
                     }
                 }
@@ -1043,7 +1110,7 @@ private fun BowelCard(
                         onClick = onAdd,
                         enabled = !isBusy,
                         containerColor = colors.primaryAction,
-                        contentColor = colors.raisedSurface,
+                        contentColor = colors.onPrimaryContainer,
                     )
                 }
             }
@@ -1117,12 +1184,13 @@ private fun LifeConsoleSmallIconButton(
     enabled: Boolean,
     containerColor: Color,
     contentColor: Color,
+    borderColor: Color = YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.62f),
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
         modifier = Modifier
-            .size(34.dp)
+            .size(44.dp)
             .yingShiClickable(
                 enabled = enabled,
                 shape = shape,
@@ -1131,7 +1199,7 @@ private fun LifeConsoleSmallIconButton(
             ),
         shape = shape,
         color = if (enabled) containerColor else colors.sectionBackground.copy(alpha = 0.62f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+        border = BorderStroke(1.dp, if (enabled) borderColor else colors.dividerSoft.copy(alpha = 0.62f)),
         shadowElevation = 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {

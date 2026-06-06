@@ -551,7 +551,7 @@ private fun RealMediaManagementScreen(
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (uiState.errorMessage != null) {
-                        colors.memoryAccent
+                        MaterialTheme.colorScheme.error
                     } else {
                         colors.textSecondary
                     },
@@ -1194,7 +1194,7 @@ private fun MediaManagementCircleButton(
     val colors = YingShiThemeTokens.colors
     val shape = CircleShape
     Surface(
-        modifier = Modifier.size(40.dp).yingShiClickable(
+        modifier = Modifier.size(44.dp).yingShiClickable(
             shape = shape,
             pressedScale = 0.94f,
             onClick = onClick,
@@ -1224,17 +1224,17 @@ private fun MediaManagementActionChip(
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     val containerColor = when {
-        danger -> colors.memoryContainer.copy(alpha = if (enabled) 0.82f else 0.46f)
+        danger -> MaterialTheme.colorScheme.errorContainer.copy(alpha = if (enabled) 0.82f else 0.46f)
         emphasized -> colors.primaryContainer.copy(alpha = if (enabled) 0.86f else 0.48f)
         else -> colors.softGreenContainer.copy(alpha = if (enabled) 0.66f else 0.36f)
     }
     val borderColor = when {
-        danger -> colors.memoryAccent.copy(alpha = 0.18f)
+        danger -> MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
         emphasized -> colors.glassStroke.copy(alpha = 0.78f)
         else -> colors.dividerSoft.copy(alpha = 0.72f)
     }
     val contentColor = when {
-        danger -> colors.onMemoryContainer
+        danger -> MaterialTheme.colorScheme.onErrorContainer
         else -> colors.titleAccent
     }
     Surface(

@@ -1,6 +1,5 @@
 ﻿package com.example.yingshi.feature.photos
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -41,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Download
@@ -127,6 +127,26 @@ fun PostDetailScreen(
     var showSmallAlbumComments by rememberSaveable(route.postId) {
         mutableStateOf(false)
     }
+    var actionNotice by rememberSaveable(route.postId) {
+        mutableStateOf<String?>(null)
+    }
+    var actionNoticeVersion by rememberSaveable(route.postId) {
+        mutableStateOf(0)
+    }
+
+    fun showActionNotice(message: String) {
+        actionNotice = message
+        actionNoticeVersion += 1
+    }
+
+    LaunchedEffect(actionNoticeVersion) {
+        val version = actionNoticeVersion
+        if (version <= 0 || actionNotice.isNullOrBlank()) return@LaunchedEffect
+        delay(2600L)
+        if (actionNoticeVersion == version) {
+            actionNotice = null
+        }
+    }
 
     BackHandler(enabled = mediaCommentPage != null) {
         mediaCommentPage = null
@@ -152,6 +172,8 @@ fun PostDetailScreen(
             onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
             onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
             onOpenSmallAlbumComments = { showSmallAlbumComments = true },
+            actionNotice = actionNotice,
+            onShowActionNotice = ::showActionNotice,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -159,12 +181,13 @@ fun PostDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.18f))
+                    .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.16f))
                     .clickable { showSmallAlbumComments = false },
             )
             FakeSmallAlbumCommentSheet(
                 postId = detail.postId,
                 onClose = { showSmallAlbumComments = false },
+                onShowNotice = ::showActionNotice,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = YingShiThemeTokens.spacing.lg)
@@ -181,7 +204,7 @@ fun PostDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.18f))
+                    .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.16f))
                     .clickable { mediaCommentPage = null },
             )
             MediaCommentPlaceholderSheet(
@@ -236,6 +259,26 @@ private fun RealPostDetailScreen(
     }
     var showSmallAlbumComments by rememberSaveable(route.postId) {
         mutableStateOf(false)
+    }
+    var actionNotice by rememberSaveable(route.postId) {
+        mutableStateOf<String?>(null)
+    }
+    var actionNoticeVersion by rememberSaveable(route.postId) {
+        mutableStateOf(0)
+    }
+
+    fun showActionNotice(message: String) {
+        actionNotice = message
+        actionNoticeVersion += 1
+    }
+
+    LaunchedEffect(actionNoticeVersion) {
+        val version = actionNoticeVersion
+        if (version <= 0 || actionNotice.isNullOrBlank()) return@LaunchedEffect
+        delay(2600L)
+        if (actionNoticeVersion == version) {
+            actionNotice = null
+        }
     }
 
     val detail = detailWithEntryNotice
@@ -332,6 +375,8 @@ private fun RealPostDetailScreen(
                     onCreatePostComment = viewModel::createPostComment,
                     onUpdatePostComment = viewModel::updatePostComment,
                     onDeletePostComment = viewModel::deletePostComment,
+                    actionNotice = actionNotice,
+                    onShowActionNotice = ::showActionNotice,
                     modifier = Modifier.fillMaxSize(),
                 )
 
@@ -339,7 +384,7 @@ private fun RealPostDetailScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.18f))
+                            .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.16f))
                             .clickable { showSmallAlbumComments = false },
                     )
                     RealSmallAlbumCommentSheet(
@@ -361,7 +406,7 @@ private fun RealPostDetailScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.18f))
+                            .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.16f))
                             .clickable { mediaCommentPage = null },
                     )
                     RealMediaCommentSheet(
@@ -415,6 +460,8 @@ private fun RealSmallAlbumDetailContent(
     onCreatePostComment: (String) -> Unit,
     onUpdatePostComment: (String, String) -> Unit,
     onDeletePostComment: (String) -> Unit,
+    actionNotice: String?,
+    onShowActionNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -493,10 +540,10 @@ private fun RealSmallAlbumDetailContent(
                             )
                             showPhotoFeedPicker = false
                             onRefresh()
-                            Toast.makeText(context, "已加入当前相册", Toast.LENGTH_SHORT).show()
+                            onShowActionNotice("已加入当前相册")
                         }
                         is ApiResult.Error -> {
-                            Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                            onShowActionNotice(result.message)
                         }
                         ApiResult.Loading -> Unit
                     }
@@ -512,7 +559,7 @@ private fun RealSmallAlbumDetailContent(
             SmallAlbumDetailTopBar(
                 onBack = onBack,
                 onExport = {
-                    Toast.makeText(context, "当前设备未提供可用导出入口。", Toast.LENGTH_SHORT).show()
+                    onShowActionNotice("当前设备未提供可用导出入口。")
                 },
                 onEdit = onOpenGearEdit,
             )
@@ -522,6 +569,9 @@ private fun RealSmallAlbumDetailContent(
                 PostInlineNotice(text = message)
             }
             resultNotice?.let { message ->
+                PostInlineNotice(text = message)
+            }
+            actionNotice?.let { message ->
                 PostInlineNotice(text = message)
             }
             uiState.errorMessage?.let { message ->
@@ -538,7 +588,7 @@ private fun RealSmallAlbumDetailContent(
                 originalSummary = postOriginalSummary,
                 onOpenComments = onOpenSmallAlbumComments,
                 onLoadAllOriginals = {
-                    Toast.makeText(context, "开始加载小相册原图", Toast.LENGTH_SHORT).show()
+                    onShowActionNotice("开始加载小相册原图")
                     coroutineScope.launch {
                         val summary = RealOriginalLoadRepository.loadAllOriginals(
                             context = context,
@@ -547,7 +597,7 @@ private fun RealSmallAlbumDetailContent(
                         )
                         val message = "已加载 ${summary.successCount} 张原图，" +
                             "${summary.skippedCount} 张无原图，${summary.failedCount} 张失败"
-                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        onShowActionNotice(message)
                     }
                 },
             )
@@ -561,6 +611,7 @@ private fun RealSmallAlbumDetailContent(
                 onAddMedia = { showPhotoFeedPicker = true },
                 onRefreshRequest = onRefresh,
                 onEmptyAfterDelete = onBack,
+                onShowNotice = onShowActionNotice,
                 modifier = Modifier.fillMaxSize(),
             )
         },
@@ -580,12 +631,13 @@ private fun RealMediaCommentSheet(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
         shadowElevation = 8.dp,
     ) {
         Column(
@@ -601,7 +653,7 @@ private fun RealMediaCommentSheet(
                     text = "媒体评论",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 PostActionChip(text = "关闭", onClick = onClose)
             }
@@ -633,12 +685,13 @@ private fun RealCommentThreadCard(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -647,12 +700,12 @@ private fun RealCommentThreadCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
             RealCommentThreadContent(
                 state = state,
@@ -678,6 +731,7 @@ private fun RealCommentThreadContent(
     onDeleteComment: (String) -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val copyComment = rememberCommentCopyHandler()
     var expanded by rememberSaveable(stateKeyPrefix) { mutableStateOf(false) }
     var actionCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
@@ -697,14 +751,6 @@ private fun RealCommentThreadContent(
         actionCommentId = null
     }
 
-    if (state.statusMessage != null) {
-        Text(
-            text = state.statusMessage,
-            style = MaterialTheme.typography.labelMedium,
-            color = YingShiThemeTokens.colors.titleAccent,
-        )
-    }
-
     if (state.errorMessage != null) {
         PostInlineNotice(
             text = state.errorMessage,
@@ -712,9 +758,22 @@ private fun RealCommentThreadContent(
             onAction = onRetry,
         )
     }
+    if (state.isLoading && visibleComments.isNotEmpty()) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+            Text(
+                text = "评论同步中…",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+        }
+    }
 
     when {
-        state.isLoading -> {
+        state.isLoading && visibleComments.isEmpty() -> {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
@@ -723,7 +782,7 @@ private fun RealCommentThreadContent(
                 Text(
                     text = "正在读取评论…",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         }
@@ -732,7 +791,7 @@ private fun RealCommentThreadContent(
             Text(
                 text = emptyText,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
             )
         }
 
@@ -832,7 +891,7 @@ private fun RealCommentThreadContent(
         Text(
             text = "正在提交…",
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
     CommentInputBar(
@@ -974,6 +1033,7 @@ private fun PostDetailMissingState(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -993,7 +1053,7 @@ private fun PostDetailMissingState(
         Text(
             text = "当前小相册没有可展示的媒体，可能已经被删除、被移出关系，或仍处于系统删除状态。",
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
     }
 }
@@ -1008,9 +1068,10 @@ private fun SmallAlbumDetailContent(
     onOpenGearEdit: () -> Unit,
     onOpenMediaViewer: (Int) -> Unit,
     onOpenSmallAlbumComments: () -> Unit,
+    actionNotice: String?,
+    onShowActionNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     var displayDetail by remember(detail.postId) { mutableStateOf(detail) }
     var showPhotoFeedPicker by rememberSaveable(detail.postId) {
         mutableStateOf(false)
@@ -1076,9 +1137,9 @@ private fun SmallAlbumDetailContent(
                 showPhotoFeedPicker = false
                 if (addedCount > 0) {
                     displayDetail = FakeAlbumRepository.getPostDetail(displayDetail.toDetailRoute())
-                    Toast.makeText(context, "已加入当前相册", Toast.LENGTH_SHORT).show()
+                    onShowActionNotice("已加入当前相册")
                 } else {
-                    Toast.makeText(context, "这些媒体已经在当前相册里", Toast.LENGTH_SHORT).show()
+                    onShowActionNotice("这些媒体已经在当前相册里")
                 }
             },
             modifier = modifier,
@@ -1092,7 +1153,7 @@ private fun SmallAlbumDetailContent(
             SmallAlbumDetailTopBar(
                 onBack = onBack,
                 onExport = {
-                    Toast.makeText(context, "当前设备未提供可用导出入口。", Toast.LENGTH_SHORT).show()
+                    onShowActionNotice("当前设备未提供可用导出入口。")
                 },
                 onEdit = onOpenGearEdit,
             )
@@ -1104,6 +1165,9 @@ private fun SmallAlbumDetailContent(
             resultNotice?.let { message ->
                 PostInlineNotice(text = message)
             }
+            actionNotice?.let { message ->
+                PostInlineNotice(text = message)
+            }
         },
         infoSection = {
             SmallAlbumInfoSection(
@@ -1112,7 +1176,7 @@ private fun SmallAlbumDetailContent(
                 onOpenComments = onOpenSmallAlbumComments,
                 onLoadAllOriginals = {
                     FakeOriginalLoadRepository.loadAllOriginals(postMediaIds)
-                    Toast.makeText(context, "开始加载小相册原图", Toast.LENGTH_SHORT).show()
+                    onShowActionNotice("开始加载小相册原图")
                 },
             )
         },
@@ -1127,6 +1191,7 @@ private fun SmallAlbumDetailContent(
                     displayDetail = FakeAlbumRepository.getPostDetail(displayDetail.toDetailRoute())
                 },
                 onEmptyAfterDelete = onBack,
+                onShowNotice = onShowActionNotice,
                 modifier = Modifier.fillMaxSize(),
             )
         },
@@ -1157,12 +1222,23 @@ fun SmallAlbumDetailBodyLayout(
             )
             .statusBarsPadding()
             .padding(horizontal = spacing.lg)
-            .padding(top = spacing.xs, bottom = spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+            .padding(top = spacing.xxs, bottom = spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
-        topBar()
+        YingShiToolSurface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+            contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                topBar()
+                infoSection()
+            }
+        }
         notice()
-        infoSection()
         commentSummary()
         Box(
             modifier = Modifier
@@ -1210,30 +1286,29 @@ private fun SmallAlbumDetailTopBar(
     onExport: () -> Unit,
     onEdit: () -> Unit,
 ) {
-    val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
 
-    YingShiToolSurface(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PostCircleButton(text = "<", onClick = onBack)
-            Text(
-                text = "小相册详情",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-                maxLines = 1,
-            )
-            PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
-            PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
-        }
+        PostIconButton(
+            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "返回",
+            onClick = onBack,
+            buttonSize = 44.dp,
+            iconSize = 22.dp,
+        )
+        Text(
+            text = "小相册详情",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.titleAccent,
+            maxLines = 1,
+        )
+        PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
+        PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
     }
 }
 
@@ -1318,7 +1393,7 @@ fun PostMediaCard(
                 .align(Alignment.Center)
                 .width(fittedWidth)
                 .height(fittedHeight),
-            contentDescription = media.id,
+            contentDescription = postDetailMediaContentDescription(media.mediaType),
             requestSize = 720,
             showStatusBadge = true,
             contentScale = ContentScale.Fit,
@@ -1426,80 +1501,183 @@ fun SmallAlbumInfoSection(
         append(detail.mediaItems.size)
         append(" 张")
     }
-
-    YingShiToolSurface(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.md),
-        highlighted = detail.comments.isNotEmpty(),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        Text(
+            text = detail.title,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                lineHeight = 28.sp,
+            ),
+            color = colors.titleAccent,
+        )
+        if (summary != null) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Text(
-                    text = detail.title,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 27.sp,
-                        lineHeight = 31.sp,
-                    ),
-                    color = colors.titleAccent,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                YingShiStatusPill(text = metaLabel)
-            }
-            if (summary != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
-                    Text(
-                        text = summary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textSecondary,
-                        maxLines = if (summaryExpanded) Int.MAX_VALUE else 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (summary.length > 28) {
-                        PostActionChip(
-                            text = if (summaryExpanded) "收起" else "展开",
-                            onClick = { summaryExpanded = !summaryExpanded },
-                            containerColor = colors.sectionBackground.copy(alpha = 0.68f),
-                        )
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (albumTitle.isNotBlank()) {
+                Text(
+                    text = summary,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                    maxLines = if (summaryExpanded) 3 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (summary.length > 28) {
+                    Text(
+                        text = if (summaryExpanded) "收起" else "展开",
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
+                            .clickable { summaryExpanded = !summaryExpanded }
+                            .padding(horizontal = spacing.xs, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.memoryAccent,
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (albumTitle.isNotBlank()) {
+                Box(modifier = Modifier.weight(1f)) {
                     SmallAlbumBelongChip(
                         text = albumTitle,
                         palette = albumPalette,
                     )
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs), verticalAlignment = Alignment.CenterVertically) {
-                    PostActionChip(
-                        text = originalSummary.buttonLabel,
-                        onClick = onLoadAllOriginals,
-                        containerColor = colors.primaryContainer.copy(alpha = 0.70f),
-                    )
-                    PostActionChip(
-                        text = if (detail.comments.isEmpty()) "评论" else "评论 ${detail.comments.size}",
-                        onClick = onOpenComments,
-                        containerColor = colors.softGreenContainer.copy(alpha = 0.78f),
-                    )
-                }
+            } else {
+                Box(modifier = Modifier.weight(1f))
             }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PostActionChip(
+                    text = originalSummary.buttonLabel,
+                    onClick = onLoadAllOriginals,
+                    containerColor = colors.primaryContainer.copy(alpha = 0.70f),
+                )
+                PostActionChip(
+                    text = if (detail.comments.isEmpty()) "评论" else "评论 ${detail.comments.size}",
+                    onClick = onOpenComments,
+                    containerColor = colors.softGreenContainer.copy(alpha = 0.78f),
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            YingShiStatusPill(text = metaLabel)
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumMemoryPreviewStrip(
+    mediaItems: List<PostDetailMediaUiModel>,
+    totalCount: Int,
+    onOpenMedia: (Int) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "精选预览",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+            Text(
+                text = "$totalCount 张记忆",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                color = colors.textSecondary,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(112.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            mediaItems.forEachIndexed { index, media ->
+                SmallAlbumPreviewTile(
+                    media = media,
+                    prominent = index == 0,
+                    modifier = Modifier
+                        .weight(if (index == 0) 1.45f else 1f)
+                        .fillMaxHeight(),
+                    onClick = { onOpenMedia(index) },
+                )
+            }
+            repeat((3 - mediaItems.size).coerceAtLeast(0)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(radius.md))
+                        .background(colors.sectionBackground.copy(alpha = 0.44f)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmallAlbumPreviewTile(
+    media: PostDetailMediaUiModel,
+    prominent: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val radius = YingShiThemeTokens.radius
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(radius.md))
+            .yingShiClickable(
+                shape = RoundedCornerShape(radius.md),
+                pressedScale = 0.985f,
+                onClick = onClick,
+            ),
+    ) {
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = media.palette,
+            modifier = Modifier.fillMaxSize(),
+            contentDescription = postDetailMediaContentDescription(media.mediaType),
+            requestSize = if (prominent) 512 else 384,
+            contentScale = ContentScale.Crop,
+            showLoadingIndicator = false,
+        )
+        YingShiMediaFrame(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(radius.md),
+            topScrimAlpha = if (media.mediaType == AppMediaType.VIDEO) 0.24f else 0.14f,
+            bottomGlowAlpha = if (prominent) 0.24f else 0.16f,
+        )
+        if (media.commentCount > 0) {
+            YingShiMemoryBadge(
+                text = "${media.commentCount} 评",
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp),
+                compact = true,
+            )
         }
     }
 }
@@ -1602,6 +1780,7 @@ fun PostMediaArea(
     content: @Composable () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -1614,13 +1793,13 @@ fun PostMediaArea(
             Text(
                 text = "媒体",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.titleAccent,
             )
             if (detail.mediaItems.isNotEmpty()) {
                 Text(
                     text = "${currentPage + 1} / ${detail.mediaItems.size}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         }
@@ -1635,11 +1814,12 @@ fun PostMediaArea(
 private fun FakeSmallAlbumCommentSheet(
     postId: String,
     onClose: () -> Unit,
+    onShowNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
-    val context = LocalContext.current
+    val colors = YingShiThemeTokens.colors
     val copyComment = rememberCommentCopyHandler()
     val comments = CommentGateway.getPostComments(postId)
     var expanded by rememberSaveable(postId) { mutableStateOf(false) }
@@ -1663,8 +1843,8 @@ private fun FakeSmallAlbumCommentSheet(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
         shadowElevation = 8.dp,
     ) {
         Column(
@@ -1680,7 +1860,7 @@ private fun FakeSmallAlbumCommentSheet(
                     text = "小相册评论",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 PostActionChip(text = "关闭", onClick = onClose)
             }
@@ -1688,7 +1868,7 @@ private fun FakeSmallAlbumCommentSheet(
                 Text(
                     text = "暂无评论",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             } else {
                 visibleComments.forEach { comment ->
@@ -1741,7 +1921,7 @@ private fun FakeSmallAlbumCommentSheet(
                                 editingDraft = ""
                             }
                             actionCommentId = null
-                            Toast.makeText(context, "评论已删除", Toast.LENGTH_SHORT).show()
+                            onShowNotice("评论已删除")
                         },
                         isEditing = editingCommentId == comment.id,
                         editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
@@ -1755,7 +1935,7 @@ private fun FakeSmallAlbumCommentSheet(
                             editingCommentId = null
                             editingDraft = ""
                             actionCommentId = null
-                            Toast.makeText(context, "评论已更新", Toast.LENGTH_SHORT).show()
+                            onShowNotice("评论已更新")
                         },
                         onCancelEdit = {
                             editingCommentId = null
@@ -1811,12 +1991,13 @@ private fun RealSmallAlbumCommentSheet(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
         shadowElevation = 8.dp,
     ) {
         Column(
@@ -1832,7 +2013,7 @@ private fun RealSmallAlbumCommentSheet(
                     text = "小相册评论",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = colors.titleAccent,
                 )
                 PostActionChip(text = "关闭", onClick = onClose)
             }
@@ -1868,7 +2049,7 @@ private fun SmallAlbumCommentSummaryCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
         color = colors.sectionBackground.copy(alpha = 0.70f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.58f)),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
     ) {
         Row(
             modifier = Modifier
@@ -1885,9 +2066,8 @@ private fun SmallAlbumCommentSummaryCard(
                 )
                 Text(
                     text = when {
-                        isLoading -> "正在读取评论…"
+                        isLoading && commentCount == 0 -> "正在读取评论…"
                         !errorMessage.isNullOrBlank() -> errorMessage
-                        !statusMessage.isNullOrBlank() -> statusMessage
                         commentCount > 0 -> "当前有 $commentCount 条评论，点击右上角图标查看和输入。"
                         else -> emptyText
                     },
@@ -1911,13 +2091,14 @@ private fun MediaCommentPlaceholderSheet(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val comments = CommentGateway.getMediaComments(media.id)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+        color = colors.raisedSurface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
         shadowElevation = 8.dp,
     ) {
         Column(
@@ -1933,12 +2114,12 @@ private fun MediaCommentPlaceholderSheet(
                     Text(
                         text = "媒体评论",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.titleAccent,
                     )
                     Text(
                         text = "只属于当前媒体，不混入小相册评论区",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
                 PostActionChip(text = "关闭", onClick = onClose)
@@ -1948,7 +2129,7 @@ private fun MediaCommentPlaceholderSheet(
                 Text(
                     text = "当前媒体暂无评论。",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             } else {
                 comments.take(10).forEach { comment ->
@@ -1961,7 +2142,7 @@ private fun MediaCommentPlaceholderSheet(
                         Text(
                             text = comment.content,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = colors.textPrimary,
                         )
                     }
                 }
@@ -1969,47 +2150,22 @@ private fun MediaCommentPlaceholderSheet(
                     Text(
                         text = "还有更多评论",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(radius.lg),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+                    color = colors.sectionBackground.copy(alpha = 0.62f),
                 ) {
                     Text(
                         text = "写一条媒体评论",
                         modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PostCircleButton(
-    text: String,
-    onClick: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    val shape = CircleShape
-    Surface(
-        modifier = Modifier
-            .size(40.dp)
-            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
-        shape = shape,
-        color = colors.raisedSurface.copy(alpha = 0.92f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
         }
     }
 }
@@ -2084,9 +2240,9 @@ private fun SmallAlbumMediaGridSection(
     onAddMedia: () -> Unit,
     onRefreshRequest: () -> Unit,
     onEmptyAfterDelete: () -> Unit,
+    onShowNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
@@ -2094,6 +2250,7 @@ private fun SmallAlbumMediaGridSection(
     var selectionMode by rememberSaveable(postId) { mutableStateOf(false) }
     var selectedIds by rememberSaveable(postId) { mutableStateOf(emptySet<String>()) }
     var isMutating by rememberSaveable(postId) { mutableStateOf(false) }
+    var showDeleteSelectedConfirm by rememberSaveable(postId) { mutableStateOf(false) }
     val density = PhotoFeedDensity.valueOf(densityName)
     val sortedMediaItems = remember(mediaItems) { mediaItems.sortedForSmallAlbumDisplay() }
     val mediaById = remember(sortedMediaItems) { sortedMediaItems.associateBy { it.id } }
@@ -2169,6 +2326,7 @@ private fun SmallAlbumMediaGridSection(
         selectedIds = selectedIds.intersect(currentMediaIdSet)
         if (selectedIds.isEmpty()) {
             selectionMode = false
+            showDeleteSelectedConfirm = false
         }
     }
     val liveSelectedIds = remember { mutableStateOf(selectedIds) }
@@ -2185,6 +2343,7 @@ private fun SmallAlbumMediaGridSection(
                 mediaIds = pendingIds,
                 semantic = FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY,
             )
+            showDeleteSelectedConfirm = false
             selectedIds = emptySet()
             selectionMode = false
             if (FakeAlbumRepository.getPost(postId) == null) {
@@ -2192,11 +2351,12 @@ private fun SmallAlbumMediaGridSection(
             } else {
                 onRefreshRequest()
             }
-            Toast.makeText(context, "已移出当前小相册", Toast.LENGTH_SHORT).show()
+            onShowNotice("已移出当前小相册")
             return
         }
         scope.launch {
             isMutating = true
+            showDeleteSelectedConfirm = false
             var successCount = 0
             pendingIds.forEach { mediaId ->
                 when (val result = RepositoryProvider.mediaRepository.deleteMediaFromPost(
@@ -2206,7 +2366,7 @@ private fun SmallAlbumMediaGridSection(
                 )) {
                     is com.example.yingshi.data.remote.result.ApiResult.Success -> successCount += 1
                     is com.example.yingshi.data.remote.result.ApiResult.Error -> {
-                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        onShowNotice(result.message)
                     }
                     com.example.yingshi.data.remote.result.ApiResult.Loading -> Unit
                 }
@@ -2223,13 +2383,14 @@ private fun SmallAlbumMediaGridSection(
                 } else {
                     onRefreshRequest()
                 }
-                Toast.makeText(context, "已移出当前小相册", Toast.LENGTH_SHORT).show()
+                onShowNotice("已移出当前小相册")
             }
             isMutating = false
         }
     }
 
     BackHandler(enabled = selectionMode) {
+        showDeleteSelectedConfirm = false
         selectionMode = false
         selectedIds = emptySet()
     }
@@ -2242,21 +2403,52 @@ private fun SmallAlbumMediaGridSection(
             SmallAlbumSelectionActionBar(
                 selectedCount = selectedIds.size,
                 onCancel = {
+                    showDeleteSelectedConfirm = false
                     selectionMode = false
                     selectedIds = emptySet()
                 },
-                onDelete = { if (!isMutating) deleteSelectedMedia() },
-            )
-        } else {
-            SmallAlbumMediaActionBar(
-                mediaCount = sortedMediaItems.size,
-                density = density,
-                canSelect = sortedMediaItems.isNotEmpty(),
-                onSelect = {
-                    selectionMode = true
-                    selectedIds = emptySet()
+                onDelete = {
+                    if (!isMutating && selectedIds.isNotEmpty()) {
+                        showDeleteSelectedConfirm = true
+                    }
                 },
-                onAddMedia = { if (!isMutating) onAddMedia() },
+            )
+        }
+        if (showDeleteSelectedConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteSelectedConfirm = false },
+                containerColor = colors.raisedSurface,
+                titleContentColor = colors.titleAccent,
+                textContentColor = colors.textSecondary,
+                title = {
+                    Text(
+                        text = if (selectedIds.size == 1) "移出这张媒体" else "移出选中媒体",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                },
+                text = {
+                    Text(
+                        text = if (selectedIds.size == 1) {
+                            "确认后会把这张媒体从当前小相册移除，并写入回收站。"
+                        } else {
+                            "确认后会把这 ${selectedIds.size} 项媒体从当前小相册移除，并写入回收站。"
+                        },
+                    )
+                },
+                confirmButton = {
+                    TrashDialogActionButton(
+                        text = "确认移出",
+                        enabled = !isMutating,
+                        danger = true,
+                        onClick = { deleteSelectedMedia() },
+                    )
+                },
+                dismissButton = {
+                    TrashDialogActionButton(
+                        text = "取消",
+                        onClick = { showDeleteSelectedConfirm = false },
+                    )
+                },
             )
         }
         Box(
@@ -2361,7 +2553,7 @@ private fun SmallAlbumMediaGridSection(
                     icon = Icons.Rounded.Add,
                     contentDescription = "从照片流加入媒体",
                     onClick = { if (!isMutating) onAddMedia() },
-                    emphasized = false,
+                    emphasized = true,
                     buttonSize = 50.dp,
                     iconSize = 26.dp,
                     modifier = Modifier
@@ -2381,26 +2573,18 @@ private fun SmallAlbumMediaActionBar(
     onSelect: () -> Unit,
     onAddMedia: () -> Unit,
 ) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
 
-    YingShiToolSurface(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius.lg),
-        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            YingShiStatusPill(
-                text = if (mediaCount > 0) "$mediaCount 张媒体" else "暂无媒体",
-                modifier = Modifier.weight(1f),
-            )
-            YingShiStatusPill(text = density.label)
-            if (canSelect) {
+            if (canSelect && mediaCount > 0) {
                 PostActionChip(
                     text = "选择",
                     onClick = onSelect,
@@ -2451,7 +2635,7 @@ private fun SmallAlbumSelectionActionBar(
                 icon = Icons.Filled.Delete,
                 contentDescription = "移出选中媒体",
                 onClick = onDelete,
-                buttonSize = 42.dp,
+                buttonSize = 44.dp,
                 iconSize = 22.dp,
             )
         }
@@ -2517,6 +2701,7 @@ private fun SmallAlbumGridMediaTile(
     onLongClick: () -> Unit,
 ) {
     val selectionHotspotOnly = selectionMode && density.columns in 2..4
+    val colors = YingShiThemeTokens.colors
     val motion = YingShiThemeTokens.motion
     val motionEnabled = rememberYingShiMotionEnabled()
     val itemScale by animateFloatAsState(
@@ -2542,7 +2727,7 @@ private fun SmallAlbumGridMediaTile(
             mediaType = media.mediaType,
             palette = media.palette,
             modifier = Modifier.fillMaxSize(),
-            contentDescription = media.id,
+            contentDescription = postDetailMediaContentDescription(media.mediaType),
             requestSize = smallAlbumThumbnailRequestSize(density),
             contentScale = ContentScale.Crop,
             showLoadingIndicator = false,
@@ -2567,7 +2752,7 @@ private fun SmallAlbumGridMediaTile(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color.Black.copy(alpha = if (selected) 0.18f else 0.06f)),
+                    .background(colors.viewerBackground.copy(alpha = if (selected) 0.18f else 0.06f)),
             )
             if (selectionHotspotOnly) {
                 Box(
@@ -2591,6 +2776,13 @@ private fun SmallAlbumGridMediaTile(
                 )
             }
         }
+    }
+}
+
+private fun postDetailMediaContentDescription(mediaType: AppMediaType): String {
+    return when (mediaType) {
+        AppMediaType.VIDEO -> "小相册视频"
+        AppMediaType.IMAGE -> "小相册照片"
     }
 }
 
@@ -2641,34 +2833,49 @@ private fun smallAlbumThumbnailRequestSize(density: PhotoFeedDensity): Int {
 
 @Composable
 private fun SmallAlbumMonthHeaderRow(title: String) {
-    Text(
-        text = title,
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
-        style = MaterialTheme.typography.headlineSmall.copy(
-            fontSize = 32.sp,
-            lineHeight = 36.sp,
-            fontWeight = FontWeight.ExtraBold,
-        ),
-        color = YingShiThemeTokens.colors.titleAccent,
-    )
+            .padding(top = 10.dp, bottom = 4.dp),
+        shape = RoundedCornerShape(radius.md),
+        color = colors.raisedSurface.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.52f)),
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = colors.titleAccent,
+            maxLines = 1,
+        )
+    }
 }
 
 @Composable
 private fun SmallAlbumDayHeaderRow(title: String) {
-    Text(
-        text = title,
+    val colors = YingShiThemeTokens.colors
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
-        style = MaterialTheme.typography.titleLarge.copy(
-            fontSize = 24.sp,
-            lineHeight = 28.sp,
-            fontWeight = FontWeight.Bold,
-        ),
-        color = YingShiThemeTokens.colors.textPrimary.copy(alpha = 0.88f),
-    )
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 4.dp, height = 18.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(colors.glassStroke.copy(alpha = 0.82f)),
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.textPrimary.copy(alpha = 0.88f),
+            maxLines = 1,
+        )
+    }
 }
 
 internal fun String?.meaningfulPostSummaryOrNull(): String? {

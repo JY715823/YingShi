@@ -21,7 +21,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -150,12 +154,6 @@ private const val PagerMonthCount = (PagerEndYear - PagerStartYear + 1) * 12
 private fun pagerToYM(index: Int) = PagerStartYear + index / 12 to (index % 12)
 private fun ymToPager(y: Int, m: Int) = (y - PagerStartYear) * 12 + m
 
-// ── Colors ───────────────────────────────────────────────────────────
-
-private val PGreen = Color(0xFF4CAF50)
-private val PGray = Color(0xFF666666)
-private val PLightGray = Color(0xFF999999)
-
 // ── Public entry ─────────────────────────────────────────────────────
 
 @Composable
@@ -203,6 +201,10 @@ private fun ViewerMainSheet(
     onDismiss: () -> Unit, onDone: () -> Unit, onTime: () -> Unit,
 ) {
     val sp = YingShiThemeTokens.spacing; val rd = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    val accent = colors.viewerAccent
+    val textColor = colors.viewerText
+    val secondaryText = colors.viewerTextSecondary
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -222,36 +224,58 @@ private fun ViewerMainSheet(
     val stableOnDay by rememberUpdatedState(onDay)
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color.White,
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = colors.viewerSurface,
         dragHandle = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(sp.sm))
-                Surface(Modifier.size(36.dp, 4.dp), RoundedCornerShape(rd.capsule), color = Color(0xFFDDDDDD)) {}
+                Surface(
+                    Modifier.size(36.dp, 4.dp),
+                    RoundedCornerShape(rd.capsule),
+                    color = secondaryText.copy(alpha = 0.34f),
+                ) {}
                 Spacer(Modifier.height(sp.xs))
             }
         },
     ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.54f).padding(horizontal = sp.lg)) {
             Row(Modifier.fillMaxWidth().padding(top = sp.sm), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                TextButton(onClick = onDismiss) { Text("取消", color = PGray) }
+                TextButton(onClick = onDismiss) { Text("取消", color = secondaryText) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val p = pagerState.currentPage > 0
                     val n = pagerState.currentPage < PagerMonthCount - 1
                     TextButton(onClick = { if (p) scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } }, enabled = p) {
-                        Text("<", color = if (p) Color.Black else PLightGray)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = "上一个月",
+                            tint = if (p) textColor else secondaryText.copy(alpha = 0.56f),
+                        )
                     }
-                    Text("${py}/%02d".format(pm + 1), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.Black)
+                    Text(
+                        "${py}/%02d".format(pm + 1),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = textColor,
+                    )
                     TextButton(onClick = { if (n) scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }, enabled = n) {
-                        Text(">", color = if (n) Color.Black else PLightGray)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "下一个月",
+                            tint = if (n) textColor else secondaryText.copy(alpha = 0.56f),
+                        )
                     }
                 }
-                TextButton(onClick = onDone) { Text("确定", color = PGreen, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = onDone) { Text("确定", color = accent, fontWeight = FontWeight.Bold) }
             }
 
             Spacer(Modifier.height(8.dp))
 
             Row(Modifier.fillMaxWidth()) {
-                wk.forEach { d -> Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text(d, fontSize = 11.sp, color = PLightGray) } }
+                wk.forEach { d ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text(d, fontSize = 11.sp, color = secondaryText)
+                    }
+                }
             }
 
             Spacer(Modifier.height(2.dp))
@@ -266,13 +290,25 @@ private fun ViewerMainSheet(
 
             Spacer(Modifier.height(6.dp))
 
-            Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(rd.lg)).clickable(onClick = onTime), RoundedCornerShape(rd.lg), color = Color(0xFFF5F5F5)) {
+            Surface(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(rd.lg)).clickable(onClick = onTime),
+                RoundedCornerShape(rd.lg),
+                color = colors.viewerBackground.copy(alpha = 0.82f),
+            ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = sp.md, vertical = sp.sm), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Text("时间", style = MaterialTheme.typography.bodyMedium, color = PGray)
+                    Text("时间", style = MaterialTheme.typography.bodyMedium, color = secondaryText)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("%02d:%02d".format(selH, selMin), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = Color.Black)
+                        Text(
+                            "%02d:%02d".format(selH, selMin),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = textColor,
+                        )
                         Spacer(Modifier.width(4.dp))
-                        Text(">", style = MaterialTheme.typography.bodyMedium, color = PLightGray)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "编辑时间",
+                            tint = secondaryText,
+                        )
                     }
                 }
             }
@@ -287,6 +323,7 @@ private fun CalendarMonth(
     year: Int, month: Int, selectedDay: Int,
     today: Triple<Int, Int, Int>, onDaySelected: (Int) -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     val cells = remember(year, month, selectedDay) {
         val dim = monthLength(year, month + 1)
         val fdow = (weekday(year, month + 1, 1) + 6) % 7
@@ -306,7 +343,7 @@ private fun CalendarMonth(
     }
 
     val cellShape = remember { RoundedCornerShape(6.dp) }
-    val greenBg = remember { PGreen.copy(alpha = 0.12f) }
+    val selectedBg = remember(colors.viewerAccent) { colors.viewerAccent.copy(alpha = 0.16f) }
 
     Column(Modifier.fillMaxSize()) {
         val rows = cells.size / 7
@@ -314,7 +351,7 @@ private fun CalendarMonth(
             Row(Modifier.fillMaxWidth().weight(1f)) {
                 for (c in 0 until 7) {
                     val cell = cells[r * 7 + c]
-                    val bg = if (cell != null && cell.isSelected) greenBg else Color.Transparent
+                    val bg = if (cell != null && cell.isSelected) selectedBg else Color.Transparent
                     Box(Modifier.weight(1f).fillMaxHeight().background(bg, cellShape)
                         .clickable(enabled = cell != null) { cell?.let { onDaySelected(it.day) } },
                         contentAlignment = Alignment.Center,
@@ -324,15 +361,27 @@ private fun CalendarMonth(
                                 if (cell.top != null) {
                                     Text(if (cell.topGreen) "今" else (cell.top ?: ""), fontSize = 10.sp,
                                         fontWeight = if (cell.topGreen) FontWeight.Bold else FontWeight.Normal,
-                                        color = when { cell.topGreen -> PGreen; cell.topRed -> Color(0xFFFF6B6B); else -> PLightGray }, maxLines = 1)
+                                        color = when {
+                                            cell.topGreen -> colors.viewerAccent
+                                            cell.topRed -> MaterialTheme.colorScheme.error
+                                            else -> colors.viewerTextSecondary
+                                        },
+                                        maxLines = 1)
                                     Spacer(Modifier.height(1.dp))
                                 }
                                 Text("${cell.day}", fontSize = 15.sp,
                                     fontWeight = if (cell.isSelected || cell.isToday) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (cell.isSelected) PGreen else Color.Black, maxLines = 1)
+                                    color = if (cell.isSelected) colors.viewerAccent else colors.viewerText,
+                                    maxLines = 1)
                                 if (cell.bot != null && !cell.topRed && !cell.topGreen) {
                                     Spacer(Modifier.height(1.dp))
-                                    Text(cell.bot ?: "", fontSize = 10.sp, color = PLightGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        cell.bot ?: "",
+                                        fontSize = 10.sp,
+                                        color = colors.viewerTextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
                                 }
                             }
                         }
@@ -352,6 +401,7 @@ private fun ViewerTimeWheelSheet(
     onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit,
 ) {
     val sp = YingShiThemeTokens.spacing; val rd = YingShiThemeTokens.radius; val den = LocalDensity.current
+    val colors = YingShiThemeTokens.colors
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sm = (initialMinute / 5) * 5
     var selH by remember { mutableIntStateOf(initialHour) }
@@ -361,24 +411,38 @@ private fun ViewerTimeWheelSheet(
     val vpDp = with(den) { ((itemH.roundToPx()) * vc).toDp() }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color.White,
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = colors.viewerSurface,
         dragHandle = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(sp.sm))
-                Surface(Modifier.size(36.dp, 4.dp), RoundedCornerShape(rd.capsule), color = Color(0xFFDDDDDD)) {}
+                Surface(
+                    Modifier.size(36.dp, 4.dp),
+                    RoundedCornerShape(rd.capsule),
+                    color = colors.viewerTextSecondary.copy(alpha = 0.34f),
+                ) {}
                 Spacer(Modifier.height(sp.xs))
             }
         },
     ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.40f).padding(horizontal = sp.xl)) {
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                TextButton(onClick = onDismiss) { Text("取消", color = PGray) }
-                Text("选择时间", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.Black)
-                TextButton(onClick = { onConfirm(selH, selM) }) { Text("确定", color = PGreen, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = onDismiss) { Text("取消", color = colors.viewerTextSecondary) }
+                Text(
+                    "选择时间",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = colors.viewerText,
+                )
+                TextButton(onClick = { onConfirm(selH, selM) }) { Text("确定", color = colors.viewerAccent, fontWeight = FontWeight.Bold) }
             }
             Spacer(Modifier.height(sp.sm))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("%02d:%02d".format(selH, selM), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = Color.Black)
+                Text(
+                    "%02d:%02d".format(selH, selM),
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = colors.viewerText,
+                )
             }
             Spacer(Modifier.height(sp.xs))
             Row(Modifier.weight(1f).height(vpDp), Arrangement.Center) {
@@ -397,6 +461,7 @@ private fun WheelColumn(
     items: List<String>, initIdx: Int, selIdx: Int,
     itemHDp: Dp, vc: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     val d = LocalDensity.current; val ih = with(d) { itemHDp.roundToPx() }; val vp = ih * vc
     val pad = vp / 2 - ih / 2; val vpDp = with(d) { vp.toDp() }; val pdDp = with(d) { pad.toDp() }
     val listState = rememberLazyListState(); val scope = rememberCoroutineScope()
@@ -429,15 +494,42 @@ private fun WheelColumn(
                 Box(Modifier.fillMaxWidth().height(itemHDp), contentAlignment = Alignment.Center) {
                     Text(items[idx],
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = if (ctr) FontWeight.Bold else FontWeight.Normal),
-                        color = if (ctr) Color.Black else Color(0xFFBBBBBB), textAlign = TextAlign.Center)
+                        color = if (ctr) colors.viewerText else colors.viewerTextSecondary.copy(alpha = 0.72f),
+                        textAlign = TextAlign.Center)
                 }
             }
         }
-        val lc = Color(0xFFEEEEEE)
+        val lc = colors.viewerTextSecondary.copy(alpha = 0.18f)
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter).offset(y = with(d) { (vp / 2 - ih / 2).toDp() }).background(lc))
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter).offset(y = with(d) { (vp / 2 + ih / 2).toDp() }).background(lc))
         val mh = with(d) { (vp / 2 - ih / 2).toDp() }
-        Box(Modifier.fillMaxWidth().height(mh).align(Alignment.TopCenter).background(Brush.verticalGradient(listOf(Color.White.copy(.94f), Color.White.copy(.55f), Color.Transparent))))
-        Box(Modifier.fillMaxWidth().height(mh).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(.55f), Color.White.copy(.94f)))))
+        Box(
+            Modifier.fillMaxWidth()
+                .height(mh)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            colors.viewerSurface.copy(alpha = 0.96f),
+                            colors.viewerSurface.copy(alpha = 0.66f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
+        Box(
+            Modifier.fillMaxWidth()
+                .height(mh)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            colors.viewerSurface.copy(alpha = 0.66f),
+                            colors.viewerSurface.copy(alpha = 0.96f),
+                        ),
+                    ),
+                ),
+        )
     }
 }

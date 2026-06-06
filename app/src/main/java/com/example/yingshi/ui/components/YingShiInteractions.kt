@@ -2,6 +2,7 @@ package com.example.yingshi.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -18,17 +19,17 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
-private const val YingShiTapMillis = 170
-
 fun Modifier.yingShiPressFeedback(
     enabled: Boolean = true,
-    pressedScale: Float = 0.975f,
+    pressedScale: Float = Float.NaN,
 ): Modifier = composed {
+    val motion = YingShiThemeTokens.motion
+    val resolvedPressedScale = if (pressedScale.isNaN()) motion.pressedScale else pressedScale
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (enabled && pressed) pressedScale else 1f,
-        animationSpec = tween(durationMillis = YingShiTapMillis),
+        targetValue = if (enabled && pressed) resolvedPressedScale else 1f,
+        animationSpec = tween(durationMillis = motion.tapMillis),
         label = "yingShiPressScale",
     )
     graphicsLayer {
@@ -40,14 +41,17 @@ fun Modifier.yingShiPressFeedback(
 fun Modifier.yingShiClickable(
     enabled: Boolean = true,
     shape: Shape? = null,
-    pressedScale: Float = 0.975f,
+    pressedScale: Float = Float.NaN,
     onClick: () -> Unit,
 ): Modifier = composed {
+    val motion = YingShiThemeTokens.motion
+    val resolvedPressedScale = if (pressedScale.isNaN()) motion.pressedScale else pressedScale
     val interactionSource = remember { MutableInteractionSource() }
+    val indication = LocalIndication.current
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (enabled && pressed) pressedScale else 1f,
-        animationSpec = tween(durationMillis = YingShiTapMillis),
+        targetValue = if (enabled && pressed) resolvedPressedScale else 1f,
+        animationSpec = tween(durationMillis = motion.tapMillis),
         label = "yingShiClickableScale",
     )
     val contentAlpha by animateFloatAsState(
@@ -56,7 +60,7 @@ fun Modifier.yingShiClickable(
             pressed -> 0.90f
             else -> 1f
         },
-        animationSpec = tween(durationMillis = YingShiTapMillis),
+        animationSpec = tween(durationMillis = motion.tapMillis),
         label = "yingShiClickableAlpha",
     )
     val shapeModifier = if (shape != null) Modifier.clip(shape) else Modifier
@@ -70,7 +74,7 @@ fun Modifier.yingShiClickable(
         .clickable(
             enabled = enabled,
             interactionSource = interactionSource,
-            indication = null,
+            indication = indication,
             onClick = onClick,
         )
 }
@@ -79,7 +83,7 @@ fun Modifier.yingShiClickable(
 fun Modifier.yingShiHapticClickable(
     enabled: Boolean = true,
     shape: Shape? = null,
-    pressedScale: Float = 0.965f,
+    pressedScale: Float = Float.NaN,
     hapticType: HapticFeedbackType = HapticFeedbackType.LongPress,
     onClick: () -> Unit,
 ): Modifier {

@@ -1,7 +1,6 @@
 ﻿package com.example.yingshi.feature.photos
 
 import android.app.Activity
-import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -30,12 +29,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -56,6 +59,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
@@ -69,6 +73,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import com.example.yingshi.ui.components.YingShiNotice
+import com.example.yingshi.ui.components.YingShiNoticeHost
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -185,6 +192,7 @@ fun SystemMediaViewerScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val viewerColors = YingShiThemeTokens.colors
     val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
     var viewerItems by remember(route) {
         mutableStateOf(route.mediaItems)
@@ -201,9 +209,20 @@ fun SystemMediaViewerScreen(
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var showSystemTrashConfirm by rememberSaveable { mutableStateOf(false) }
     var pendingTrashIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var notice by remember { mutableStateOf<YingShiNotice?>(null) }
+    var noticeNonce by remember { mutableIntStateOf(0) }
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
+
+    fun showNotice(
+        message: String,
+        tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
+    ) {
+        noticeNonce += 1
+        notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
+
     val trashLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
@@ -213,15 +232,14 @@ fun SystemMediaViewerScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val hiddenCount = LocalSystemMediaBridgeRepository.markMovedToSystemTrash(processedIds)
             val nextItems = viewerItems.filterNot { processedIds.contains(it.id) }
-            Toast.makeText(
-                context,
-                if (hiddenCount > 0) {
+            showNotice(
+                message = if (hiddenCount > 0) {
                     "已移到系统回收站。"
                 } else {
                     "这些媒体已经处理过了。"
                 },
-                Toast.LENGTH_SHORT,
-            ).show()
+                tone = if (hiddenCount > 0) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.INFO,
+            )
             if (nextItems.isEmpty()) {
                 onBack()
             } else {
@@ -231,7 +249,7 @@ fun SystemMediaViewerScreen(
                 }
             }
         } else {
-            Toast.makeText(context, "已取消移到系统回收站。", Toast.LENGTH_SHORT).show()
+            showNotice("已取消移到系统回收站。")
         }
     }
 
@@ -245,19 +263,17 @@ fun SystemMediaViewerScreen(
                     )
                 }.onFailure { throwable ->
                     pendingTrashIds = emptyList()
-                    Toast.makeText(
-                        context,
+                    showNotice(
                         throwable.message ?: "无法拉起系统回收站确认流程。",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                        YingShiNoticeTone.WARNING,
+                    )
                 }
             }
             .onFailure { throwable ->
-                Toast.makeText(
-                    context,
+                showNotice(
                     throwable.message ?: systemMediaTrashUnsupportedMessage(),
-                    Toast.LENGTH_SHORT,
-                ).show()
+                    YingShiNoticeTone.WARNING,
+                )
             }
     }
 
@@ -281,11 +297,7 @@ fun SystemMediaViewerScreen(
                     if (addedCount > 0) {
                         showAddToPostDialog = false
                         addToPostError = null
-                        Toast.makeText(
-                            context,
-                            "已加入上传队列，成功后会进入目标小相册。",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showNotice("已加入上传队列，成功后会进入目标小相册。", YingShiNoticeTone.SUCCESS)
                     } else {
                         addToPostError = "该媒体已经在目标小相册里，或没有可添加的媒体。"
                     }
@@ -300,11 +312,7 @@ fun SystemMediaViewerScreen(
                     if (addedCount > 0) {
                         showAddToPostDialog = false
                         addToPostError = null
-                        Toast.makeText(
-                            context,
-                            "已加入上传队列，成功后会进入目标小相册。",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        showNotice("已加入上传队列，成功后会进入目标小相册。", YingShiNoticeTone.SUCCESS)
                     } else {
                         addToPostError = "该媒体已经在目标小相册里，或没有可添加的媒体。"
                     }
@@ -318,17 +326,10 @@ fun SystemMediaViewerScreen(
                 onDismissRequest = { showSystemTrashConfirm = false },
                 containerColor = dialogColors.raisedSurface,
                 titleContentColor = dialogColors.titleAccent,
-                textContentColor = dialogColors.textSecondary,
                 title = {
                     Text(
                         text = "移到系统相册回收站？",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    )
-                },
-                text = {
-                    Text(
-                        "当前媒体会交给 Android 系统回收站处理，不会进入映世回收站，也不会影响照片流中已经导入的内容；确认后还会出现 Android 系统确认框。",
-                        style = MaterialTheme.typography.bodyMedium,
                     )
                 },
                 confirmButton = {
@@ -374,7 +375,7 @@ fun SystemMediaViewerScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0E131A)),
+            .background(viewerColors.viewerBackground),
     ) {
         Column(
             modifier = Modifier
@@ -402,7 +403,7 @@ fun SystemMediaViewerScreen(
                     Text(
                         text = "当前没有可查看的系统媒体。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.72f),
+                        color = viewerColors.viewerTextSecondary,
                     )
                 }
             } else {
@@ -430,6 +431,18 @@ fun SystemMediaViewerScreen(
             }
         }
 
+        YingShiNoticeHost(
+            notice = notice,
+            onExpired = { nonce ->
+                if (notice?.nonce == nonce) {
+                    notice = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = YingShiThemeTokens.spacing.md),
+        )
     }
 
     if (showMenuSheet && currentItem != null) {
@@ -441,21 +454,21 @@ fun SystemMediaViewerScreen(
                     context = context,
                     mediaItems = listOf(currentItem),
                 )
-                Toast.makeText(
-                    context,
-                    if (queuedCount > 0) {
+                showNotice(
+                    message = if (queuedCount > 0) {
                         "已加入导入队列。"
                     } else {
                         "当前媒体无法导入照片流。"
                     },
-                    Toast.LENGTH_SHORT,
-                ).show()
+                    tone = if (queuedCount > 0) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
+                )
             },
             onAddToPost = {
                 addToPostError = null
                 showMenuSheet = false
-                if (destinationUiState.errorMessage != null && posts.isEmpty()) {
-                    Toast.makeText(context, destinationUiState.errorMessage, Toast.LENGTH_SHORT).show()
+                val destinationError = destinationUiState.errorMessage
+                if (destinationError != null && posts.isEmpty()) {
+                    showNotice(destinationError, YingShiNoticeTone.WARNING)
                 } else {
                     showAddToPostDialog = true
                 }
@@ -477,6 +490,7 @@ private fun SystemMediaViewerTopBar(
     onBack: () -> Unit,
     onOpenMenu: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -485,24 +499,26 @@ private fun SystemMediaViewerTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SystemMediaViewerCircleButton(
-            text = "<",
+            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "返回",
             onClick = onBack,
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "系统媒体",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White,
+                color = colors.viewerText,
             )
             Text(
                 text = if (totalCount > 0) "${currentIndex + 1} / $totalCount" else "0 / 0",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.72f),
+                color = colors.viewerTextSecondary,
             )
         }
         if (showMenu) {
             SystemMediaViewerCircleButton(
-                text = "≡",
+                icon = Icons.Rounded.MoreHoriz,
+                contentDescription = "媒体操作",
                 onClick = onOpenMenu,
             )
         }
@@ -519,6 +535,7 @@ private fun SystemMediaViewerCanvas(
     var videoPlaybackState by remember(item.id) {
         mutableStateOf(ViewerVideoPlaybackState())
     }
+    val colors = YingShiThemeTokens.colors
     var videoRetryVersion by remember(item.id) { mutableStateOf(0) }
     var videoControlsVisible by remember(item.id) { mutableStateOf(true) }
     var videoControlsActivityNonce by remember(item.id) { mutableIntStateOf(0) }
@@ -569,7 +586,7 @@ private fun SystemMediaViewerCanvas(
         modifier = Modifier
             .fillMaxSize()
             .padding(top = 4.dp, bottom = 8.dp)
-            .background(Color.Black, RoundedCornerShape(28.dp))
+            .background(colors.viewerBackground, RoundedCornerShape(28.dp))
             .padding(8.dp)
             .graphicsLayer { clip = true; shape = RoundedCornerShape(24.dp) },
         contentAlignment = Alignment.Center,
@@ -577,7 +594,7 @@ private fun SystemMediaViewerCanvas(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(colors.viewerBackground)
                 .graphicsLayer { clip = true }
                 .then(gestureModifier)
                 .then(
@@ -618,7 +635,7 @@ private fun SystemMediaViewerCanvas(
                                     .matchParentSize()
                                     .clickable(
                                         interactionSource = revealInteractionSource,
-                                        indication = null,
+                                        indication = androidx.compose.foundation.LocalIndication.current,
                                         onClick = { toggleVideoControlsFromVideoArea() },
                                     ),
                             )
@@ -653,8 +670,8 @@ private fun SystemMediaViewerCanvas(
                                         }
                                     },
                                 shape = CircleShape,
-                                color = Color.White.copy(alpha = if (videoPlaybackState.isPlaying) 0.14f else 0.18f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                                color = colors.viewerSurface.copy(alpha = if (videoPlaybackState.isPlaying) 0.74f else 0.82f),
+                                border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.22f)),
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -664,7 +681,7 @@ private fun SystemMediaViewerCanvas(
                                 ) {
                                     VideoGlyph(
                                         state = if (videoPlaybackState.isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
-                                        tint = Color.White.copy(alpha = 0.92f),
+                                        tint = colors.viewerText,
                                         modifier = Modifier.fillMaxSize(),
                                     )
                                 }
@@ -862,27 +879,29 @@ private fun SystemMediaViewerVideoCanvas(
         }
 
         if (playbackState.isLoading) {
+            val colors = YingShiThemeTokens.colors
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(28.dp),
-                color = Color.White.copy(alpha = 0.88f),
+                color = colors.viewerAccent,
                 strokeWidth = 2.dp,
             )
         }
 
         if (playbackState.errorMessage != null) {
+            val colors = YingShiThemeTokens.colors
             Text(
                 text = playbackState.errorMessage,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .background(
-                        color = Color.Black.copy(alpha = 0.42f),
+                        color = colors.viewerBackground.copy(alpha = 0.88f),
                         shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
                     )
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White,
+                color = colors.viewerText,
             )
         }
     }
@@ -893,9 +912,10 @@ private fun SystemMediaVideoPlaceholder(
     message: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
-        color = Color(0xFF12161D),
+        color = colors.viewerBackground,
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -908,8 +928,8 @@ private fun SystemMediaVideoPlaceholder(
                 Surface(
                     modifier = Modifier.size(52.dp),
                     shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.10f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                    color = colors.viewerSurface.copy(alpha = 0.92f),
+                    border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
                 ) {
                     Box(
                         modifier = Modifier.padding(16.dp),
@@ -917,7 +937,7 @@ private fun SystemMediaVideoPlaceholder(
                     ) {
                         VideoGlyph(
                             state = VideoGlyphState.PLAY,
-                            tint = Color.White.copy(alpha = 0.88f),
+                            tint = colors.viewerText,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -925,7 +945,7 @@ private fun SystemMediaVideoPlaceholder(
                 Text(
                     text = message,
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.74f),
+                    color = colors.viewerTextSecondary,
                 )
             }
         }
@@ -936,11 +956,12 @@ private fun SystemMediaVideoPlaceholder(
 private fun SystemMediaViewerInfoCard(
     item: SystemMediaItem,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = Color.White.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        color = colors.viewerSurface.copy(alpha = 0.68f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
     ) {
         Column(
             modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
@@ -949,17 +970,17 @@ private fun SystemMediaViewerInfoCard(
             Text(
                 text = item.displayName.ifBlank { "未命名媒体" },
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White,
+                color = colors.viewerText,
             )
             Text(
                 text = "类型：${item.type.label}",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.76f),
+                color = colors.viewerTextSecondary,
             )
             Text(
                 text = "日期：${formatSystemMediaViewerTime(item.displayTimeMillis)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.76f),
+                color = colors.viewerTextSecondary,
             )
         }
     }
@@ -972,6 +993,7 @@ private fun SystemMediaVideoControls(
     onSeekPlayback: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     val durationMillis = (playbackState.durationMillis ?: 0L).coerceAtLeast(0L)
     val progressFraction = if (durationMillis <= 0L) 0f else {
         (playbackState.progressMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
@@ -987,8 +1009,8 @@ private fun SystemMediaVideoControls(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = Color.Black.copy(alpha = 0.48f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+        color = colors.viewerBackground.copy(alpha = 0.86f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -996,10 +1018,10 @@ private fun SystemMediaVideoControls(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(44.dp),
                 shape = CircleShape,
-                color = Color.White.copy(alpha = 0.14f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                color = colors.viewerSurface.copy(alpha = 0.92f),
+                border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.18f)),
                 onClick = onTogglePlayback,
             ) {
                 Box(
@@ -1012,7 +1034,7 @@ private fun SystemMediaVideoControls(
                         } else {
                             VideoGlyphState.PLAY
                         },
-                        tint = Color.White.copy(alpha = 0.92f),
+                        tint = colors.viewerText,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -1025,7 +1047,7 @@ private fun SystemMediaVideoControls(
                 Text(
                     text = "${formatVideoProgress(displayedProgressMillis)} / ${formatVideoProgress(durationMillis)}",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.70f),
+                    color = colors.viewerTextSecondary,
                 )
                 Slider(
                     value = displayedFraction,
@@ -1044,6 +1066,11 @@ private fun SystemMediaVideoControls(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(28.dp),
+                    colors = SliderDefaults.colors(
+                        thumbColor = colors.viewerAccent,
+                        activeTrackColor = colors.viewerAccent,
+                        inactiveTrackColor = colors.viewerSurface.copy(alpha = 0.96f),
+                    ),
                 )
             }
         }
@@ -1059,12 +1086,13 @@ private fun SystemMediaViewerMenuSheet(
     onMoveToTrash: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = colors.viewerSurface,
     ) {
         Column(
             modifier = Modifier
@@ -1076,7 +1104,7 @@ private fun SystemMediaViewerMenuSheet(
             Text(
                 text = "媒体操作",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = YingShiThemeTokens.colors.titleAccent,
+                color = colors.viewerText,
             )
             SystemMediaViewerMenuAction(
                 title = "导入照片流",
@@ -1108,7 +1136,7 @@ private fun SystemMediaViewerMenuAction(
         color = if (danger) {
             MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
         } else {
-            colors.sectionBackground.copy(alpha = 0.58f)
+            colors.viewerBackground.copy(alpha = 0.82f)
         },
         onClick = onClick,
     ) {
@@ -1119,7 +1147,7 @@ private fun SystemMediaViewerMenuAction(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) MaterialTheme.colorScheme.error else colors.titleAccent,
+                color = if (danger) MaterialTheme.colorScheme.error else colors.viewerText,
             )
         }
     }
@@ -1127,21 +1155,23 @@ private fun SystemMediaViewerMenuAction(
 
 @Composable
 private fun SystemMediaViewerCircleButton(
-    text: String,
+    icon: ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier.size(44.dp),
         shape = CircleShape,
-        color = Color.White.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        color = colors.viewerSurface.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
         onClick = onClick,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White,
+            androidx.compose.material3.Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = colors.viewerText,
             )
         }
     }

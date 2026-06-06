@@ -28,6 +28,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.feature.photos.backendMediaImageRequest
 import com.example.yingshi.feature.photos.resolveBackendMediaUrl
+import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
 fun ProfileAvatar(
@@ -36,6 +37,7 @@ fun ProfileAvatar(
     modifier: Modifier = Modifier,
     size: Dp = 56.dp,
 ) {
+    val colors = YingShiThemeTokens.colors
     val context = LocalContext.current
     val resolvedAvatarUrl = remember(avatarUrl) {
         resolveBackendMediaUrl(avatarUrl)
@@ -61,12 +63,12 @@ fun ProfileAvatar(
     Surface(
         modifier = modifier.size(size),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+        color = colors.primaryContainer.copy(alpha = 0.52f),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                .background(colors.primaryContainer.copy(alpha = 0.52f))
                 .clip(CircleShape),
             contentAlignment = Alignment.Center,
         ) {
@@ -82,14 +84,14 @@ fun ProfileAvatar(
                     text = avatarLabel,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = colors.onPrimaryContainer,
                 )
             }
 
             if (painterState is AsyncImagePainter.State.Loading) {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
-                    color = Color.White.copy(alpha = 0.92f),
+                    color = colors.raisedSurface.copy(alpha = 0.92f),
                     strokeWidth = 2.dp,
                 )
             }

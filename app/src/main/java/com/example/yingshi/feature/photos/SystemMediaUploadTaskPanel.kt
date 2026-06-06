@@ -51,12 +51,12 @@ fun SystemMediaUploadTaskPanel(
                 val statusColor = when (task.state) {
                     UploadState.WAITING -> colors.textSecondary
                     UploadState.UPLOADING -> colors.titleAccent
-                    UploadState.SUCCESS -> colors.memoryAccent
-                    UploadState.FAILURE -> colors.memoryAccent
+                    UploadState.SUCCESS -> colors.softGreenAction
+                    UploadState.FAILURE -> MaterialTheme.colorScheme.error
                     UploadState.CANCELLED -> colors.textSecondary
                 }
                 val trackColor = if (task.state == UploadState.FAILURE) {
-                    colors.memoryContainer.copy(alpha = 0.62f)
+                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.62f)
                 } else {
                     colors.sectionBackground.copy(alpha = 0.88f)
                 }

@@ -1,6 +1,4 @@
 package com.example.yingshi.feature.photos
-
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -109,6 +107,7 @@ fun PhotoFeedScreen(
     onOpenViewer: (PhotoViewerRoute) -> Unit = { },
     onLoadMore: () -> Unit = { },
     onRetryLoadMore: () -> Unit = { },
+    onShowNotice: (String) -> Unit = {},
     scrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
     allowOpenMediaWhileSelecting: Boolean = true,
@@ -209,7 +208,6 @@ fun PhotoFeedScreen(
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
         !selectionState.isInSelectionMode &&
         density.columns <= 4
-    val context = LocalContext.current
     val blocks = remember(
         displayFeedItems,
         density,
@@ -471,7 +469,7 @@ fun PhotoFeedScreen(
                 pageStateStore.pendingScrollTargetMediaId = null
                 pageStateStore.pendingScrollAnchorOriginalIndex = -1
                 pageStateStore.pendingLocateFailureMessage?.let { message ->
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    onShowNotice(message)
                 }
                 pageStateStore.pendingLocateSuccessMessage = null
                 pageStateStore.pendingLocateFailureMessage = null
@@ -500,7 +498,7 @@ fun PhotoFeedScreen(
         pageStateStore.pendingScrollTargetMediaId = null
         pageStateStore.pendingScrollAnchorOriginalIndex = -1
         pageStateStore.pendingLocateSuccessMessage?.let { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            onShowNotice(message)
         }
         pageStateStore.pendingLocateSuccessMessage = null
         pageStateStore.pendingLocateFailureMessage = null
@@ -1157,7 +1155,7 @@ private fun PhotoFeedTimeScrubber(
                 val expandedTopY = thumbCenterY - ((thumbCenterY - topY) * expansion)
                 val expandedBottomY = thumbCenterY + ((bottomY - thumbCenterY) * expansion)
                 drawLine(
-                    color = Color.Black.copy(alpha = 0.34f * expansion),
+                    color = colors.textSecondary.copy(alpha = 0.44f * expansion),
                     start = Offset(centerX, expandedTopY),
                     end = Offset(centerX, expandedBottomY),
                     strokeWidth = 1.8.dp.toPx() + 1.3.dp.toPx() * expansion,
@@ -1166,14 +1164,14 @@ private fun PhotoFeedTimeScrubber(
                 yearMarkers.forEach { marker ->
                     val dotY = topY + (bottomY - topY) * marker.progress.coerceIn(0f, 1f)
                     drawLine(
-                        color = Color.Black.copy(alpha = 0.46f * expansion),
+                        color = colors.titleAccent.copy(alpha = 0.36f * expansion),
                         start = Offset(centerX - 10.dp.toPx() * expansion, dotY),
                         end = Offset(centerX, dotY),
                         strokeWidth = 1.5.dp.toPx(),
                         cap = androidx.compose.ui.graphics.StrokeCap.Round,
                     )
                     drawCircle(
-                        color = Color.Black.copy(alpha = 0.92f),
+                        color = colors.titleAccent.copy(alpha = 0.92f),
                         radius = 2.1.dp.toPx() + (1.2.dp.toPx() * expansion),
                         center = Offset(centerX, dotY),
                     )
@@ -1213,7 +1211,7 @@ private fun PhotoFeedTimeScrubber(
                             fontSize = 18.sp,
                         ),
                         textAlign = TextAlign.End,
-                        color = Color.Black.copy(alpha = 0.96f),
+                        color = colors.titleAccent.copy(alpha = 0.94f),
                     )
                 }
             }
@@ -1735,6 +1733,7 @@ private fun PhotoFeedCard(
     onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
 ) {
     val motion = YingShiThemeTokens.motion
+    val colors = YingShiThemeTokens.colors
     val motionEnabled = rememberYingShiMotionEnabled()
     val selectionHotspotOnly = isInSelectionMode && allowOpenMediaWhileSelecting && density.columns in 2..4
     val supportsInlineVideo = inlineVideoAutoPlayEnabled &&
@@ -1866,7 +1865,7 @@ private fun PhotoFeedCard(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color.White.copy(alpha = 0.18f)),
+                    .background(colors.raisedSurface.copy(alpha = 0.24f)),
             )
             disabledSelectionLabel?.takeIf { it.isNotBlank() }?.let { label ->
                 Surface(
@@ -1874,14 +1873,14 @@ private fun PhotoFeedCard(
                         .align(Alignment.BottomStart)
                         .padding(start = 6.dp, bottom = 6.dp),
                     shape = RoundedCornerShape(999.dp),
-                    color = Color.Black.copy(alpha = 0.42f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                    color = colors.viewerBackground.copy(alpha = 0.44f),
+                    border = BorderStroke(1.dp, colors.viewerText.copy(alpha = 0.18f)),
                 ) {
                     Text(
                         text = label,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.White.copy(alpha = 0.92f),
+                        color = colors.viewerText.copy(alpha = 0.92f),
                     )
                 }
             }
@@ -1896,7 +1895,7 @@ private fun PhotoFeedCard(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color.Black.copy(alpha = selectionVeilAlpha)),
+                    .background(colors.viewerBackground.copy(alpha = selectionVeilAlpha)),
             )
             if (selectionHotspotOnly) {
                 Box(

@@ -3,7 +3,6 @@ package com.example.yingshi.feature.me
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,7 +41,9 @@ import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.result.isUnauthorized
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.photos.BackendInlineNotice
 import com.example.yingshi.ui.components.ShellPage
+import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -51,11 +52,9 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 private const val TITLE_PROFILE = "\u4e2a\u4eba\u4e3b\u9875"
-private const val SUMMARY_PROFILE =
-    "\u8fd9\u91cc\u662f\u4f60\u4eec\u5171\u4eab\u7a7a\u95f4\u91cc\u7684\u4e2a\u4eba\u5165\u53e3\uff0c\u53ea\u653e\u663e\u79f0\u3001\u7b80\u4ecb\u548c\u8f7b\u91cf\u8d26\u53f7\u4fe1\u606f\u3002"
+private const val SUMMARY_PROFILE = ""
 private const val TITLE_EDIT = "\u7f16\u8f91\u8d44\u6599"
-private const val SUMMARY_EDIT =
-    "\u8fd9\u91cc\u53ef\u4ee5\u4fee\u6539\u6635\u79f0\u3001\u7b80\u4ecb\u548c\u4e2a\u4eba\u5934\u50cf\u3002"
+private const val SUMMARY_EDIT = ""
 private const val TEXT_BIO_EMPTY = "\u6682\u672a\u8bbe\u7f6e\u7b80\u4ecb\u3002"
 private const val TITLE_PARTNER = "\u53e6\u4e00\u534a"
 private const val SUMMARY_PARTNER = "\u4e00\u8d77\u8bb0\u5f55\u3001\u4e00\u8d77\u56de\u770b\uff0c\u8fd9\u91cc\u662f\u4f60\u4eec\u5171\u540c\u7a7a\u95f4\u91cc\u7684\u53e6\u4e00\u4f4d\u3002"
@@ -114,8 +113,8 @@ fun PersonalProfileScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                    color = colors.raisedSurface.copy(alpha = 0.94f),
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
                 ) {
                     Column(
                         modifier = Modifier.padding(spacing.lg),
@@ -136,12 +135,12 @@ fun PersonalProfileScreen(
                                 Text(
                                     text = currentUser.displayName,
                                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = colors.textPrimary,
                                 )
                                 Text(
                                     text = currentUser.account,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = colors.textSecondary,
                                 )
                             }
                         }
@@ -149,65 +148,27 @@ fun PersonalProfileScreen(
                         Text(
                             text = currentUser.bio?.takeIf { it.isNotBlank() } ?: TEXT_BIO_EMPTY,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = colors.textPrimary,
                         )
                         if (isRefreshing) {
                             Text(
                                 text = "正在同步最新资料...",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = colors.titleAccent,
                             )
                         } else if (!refreshErrorMessage.isNullOrBlank()) {
                             Text(
                                 text = refreshErrorMessage,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = colors.textSecondary,
                             )
                         }
-                    }
-                }
-
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(spacing.md),
-                    ) {
-                        ProfileInfoRow(label = LABEL_ACCOUNT, value = currentUser.account)
-                        ProfileInfoRow(label = LABEL_JOINED_AT, value = formatEpochMillis(currentUser.createdAtMillis))
                     }
                 }
 
                 PartnerSection(
                     partner = currentUser.partner,
                 )
-
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = colors.sectionBackground.copy(alpha = 0.72f),
-                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.24f)),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                    ) {
-                        Text(
-                            text = currentUser.libraryDisplayName?.takeIf { it.isNotBlank() } ?: TITLE_SHARED_SPACE,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = SUMMARY_SHARED_SPACE,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
 
                 Button(
                     onClick = onOpenEditProfile,
@@ -233,6 +194,7 @@ private fun PartnerSection(
     partner: RemotePartnerProfile?,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val displayName = partner?.displayName?.takeIf { it.isNotBlank() } ?: TITLE_PARTNER
     val account = partner?.account?.takeIf { it.isNotBlank() } ?: TEXT_UNFILLED
     val bio = partner?.bio?.takeIf { it.isNotBlank() } ?: SUMMARY_PARTNER
@@ -240,8 +202,8 @@ private fun PartnerSection(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
@@ -262,17 +224,17 @@ private fun PartnerSection(
                     Text(
                         text = TITLE_PARTNER,
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.memoryAccent,
                     )
                     Text(
                         text = displayName,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = colors.textPrimary,
                     )
                     Text(
                         text = account,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
             }
@@ -289,6 +251,7 @@ fun EditProfileScreen(
     onBack: () -> Unit,
     onProfileSaved: (RemoteCurrentUser) -> Unit,
     onSessionExpired: (String) -> Unit,
+    onShowNotice: (String, YingShiNoticeTone) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -304,7 +267,7 @@ fun EditProfileScreen(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
         if (uri == null) {
-            Toast.makeText(context, MESSAGE_AVATAR_PICK_CANCELLED, Toast.LENGTH_SHORT).show()
+            onShowNotice(MESSAGE_AVATAR_PICK_CANCELLED, YingShiNoticeTone.INFO)
             return@rememberLauncherForActivityResult
         }
         scope.launch {
@@ -330,7 +293,7 @@ fun EditProfileScreen(
             when (uploadResult) {
                 is ApiResult.Success -> {
                     onProfileSaved(uploadResult.data)
-                    Toast.makeText(context, MESSAGE_AVATAR_UPDATED, Toast.LENGTH_SHORT).show()
+                    onShowNotice(MESSAGE_AVATAR_UPDATED, YingShiNoticeTone.SUCCESS)
                 }
                 is ApiResult.Error -> {
                     if (uploadResult.isUnauthorized()) {
@@ -393,10 +356,9 @@ fun EditProfileScreen(
                 )
 
                 errorMessage?.let {
-                    Text(
+                    BackendInlineNotice(
                         text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
+                        emphasized = true,
                     )
                 }
 
@@ -426,7 +388,7 @@ fun EditProfileScreen(
                                 ) {
                                     is ApiResult.Success -> {
                                         onProfileSaved(result.data)
-                                        Toast.makeText(context, MESSAGE_SAVED, Toast.LENGTH_SHORT).show()
+                                        onShowNotice(MESSAGE_SAVED, YingShiNoticeTone.SUCCESS)
                                         onBack()
                                     }
                                     is ApiResult.Error -> {
@@ -466,16 +428,17 @@ private fun ProfileInfoRow(
     value: String,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.textSecondary,
         )
         Text(
             text = value.ifBlank { TEXT_UNFILLED },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.textPrimary,
         )
     }
 }

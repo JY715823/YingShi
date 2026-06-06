@@ -3,6 +3,7 @@ package com.example.yingshi.feature.photos
 import android.graphics.Bitmap
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ fun AppContentMediaThumbnail(
     onOriginalLoadStateChange: (OriginalLoadState) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val colors = YingShiThemeTokens.colors
     val thumbnailUrl = remember(mediaSource, mediaType) {
         mediaSource.thumbnailModelUrl(mediaType)
     }
@@ -169,7 +171,7 @@ fun AppContentMediaThumbnail(
     Box(
         modifier = modifier.background(
             color = if (showImage) {
-                Color.Black
+                colors.viewerBackground
             } else {
                 palette.start.copy(alpha = 0.94f)
             },
@@ -213,7 +215,7 @@ fun AppContentMediaThumbnail(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(20.dp),
-                color = Color.White.copy(alpha = 0.92f),
+                color = colors.viewerText.copy(alpha = 0.92f),
                 strokeWidth = 2.dp,
             )
         }
@@ -241,13 +243,14 @@ fun AppContentMediaThumbnail(
                         .align(Alignment.Center)
                         .padding(12.dp),
                     shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = Color.Black.copy(alpha = 0.26f),
+                    color = colors.viewerBackground.copy(alpha = 0.34f),
+                    border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
                 ) {
                     Text(
                         text = statusLabel,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                        color = Color.White.copy(alpha = 0.92f),
+                        color = colors.viewerText.copy(alpha = 0.92f),
                     )
                 }
             }
@@ -270,10 +273,12 @@ private fun thumbnailMemoryCacheKey(
 private fun VideoThumbnailPlayOverlay(
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
         shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.32f),
+        color = colors.viewerBackground.copy(alpha = 0.38f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.16f)),
     ) {
         Box(
             modifier = Modifier
@@ -283,7 +288,7 @@ private fun VideoThumbnailPlayOverlay(
         ) {
             VideoGlyph(
                 state = VideoGlyphState.PLAY,
-                tint = Color.White.copy(alpha = 0.94f),
+                tint = colors.viewerText.copy(alpha = 0.94f),
                 modifier = Modifier.size(16.dp),
             )
         }

@@ -117,7 +117,7 @@ fun ShellPage(
         onBack?.let { handleBack ->
             Surface(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .align(Alignment.Start)
                     .yingShiClickable(shape = RoundedCornerShape(14.dp), pressedScale = 0.94f, onClick = handleBack),
                 shape = RoundedCornerShape(14.dp),

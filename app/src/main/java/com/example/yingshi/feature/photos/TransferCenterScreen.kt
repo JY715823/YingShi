@@ -451,8 +451,8 @@ private fun TransferFailureDetails(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.md),
-        color = colors.memoryWash.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, colors.memoryContainer.copy(alpha = 0.80f)),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.20f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.md),
@@ -461,7 +461,7 @@ private fun TransferFailureDetails(
             Text(
                 text = "失败与重试",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.memoryAccent,
+                color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Text(
                 text = failureRetryExplanation(
@@ -598,16 +598,18 @@ private fun PlaceholderBadge(isVideo: Boolean) {
 
 @Composable
 private fun VideoBadge() {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.size(28.dp),
         shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.38f),
+        color = colors.viewerBackground.copy(alpha = 0.38f),
+        border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Default.PlayArrow,
                 contentDescription = null,
-                tint = Color.White,
+                tint = colors.viewerText,
                 modifier = Modifier.size(18.dp),
             )
         }
