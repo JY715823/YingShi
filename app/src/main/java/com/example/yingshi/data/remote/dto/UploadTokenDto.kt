@@ -6,6 +6,10 @@ data class UploadTokenDto(
     val uploadUrl: String,
     val expireAtMillis: Long,
     val state: String,
+    val uploadMethod: String? = null,
+    val objectKey: String? = null,
+    val headers: Map<String, String> = emptyMap(),
+    val confirmUrl: String? = null,
 )
 
 data class CreateUploadTokenRequestDto(
@@ -34,9 +38,11 @@ data class UploadTaskDto(
     val fileName: String,
     val mediaType: String,
     val objectKey: String? = null,
+    val mediaId: String? = null,
     val state: String,
     val progressPercent: Int = 0,
     val errorMessage: String? = null,
+    val media: MediaDto? = null,
 )
 
 data class ConfirmUploadRequestDto(

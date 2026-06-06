@@ -55,8 +55,14 @@ fun AppContentMediaThumbnail(
     val thumbnailUrl = remember(mediaSource, mediaType) {
         mediaSource.thumbnailModelUrl(mediaType)
     }
+    val thumbnailCacheKey = remember(mediaSource, mediaType) {
+        mediaSource.thumbnailModelCacheKey(mediaType)
+    }
     val originalImageUrl = remember(mediaSource, mediaType) {
         mediaSource.viewerOriginalImageUrl(mediaType)
+    }
+    val originalImageCacheKey = remember(mediaSource, mediaType) {
+        mediaSource.viewerOriginalImageCacheKey(mediaType)
     }
     val shouldRequestOriginalImage = mediaType == AppMediaType.IMAGE &&
         originalLoadState == OriginalLoadState.Loaded &&
@@ -72,6 +78,7 @@ fun AppContentMediaThumbnail(
         context,
         mediaType,
         modelUrl,
+        thumbnailCacheKey,
         requestSize,
         accessToken,
     ) {
@@ -79,14 +86,20 @@ fun AppContentMediaThumbnail(
             context = context,
             url = modelUrl,
             accessToken = accessToken,
-            memoryCacheKey = modelUrl?.let { thumbnailMemoryCacheKey(it, requestSize) },
-            placeholderMemoryCacheKey = modelUrl?.let(::sharedPreviewMemoryCacheKey),
+            memoryCacheKey = thumbnailMemoryCacheKey(
+                url = modelUrl,
+                cacheKey = thumbnailCacheKey,
+                requestSize = requestSize,
+            ),
+            placeholderMemoryCacheKey = thumbnailCacheKey ?: modelUrl?.let(::sharedPreviewMemoryCacheKey),
+            diskCacheKey = thumbnailCacheKey,
             size = requestSize,
         )
     }
     val originalRequest = remember(
         context,
         originalImageUrl,
+        originalImageCacheKey,
         shouldRequestOriginalImage,
         accessToken,
     ) {
@@ -95,7 +108,8 @@ fun AppContentMediaThumbnail(
                 context = context,
                 url = originalImageUrl,
                 accessToken = accessToken,
-                memoryCacheKey = originalImageUrl?.let(::sharedOriginalMemoryCacheKey),
+                memoryCacheKey = originalImageCacheKey ?: originalImageUrl?.let(::sharedOriginalMemoryCacheKey),
+                diskCacheKey = originalImageCacheKey,
             )
         } else {
             null
@@ -113,10 +127,14 @@ fun AppContentMediaThumbnail(
     } else {
         null
     }
+    val videoPosterCacheKey = remember(mediaSource, mediaType) {
+        mediaSource.viewerVideoCacheKey(mediaType)
+    }
     val videoPosterState = if (mediaType == AppMediaType.VIDEO && !videoPosterUrl.isNullOrBlank()) {
         rememberVideoPosterState(
             url = videoPosterUrl,
             accessToken = accessToken,
+            cacheKey = videoPosterCacheKey,
         ).value
     } else {
         VideoPosterState()
@@ -259,9 +277,18 @@ fun AppContentMediaThumbnail(
 }
 
 private fun thumbnailMemoryCacheKey(
-    url: String,
+    url: String?,
+    cacheKey: String?,
     requestSize: Int,
-): String {
+): String? {
+    if (!cacheKey.isNullOrBlank()) {
+        return if (requestSize >= 512) {
+            cacheKey
+        } else {
+            "$cacheKey:size:$requestSize"
+        }
+    }
+    if (url.isNullOrBlank()) return null
     return if (requestSize >= 512) {
         sharedPreviewMemoryCacheKey(url)
     } else {

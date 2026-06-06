@@ -74,6 +74,7 @@ fun MediaManagementScreen(
         route = route,
         onBack = onBack,
         onPostUpdated = onPostUpdated,
+        onCurrentPostDeleted = onCurrentPostDeleted,
         modifier = modifier,
     )
     return
@@ -714,6 +715,7 @@ private fun UnifiedPostMediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
     onPostUpdated: (postId: String) -> Unit,
+    onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
@@ -721,6 +723,7 @@ private fun UnifiedPostMediaManagementScreen(
             route = route,
             onBack = onBack,
             onPostUpdated = onPostUpdated,
+            onCurrentPostDeleted = onCurrentPostDeleted,
             modifier = modifier,
         )
     } else {
@@ -728,6 +731,7 @@ private fun UnifiedPostMediaManagementScreen(
             route = route,
             onBack = onBack,
             onPostUpdated = onPostUpdated,
+            onCurrentPostDeleted = onCurrentPostDeleted,
             modifier = modifier,
         )
     }
@@ -738,6 +742,7 @@ private fun UnifiedFakePostMediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
     onPostUpdated: (postId: String) -> Unit,
+    onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -754,14 +759,19 @@ private fun UnifiedFakePostMediaManagementScreen(
     val initialCoverId = remember(route.postId, mediaItems) {
         mediaItems.firstOrNull { it.isCover }?.id ?: mediaItems.firstOrNull()?.id
     }
+    var showDeleteCurrentPostConfirm by rememberSaveable(route.postId) { mutableStateOf(false) }
 
     PostMediaListScreen(
         initialItems = initialItems,
         initialCoverMediaId = initialCoverId,
-        allowEmpty = false,
+        allowEmpty = true,
         onCancel = onBack,
         onConfirm = { finalItems, finalCoverId ->
             val finalIds = finalItems.map { it.id }
+            if (finalIds.isEmpty()) {
+                showDeleteCurrentPostConfirm = true
+                return@PostMediaListScreen
+            }
             val originalIds = mediaItems.map { it.id }
             val removedIds = (originalIds - finalIds.toSet()).toSet()
             if (removedIds.isNotEmpty()) {
@@ -791,6 +801,40 @@ private fun UnifiedFakePostMediaManagementScreen(
         },
         modifier = modifier,
     )
+
+    if (showDeleteCurrentPostConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteCurrentPostConfirm = false },
+            title = { Text("删除整个小相册？") },
+            text = { Text("当前媒体列表已经清空，确认后会把这个小相册整体移入回收站。") },
+            confirmButton = {
+                Text(
+                    text = "确认删除",
+                    modifier = Modifier.clickable {
+                        val postSnapshot = FakeAlbumRepository.snapshotPost(route.postId)
+                        showDeleteCurrentPostConfirm = false
+                        if (postSnapshot == null) {
+                            Toast.makeText(context, "当前小相册已不存在。", Toast.LENGTH_SHORT).show()
+                            onCurrentPostDeleted()
+                            return@clickable
+                        }
+                        FakeTrashRepository.recordDeletedPost(postSnapshot)
+                        FakeAlbumRepository.deletePostsLocally(listOf(route.postId))
+                        Toast.makeText(context, "小相册已移入回收站", Toast.LENGTH_SHORT).show()
+                        onCurrentPostDeleted()
+                    },
+                )
+            },
+            dismissButton = {
+                Text(
+                    text = "取消",
+                    modifier = Modifier.clickable {
+                        showDeleteCurrentPostConfirm = false
+                    },
+                )
+            },
+        )
+    }
 }
 
 @Composable
@@ -798,6 +842,7 @@ private fun UnifiedRealPostMediaManagementScreen(
     route: MediaManagementRoute,
     onBack: () -> Unit,
     onPostUpdated: (postId: String) -> Unit,
+    onCurrentPostDeleted: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -809,6 +854,7 @@ private fun UnifiedRealPostMediaManagementScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     var isSaving by rememberSaveable(route.postId) { mutableStateOf(false) }
+    var showDeleteCurrentPostConfirm by rememberSaveable(route.postId) { mutableStateOf(false) }
 
     when {
         uiState.tokenMissing -> {
@@ -852,11 +898,15 @@ private fun UnifiedRealPostMediaManagementScreen(
             PostMediaListScreen(
                 initialItems = initialItems,
                 initialCoverMediaId = initialCoverId,
-                allowEmpty = false,
+                allowEmpty = true,
                 onCancel = onBack,
                 onConfirm = { finalItems, finalCoverId ->
                     if (isSaving) return@PostMediaListScreen
                     val finalIds = finalItems.map { it.id }
+                    if (finalIds.isEmpty()) {
+                        showDeleteCurrentPostConfirm = true
+                        return@PostMediaListScreen
+                    }
                     val originalIds = uiState.mediaItems.map { it.id }
                     val removedIds = originalIds.filterNot { finalIds.contains(it) }
                     val orderChanged = finalIds != originalIds.filter { finalIds.contains(it) }
@@ -913,6 +963,54 @@ private fun UnifiedRealPostMediaManagementScreen(
                 modifier = modifier,
             )
         }
+    }
+
+    if (showDeleteCurrentPostConfirm) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isSaving) {
+                    showDeleteCurrentPostConfirm = false
+                }
+            },
+            title = { Text("删除整个小相册？") },
+            text = { Text("当前媒体列表已经清空，确认后会把这个小相册整体移入回收站。") },
+            confirmButton = {
+                Text(
+                    text = if (isSaving) "处理中…" else "确认删除",
+                    modifier = Modifier.clickable(enabled = !isSaving) {
+                        scope.launch {
+                            isSaving = true
+                            when (val result = RepositoryProvider.postRepository.deletePost(route.postId)) {
+                                is ApiResult.Success -> {
+                                    notifyRealBackendContentChanged(postIds = setOf(route.postId))
+                                    showDeleteCurrentPostConfirm = false
+                                    isSaving = false
+                                    Toast.makeText(context, "小相册已移入回收站", Toast.LENGTH_SHORT).show()
+                                    onCurrentPostDeleted()
+                                }
+                                is ApiResult.Error -> {
+                                    isSaving = false
+                                    Toast.makeText(
+                                        context,
+                                        result.toBackendUiMessage("删除小相册失败。"),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                                ApiResult.Loading -> Unit
+                            }
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                Text(
+                    text = "取消",
+                    modifier = Modifier.clickable(enabled = !isSaving) {
+                        showDeleteCurrentPostConfirm = false
+                    },
+                )
+            },
+        )
     }
 }
 

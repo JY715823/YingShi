@@ -78,7 +78,96 @@ enum class NotificationCategoryFilter(
     TRACE("今日痕迹"),
 }
 
+object NotificationCenterLocalStore {
+    private val notifications = mutableStateListOf<NotificationCenterItemUiModel>()
+
+    fun getNotifications(): List<NotificationCenterItemUiModel> = notifications
+
+    fun contains(notificationId: String): Boolean {
+        return notifications.any { it.id == notificationId }
+    }
+
+    fun push(notification: NotificationCenterItemUiModel) {
+        notifications.removeAll { it.id == notification.id }
+        notifications.add(index = 0, element = notification)
+    }
+
+    fun markRead(notificationId: String) {
+        val index = notifications.indexOfFirst { it.id == notificationId }
+        if (index < 0) return
+        val current = notifications[index]
+        if (current.isRead) return
+        notifications[index] = current.copy(isRead = true)
+    }
+
+    fun markAllRead() {
+        notifications.forEachIndexed { index, item ->
+            if (!item.isRead) {
+                notifications[index] = item.copy(isRead = true)
+            }
+        }
+    }
+
+    fun removeNotifications(notificationIds: Set<String>) {
+        if (notificationIds.isEmpty()) return
+        notifications.removeAll { it.id in notificationIds }
+    }
+
+    fun pushPostCommentNotification(
+        postId: String,
+        comment: String,
+    ) {
+        val post = FakeAlbumRepository.getPost(postId)
+        val postTitle = post?.title?.takeIf { it.isNotBlank() } ?: "当前小相册"
+        push(
+            NotificationCenterItemUiModel(
+                id = nextLocalNotificationId("post-comment"),
+                type = NotificationCenterItemType.COMMENT,
+                title = "小相册评论有新内容",
+                body = "“${comment.notificationPreview()}”已加到「$postTitle」里。",
+                createdAtMillis = System.currentTimeMillis(),
+                isRead = false,
+                targetSummary = postTitle,
+                targetType = "POST",
+                postId = postId,
+            ),
+        )
+    }
+
+    fun pushMediaCommentNotification(
+        mediaId: String,
+        comment: String,
+        postId: String? = null,
+    ) {
+        val post = postId?.let(FakeAlbumRepository::getPost)
+            ?: FakeAlbumRepository.findFirstPostByMediaId(mediaId)
+        val postTitle = post?.title?.takeIf { it.isNotBlank() } ?: "当前媒体"
+        push(
+            NotificationCenterItemUiModel(
+                id = nextLocalNotificationId("media-comment"),
+                type = NotificationCenterItemType.COMMENT,
+                title = "媒体评论有新内容",
+                body = "“${comment.notificationPreview()}”已加到当前媒体评论里。",
+                createdAtMillis = System.currentTimeMillis(),
+                isRead = false,
+                targetSummary = postTitle,
+                targetType = "POST",
+                postId = post?.id ?: postId,
+                mediaId = mediaId,
+            ),
+        )
+    }
+
+    private var localNotificationSequence = 0L
+
+    private fun nextLocalNotificationId(prefix: String): String {
+        localNotificationSequence += 1
+        return "notice-local-$prefix-${System.currentTimeMillis()}-$localNotificationSequence"
+    }
+}
+
 object FakeNotificationRepository {
+    private var localNotificationSequence = 0L
     private val notifications = mutableStateListOf(
         NotificationCenterItemUiModel(
             id = "notice-comment-1",
@@ -216,6 +305,62 @@ object FakeNotificationRepository {
             }
         }
     }
+
+    fun pushPostCommentNotification(
+        postId: String,
+        comment: String,
+    ) {
+        val post = FakeAlbumRepository.getPost(postId)
+        val postTitle = post?.title?.takeIf { it.isNotBlank() } ?: "当前小相册"
+        prependNotification(
+            NotificationCenterItemUiModel(
+                id = nextLocalNotificationId("post-comment"),
+                type = NotificationCenterItemType.COMMENT,
+                title = "小相册评论有新内容",
+                body = "“${comment.notificationPreview()}”已加到「$postTitle」里。",
+                createdAtMillis = System.currentTimeMillis(),
+                isRead = false,
+                targetSummary = postTitle,
+                targetType = "POST",
+                postId = postId,
+            ),
+        )
+    }
+
+    fun pushMediaCommentNotification(
+        mediaId: String,
+        comment: String,
+    ) {
+        val post = FakeAlbumRepository.findFirstPostByMediaId(mediaId)
+        val postTitle = post?.title?.takeIf { it.isNotBlank() } ?: "当前媒体"
+        prependNotification(
+            NotificationCenterItemUiModel(
+                id = nextLocalNotificationId("media-comment"),
+                type = NotificationCenterItemType.COMMENT,
+                title = "媒体评论有新内容",
+                body = "“${comment.notificationPreview()}”已加到当前媒体评论里。",
+                createdAtMillis = System.currentTimeMillis(),
+                isRead = false,
+                targetSummary = postTitle,
+                targetType = "POST",
+                postId = post?.id,
+                mediaId = mediaId,
+            ),
+        )
+    }
+
+    private fun prependNotification(item: NotificationCenterItemUiModel) {
+        notifications.add(index = 0, element = item)
+    }
+
+    private fun nextLocalNotificationId(prefix: String): String {
+        localNotificationSequence += 1
+        return "notice-$prefix-${System.currentTimeMillis()}-$localNotificationSequence"
+    }
+}
+
+private fun String.notificationPreview(): String {
+    return trim().replace('\n', ' ').take(22).ifBlank { "新评论" }
 }
 
 fun RemoteNotification.toNotificationCenterItemUiModel(): NotificationCenterItemUiModel {

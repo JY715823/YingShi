@@ -781,7 +781,7 @@ private fun LedgerHomeHeader(
                     textStyle = MaterialTheme.typography.titleMedium,
                     textColor = LedgerHeaderGreen,
                     fontWeight = FontWeight.Bold,
-                    avatarSize = 18.dp,
+                    avatarSize = 28.dp,
                 )
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
             }

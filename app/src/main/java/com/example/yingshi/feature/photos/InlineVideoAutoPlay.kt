@@ -47,6 +47,9 @@ internal fun AppContentInlineVideoPlayer(
     val videoUrl = remember(mediaSource, mediaType) {
         mediaSource.viewerVideoUrl(mediaType)
     }
+    val videoCacheKey = remember(mediaSource, mediaType) {
+        mediaSource.viewerVideoCacheKey(mediaType)
+    }
     if (videoUrl.isNullOrBlank()) return
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
@@ -58,6 +61,7 @@ internal fun AppContentInlineVideoPlayer(
 
     InlineMutedRemoteVideoPlayer(
         videoUrl = videoUrl,
+        videoCacheKey = videoCacheKey,
         requestHeaders = requestHeaders,
         playWhenReady = playWhenReady,
         modifier = modifier,
@@ -69,16 +73,17 @@ internal fun AppContentInlineVideoPlayer(
 @Composable
 private fun InlineMutedRemoteVideoPlayer(
     videoUrl: String,
+    videoCacheKey: String?,
     requestHeaders: Map<String, String>,
     playWhenReady: Boolean,
     modifier: Modifier = Modifier,
     onPlaybackProgressChange: (InlineVideoPlaybackProgress) -> Unit,
 ) {
     val context = LocalContext.current
-    val textureViewRef = remember(videoUrl, requestHeaders) { mutableStateOf<TextureView?>(null) }
-    var hasRenderedFirstFrame by remember(videoUrl, requestHeaders) { mutableStateOf(false) }
-    var videoSize by remember(videoUrl, requestHeaders) { mutableStateOf(VideoSize.UNKNOWN) }
-    val player = remember(videoUrl, requestHeaders) {
+    val textureViewRef = remember(videoUrl, videoCacheKey, requestHeaders) { mutableStateOf<TextureView?>(null) }
+    var hasRenderedFirstFrame by remember(videoUrl, videoCacheKey, requestHeaders) { mutableStateOf(false) }
+    var videoSize by remember(videoUrl, videoCacheKey, requestHeaders) { mutableStateOf(VideoSize.UNKNOWN) }
+    val player = remember(videoUrl, videoCacheKey, requestHeaders) {
         ExoPlayer.Builder(context).build().apply {
             repeatMode = Player.REPEAT_MODE_ONE
             volume = 0f
@@ -97,7 +102,12 @@ private fun InlineMutedRemoteVideoPlayer(
                         connectTimeoutMs = 8_000,
                         readTimeoutMs = 8_000,
                     ),
-                ).createMediaSource(MediaItem.fromUri(videoUrl)),
+                ).createMediaSource(
+                    MediaItem.Builder()
+                        .setUri(videoUrl)
+                        .setCustomCacheKey(videoCacheKey ?: sharedVideoDiskCacheKey(videoUrl))
+                        .build(),
+                ),
             )
             prepare()
         }

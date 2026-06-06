@@ -1,5 +1,17 @@
 package com.example.yingshi.data.model
 
+data class RemoteMediaAccess(
+    val variant: String,
+    val url: String?,
+    val signedUrl: String?,
+    val expiresAtMillis: Long?,
+    val cacheKey: String?,
+    val revision: String?,
+) {
+    val requestUrl: String?
+        get() = signedUrl?.takeIf { it.isNotBlank() } ?: url?.takeIf { it.isNotBlank() }
+}
+
 data class RemoteMedia(
     val mediaId: String,
     val mediaType: String,
@@ -23,6 +35,7 @@ data class RemoteMedia(
     val displayTimeSource: String? = null,
     val recordOwnerUserId: String? = null,
     val uploadedByUserId: String? = null,
+    val access: List<RemoteMediaAccess> = emptyList(),
 ) {
     val postIds: List<String>
         get() = smallAlbumIds
@@ -90,4 +103,8 @@ data class RemoteUploadToken(
     val uploadUrl: String,
     val expireAtMillis: Long,
     val state: String,
+    val uploadMethod: String = "multipart",
+    val objectKey: String? = null,
+    val headers: Map<String, String> = emptyMap(),
+    val confirmUrl: String? = null,
 )

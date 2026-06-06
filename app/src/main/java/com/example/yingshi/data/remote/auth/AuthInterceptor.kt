@@ -14,7 +14,7 @@ class AuthInterceptor(
             .removeHeader(RemoteConfig.NO_AUTH_HEADER)
 
         if (!skipAuth) {
-            tokenProvider.getAccessToken()?.takeIf { it.isNotBlank() }?.let { accessToken ->
+            tokenProvider.peekAccessToken()?.takeIf { it.isNotBlank() }?.let { accessToken ->
                 builder.header(
                     "Authorization",
                     "${RemoteConfig.AUTH_SCHEME} $accessToken",

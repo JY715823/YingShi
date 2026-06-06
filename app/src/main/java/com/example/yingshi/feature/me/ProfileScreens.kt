@@ -3,6 +3,7 @@ package com.example.yingshi.feature.me
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,10 +13,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -32,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
@@ -104,10 +110,16 @@ fun PersonalProfileScreen(
     val colors = YingShiThemeTokens.colors
 
     ShellPage(
-        title = TITLE_PROFILE,
-        summary = SUMMARY_PROFILE,
-        onBack = onBack,
+        title = "",
+        summary = "",
+        onBack = null,
         modifier = modifier.fillMaxSize(),
+        headerContent = {
+            ProfileInlineHeader(
+                title = TITLE_PROFILE,
+                onBack = onBack,
+            )
+        },
         content = {
             Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                 Surface(
@@ -309,10 +321,16 @@ fun EditProfileScreen(
     }
 
     ShellPage(
-        title = TITLE_EDIT,
-        summary = SUMMARY_EDIT,
-        onBack = onBack,
+        title = "",
+        summary = "",
+        onBack = null,
         modifier = modifier.fillMaxSize(),
+        headerContent = {
+            ProfileInlineHeader(
+                title = TITLE_EDIT,
+                onBack = onBack,
+            )
+        },
         content = {
             Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
                 Row(
@@ -420,6 +438,51 @@ fun EditProfileScreen(
             }
         },
     )
+}
+
+@Composable
+private fun ProfileInlineHeader(
+    title: String,
+    onBack: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier
+                .size(44.dp)
+                .clickable(onClick = onBack),
+            shape = RoundedCornerShape(14.dp),
+            color = colors.sectionBackground.copy(alpha = 0.80f),
+            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "返回",
+                    tint = colors.titleAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.headlineLarge,
+            color = colors.titleAccent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable

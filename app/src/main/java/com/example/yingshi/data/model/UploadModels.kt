@@ -33,7 +33,9 @@ data class RemoteUploadTask(
     val fileName: String,
     val mediaType: String,
     val objectKey: String?,
+    val mediaId: String? = null,
     val state: UploadState,
     val progressPercent: Int,
     val errorMessage: String? = null,
+    val media: RemoteMedia? = null,
 )

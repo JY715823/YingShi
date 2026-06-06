@@ -8,10 +8,10 @@ import retrofit2.http.GET
 import retrofit2.http.PUT
 
 interface ChatApi {
-    @GET("api/chat/snapshot")
+    @GET("api/chat/imported/snapshot")
     suspend fun getSnapshot(): ApiEnvelopeDto<ChatSnapshotDto>
 
-    @PUT("api/chat/snapshot")
+    @PUT("api/chat/imported/snapshot")
     suspend fun putSnapshot(
         @Body request: UpsertChatSnapshotRequestDto,
     ): ApiEnvelopeDto<ChatSnapshotDto>

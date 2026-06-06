@@ -882,14 +882,16 @@ private fun PrefetchPhotoFeedThumbnails(
         feedItems
             .take(photoFeedPrefetchCount(density))
             .mapNotNull { item ->
-                val url = item.mediaSource.thumbnailModelUrl(item.mediaType) ?: return@mapNotNull null
+                val mediaSource = item.mediaSource
+                val url = mediaSource.thumbnailModelUrl(item.mediaType) ?: return@mapNotNull null
                 PrefetchTarget(
                     url = url,
+                    cacheKey = mediaSource.thumbnailModelCacheKey(item.mediaType),
                     mediaType = item.mediaType,
-                    mimeType = item.mediaSource?.mimeType,
+                    mimeType = mediaSource?.mimeType,
                 )
             }
-            .distinctBy { "${it.mediaType}:${it.url}" }
+            .distinctBy { "${it.mediaType}:${it.cacheKey ?: it.url}" }
     }
 
     LaunchedEffect(context, prefetchTargets, accessToken) {
@@ -902,6 +904,7 @@ private fun PrefetchPhotoFeedThumbnails(
                     context = context,
                     url = target.url,
                     accessToken = accessToken,
+                    cacheKey = target.cacheKey,
                 )
                 return@forEach
             }
@@ -909,8 +912,13 @@ private fun PrefetchPhotoFeedThumbnails(
                 context = context,
                 url = target.url,
                 accessToken = accessToken,
-                memoryCacheKey = photoFeedPreviewMemoryCacheKey(target.url, requestSize),
-                placeholderMemoryCacheKey = sharedPreviewMemoryCacheKey(target.url),
+                memoryCacheKey = photoFeedPreviewMemoryCacheKey(
+                    url = target.url,
+                    cacheKey = target.cacheKey,
+                    requestSize = requestSize,
+                ),
+                placeholderMemoryCacheKey = target.cacheKey ?: sharedPreviewMemoryCacheKey(target.url),
+                diskCacheKey = target.cacheKey,
                 size = requestSize,
             )?.let(imageLoader::enqueue)
         }
@@ -919,6 +927,7 @@ private fun PrefetchPhotoFeedThumbnails(
 
 private data class PrefetchTarget(
     val url: String,
+    val cacheKey: String?,
     val mediaType: AppMediaType,
     val mimeType: String?,
 )
@@ -999,7 +1008,7 @@ private fun PhotoFeedToolbar(
 }
 
 @Composable
-private fun PhotoFeedDensitySwitcher(
+internal fun PhotoFeedDensitySwitcher(
     selectedDensity: PhotoFeedDensity,
     enabled: Boolean,
     onDensitySelected: (PhotoFeedDensity) -> Unit,
@@ -1053,7 +1062,7 @@ private fun PhotoFeedDensitySwitcher(
 }
 
 @Composable
-private fun PhotoFeedTimeScrubber(
+internal fun PhotoFeedTimeScrubber(
     progress: Float,
     label: String,
     showLabel: Boolean,
@@ -1350,7 +1359,7 @@ private fun PhotoFeedTimeScrubber(
 }
 
 @Composable
-private fun PhotoFeedSectionHeaderRow(title: String) {
+internal fun PhotoFeedSectionHeaderRow(title: String) {
     val colors = YingShiThemeTokens.colors
     Text(
         text = title,
@@ -1622,7 +1631,7 @@ private fun PhotoFeedEmptyCollaboratorState(
 }
 
 @Composable
-private fun PhotoFeedDayHeaderRow(title: String) {
+internal fun PhotoFeedDayHeaderRow(title: String) {
     val colors = YingShiThemeTokens.colors
     Text(
         text = title,
@@ -2107,7 +2116,7 @@ private fun TargetMediaHighlightOverlay(
     }
 }
 
-private fun resolveCurrentVisibleDateLabel(
+internal fun resolveCurrentVisibleDateLabel(
     itemIndex: Int,
     blocks: List<PhotoFeedBlock>,
     fallbackItems: List<PhotoFeedItem>,
@@ -2130,7 +2139,7 @@ private fun resolveCurrentVisibleDateLabel(
         ?: ""
 }
 
-private fun calculatePhotoFeedScrollProgress(
+internal fun calculatePhotoFeedScrollProgress(
     listState: LazyListState,
     anchorCount: Int,
 ): Float {
@@ -2159,7 +2168,7 @@ private fun calculatePhotoFeedTargetScrollOffset(listState: LazyListState): Int 
     return -(viewportHeight * 0.36f).roundToInt()
 }
 
-private fun calculatePhotoFeedScrubberScrollOffset(listState: LazyListState): Int {
+internal fun calculatePhotoFeedScrubberScrollOffset(listState: LazyListState): Int {
     val layoutInfo = listState.layoutInfo
     val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset)
         .takeIf { it > 0 }
@@ -2221,7 +2230,7 @@ private fun PhotoFeedItem.toScrubberLabel(): String {
     return "${displayYear}年${displayMonth}月${displayDay}日"
 }
 
-private fun formatScrubberDateLabel(timeMillis: Long): String {
+internal fun formatScrubberDateLabel(timeMillis: Long): String {
     val calendar = Calendar.getInstance(Locale.CHINA).apply {
         this.timeInMillis = timeMillis
     }
@@ -2256,7 +2265,7 @@ private fun RestoredBadge(
     }
 }
 
-private fun rowSpacing(density: PhotoFeedDensity): Dp {
+internal fun rowSpacing(density: PhotoFeedDensity): Dp {
     return when (density) {
         PhotoFeedDensity.COMFORT_2 -> 5.dp
         PhotoFeedDensity.COMFORT_3 -> 4.dp
@@ -2266,7 +2275,7 @@ private fun rowSpacing(density: PhotoFeedDensity): Dp {
     }
 }
 
-private fun photoFeedThumbnailRequestSize(density: PhotoFeedDensity): Int {
+internal fun photoFeedThumbnailRequestSize(density: PhotoFeedDensity): Int {
     return when (density) {
         PhotoFeedDensity.COMFORT_2 -> 960
         PhotoFeedDensity.COMFORT_3 -> 720
@@ -2288,8 +2297,16 @@ private fun photoFeedPrefetchCount(density: PhotoFeedDensity): Int {
 
 private fun photoFeedPreviewMemoryCacheKey(
     url: String,
+    cacheKey: String?,
     requestSize: Int,
 ): String {
+    if (!cacheKey.isNullOrBlank()) {
+        return if (requestSize >= 512) {
+            cacheKey
+        } else {
+            "$cacheKey:size:$requestSize"
+        }
+    }
     return if (requestSize >= 512) {
         sharedPreviewMemoryCacheKey(url)
     } else {

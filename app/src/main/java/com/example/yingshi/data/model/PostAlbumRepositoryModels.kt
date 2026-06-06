@@ -47,6 +47,7 @@ data class RemotePostMedia(
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val uploadedByUserId: String? = null,
+    val access: List<RemoteMediaAccess> = emptyList(),
 )
 
 data class RemotePostDetail(

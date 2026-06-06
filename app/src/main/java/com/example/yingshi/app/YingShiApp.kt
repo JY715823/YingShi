@@ -1,5 +1,9 @@
 package com.example.yingshi.app
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -224,20 +228,28 @@ fun YingShiApp() {
     val selectedDestination = RootDestination.valueOf(selectedDestinationName)
     val motion = YingShiThemeTokens.motion
     val context = LocalContext.current
+    val appContext = context.applicationContext
     val scope = rememberCoroutineScope()
     val authSessionVersion = AuthSessionManager.sessionVersion
     val backendSettings = BackendDebugConfig.settings
     val openLifeConsoleNonce = AppNavigationRequests.openLifeConsoleNonce
     val openLedgerRequestNonce = AppNavigationRequests.openLedgerNonce
     val openLedgerAddRequestNonce = AppNavigationRequests.openLedgerAddNonce
-    var currentUser by remember { mutableStateOf<RemoteCurrentUser?>(null) }
-    var isCheckingAuth by remember { mutableStateOf(true) }
+    val initialCurrentUserSnapshot = remember(appContext) {
+        AuthSessionManager.getCurrentUserSnapshot()
+            ?.takeIf { AuthSessionManager.isLoggedIn }
+    }
+    var currentUser by remember { mutableStateOf(initialCurrentUserSnapshot) }
+    var isCheckingAuth by remember {
+        mutableStateOf(initialCurrentUserSnapshot == null && AuthSessionManager.isLoggedIn)
+    }
     var isLoggingOut by remember { mutableStateOf(false) }
     var authNoticeMessage by remember { mutableStateOf<String?>(null) }
     var profileRefreshMessage by remember { mutableStateOf<String?>(null) }
     var isRefreshingProfile by remember { mutableStateOf(false) }
     var appNotice by remember { mutableStateOf<YingShiNotice?>(null) }
     var appNoticeNonce by rememberSaveable { mutableIntStateOf(0) }
+    var lastRootBackPressedAt by rememberSaveable { mutableStateOf(0L) }
 
     fun showAppNotice(
         message: String,
@@ -253,6 +265,7 @@ fun YingShiApp() {
 
     LaunchedEffect(currentUser?.userId, currentUser?.updatedAtMillis, currentUser?.partner?.userId) {
         CollaboratorDirectoryStore.update(currentUser)
+        currentUser?.let(AuthSessionManager::saveCurrentUserSnapshot)
     }
 
     fun resetAccountRoutes() {
@@ -330,12 +343,7 @@ fun YingShiApp() {
         }
     }
 
-    LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl, currentUser?.userId) {
-        if (currentUser != null && AuthSessionManager.isLoggedIn) {
-            PushTokenRegistrar.registerCurrentTokenIfPossible(context)
-            isCheckingAuth = false
-            return@LaunchedEffect
-        }
+    LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl) {
         if (!AuthSessionManager.isLoggedIn) {
             currentUser = null
             isCheckingAuth = false
@@ -343,7 +351,12 @@ fun YingShiApp() {
             profileRefreshMessage = null
             return@LaunchedEffect
         }
-        isCheckingAuth = true
+        val cachedUser = currentUser ?: AuthSessionManager.getCurrentUserSnapshot()
+        if (currentUser == null && cachedUser != null) {
+            currentUser = cachedUser
+        }
+        val hasVisibleUser = cachedUser != null
+        isCheckingAuth = !hasVisibleUser
         when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
             is ApiResult.Success -> {
                 currentUser = result.data
@@ -355,10 +368,11 @@ fun YingShiApp() {
                 if (result.isUnauthorized()) {
                     handleUnauthorized(result.message)
                 } else {
-                    authNoticeMessage = result.message
-                    currentUser = null
+                    if (!hasVisibleUser) {
+                        authNoticeMessage = result.message
+                    }
+                    isCheckingAuth = false
                 }
-                isCheckingAuth = false
             }
             ApiResult.Loading -> Unit
         }
@@ -739,6 +753,45 @@ fun YingShiApp() {
     ) {
         BackHandler {
             restoreNotificationCenter()
+        }
+    }
+    val activity = context.findActivity()
+    val isRootDestination = selectedDestination in setOf(
+        RootDestination.HOME,
+        RootDestination.PHOTOS,
+        RootDestination.LIFE,
+        RootDestination.ME,
+    )
+    val rootExitEligible =
+        isRootDestination &&
+            notificationCenterRoute == null &&
+            notificationDetailRoute == null &&
+            transferCenterRoute == null &&
+            settingsRoute == null &&
+            backendDiagnosticsRoute == null &&
+            cacheManagementRoute == null &&
+            photoViewerRoute == null &&
+            systemMediaRoute == null &&
+            systemMediaViewerRoute == null &&
+            createPostRoute == null &&
+            trashDetailRoute == null &&
+            postDetailRoute == null &&
+            gearEditRoute == null &&
+            mediaManagementRoute == null &&
+            !ledgerRouteActive &&
+            !chatViewerRouteActive &&
+            !lifeConsoleRouteActive &&
+            !isProfileFlowActive &&
+            !showQuickAddSheet
+    if (rootExitEligible) {
+        BackHandler {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastRootBackPressedAt <= 2000L) {
+                activity?.finish()
+            } else {
+                lastRootBackPressedAt = now
+                Toast.makeText(context, "再按一次退出 App", Toast.LENGTH_SHORT).show()
+            }
         }
     }
     val photosOverlayActive = photoViewerRoute != null ||
@@ -1527,6 +1580,14 @@ private val NotificationPlaceholderPalette = PhotoThumbnailPalette(
     end = Color(0xFFD7C6BB),
     accent = Color(0xFF8C6C59),
 )
+
+private tailrec fun Context.findActivity(): Activity? {
+    return when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+}
 
 @Preview(showBackground = true)
 @Composable

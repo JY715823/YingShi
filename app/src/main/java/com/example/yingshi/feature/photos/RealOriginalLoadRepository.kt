@@ -30,6 +30,7 @@ internal data class RealOriginalLoadAllResult(
 private data class RealOriginalRequestKey(
     val mediaId: String,
     val originalUrl: String,
+    val originalCacheKey: String?,
 )
 
 internal fun PhotoFeedItem.toRealOriginalMediaTarget(): RealOriginalMediaTarget {
@@ -159,8 +160,8 @@ internal object RealOriginalLoadRepository {
         val keys = statesByRequestKey.keys.toList()
         var ok = true
         keys.forEach { key ->
-            val diskKey = sharedOriginalDiskCacheKey(key.originalUrl)
-            val memoryKey = sharedOriginalMemoryCacheKey(key.originalUrl)
+            val diskKey = key.originalCacheKey ?: sharedOriginalDiskCacheKey(key.originalUrl)
+            val memoryKey = key.originalCacheKey ?: sharedOriginalMemoryCacheKey(key.originalUrl)
             ok = runCatching {
                 context.imageLoader.diskCache?.remove(diskKey)
                 context.imageLoader.memoryCache?.remove(MemoryCache.Key(memoryKey))
@@ -260,6 +261,7 @@ internal object RealOriginalLoadRepository {
                 loadOriginalImage(
                     context = context,
                     url = key.originalUrl,
+                    cacheKey = key.originalCacheKey,
                     accessToken = accessToken,
                 )
             }
@@ -281,6 +283,7 @@ internal object RealOriginalLoadRepository {
     private suspend fun loadOriginalImage(
         context: Context,
         url: String,
+        cacheKey: String?,
         accessToken: String?,
     ): Boolean {
         return withContext(Dispatchers.IO) {
@@ -289,7 +292,8 @@ internal object RealOriginalLoadRepository {
                 context = context,
                 url = url,
                 accessToken = accessToken,
-                memoryCacheKey = sharedOriginalMemoryCacheKey(url),
+                memoryCacheKey = cacheKey ?: sharedOriginalMemoryCacheKey(url),
+                diskCacheKey = cacheKey,
             ) ?: return@withContext false
             Log.d("RealOriginalLoadRepo", "execute original request url=$url")
             when (val result = context.imageLoader.execute(request)) {
@@ -313,6 +317,7 @@ private fun RealOriginalMediaTarget.requestKey(): RealOriginalRequestKey? {
     return RealOriginalRequestKey(
         mediaId = mediaId,
         originalUrl = originalUrl,
+        originalCacheKey = mediaSource.viewerOriginalImageCacheKey(mediaType),
     )
 }
 

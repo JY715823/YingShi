@@ -43,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
@@ -54,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -73,11 +75,18 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -95,6 +104,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun PostDetailScreen(
@@ -1515,31 +1525,11 @@ fun SmallAlbumInfoSection(
             color = colors.titleAccent,
         )
         if (summary != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = summary,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                    maxLines = if (summaryExpanded) 3 else 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (summary.length > 28) {
-                    Text(
-                        text = if (summaryExpanded) "收起" else "展开",
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-                            .clickable { summaryExpanded = !summaryExpanded }
-                            .padding(horizontal = spacing.xs, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.memoryAccent,
-                    )
-                }
-            }
+            SmallAlbumSummaryText(
+                summary = summary,
+                expanded = summaryExpanded,
+                onToggleExpanded = { summaryExpanded = !summaryExpanded },
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1565,10 +1555,12 @@ fun SmallAlbumInfoSection(
                     onClick = onLoadAllOriginals,
                     containerColor = colors.primaryContainer.copy(alpha = 0.70f),
                 )
-                PostActionChip(
-                    text = if (detail.comments.isEmpty()) "评论" else "评论 ${detail.comments.size}",
+                PostIconButton(
+                    icon = Icons.Rounded.ChatBubbleOutline,
+                    contentDescription = if (detail.comments.isEmpty()) "打开评论" else "打开评论，当前 ${detail.comments.size} 条",
                     onClick = onOpenComments,
-                    containerColor = colors.softGreenContainer.copy(alpha = 0.78f),
+                    buttonSize = 40.dp,
+                    iconSize = 20.dp,
                 )
             }
         }
@@ -2275,6 +2267,16 @@ private fun SmallAlbumMediaGridSection(
     val rowKeys = remember(blocks) {
         blocks.filterIsInstance<PhotoFeedGridRow>().map { it.key }
     }
+    val scrollAnchors = remember(blocks, density) {
+        buildPhotoFeedScrubberAnchors(
+            blocks = blocks,
+            density = density,
+            leadingItemCount = 0,
+        )
+    }
+    val scrubberYearMarkers = remember(scrollAnchors) {
+        buildPhotoFeedScrubberYearMarkers(scrollAnchors)
+    }
     val rowKeyToIndex = remember(rowKeys) {
         rowKeys.mapIndexed { index, rowKey -> rowKey to index }.toMap()
     }
@@ -2333,6 +2335,38 @@ private fun SmallAlbumMediaGridSection(
     LaunchedEffect(selectedIds) {
         liveSelectedIds.value = selectedIds
     }
+    var scrubberVisible by remember { mutableStateOf(false) }
+    var scrubberInteracting by remember { mutableStateOf(false) }
+    var scrubberDragProgress by remember { mutableStateOf<Float?>(null) }
+    var scrubberDragLabel by remember { mutableStateOf("") }
+    var lastRequestedAnchorIndex by remember { mutableStateOf(-1) }
+    val currentVisibleDateLabel by remember(listState, blocks, feedItems) {
+        derivedStateOf {
+            resolveCurrentVisibleDateLabel(
+                itemIndex = listState.firstVisibleItemIndex,
+                blocks = blocks,
+                fallbackItems = feedItems,
+            )
+        }
+    }
+    val currentScrollProgress by remember(listState, scrollAnchors) {
+        derivedStateOf {
+            calculatePhotoFeedScrollProgress(
+                listState = listState,
+                anchorCount = scrollAnchors.size,
+            )
+        }
+    }
+    val displayedScrubberProgress = if (scrubberInteracting) {
+        scrubberDragProgress ?: currentScrollProgress
+    } else {
+        currentScrollProgress
+    }
+    val displayedScrubberLabel = if (scrubberInteracting) {
+        scrubberDragLabel.ifBlank { currentVisibleDateLabel }
+    } else {
+        currentVisibleDateLabel
+    }
 
     fun deleteSelectedMedia() {
         val pendingIds = selectedIds.toSet()
@@ -2389,6 +2423,23 @@ private fun SmallAlbumMediaGridSection(
         }
     }
 
+    LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size, selectionMode) {
+        if (scrollAnchors.size <= 1 || selectionMode) {
+            scrubberVisible = false
+            return@LaunchedEffect
+        }
+        scrubberVisible = true
+        if (!scrubberInteracting) {
+            lastRequestedAnchorIndex = (currentScrollProgress * scrollAnchors.lastIndex)
+                .roundToInt()
+                .coerceIn(0, scrollAnchors.lastIndex)
+            delay(900)
+            if (!scrubberInteracting && !selectionMode) {
+                scrubberVisible = false
+            }
+        }
+    }
+
     BackHandler(enabled = selectionMode) {
         showDeleteSelectedConfirm = false
         selectionMode = false
@@ -2399,21 +2450,6 @@ private fun SmallAlbumMediaGridSection(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
-        if (selectionMode) {
-            SmallAlbumSelectionActionBar(
-                selectedCount = selectedIds.size,
-                onCancel = {
-                    showDeleteSelectedConfirm = false
-                    selectionMode = false
-                    selectedIds = emptySet()
-                },
-                onDelete = {
-                    if (!isMutating && selectedIds.isNotEmpty()) {
-                        showDeleteSelectedConfirm = true
-                    }
-                },
-            )
-        }
         if (showDeleteSelectedConfirm) {
             AlertDialog(
                 onDismissRequest = { showDeleteSelectedConfirm = false },
@@ -2456,11 +2492,7 @@ private fun SmallAlbumMediaGridSection(
                 .fillMaxSize()
                 .discreteZoomLevelGesture(
                     enabled = !selectionMode,
-                    levels = listOf(
-                        PhotoFeedDensity.COMFORT_2,
-                        PhotoFeedDensity.COMFORT_3,
-                        PhotoFeedDensity.DENSE_4,
-                    ),
+                    levels = PhotoFeedDensity.entries.toList(),
                     currentLevel = density,
                     onLevelChange = { densityName = it.name },
                 )
@@ -2483,9 +2515,10 @@ private fun SmallAlbumMediaGridSection(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(smallAlbumSectionSpacing(density)),
                     contentPadding = PaddingValues(
+                        top = if (selectionMode) 58.dp else 0.dp,
                         start = gridSpacing,
                         end = gridSpacing,
-                        bottom = spacing.md,
+                        bottom = if (selectionMode) 92.dp else 24.dp,
                     ),
                 ) {
                     lazyItems(
@@ -2548,6 +2581,73 @@ private fun SmallAlbumMediaGridSection(
                     }
                 }
             }
+            if (selectionMode) {
+                SmallAlbumSelectionTopBar(
+                    selectedCount = selectedIds.size,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp, start = gridSpacing, end = gridSpacing),
+                )
+                SmallAlbumSelectionBottomBar(
+                    onCancel = {
+                        showDeleteSelectedConfirm = false
+                        selectionMode = false
+                        selectedIds = emptySet()
+                    },
+                    onDelete = {
+                        if (!isMutating && selectedIds.isNotEmpty()) {
+                            showDeleteSelectedConfirm = true
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = spacing.lg, end = spacing.lg, bottom = 10.dp),
+                )
+            }
+            if (!selectionMode && scrubberVisible && scrollAnchors.size > 1) {
+                PhotoFeedTimeScrubber(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(184.dp),
+                    progress = displayedScrubberProgress,
+                    label = displayedScrubberLabel,
+                    showLabel = scrubberInteracting,
+                    yearMarkers = scrubberYearMarkers,
+                    onSeekToProgress = { progress ->
+                        if (scrollAnchors.isEmpty()) return@PhotoFeedTimeScrubber
+                        val anchorIndex = (progress * scrollAnchors.lastIndex)
+                            .roundToInt()
+                            .coerceIn(0, scrollAnchors.lastIndex)
+                        scrubberDragProgress = progress.coerceIn(0f, 1f)
+                        scrubberDragLabel = scrollAnchors.getOrNull(anchorIndex)
+                            ?.let { anchor -> formatScrubberDateLabel(anchor.timeMillis) }
+                            .orEmpty()
+                        if (anchorIndex == lastRequestedAnchorIndex) {
+                            return@PhotoFeedTimeScrubber
+                        }
+                        scrollAnchors.getOrNull(anchorIndex)?.let { anchor ->
+                            lastRequestedAnchorIndex = anchorIndex
+                            scope.launch {
+                                listState.scrollToItem(
+                                    index = anchor.itemIndex,
+                                    scrollOffset = calculatePhotoFeedScrubberScrollOffset(listState),
+                                )
+                            }
+                        }
+                    },
+                    onInteractingChanged = { interacting ->
+                        scrubberInteracting = interacting
+                        if (interacting) {
+                            scrubberDragProgress = currentScrollProgress
+                            scrubberDragLabel = currentVisibleDateLabel
+                        } else {
+                            scrubberDragProgress = null
+                            scrubberDragLabel = ""
+                        }
+                    },
+                )
+            }
             if (!selectionMode && mediaItems.isNotEmpty()) {
                 PostIconButton(
                     icon = Icons.Rounded.Add,
@@ -2566,70 +2666,55 @@ private fun SmallAlbumMediaGridSection(
 }
 
 @Composable
-private fun SmallAlbumMediaActionBar(
-    mediaCount: Int,
-    density: PhotoFeedDensity,
-    canSelect: Boolean,
-    onSelect: () -> Unit,
-    onAddMedia: () -> Unit,
+private fun SmallAlbumSelectionTopBar(
+    selectedCount: Int,
+    modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = colors.sectionBackground.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            modifier = Modifier.padding(horizontal = YingShiThemeTokens.spacing.sm, vertical = YingShiThemeTokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (canSelect && mediaCount > 0) {
-                PostActionChip(
-                    text = "选择",
-                    onClick = onSelect,
-                    containerColor = colors.sectionBackground.copy(alpha = 0.68f),
-                )
-            }
-            PostActionChip(
-                text = "添加",
-                onClick = onAddMedia,
-                containerColor = colors.primaryContainer.copy(alpha = 0.76f),
+            Spacer(modifier = Modifier.width(68.dp))
+            Text(
+                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.textPrimary,
             )
+            Spacer(modifier = Modifier.width(68.dp))
         }
     }
 }
 
 @Composable
-private fun SmallAlbumSelectionActionBar(
-    selectedCount: Int,
+private fun SmallAlbumSelectionBottomBar(
     onCancel: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val colors = YingShiThemeTokens.colors
 
-    YingShiToolSurface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius.lg),
-        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.xs),
-        highlighted = selectedCount > 0,
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            YingShiStatusPill(
-                text = "已选 $selectedCount 项",
-                selected = selectedCount > 0,
-                modifier = Modifier.weight(1f),
-            )
             PostActionChip(
                 text = "取消",
                 onClick = onCancel,
-                containerColor = colors.sectionBackground.copy(alpha = 0.72f),
             )
             PostIconButton(
                 icon = Icons.Filled.Delete,
@@ -2812,76 +2897,152 @@ private fun smallAlbumSectionSpacing(density: PhotoFeedDensity): Dp {
 }
 
 private fun smallAlbumRowSpacing(density: PhotoFeedDensity): Dp {
-    return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 5.dp
-        PhotoFeedDensity.COMFORT_3 -> 4.dp
-        PhotoFeedDensity.DENSE_4 -> 4.dp
-        PhotoFeedDensity.OVERVIEW_8 -> 2.dp
-        PhotoFeedDensity.OVERVIEW_16 -> 2.dp
-    }
+    return rowSpacing(density)
 }
 
 private fun smallAlbumThumbnailRequestSize(density: PhotoFeedDensity): Int {
-    return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 960
-        PhotoFeedDensity.COMFORT_3 -> 720
-        PhotoFeedDensity.DENSE_4 -> 512
-        PhotoFeedDensity.OVERVIEW_8 -> 256
-        PhotoFeedDensity.OVERVIEW_16 -> 160
-    }
+    return photoFeedThumbnailRequestSize(density)
 }
 
 @Composable
 private fun SmallAlbumMonthHeaderRow(title: String) {
-    val colors = YingShiThemeTokens.colors
-    val radius = YingShiThemeTokens.radius
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 4.dp),
-        shape = RoundedCornerShape(radius.md),
-        color = colors.raisedSurface.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.52f)),
-    ) {
-        Text(
-            text = title,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = colors.titleAccent,
-            maxLines = 1,
-        )
-    }
+    PhotoFeedSectionHeaderRow(title = title)
 }
 
 @Composable
 private fun SmallAlbumDayHeaderRow(title: String) {
-    val colors = YingShiThemeTokens.colors
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(width = 4.dp, height = 18.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(colors.glassStroke.copy(alpha = 0.82f)),
-        )
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.textPrimary.copy(alpha = 0.88f),
-            maxLines = 1,
-        )
-    }
+    PhotoFeedDayHeaderRow(title = title)
 }
 
 internal fun String?.meaningfulPostSummaryOrNull(): String? {
     val normalized = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return normalized.takeUnless {
         it == "还没有简介" || it == "杩樻病鏈夌畝浠?"
+    }
+}
+
+@Composable
+private fun SmallAlbumSummaryText(
+    summary: String,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    val textStyle = MaterialTheme.typography.bodyMedium
+    val textMeasurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val maxWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
+        val canExpand = remember(summary, maxWidthPx, textStyle) {
+            maxWidthPx > 0 && summaryExceedsTwoLines(
+                summary = summary,
+                textMeasurer = textMeasurer,
+                textStyle = textStyle,
+                maxWidthPx = maxWidthPx,
+            )
+        }
+        val annotatedText = remember(summary, expanded, canExpand, maxWidthPx, textStyle) {
+            buildSmallAlbumSummaryAnnotatedString(
+                summary = summary,
+                expanded = expanded,
+                canExpand = canExpand,
+                textMeasurer = textMeasurer,
+                textStyle = textStyle,
+                maxWidthPx = maxWidthPx,
+                actionColor = colors.memoryAccent,
+            )
+        }
+        Text(
+            text = annotatedText,
+            modifier = if (canExpand) Modifier.clickable(onClick = onToggleExpanded) else Modifier,
+            style = textStyle,
+            color = colors.textSecondary,
+            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+private fun summaryExceedsTwoLines(
+    summary: String,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int,
+): Boolean {
+    if (maxWidthPx <= 0) return false
+    return textMeasurer.measure(
+        text = summary,
+        style = textStyle,
+        constraints = Constraints(maxWidth = maxWidthPx),
+        maxLines = 2,
+    ).hasVisualOverflow
+}
+
+private fun buildSmallAlbumSummaryAnnotatedString(
+    summary: String,
+    expanded: Boolean,
+    canExpand: Boolean,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textStyle: TextStyle,
+    maxWidthPx: Int,
+    actionColor: Color,
+): androidx.compose.ui.text.AnnotatedString {
+    val actionLabel = if (expanded) " 收起" else " 展开"
+    val actionStyle = SpanStyle(
+        color = actionColor,
+        fontWeight = FontWeight.SemiBold,
+    )
+    if (!canExpand || maxWidthPx <= 0) {
+        return buildAnnotatedString { append(summary) }
+    }
+    if (expanded) {
+        return buildAnnotatedString {
+            append(summary)
+            withStyle(actionStyle) {
+                append(actionLabel)
+            }
+        }
+    }
+
+    val suffix = "…$actionLabel"
+    var low = 0
+    var high = summary.length
+    var best = 0
+    while (low <= high) {
+        val middle = (low + high) / 2
+        val candidate = summary.take(middle).trimForSummaryPreview() + suffix
+        val fits = !textMeasurer.measure(
+            text = candidate,
+            style = textStyle,
+            constraints = Constraints(maxWidth = maxWidthPx),
+            maxLines = 2,
+        ).hasVisualOverflow
+        if (fits) {
+            best = middle
+            low = middle + 1
+        } else {
+            high = middle - 1
+        }
+    }
+    val preview = summary.take(best).trimForSummaryPreview().ifBlank { summary.take(1) }
+    return buildAnnotatedString {
+        append(preview)
+        append("…")
+        withStyle(actionStyle) {
+            append(actionLabel)
+        }
+    }
+}
+
+private fun String.trimForSummaryPreview(): String {
+    return trimEnd { character ->
+        character == ' ' ||
+            character == '\n' ||
+            character == '，' ||
+            character == '。' ||
+            character == '、' ||
+            character == ',' ||
+            character == '.'
     }
 }
 

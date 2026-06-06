@@ -103,6 +103,12 @@ object FakeAlbumRepository {
         return posts.firstOrNull { it.id == postId }
     }
 
+    fun findFirstPostByMediaId(mediaId: String): AlbumPostCardUiModel? {
+        return posts.firstOrNull { post ->
+            ensurePostMedia(postId = post.id, fallbackPost = post).any { it.id == mediaId }
+        }
+    }
+
     fun createAlbum(
         title: String,
         subtitle: String,

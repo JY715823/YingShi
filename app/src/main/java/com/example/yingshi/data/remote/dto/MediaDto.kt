@@ -1,5 +1,14 @@
 package com.example.yingshi.data.remote.dto
 
+data class MediaAccessDto(
+    val variant: String,
+    val url: String? = null,
+    val signedUrl: String? = null,
+    val expiresAtMillis: Long? = null,
+    val cacheKey: String? = null,
+    val revision: String? = null,
+)
+
 data class MediaDto(
     val mediaId: String,
     val mediaType: String? = null,
@@ -26,6 +35,7 @@ data class MediaDto(
     val uploadedByUserId: String? = null,
     val createdAtMillis: Long? = null,
     val smallAlbumIds: List<String> = emptyList(),
+    val access: List<MediaAccessDto> = emptyList(),
 ) {
     val postIds: List<String>
         get() = smallAlbumIds

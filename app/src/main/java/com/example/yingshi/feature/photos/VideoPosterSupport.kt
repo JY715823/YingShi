@@ -25,9 +25,11 @@ internal data class VideoPosterState(
 internal fun rememberVideoPosterState(
     url: String?,
     accessToken: String?,
+    cacheKey: String? = null,
 ): State<VideoPosterState> {
     val context = LocalContext.current
-    val cachedPoster = rememberCachedVideoPosterModel(context, url)
+    val resolvedCacheKey = videoPosterCacheKey(url, cacheKey)
+    val cachedPoster = rememberCachedVideoPosterModel(context, url, resolvedCacheKey)
     return produceState(
         initialValue = VideoPosterState(
             model = cachedPoster,
@@ -35,14 +37,14 @@ internal fun rememberVideoPosterState(
         ),
         key1 = context,
         key2 = url,
-        key3 = accessToken,
+        key3 = VideoPosterRequestKey(accessToken, resolvedCacheKey),
     ) {
         if (url.isNullOrBlank()) {
             value = VideoPosterState()
             return@produceState
         }
 
-        rememberCachedVideoPosterModel(context, url)?.let { cachedPosterModel ->
+        rememberCachedVideoPosterModel(context, url, resolvedCacheKey)?.let { cachedPosterModel ->
             value = VideoPosterState(model = cachedPosterModel)
             return@produceState
         }
@@ -51,9 +53,10 @@ internal fun rememberVideoPosterState(
             context = context,
             url = url,
             accessToken = accessToken,
+            cacheKey = resolvedCacheKey,
         )
         value = if (posterFile != null) {
-            VideoPosterState(model = rememberCachedVideoPosterModel(context, url) ?: posterFile)
+            VideoPosterState(model = rememberCachedVideoPosterModel(context, url, resolvedCacheKey) ?: posterFile)
         } else {
             VideoPosterState(hasError = true)
         }
@@ -63,13 +66,15 @@ internal fun rememberVideoPosterState(
 private fun rememberCachedVideoPosterModel(
     context: Context,
     url: String?,
+    cacheKey: String?,
 ): Any? {
     if (url.isNullOrBlank()) return null
-    videoPosterMemoryCache[url]?.let { return it }
-    val file = videoPosterFile(context, url).takeIf { it.exists() && it.length() > 0L } ?: return null
+    val resolvedCacheKey = videoPosterCacheKey(url, cacheKey) ?: return null
+    videoPosterMemoryCache[resolvedCacheKey]?.let { return it }
+    val file = videoPosterFile(context, resolvedCacheKey).takeIf { it.exists() && it.length() > 0L } ?: return null
     val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
     if (bitmap != null) {
-        videoPosterMemoryCache[url] = bitmap
+        videoPosterMemoryCache[resolvedCacheKey] = bitmap
         return bitmap
     }
     return file
@@ -79,11 +84,13 @@ internal suspend fun prefetchVideoPoster(
     context: Context,
     url: String,
     accessToken: String?,
+    cacheKey: String? = null,
 ) {
     ensureVideoPosterFile(
         context = context,
         url = url,
         accessToken = accessToken,
+        cacheKey = videoPosterCacheKey(url, cacheKey),
     )
 }
 
@@ -91,8 +98,10 @@ private suspend fun ensureVideoPosterFile(
     context: Context,
     url: String,
     accessToken: String?,
+    cacheKey: String?,
 ): File? = withContext(Dispatchers.IO) {
-    val targetFile = videoPosterFile(context, url)
+    val resolvedCacheKey = videoPosterCacheKey(url, cacheKey) ?: return@withContext null
+    val targetFile = videoPosterFile(context, resolvedCacheKey)
     if (targetFile.exists() && targetFile.length() > 0L) {
         return@withContext targetFile
     }
@@ -137,11 +146,19 @@ private fun extractVideoPosterBitmap(
 
 private fun videoPosterFile(
     context: Context,
-    url: String,
+    cacheKey: String,
 ): File {
     val cacheDirectory = context.cacheDir.resolve("video-posters")
-    val key = sha256(url)
+    val key = sha256(cacheKey)
     return cacheDirectory.resolve("$key.jpg")
+}
+
+private fun videoPosterCacheKey(
+    url: String?,
+    cacheKey: String?,
+): String? {
+    if (url.isNullOrBlank()) return null
+    return cacheKey?.trim()?.ifBlank { null } ?: "video-poster:${stableMediaCacheUrlKey(url)}"
 }
 
 private fun sha256(value: String): String {
@@ -163,3 +180,8 @@ internal fun clearVideoPosterMemoryCache() {
     videoPosterMemoryCache.clear()
     videoPosterLocks.clear()
 }
+
+private data class VideoPosterRequestKey(
+    val accessToken: String?,
+    val cacheKey: String?,
+)

@@ -1229,6 +1229,7 @@ private fun PrefetchViewerMediaAssets(
         val imageLoader = context.imageLoader
         targets.forEach { item ->
             if (item.mediaType == AppMediaType.VIDEO) {
+                val posterImageCacheKey = item.mediaSource.thumbnailModelCacheKey(item.mediaType)
                 val posterImageUrl = item.mediaSource
                     ?.thumbnailModelUrl(item.mediaType)
                     ?.takeUnless { looksLikeVideoSource(it, item.mediaSource?.mimeType) }
@@ -1237,7 +1238,8 @@ private fun PrefetchViewerMediaAssets(
                         context = context,
                         url = posterImageUrl,
                         accessToken = accessToken,
-                        memoryCacheKey = sharedPreviewMemoryCacheKey(posterImageUrl),
+                        memoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
+                        diskCacheKey = posterImageCacheKey,
                         size = 1280,
                     )?.let(imageLoader::enqueue)
                     return@forEach
@@ -1247,15 +1249,18 @@ private fun PrefetchViewerMediaAssets(
                         context = context,
                         url = videoUrl,
                         accessToken = accessToken,
+                        cacheKey = item.mediaSource.viewerVideoCacheKey(item.mediaType),
                     )
                 }
             } else {
                 item.mediaSource?.viewerPreviewImageUrl(item.mediaType)?.let { previewUrl ->
+                    val previewCacheKey = item.mediaSource.viewerPreviewImageCacheKey(item.mediaType)
                     backendMediaImageRequest(
                         context = context,
                         url = previewUrl,
                         accessToken = accessToken,
-                        memoryCacheKey = sharedPreviewMemoryCacheKey(previewUrl),
+                        memoryCacheKey = previewCacheKey ?: sharedPreviewMemoryCacheKey(previewUrl),
+                        diskCacheKey = previewCacheKey,
                         size = 1280,
                     )?.let(imageLoader::enqueue)
                 }
@@ -1800,29 +1805,37 @@ private fun ViewerImageCanvas(
     val previewUrl = remember(mediaSource, media.mediaType) {
         mediaSource.viewerPreviewImageUrl(media.mediaType)
     }
+    val previewCacheKey = remember(mediaSource, media.mediaType) {
+        mediaSource.viewerPreviewImageCacheKey(media.mediaType)
+    }
     val originalUrl = remember(mediaSource, media.mediaType) {
         mediaSource.viewerOriginalImageUrl(media.mediaType)
+    }
+    val originalCacheKey = remember(mediaSource, media.mediaType) {
+        mediaSource.viewerOriginalImageCacheKey(media.mediaType)
     }
     val shouldRequestOriginal = originalLoadState == OriginalLoadState.Loaded
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val previewRequest = remember(context, previewUrl, accessToken) {
+    val previewRequest = remember(context, previewUrl, previewCacheKey, accessToken) {
         backendMediaImageRequest(
             context = context,
             url = previewUrl,
             accessToken = accessToken,
-            memoryCacheKey = previewUrl?.let(::sharedPreviewMemoryCacheKey),
+            memoryCacheKey = previewCacheKey ?: previewUrl?.let(::sharedPreviewMemoryCacheKey),
+            diskCacheKey = previewCacheKey,
         )
     }
-    val originalRequest = remember(context, originalUrl, shouldRequestOriginal, accessToken) {
+    val originalRequest = remember(context, originalUrl, originalCacheKey, shouldRequestOriginal, accessToken) {
         if (shouldRequestOriginal) {
             backendMediaOriginalImageRequest(
                 context = context,
                 url = originalUrl,
                 accessToken = accessToken,
-                memoryCacheKey = originalUrl?.let(::sharedOriginalMemoryCacheKey),
+                memoryCacheKey = originalCacheKey ?: originalUrl?.let(::sharedOriginalMemoryCacheKey),
+                diskCacheKey = originalCacheKey,
             )
         } else {
             null
@@ -2010,6 +2023,9 @@ internal fun ViewerVideoCanvas(
     val videoUrl = remember(media.mediaSource, media.mediaType) {
         media.mediaSource.viewerVideoUrl(media.mediaType)
     }
+    val videoCacheKey = remember(media.mediaSource, media.mediaType) {
+        media.mediaSource.viewerVideoCacheKey(media.mediaType)
+    }
     val isPlaying = playbackState?.isPlaying == true
     val isLoading = playbackState?.isLoading == true
     val errorMessage = playbackState?.errorMessage
@@ -2022,12 +2038,16 @@ internal fun ViewerVideoCanvas(
             .thumbnailModelUrl(media.mediaType)
             ?.takeUnless { looksLikeVideoSource(it, media.mediaSource?.mimeType) }
     }
-    val posterImageRequest = remember(context, posterImageUrl, accessToken) {
+    val posterImageCacheKey = remember(media.mediaSource, media.mediaType) {
+        media.mediaSource.thumbnailModelCacheKey(media.mediaType)
+    }
+    val posterImageRequest = remember(context, posterImageUrl, posterImageCacheKey, accessToken) {
         backendMediaImageRequest(
             context = context,
             url = posterImageUrl,
             accessToken = accessToken,
-            memoryCacheKey = posterImageUrl?.let(::sharedPreviewMemoryCacheKey),
+            memoryCacheKey = posterImageCacheKey ?: posterImageUrl?.let(::sharedPreviewMemoryCacheKey),
+            diskCacheKey = posterImageCacheKey,
             size = 1280,
         )
     }
@@ -2043,6 +2063,7 @@ internal fun ViewerVideoCanvas(
     val videoPosterState = rememberVideoPosterState(
         url = fallbackPosterVideoUrl,
         accessToken = accessToken,
+        cacheKey = videoCacheKey,
     ).value
     val extractedPosterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
     val requestHeaders = remember(videoUrl, accessToken) {
@@ -2052,7 +2073,7 @@ internal fun ViewerVideoCanvas(
     val retryRequestNonce = playbackState?.retryRequestNonce ?: 0
     var isPrepared by remember(media.mediaId, retryVersion, retryRequestNonce) { mutableStateOf(false) }
     val initialPositionMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
-    val player = remember(media.mediaId, videoUrl, requestHeaders, retryVersion, retryRequestNonce) {
+    val player = remember(media.mediaId, videoUrl, videoCacheKey, requestHeaders, retryVersion, retryRequestNonce) {
         if (videoUrl.isNullOrBlank()) {
             null
         } else {
@@ -2072,7 +2093,12 @@ internal fun ViewerVideoCanvas(
                             connectTimeoutMs = 8_000,
                             readTimeoutMs = 8_000,
                         ),
-                    ).createMediaSource(MediaItem.fromUri(videoUrl)),
+                    ).createMediaSource(
+                        MediaItem.Builder()
+                            .setUri(videoUrl)
+                            .setCustomCacheKey(videoCacheKey ?: sharedVideoDiskCacheKey(videoUrl))
+                            .build(),
+                    ),
                 )
                 if (initialPositionMillis > 0L) {
                     seekTo(initialPositionMillis)

@@ -10,6 +10,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
 import retrofit2.Retrofit
+import retrofit2.HttpException
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -76,8 +77,10 @@ object AuthRefreshCoordinator {
                 }
                 AuthSessionManager.saveTokens(refreshedTokens)
                 refreshedTokens
-            } catch (_: Exception) {
-                AuthSessionManager.clearTokens()
+            } catch (exception: Exception) {
+                if ((exception as? HttpException)?.code() == 401) {
+                    AuthSessionManager.clearTokens()
+                }
                 null
             }
         }

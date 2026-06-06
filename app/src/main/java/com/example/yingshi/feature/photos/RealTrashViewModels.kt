@@ -36,14 +36,54 @@ data class RealTrashDetailUiState(
     val detail: RemoteTrashDetail? = null,
 )
 
+private object RealTrashMemoryCache {
+    private val listStates = mutableMapOf<String, RealTrashListUiState>()
+    private val detailStates = mutableMapOf<String, RealTrashDetailUiState>()
+
+    fun listKey(selectedType: TrashEntryType?): String = selectedType?.name ?: "ALL"
+
+    fun readListState(selectedType: TrashEntryType?): RealTrashListUiState? = listStates[listKey(selectedType)]
+
+    fun hasListState(selectedType: TrashEntryType?): Boolean = listStates.containsKey(listKey(selectedType))
+
+    fun writeListState(
+        selectedType: TrashEntryType?,
+        state: RealTrashListUiState,
+    ) {
+        listStates[listKey(selectedType)] = state.copy(isLoading = false, isMutating = false)
+    }
+
+    fun readDetailState(entryId: String): RealTrashDetailUiState? = detailStates[entryId]
+
+    fun writeDetailState(
+        entryId: String,
+        state: RealTrashDetailUiState,
+    ) {
+        detailStates[entryId] = state.copy(isLoading = false, isMutating = false)
+    }
+}
+
 class RealTrashListViewModel(
+    initialSelectedType: TrashEntryType? = null,
     private val trashRepository: TrashRepository = RepositoryProvider.trashRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(RealTrashListUiState(isLoading = true))
+    private var activeListKey = RealTrashMemoryCache.listKey(initialSelectedType)
+    private val _uiState = MutableStateFlow(
+        RealTrashMemoryCache.readListState(initialSelectedType) ?: RealTrashListUiState(isLoading = true),
+    )
     val uiState: StateFlow<RealTrashListUiState> = _uiState.asStateFlow()
 
     fun refresh(selectedType: TrashEntryType?) {
         viewModelScope.launch {
+            val nextListKey = RealTrashMemoryCache.listKey(selectedType)
+            val cachedState = RealTrashMemoryCache.readListState(selectedType)
+            val hasCachedState = RealTrashMemoryCache.hasListState(selectedType)
+            if (nextListKey != activeListKey) {
+                activeListKey = nextListKey
+                _uiState.value = cachedState ?: RealTrashListUiState(isLoading = true)
+            } else if (cachedState != null && _uiState.value.entries.isEmpty()) {
+                _uiState.value = cachedState
+            }
             if (!AuthSessionManager.isLoggedIn) {
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
                     force = false,
@@ -60,9 +100,10 @@ class RealTrashListViewModel(
                 }
             }
 
+            val shouldShowLoading = _uiState.value.entries.isEmpty() && !hasCachedState
             _uiState.update {
                 it.copy(
-                    isLoading = true,
+                    isLoading = shouldShowLoading,
                     tokenMissing = false,
                     errorMessage = null,
                 )
@@ -76,19 +117,30 @@ class RealTrashListViewModel(
             val itemError = (itemsResult as? ApiResult.Error)
                 ?.toBackendUiMessage("读取回收站列表失败。")
             val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
+            if (itemError != null && _uiState.value.entries.isNotEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = itemError,
+                    )
+                }
+                return@launch
+            }
             successItems.forEach(TrashActorHintStore::record)
 
             val deduplicatedEntries = successItems
                 .map { it.toTrashEntryUiModel() }
                 .distinctBy { it.businessIdentityKey() }
 
-            _uiState.value = RealTrashListUiState(
+            val nextState = RealTrashListUiState(
                 isLoading = false,
                 errorMessage = itemError,
                 entries = deduplicatedEntries,
                 pendingEntries = emptyList(),
                 statusMessage = _uiState.value.statusMessage,
             )
+            _uiState.value = nextState
+            RealTrashMemoryCache.writeListState(selectedType, nextState)
         }
     }
 
@@ -225,11 +277,11 @@ class RealTrashListViewModel(
     }
 
     companion object {
-        fun factory(): ViewModelProvider.Factory {
+        fun factory(initialSelectedType: TrashEntryType? = null): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return RealTrashListViewModel() as T
+                    return RealTrashListViewModel(initialSelectedType = initialSelectedType) as T
                 }
             }
         }
@@ -240,7 +292,9 @@ class RealTrashDetailViewModel(
     private val route: TrashDetailRoute,
     private val trashRepository: TrashRepository = RepositoryProvider.trashRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(RealTrashDetailUiState(isLoading = true))
+    private val _uiState = MutableStateFlow(
+        RealTrashMemoryCache.readDetailState(route.entryId) ?: RealTrashDetailUiState(isLoading = true),
+    )
     val uiState: StateFlow<RealTrashDetailUiState> = _uiState.asStateFlow()
 
     init {
@@ -265,9 +319,10 @@ class RealTrashDetailViewModel(
                 }
             }
 
+            val shouldShowLoading = _uiState.value.detail == null
             _uiState.update {
                 it.copy(
-                    isLoading = true,
+                    isLoading = shouldShowLoading,
                     tokenMissing = false,
                     errorMessage = null,
                 )
@@ -275,16 +330,27 @@ class RealTrashDetailViewModel(
             when (val result = trashRepository.getTrashDetail(route.entryId)) {
                 is ApiResult.Success -> {
                     TrashActorHintStore.record(result.data.item)
-                    _uiState.value = _uiState.value.copy(
+                    val nextState = _uiState.value.copy(
                         isLoading = false,
                         detail = result.data,
                     )
+                    _uiState.value = nextState
+                    RealTrashMemoryCache.writeDetailState(route.entryId, nextState)
                 }
                 is ApiResult.Error -> {
-                    _uiState.value = RealTrashDetailUiState(
-                        isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取回收站详情失败。"),
-                    )
+                    if (_uiState.value.detail != null) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = result.toBackendUiMessage("读取回收站详情失败。"),
+                            )
+                        }
+                    } else {
+                        _uiState.value = RealTrashDetailUiState(
+                            isLoading = false,
+                            errorMessage = result.toBackendUiMessage("读取回收站详情失败。"),
+                        )
+                    }
                 }
                 ApiResult.Loading -> Unit
             }

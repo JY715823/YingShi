@@ -4,6 +4,35 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val configuredReleaseApiBaseUrl = providers.gradleProperty("YINGSHI_RELEASE_API_BASE_URL")
+    .orElse(providers.environmentVariable("YINGSHI_RELEASE_API_BASE_URL"))
+    .orNull
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+
+fun normalizeApiBaseUrl(rawUrl: String): String {
+    require(rawUrl.startsWith("https://")) {
+        "YINGSHI_RELEASE_API_BASE_URL must be an HTTPS URL."
+    }
+    return if (rawUrl.endsWith("/")) rawUrl else "$rawUrl/"
+}
+
+val releaseApiBaseUrl = configuredReleaseApiBaseUrl
+    ?.let(::normalizeApiBaseUrl)
+    ?: "https://release-api-url-not-configured.invalid/"
+
+gradle.taskGraph.whenReady {
+    val releaseTaskRequested = allTasks.any { task ->
+        task.name.contains("Release")
+    }
+    if (releaseTaskRequested && configuredReleaseApiBaseUrl == null) {
+        throw GradleException(
+            "Release builds require YINGSHI_RELEASE_API_BASE_URL=https://your-api-domain/ " +
+                "via Gradle property or environment variable.",
+        )
+    }
+}
+
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
@@ -63,7 +92,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://api-placeholder.yingshi.local/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"$releaseApiBaseUrl\"")
             buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
     }

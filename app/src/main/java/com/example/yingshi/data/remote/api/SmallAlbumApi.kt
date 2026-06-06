@@ -54,9 +54,9 @@ interface SmallAlbumApi {
         @Body request: AddSmallAlbumMediaRequestDto,
     ): ApiEnvelopeDto<SmallAlbumDetailDto>
 
-    @DELETE("api/small-albums/{smallAlbumId}")
+    @DELETE("api/posts/{postId}")
     suspend fun deletePost(
-        @Path("smallAlbumId") smallAlbumId: String,
+        @Path("postId") postId: String,
     ): ApiEnvelopeDto<TrashItemDto>
 }
 

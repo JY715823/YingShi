@@ -191,7 +191,10 @@ fun NotificationCenterScreen(
                     updateUiState(
                         NotificationCenterUiState(
                             isLoading = false,
-                            notifications = result.data.map { it.toNotificationCenterItemUiModel() },
+                            notifications = mergeNotificationStreams(
+                                remoteNotifications = result.data.map { it.toNotificationCenterItemUiModel() },
+                                localNotifications = NotificationCenterLocalStore.getNotifications(),
+                            ),
                         ),
                     )
                 }
@@ -263,6 +266,7 @@ fun NotificationCenterScreen(
                         updateUiState(uiState.copy(isMutating = true, errorMessage = null))
                         when (val result = RepositoryProvider.notificationRepository.markAllRead()) {
                             is ApiResult.Success -> {
+                                NotificationCenterLocalStore.markAllRead()
                                 updateUiState(
                                     uiState.copy(
                                         isMutating = false,
@@ -341,6 +345,11 @@ fun NotificationCenterScreen(
                                     coroutineScope.launch {
                                         val targetItem = if (item.isRead) {
                                             item
+                                        } else if (NotificationCenterLocalStore.contains(item.id)) {
+                                            NotificationCenterLocalStore.markRead(item.id)
+                                            val updatedItem = item.copy(isRead = true)
+                                            updateUiState(uiState.replaceNotification(updatedItem))
+                                            updatedItem
                                         } else {
                                             when (val result = RepositoryProvider.notificationRepository.markRead(item.id)) {
                                                 is ApiResult.Success -> {
@@ -410,6 +419,7 @@ fun NotificationCenterScreen(
                         val deleteIds = filteredNotifications.map(NotificationCenterItemUiModel::id).toSet()
                         showClearListConfirm = false
                         if (deleteIds.isNotEmpty()) {
+                            NotificationCenterLocalStore.removeNotifications(deleteIds)
                             updateUiState(
                                 uiState.copy(
                                     notifications = uiState.notifications.filterNot { it.id in deleteIds },
@@ -714,43 +724,49 @@ private fun NotificationCenterItemRow(
                             .background(colors.memoryAccent),
                     )
                 }
-                Column(
-                    modifier = Modifier.weight(1f, fill = presentation.visual == NotificationVisual.None),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    Text(
-                        text = presentation.title,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.titleAccent,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = presentation.body,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = presentation.targetSummary,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (item.isRead) {
-                            colors.titleAccent.copy(alpha = 0.82f)
-                        } else {
-                            colors.memoryAccent
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (presentation.visual != NotificationVisual.None) {
-                    NotificationVisualPane(
-                        visual = presentation.visual,
-                        modifier = Modifier
-                            .width(96.dp)
-                            .height(96.dp),
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                    ) {
+                        Text(
+                            text = presentation.title,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = presentation.body,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = presentation.targetSummary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (item.isRead) {
+                                colors.titleAccent.copy(alpha = 0.82f)
+                            } else {
+                                colors.memoryAccent
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (presentation.visual != NotificationVisual.None) {
+                        NotificationVisualPane(
+                            visual = presentation.visual,
+                            modifier = Modifier
+                                .width(96.dp)
+                                .height(96.dp),
+                        )
+                    }
                 }
             }
         }
@@ -1144,6 +1160,15 @@ private fun List<NotificationCenterItemUiModel>.filterBy(
     return filter { it.matchesModule(filter) }
 }
 
+private fun mergeNotificationStreams(
+    remoteNotifications: List<NotificationCenterItemUiModel>,
+    localNotifications: List<NotificationCenterItemUiModel>,
+): List<NotificationCenterItemUiModel> {
+    return (localNotifications + remoteNotifications)
+        .distinctBy(NotificationCenterItemUiModel::id)
+        .sortedByDescending(NotificationCenterItemUiModel::createdAtMillis)
+}
+
 @Composable
 private fun rememberNotificationPresentation(
     item: NotificationCenterItemUiModel,
@@ -1187,7 +1212,6 @@ private suspend fun resolveNotificationPresentation(
         ?.takeIf { it.isNotBlank() }
         ?.let { trashItemId -> loadNotificationTrashVisual(trashItemId) }
     val visual = when {
-        item.type == NotificationCenterItemType.COMMENT -> NotificationVisual.None
         item.mediaId != null && postVisual?.mediaVisual != null -> postVisual.mediaVisual
         postVisual?.smallAlbumVisual != null -> postVisual.smallAlbumVisual
         trashVisual?.mediaVisual != null -> trashVisual.mediaVisual

@@ -45,7 +45,16 @@ class RealViewerCommentViewModel(
     fun createMediaComment(mediaId: String, content: String) {
         val normalized = content.trim()
         if (normalized.isEmpty()) return
-        mutateMediaComments(mediaId, "评论已发送。") {
+        mutateMediaComments(
+            mediaId = mediaId,
+            successMessage = "评论已发送。",
+            onSuccess = {
+                NotificationCenterLocalStore.pushMediaCommentNotification(
+                    mediaId = mediaId,
+                    comment = normalized,
+                )
+            },
+        ) {
             commentRepository.createMediaComment(mediaId, normalized)
         }
     }
@@ -106,6 +115,7 @@ class RealViewerCommentViewModel(
     private fun mutateMediaComments(
         mediaId: String,
         successMessage: String,
+        onSuccess: (() -> Unit)? = null,
         block: suspend () -> ApiResult<*>,
     ) {
         if (!AuthSessionManager.isLoggedIn) {
@@ -133,6 +143,7 @@ class RealViewerCommentViewModel(
             }
             when (val result = block()) {
                 is ApiResult.Success -> {
+                    onSuccess?.invoke()
                     notifyRealBackendCommentChanged(
                         mediaIds = setOf(mediaId),
                     )

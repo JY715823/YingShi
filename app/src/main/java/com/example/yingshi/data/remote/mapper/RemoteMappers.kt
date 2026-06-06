@@ -12,6 +12,7 @@ import com.example.yingshi.data.model.RemoteLifeConsoleHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteLifeConsoleUser
+import com.example.yingshi.data.model.RemoteMediaAccess
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
@@ -35,6 +36,7 @@ import com.example.yingshi.data.remote.dto.LifeConsoleMediaSlotDto
 import com.example.yingshi.data.remote.dto.LifeConsoleTodayDto
 import com.example.yingshi.data.remote.dto.LifeConsoleUserDto
 import com.example.yingshi.data.remote.dto.MediaDto
+import com.example.yingshi.data.remote.dto.MediaAccessDto
 import com.example.yingshi.data.remote.dto.PostDetailDto
 import com.example.yingshi.data.remote.dto.PostMediaDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
@@ -47,21 +49,26 @@ import com.example.yingshi.data.remote.dto.UploadTokenDto
 
 fun MediaDto.toRemoteModel(): RemoteMedia {
     val normalizedDisplayTime = displayTimeMillis.takeIf { it > 0L } ?: createdAtMillis ?: 0L
+    val accessItems = access.map(MediaAccessDto::toRemoteModel)
+    val previewAccess = accessItems.accessFor("preview")
+    val originalAccess = accessItems.accessFor("original")
+    val videoAccess = accessItems.accessFor("video")
+    val coverAccess = accessItems.accessFor("cover")
     return RemoteMedia(
         mediaId = mediaId,
         mediaType = mediaType?.ifBlank { type.orEmpty() }.orEmpty().ifBlank { "image" },
-        previewUrl = previewUrl ?: thumbnailUrl,
-        originalUrl = originalUrl,
-        videoUrl = videoUrl,
+        previewUrl = previewAccess?.requestUrl ?: previewUrl ?: thumbnailUrl,
+        originalUrl = originalAccess?.requestUrl ?: originalUrl,
+        videoUrl = videoAccess?.requestUrl ?: videoUrl,
         width = width,
         height = height,
         aspectRatio = aspectRatio,
         displayTimeMillis = normalizedDisplayTime,
         commentCount = 0,
         smallAlbumIds = smallAlbumIds,
-        thumbnailUrl = thumbnailUrl ?: previewUrl,
-        mediaUrl = mediaUrl ?: url,
-        coverUrl = coverUrl,
+        thumbnailUrl = previewAccess?.requestUrl ?: thumbnailUrl ?: previewUrl,
+        mediaUrl = originalAccess?.requestUrl ?: videoAccess?.requestUrl ?: mediaUrl ?: url,
+        coverUrl = coverAccess?.requestUrl ?: coverUrl,
         mimeType = mimeType,
         durationMillis = durationMillis ?: duration,
         createdAtMillis = createdAtMillis,
@@ -70,6 +77,7 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         displayTimeSource = displayTimeSource,
         recordOwnerUserId = recordOwnerUserId,
         uploadedByUserId = uploadedByUserId,
+        access = accessItems,
     )
 }
 
@@ -185,12 +193,17 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
 
 fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
     val normalizedDisplayTime = media.displayTimeMillis.takeIf { it > 0L } ?: media.createdAtMillis ?: 0L
+    val accessItems = media.access.map(MediaAccessDto::toRemoteModel)
+    val previewAccess = accessItems.accessFor("preview")
+    val originalAccess = accessItems.accessFor("original")
+    val videoAccess = accessItems.accessFor("video")
+    val coverAccess = accessItems.accessFor("cover")
     return RemotePostMedia(
         mediaId = media.mediaId,
         mediaType = media.mediaType?.ifBlank { media.type.orEmpty() }.orEmpty().ifBlank { "image" },
-        previewUrl = media.previewUrl ?: media.thumbnailUrl,
-        originalUrl = media.originalUrl,
-        videoUrl = media.videoUrl,
+        previewUrl = previewAccess?.requestUrl ?: media.previewUrl ?: media.thumbnailUrl,
+        originalUrl = originalAccess?.requestUrl ?: media.originalUrl,
+        videoUrl = videoAccess?.requestUrl ?: media.videoUrl,
         width = media.width,
         height = media.height,
         aspectRatio = media.aspectRatio,
@@ -198,15 +211,16 @@ fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
         commentCount = 0,
         isCover = isCover,
         videoDurationMillis = media.durationMillis ?: media.duration,
-        thumbnailUrl = media.thumbnailUrl ?: media.previewUrl,
-        mediaUrl = media.mediaUrl ?: media.url,
-        coverUrl = media.coverUrl,
+        thumbnailUrl = previewAccess?.requestUrl ?: media.thumbnailUrl ?: media.previewUrl,
+        mediaUrl = originalAccess?.requestUrl ?: videoAccess?.requestUrl ?: media.mediaUrl ?: media.url,
+        coverUrl = coverAccess?.requestUrl ?: media.coverUrl,
         mimeType = media.mimeType,
         createdAtMillis = media.createdAtMillis,
         capturedAtMillis = media.capturedAtMillis,
         importedAtMillis = media.importedAtMillis,
         displayTimeSource = media.displayTimeSource,
         uploadedByUserId = media.uploadedByUserId,
+        access = accessItems,
     )
 }
 
@@ -317,6 +331,10 @@ fun UploadTokenDto.toRemoteModel(): RemoteUploadToken {
         uploadUrl = uploadUrl,
         expireAtMillis = expireAtMillis,
         state = state,
+        uploadMethod = uploadMethod ?: "multipart",
+        objectKey = objectKey,
+        headers = headers,
+        confirmUrl = confirmUrl,
     )
 }
 
@@ -326,9 +344,11 @@ fun UploadCompleteResponseDto.toRemoteModel(): RemoteUploadTask {
         fileName = media.mediaId,
         mediaType = media.mediaType?.ifBlank { media.type.orEmpty() }.orEmpty().ifBlank { "image" },
         objectKey = media.url,
+        mediaId = media.mediaId,
         state = state.toUploadState(),
         progressPercent = if (state.equals("success", ignoreCase = true)) 100 else 0,
         errorMessage = null,
+        media = media.toRemoteModel(),
     )
 }
 
@@ -338,10 +358,27 @@ fun UploadTaskDto.toRemoteModel(): RemoteUploadTask {
         fileName = fileName,
         mediaType = mediaType,
         objectKey = objectKey,
+        mediaId = mediaId,
         state = state.toUploadState(),
         progressPercent = progressPercent,
         errorMessage = errorMessage,
+        media = media?.toRemoteModel(),
     )
+}
+
+private fun MediaAccessDto.toRemoteModel(): RemoteMediaAccess {
+    return RemoteMediaAccess(
+        variant = variant,
+        url = url,
+        signedUrl = signedUrl,
+        expiresAtMillis = expiresAtMillis,
+        cacheKey = cacheKey,
+        revision = revision,
+    )
+}
+
+private fun List<RemoteMediaAccess>.accessFor(variant: String): RemoteMediaAccess? {
+    return firstOrNull { it.variant.equals(variant, ignoreCase = true) }
 }
 
 private fun String.toUploadState(): UploadState {

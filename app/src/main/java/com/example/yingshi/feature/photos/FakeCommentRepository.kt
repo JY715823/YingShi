@@ -67,6 +67,10 @@ object FakeCommentRepository {
                 content = normalized,
             ),
         )
+        FakeNotificationRepository.pushPostCommentNotification(
+            postId = postId,
+            comment = normalized,
+        )
     }
 
     fun addMediaComment(mediaId: String, content: String) {
@@ -81,6 +85,10 @@ object FakeCommentRepository {
                 targetId = mediaId,
                 content = normalized,
             ),
+        )
+        FakeNotificationRepository.pushMediaCommentNotification(
+            mediaId = mediaId,
+            comment = normalized,
         )
     }
 

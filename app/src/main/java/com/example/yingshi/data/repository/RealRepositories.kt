@@ -55,12 +55,18 @@ import com.example.yingshi.data.remote.mapper.toRemoteDetail
 import com.example.yingshi.data.remote.mapper.toRemotePage
 import com.example.yingshi.data.remote.mapper.toRemoteSummary
 import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.remote.result.backendErrorCode
+import com.example.yingshi.data.remote.result.backendErrorMessage
+import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
 import retrofit2.HttpException
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 class RealMediaRepository(
     private val mediaApi: MediaApi,
@@ -308,7 +314,7 @@ class RealPostRepository(
 
     override suspend fun deletePost(postId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
-            postApi.deletePost(smallAlbumId = postId).data.toRemoteModel()
+            postApi.deletePost(postId = postId).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -707,6 +713,7 @@ class RealTrashRepository(
 
 class RealUploadRepository(
     private val uploadApi: UploadApi,
+    private val directUploadClient: OkHttpClient = defaultDirectUploadClient,
 ) : UploadRepository {
     override suspend fun createUploadToken(
         payload: CreateUploadTokenPayload,
@@ -727,7 +734,9 @@ class RealUploadRepository(
                     displayTimeSource = payload.displayTimeSource,
                     sourceFingerprint = payload.sourceFingerprint,
                 ),
-            ).data.toRemoteModel()
+            ).data.toRemoteModel().also { token ->
+                uploadTokens[token.uploadId] = token
+            }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -748,6 +757,18 @@ class RealUploadRepository(
         onProgressPercent: (Int) -> Unit,
     ): ApiResult<RemoteMedia> {
         return runCatching {
+            val uploadToken = uploadTokens[uploadId]
+            val directUploadToken = uploadToken.takeIf { it.isDirectUploadToken() }
+            if (directUploadToken != null) {
+                return@runCatching uploadDirect(
+                    token = directUploadToken,
+                    body = ProgressRequestBody(
+                        bytes = fileBytes,
+                        mimeType = mimeType,
+                        onProgressPercent = onProgressPercent,
+                    ),
+                )
+            }
             val filePart = MultipartBody.Part.createFormData(
                 name = "file",
                 filename = fileName,
@@ -782,6 +803,19 @@ class RealUploadRepository(
         onProgressPercent: (Int) -> Unit,
     ): ApiResult<RemoteMedia> {
         return runCatching {
+            val uploadToken = uploadTokens[uploadId]
+            val directUploadToken = uploadToken.takeIf { it.isDirectUploadToken() }
+            if (directUploadToken != null) {
+                return@runCatching uploadDirect(
+                    token = directUploadToken,
+                    body = ProgressInputStreamRequestBody(
+                        expectedLengthBytes = fileSizeBytes,
+                        mimeType = mimeType,
+                        openInputStream = openInputStream,
+                        onProgressPercent = onProgressPercent,
+                    ),
+                )
+            }
             val filePart = MultipartBody.Part.createFormData(
                 name = "file",
                 filename = fileName,
@@ -860,6 +894,75 @@ class RealUploadRepository(
                 )
             },
         )
+    }
+
+    private suspend fun uploadDirect(
+        token: RemoteUploadToken,
+        body: RequestBody,
+    ): RemoteMedia {
+        val objectKey = token.objectKey?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Direct upload token is missing objectKey.")
+        val request = Request.Builder()
+            .url(token.uploadUrl)
+            .put(body)
+            .apply {
+                token.headers.forEach { (name, value) ->
+                    val normalizedName = name.trim()
+                    if (
+                        normalizedName.isNotBlank() &&
+                        value.isNotBlank() &&
+                        !normalizedName.equals("host", ignoreCase = true) &&
+                        !normalizedName.equals("content-length", ignoreCase = true)
+                    ) {
+                        header(normalizedName, value)
+                    }
+                }
+            }
+            .build()
+        try {
+            directUploadClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Direct upload failed with HTTP ${response.code}.")
+                }
+                val etag = response.header("ETag")?.trim('"').orEmpty()
+                val task = uploadApi.confirmUpload(
+                    uploadId = token.uploadId,
+                    request = com.example.yingshi.data.remote.dto.ConfirmUploadRequestDto(
+                        etag = etag,
+                        objectKey = objectKey,
+                    ),
+                ).data.toRemoteModel()
+                return task.media
+                    ?: getConfirmedMedia(token.uploadId)
+                    ?: throw IllegalStateException("Upload confirmed but media payload was missing.")
+            }
+        } finally {
+            uploadTokens.remove(token.uploadId)
+        }
+    }
+
+    private suspend fun getConfirmedMedia(uploadId: String): RemoteMedia? {
+        return runCatching {
+            uploadApi.getUploadTask(uploadId).data.toRemoteModel().media
+        }.getOrNull()
+    }
+
+    private fun RemoteUploadToken?.isDirectUploadToken(): Boolean {
+        if (this == null) return false
+        return uploadMethod.equals("presigned-put", ignoreCase = true) &&
+            uploadUrl.startsWith("http", ignoreCase = true) &&
+            !objectKey.isNullOrBlank()
+    }
+
+    companion object {
+        private val uploadTokens = ConcurrentHashMap<String, RemoteUploadToken>()
+
+        private val defaultDirectUploadClient: OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.MINUTES)
+            .writeTimeout(10, TimeUnit.MINUTES)
+            .callTimeout(10, TimeUnit.MINUTES)
+            .build()
     }
 }
 
@@ -953,13 +1056,20 @@ private fun backendRequestErrorMessage(
     throwable: Throwable,
     fallback: String,
 ): String {
+    throwable.backendErrorMessage()?.let { return it }
+    val backendCode = throwable.backendErrorCode()
     val httpException = throwable as? HttpException
     if (httpException != null) {
-        return when (httpException.code()) {
-            401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
-            403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
-            404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d44\u6e90\u3002"
-            in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+        return when {
+            backendCode == "AUTH_SESSION_INVALID" ||
+                backendCode == "AUTH_TOKEN_EXPIRED" ||
+                backendCode == "AUTH_UNAUTHORIZED" -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            backendCode == "RESOURCE_NOT_FOUND" -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d44\u6e90\u3002"
+            backendCode == "ACCESS_DENIED" -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
+            httpException.code() == 401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            httpException.code() == 403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
+            httpException.code() == 404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d44\u6e90\u3002"
+            httpException.code() in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
             else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
         }
     }
@@ -1113,21 +1223,28 @@ class RealLifeConsoleRepository(
             },
         )
     }
+
 }
 
 private fun uploadRequestErrorMessage(
     throwable: Throwable,
     fallback: String,
 ): String {
+    throwable.backendErrorMessage()?.let { return it }
+    val backendCode = throwable.backendErrorCode()
     val httpException = throwable as? HttpException
     if (httpException != null) {
-        val errorBody = runCatching {
-            httpException.response()?.errorBody()?.string()
-        }.getOrNull()?.takeIf { it.isNotBlank() }
-        return if (errorBody == null) {
-            "上传失败（${httpException.code()}），请稍后重试。"
-        } else {
-            "上传失败（${httpException.code()}）：${errorBody.take(240)}"
+        return when {
+            backendCode == "UPLOAD_NOT_FOUND" -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u4e0a\u4f20\u4efb\u52a1\u3002"
+            backendCode == "UPLOAD_EXPIRED" -> "\u4e0a\u4f20\u51ed\u8bc1\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u4e0a\u4f20\u3002"
+            backendCode == "UPLOAD_OBJECT_MISMATCH" -> "\u4e0a\u4f20\u5bf9\u8c61\u4e0e\u5f53\u524d\u4efb\u52a1\u4e0d\u5339\u914d\uff0c\u8bf7\u91cd\u65b0\u4e0a\u4f20\u3002"
+            backendCode == "UPLOAD_OBJECT_INVALID" ||
+                backendCode == "UPLOAD_SIZE_MISMATCH" ||
+                backendCode == "UPLOAD_CONTENT_TYPE_MISMATCH" -> "\u4e0a\u4f20\u6587\u4ef6\u6821\u9a8c\u5931\u8d25\uff0c\u8bf7\u91cd\u65b0\u4e0a\u4f20\u3002"
+            httpException.code() == 401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            httpException.code() == 413 -> "\u6587\u4ef6\u8fc7\u5927\uff0c\u8bf7\u538b\u7f29\u6216\u9009\u62e9\u8f83\u5c0f\u6587\u4ef6\u3002"
+            httpException.code() in 500..599 -> "\u4e0a\u4f20\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+            else -> "\u4e0a\u4f20\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
         }
     }
     return throwable.message?.takeIf { it.isNotBlank() } ?: fallback
@@ -1284,14 +1401,19 @@ private fun authRequestErrorMessage(
     throwable: Throwable,
     fallback: String,
 ): String {
+    throwable.backendErrorMessage()?.let { return it }
+    val backendCode = throwable.backendErrorCode()
     val httpException = throwable as? HttpException
     if (httpException != null) {
-        return when (httpException.code()) {
-            400 -> "\u8bf7\u6c42\u53c2\u6570\u4e0d\u5b8c\u6574\uff0c\u8bf7\u68c0\u67e5\u540e\u91cd\u8bd5\u3002"
-            401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
-            403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
-            404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d26\u53f7\u63a5\u53e3\u3002"
-            in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
+        return when {
+            backendCode == "AUTH_SESSION_INVALID" ||
+                backendCode == "AUTH_TOKEN_EXPIRED" ||
+                backendCode == "AUTH_UNAUTHORIZED" -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            httpException.code() == 400 -> "\u8bf7\u6c42\u53c2\u6570\u4e0d\u5b8c\u6574\uff0c\u8bf7\u68c0\u67e5\u540e\u91cd\u8bd5\u3002"
+            httpException.code() == 401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            httpException.code() == 403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
+            httpException.code() == 404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d26\u53f7\u63a5\u53e3\u3002"
+            httpException.code() in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
             else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
         }
     }

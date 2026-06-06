@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import com.example.yingshi.data.model.RemoteMedia
+import com.example.yingshi.data.model.RemoteMediaAccess
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteConfig
@@ -11,6 +12,8 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Size
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.util.Locale
 
 @Immutable
@@ -25,35 +28,70 @@ data class AppContentMediaSource(
     val height: Int? = null,
     val durationMillis: Long? = null,
     val createdAtMillis: Long? = null,
+    val thumbnailCacheKey: String? = null,
+    val originalCacheKey: String? = null,
+    val mediaCacheKey: String? = null,
+    val videoCacheKey: String? = null,
+    val coverCacheKey: String? = null,
 )
 
 fun RemoteMedia.toAppContentMediaSource(): AppContentMediaSource {
+    val previewAccess = access.mediaAccess("preview")
+    val originalAccess = access.mediaAccess("original")
+    val videoAccess = access.mediaAccess("video")
+    val coverAccess = access.mediaAccess("cover")
+    val resolvedMediaCacheKey = when {
+        mediaType.equals("video", ignoreCase = true) -> videoAccess.stableCacheKey()
+        else -> originalAccess.stableCacheKey()
+    }
     return AppContentMediaSource(
-        thumbnailUrl = resolveBackendMediaUrl(thumbnailUrl ?: previewUrl),
-        originalUrl = resolveBackendMediaUrl(originalUrl),
-        mediaUrl = resolveBackendMediaUrl(mediaUrl),
-        videoUrl = resolveBackendMediaUrl(videoUrl),
-        coverUrl = resolveBackendMediaUrl(coverUrl),
+        thumbnailUrl = resolveBackendMediaUrl(previewAccess?.requestUrl ?: thumbnailUrl ?: previewUrl),
+        originalUrl = resolveBackendMediaUrl(originalAccess?.requestUrl ?: originalUrl),
+        mediaUrl = resolveBackendMediaUrl(
+            originalAccess?.requestUrl ?: videoAccess?.requestUrl ?: mediaUrl,
+        ),
+        videoUrl = resolveBackendMediaUrl(videoAccess?.requestUrl ?: videoUrl),
+        coverUrl = resolveBackendMediaUrl(coverAccess?.requestUrl ?: coverUrl),
         mimeType = mimeType?.trim()?.ifBlank { null },
         width = width,
         height = height,
         durationMillis = durationMillis,
         createdAtMillis = createdAtMillis ?: displayTimeMillis,
+        thumbnailCacheKey = previewAccess.stableCacheKey(),
+        originalCacheKey = originalAccess.stableCacheKey(),
+        mediaCacheKey = resolvedMediaCacheKey,
+        videoCacheKey = videoAccess.stableCacheKey(),
+        coverCacheKey = coverAccess.stableCacheKey(),
     )
 }
 
 internal fun RemotePostMedia.toAppContentMediaSource(): AppContentMediaSource {
+    val previewAccess = access.mediaAccess("preview")
+    val originalAccess = access.mediaAccess("original")
+    val videoAccess = access.mediaAccess("video")
+    val coverAccess = access.mediaAccess("cover")
+    val resolvedMediaCacheKey = when {
+        mediaType.equals("video", ignoreCase = true) -> videoAccess.stableCacheKey()
+        else -> originalAccess.stableCacheKey()
+    }
     return AppContentMediaSource(
-        thumbnailUrl = resolveBackendMediaUrl(thumbnailUrl ?: previewUrl),
-        originalUrl = resolveBackendMediaUrl(originalUrl),
-        mediaUrl = resolveBackendMediaUrl(mediaUrl),
-        videoUrl = resolveBackendMediaUrl(videoUrl),
-        coverUrl = resolveBackendMediaUrl(coverUrl),
+        thumbnailUrl = resolveBackendMediaUrl(previewAccess?.requestUrl ?: thumbnailUrl ?: previewUrl),
+        originalUrl = resolveBackendMediaUrl(originalAccess?.requestUrl ?: originalUrl),
+        mediaUrl = resolveBackendMediaUrl(
+            originalAccess?.requestUrl ?: videoAccess?.requestUrl ?: mediaUrl,
+        ),
+        videoUrl = resolveBackendMediaUrl(videoAccess?.requestUrl ?: videoUrl),
+        coverUrl = resolveBackendMediaUrl(coverAccess?.requestUrl ?: coverUrl),
         mimeType = mimeType?.trim()?.ifBlank { null },
         width = width,
         height = height,
         durationMillis = videoDurationMillis,
         createdAtMillis = createdAtMillis ?: displayTimeMillis,
+        thumbnailCacheKey = previewAccess.stableCacheKey(),
+        originalCacheKey = originalAccess.stableCacheKey(),
+        mediaCacheKey = resolvedMediaCacheKey,
+        videoCacheKey = videoAccess.stableCacheKey(),
+        coverCacheKey = coverAccess.stableCacheKey(),
     )
 }
 
@@ -120,6 +158,27 @@ internal fun AppContentMediaSource?.thumbnailModelUrl(
     }
 }
 
+internal fun AppContentMediaSource?.thumbnailModelCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (this == null) return null
+    return when (mediaType) {
+        AppMediaType.IMAGE -> firstNotBlank(
+            thumbnailCacheKey,
+            mediaCacheKey,
+            originalCacheKey,
+            coverCacheKey,
+        )
+        AppMediaType.VIDEO -> firstNotBlank(
+            thumbnailCacheKey,
+            coverCacheKey,
+            mediaCacheKey,
+            originalCacheKey,
+            videoCacheKey,
+        )
+    }
+}
+
 internal fun AppContentMediaSource?.viewerPreviewImageUrl(
     mediaType: AppMediaType,
 ): String? {
@@ -127,6 +186,16 @@ internal fun AppContentMediaSource?.viewerPreviewImageUrl(
     return firstNotBlank(
         thumbnailUrl,
         mediaUrl,
+    )
+}
+
+internal fun AppContentMediaSource?.viewerPreviewImageCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.IMAGE || this == null) return null
+    return firstNotBlank(
+        thumbnailCacheKey,
+        mediaCacheKey,
     )
 }
 
@@ -139,6 +208,16 @@ internal fun AppContentMediaSource?.viewerOriginalImageUrl(
         disallow = setOfNotNull(previewUrl),
         originalUrl,
         mediaUrl,
+    )
+}
+
+internal fun AppContentMediaSource?.viewerOriginalImageCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.IMAGE || this == null) return null
+    return firstNotBlank(
+        originalCacheKey,
+        mediaCacheKey,
     )
 }
 
@@ -156,6 +235,17 @@ internal fun AppContentMediaSource?.viewerVideoUrl(
         videoUrl,
         mediaUrl,
         originalUrl,
+    )
+}
+
+internal fun AppContentMediaSource?.viewerVideoCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    return firstNotBlank(
+        videoCacheKey,
+        mediaCacheKey,
+        originalCacheKey,
     )
 }
 
@@ -220,6 +310,7 @@ internal fun backendMediaImageRequest(
     accessToken: String?,
     memoryCacheKey: String? = url?.let(::sharedPreviewMemoryCacheKey),
     placeholderMemoryCacheKey: String? = null,
+    diskCacheKey: String? = null,
     size: Int? = null,
 ): ImageRequest? {
     if (url.isNullOrBlank()) return null
@@ -227,7 +318,7 @@ internal fun backendMediaImageRequest(
         data(url)
         memoryCacheKey?.let(::memoryCacheKey)
         placeholderMemoryCacheKey?.let(::placeholderMemoryCacheKey)
-        diskCacheKey(sharedMediaDiskCacheKey(url))
+        diskCacheKey(diskCacheKey?.takeIf { it.isNotBlank() } ?: sharedMediaDiskCacheKey(url))
         networkCachePolicy(CachePolicy.ENABLED)
         diskCachePolicy(CachePolicy.ENABLED)
         memoryCachePolicy(CachePolicy.ENABLED)
@@ -243,12 +334,13 @@ internal fun backendMediaOriginalImageRequest(
     url: String?,
     accessToken: String?,
     memoryCacheKey: String? = url?.let(::sharedOriginalMemoryCacheKey),
+    diskCacheKey: String? = null,
 ): ImageRequest? {
     if (url.isNullOrBlank()) return null
     return ImageRequest.Builder(context).apply {
         data(url)
         memoryCacheKey?.let(::memoryCacheKey)
-        diskCacheKey(sharedOriginalDiskCacheKey(url))
+        diskCacheKey(diskCacheKey?.takeIf { it.isNotBlank() } ?: sharedOriginalDiskCacheKey(url))
         networkCachePolicy(CachePolicy.ENABLED)
         diskCachePolicy(CachePolicy.ENABLED)
         memoryCachePolicy(CachePolicy.ENABLED)
@@ -259,18 +351,51 @@ internal fun backendMediaOriginalImageRequest(
     }.build()
 }
 
-internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:$url"
+internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:${stableMediaCacheUrlKey(url)}"
 
 internal fun sharedSizedPreviewMemoryCacheKey(
     url: String,
     size: Int,
-): String = "media:$url:size:$size"
+): String = "media:${stableMediaCacheUrlKey(url)}:size:$size"
 
-internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:$url"
+internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:${stableMediaCacheUrlKey(url)}"
 
-internal fun sharedMediaDiskCacheKey(url: String): String = "media:$url"
+internal fun sharedMediaDiskCacheKey(url: String): String = "media:${stableMediaCacheUrlKey(url)}"
 
-internal fun sharedOriginalDiskCacheKey(url: String): String = "original:$url"
+internal fun sharedOriginalDiskCacheKey(url: String): String = "original:${stableMediaCacheUrlKey(url)}"
+
+internal fun sharedVideoDiskCacheKey(url: String): String = "video:${stableMediaCacheUrlKey(url)}"
+
+internal fun stableMediaCacheUrlKey(url: String): String {
+    val normalized = url.trim()
+    if (normalized.isBlank()) return normalized
+    return runCatching {
+        val parsed = java.net.URI(normalized)
+        val path = parsed.rawPath?.takeIf { it.isNotBlank() } ?: parsed.path.orEmpty()
+        val mediaFileMarker = "/api/media/files/"
+        val markerIndex = path.indexOf(mediaFileMarker, ignoreCase = true)
+        if (markerIndex >= 0) {
+            val encodedMediaId = path.substring(markerIndex + mediaFileMarker.length)
+                .substringBefore('/')
+                .takeIf { it.isNotBlank() }
+            if (!encodedMediaId.isNullOrBlank()) {
+                val variant = rawQueryParameter(parsed.rawQuery, "variant")?.trim()?.ifBlank { null } ?: "original"
+                return@runCatching "media:${decodeUrlComponent(encodedMediaId)}:$variant"
+            }
+        }
+
+        val hasVolatileQuery = rawQueryParameterNames(parsed.rawQuery).any { name ->
+            name.lowercase(Locale.ROOT) in VolatileSignedQueryParameterNames
+        }
+        if (hasVolatileQuery) {
+            normalized.substringBefore('?').substringBefore('#')
+        } else {
+            normalized.substringBefore('#')
+        }
+    }.getOrElse {
+        normalized.substringBefore('#')
+    }
+}
 
 internal fun resolveBackendMediaUrl(rawUrl: String?): String? {
     val normalized = rawUrl?.trim().orEmpty()
@@ -289,6 +414,14 @@ internal fun resolveBackendMediaUrl(rawUrl: String?): String? {
 
 private fun firstNotBlank(vararg values: String?): String? {
     return values.firstOrNull { !it.isNullOrBlank() }?.trim()
+}
+
+private fun List<RemoteMediaAccess>.mediaAccess(variant: String): RemoteMediaAccess? {
+    return firstOrNull { it.variant.equals(variant, ignoreCase = true) }
+}
+
+private fun RemoteMediaAccess?.stableCacheKey(): String? {
+    return this?.cacheKey?.trim()?.ifBlank { null }
 }
 
 private fun firstDistinctNotBlank(
@@ -343,3 +476,57 @@ private fun String?.hasFileExtension(vararg expectedExtensions: String): Boolean
         .lowercase(Locale.ROOT)
     return extension.isNotBlank() && expectedExtensions.contains(extension)
 }
+
+private fun rawQueryParameterNames(rawQuery: String?): Set<String> {
+    if (rawQuery.isNullOrBlank()) return emptySet()
+    return rawQuery.split('&')
+        .asSequence()
+        .map { it.substringBefore('=') }
+        .filter { it.isNotBlank() }
+        .map(::decodeUrlComponent)
+        .toSet()
+}
+
+private fun rawQueryParameter(rawQuery: String?, name: String): String? {
+    if (rawQuery.isNullOrBlank()) return null
+    return rawQuery.split('&')
+        .asSequence()
+        .mapNotNull { part ->
+            val rawName = part.substringBefore('=').takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            if (!decodeUrlComponent(rawName).equals(name, ignoreCase = true)) {
+                return@mapNotNull null
+            }
+            decodeUrlComponent(part.substringAfter('=', missingDelimiterValue = ""))
+        }
+        .firstOrNull()
+}
+
+private fun decodeUrlComponent(value: String): String {
+    return runCatching {
+        URLDecoder.decode(value, StandardCharsets.UTF_8.name())
+    }.getOrElse {
+        value
+    }
+}
+
+private val VolatileSignedQueryParameterNames = setOf(
+    "x-amz-algorithm",
+    "x-amz-credential",
+    "x-amz-date",
+    "x-amz-expires",
+    "x-amz-security-token",
+    "x-amz-signature",
+    "expires",
+    "sign",
+    "signature",
+    "security-token",
+    "t",
+    "token",
+    "q-ak",
+    "q-header-list",
+    "q-key-time",
+    "q-sign-algorithm",
+    "q-sign-time",
+    "q-signature",
+    "q-url-param-list",
+)
