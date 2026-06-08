@@ -876,7 +876,7 @@ private fun PrefetchPhotoFeedThumbnails(
     val context = LocalContext.current
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val prefetchTargets = remember(feedItems, density, requestSize) {
         feedItems

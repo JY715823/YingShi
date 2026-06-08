@@ -482,7 +482,7 @@ private fun RealSmallAlbumDetailContent(
     var shareAllInFlight by remember { mutableStateOf(false) }
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val postMediaIds = remember(detail.mediaItems) { detail.mediaItems.map { it.id } }
     val feedbackKey = "${detail.postId}:$feedbackNonce"

@@ -1,8 +1,10 @@
 package com.example.yingshi.feature.photos
 
+import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.remote.result.httpStatusCode
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -32,11 +34,8 @@ internal fun Throwable?.toBackendNetworkDetail(): String? {
 }
 
 internal fun realBackendSessionKey(scope: String): String {
-    val settings = BackendDebugConfig.settings
     return buildString {
         append(scope)
-        append('|')
-        append(settings.repositoryMode.name)
         append('|')
         append(BackendDebugConfig.currentBaseUrl())
         append("|config=")
@@ -44,6 +43,17 @@ internal fun realBackendSessionKey(scope: String): String {
         append("|token=")
         append(AuthSessionManager.sessionVersion)
     }
+}
+
+internal fun ApiResult.Error.shouldFallbackToReadCache(): Boolean {
+    val code = httpStatusCode()
+    return throwable is IOException || (code != null && code in 500..599)
+}
+
+internal fun ApiResult.Error.offlineReadOnlyMessage(
+    fallback: String = OfflineReadOnlyDefaultMessage,
+): String {
+    return toBackendUiMessage(fallback)
 }
 
 internal fun String?.orReadableBackendMessage(fallback: String): String {

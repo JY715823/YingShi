@@ -39,7 +39,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePartnerProfile
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.components.yingShiClickable
@@ -54,8 +53,7 @@ private const val TEXT_PARTNER_HINT = "一起把平常日子慢慢收进这座�
 @Composable
 fun MyScreen(
     currentUser: RemoteCurrentUser?,
-    repositoryMode: RepositoryMode,
-    baseUrl: String,
+    isOfflineReadOnly: Boolean,
     isLoggingOut: Boolean,
     onOpenProfile: () -> Unit,
     onLogout: () -> Unit,
@@ -66,9 +64,6 @@ fun MyScreen(
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
     val scrollState = rememberScrollState()
-
-    @Suppress("UNUSED_VARIABLE")
-    val backendAddressReservedForSettings = baseUrl
 
     YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
@@ -113,7 +108,6 @@ fun MyScreen(
             ) {
                 SpaceIdentityCard(
                     currentUser = currentUser,
-                    repositoryMode = repositoryMode,
                     onOpenProfile = onOpenProfile,
                 )
                 PartnerCard(partner = currentUser?.partner)
@@ -123,7 +117,7 @@ fun MyScreen(
                 )
                 AccountStatusCard(
                     currentUser = currentUser,
-                    repositoryMode = repositoryMode,
+                    isOfflineReadOnly = isOfflineReadOnly,
                     isLoggingOut = isLoggingOut,
                     onLogout = onLogout,
                 )
@@ -135,7 +129,6 @@ fun MyScreen(
 @Composable
 private fun SpaceIdentityCard(
     currentUser: RemoteCurrentUser?,
-    repositoryMode: RepositoryMode,
     onOpenProfile: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -274,7 +267,7 @@ private fun PartnerCard(
 @Composable
 private fun AccountStatusCard(
     currentUser: RemoteCurrentUser?,
-    repositoryMode: RepositoryMode,
+    isOfflineReadOnly: Boolean,
     isLoggingOut: Boolean,
     onLogout: () -> Unit,
 ) {
@@ -296,12 +289,16 @@ private fun AccountStatusCard(
         ) {
             Surface(
                 shape = CircleShape,
-                color = colors.memoryContainer.copy(alpha = 0.92f),
+                color = if (isOfflineReadOnly) {
+                    colors.primaryContainer.copy(alpha = 0.88f)
+                } else {
+                    colors.memoryContainer.copy(alpha = 0.92f)
+                },
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.CloudDone,
+                    imageVector = if (isOfflineReadOnly) Icons.Rounded.Cached else Icons.Rounded.CloudDone,
                     contentDescription = null,
-                    tint = colors.memoryAccent,
+                    tint = if (isOfflineReadOnly) colors.titleAccent else colors.memoryAccent,
                     modifier = Modifier
                         .padding(10.dp)
                         .size(22.dp),
@@ -312,9 +309,9 @@ private fun AccountStatusCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = "已登录",
+                    text = if (isOfflineReadOnly) "缓存只读" else "已连接",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.memoryAccent,
+                    color = if (isOfflineReadOnly) colors.titleAccent else colors.memoryAccent,
                 )
                 Text(
                     text = currentUser?.account?.takeIf { it.isNotBlank() } ?: TEXT_EMAIL_PENDING,
@@ -323,6 +320,15 @@ private fun AccountStatusCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (isOfflineReadOnly) {
+                    Text(
+                        text = "当前显示上次缓存内容，恢复连接后会自动刷新。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Surface(
                 modifier = Modifier
@@ -389,7 +395,7 @@ private fun MyToolListCard(
             }
             MyToolRow(
                 title = "缓存管理",
-                subtitle = "查看并清理本地缓存",
+                subtitle = "查看并清理媒体缓存和离线入口缓存",
                 icon = Icons.Rounded.Cached,
                 onClick = onOpenCacheManagement,
             )
@@ -472,8 +478,7 @@ private fun MyScreenPreview() {
                 createdAtMillis = 1760000000000L,
                 updatedAtMillis = 1760000000000L,
             ),
-            repositoryMode = RepositoryMode.REAL,
-            baseUrl = "http://10.0.2.2:8080/",
+            isOfflineReadOnly = false,
             isLoggingOut = false,
             onOpenProfile = {},
             onLogout = {},

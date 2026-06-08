@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.cache.AppReadCacheStore
+import com.example.yingshi.data.cache.OfflineAccessManager
+import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
+import com.example.yingshi.data.model.RemoteNotification
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -41,11 +47,16 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class NotificationDetailUiState(
     val isLoading: Boolean = false,
+    val isOfflineReadOnly: Boolean = false,
     val errorMessage: String? = null,
+    val statusMessage: String? = null,
     val item: NotificationCenterItemUiModel? = null,
 )
 
@@ -60,28 +71,99 @@ fun NotificationDetailScreen(
     val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
     val sessionKey = realBackendSessionKey("notification-detail-${route.notificationId}")
+    val currentUserId = AuthSessionManager.getCurrentUserSnapshot()?.userId
+    var cachedItem by remember(sessionKey, currentUserId, route.notificationId) {
+        mutableStateOf<NotificationCenterItemUiModel?>(null)
+    }
     var uiState by remember(sessionKey, route.notificationId) {
-        mutableStateOf(NotificationDetailUiState(isLoading = true))
+        mutableStateOf(
+            NotificationDetailUiState(isLoading = true),
+        )
+    }
+    var refreshJob by remember(sessionKey, route.notificationId) { mutableStateOf<Job?>(null) }
+    var refreshVersion by remember(sessionKey, route.notificationId) { mutableIntStateOf(0) }
+
+    LaunchedEffect(sessionKey, currentUserId, route.notificationId) {
+        val resolvedCachedItem = withContext(Dispatchers.IO) {
+            currentUserId?.let { userId ->
+                AppReadCacheStore.readNotification(userId, route.notificationId)?.payload
+                    ?.toNotificationCenterItemUiModel()
+            }
+        }
+        cachedItem = resolvedCachedItem
+        if (resolvedCachedItem != null && uiState.item == null) {
+            uiState = NotificationDetailUiState(
+                isLoading = false,
+                isOfflineReadOnly = OfflineAccessManager.state.isReadOnly,
+                statusMessage = if (OfflineAccessManager.state.isReadOnly) {
+                    OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage
+                } else {
+                    null
+                },
+                item = resolvedCachedItem,
+            )
+        }
     }
 
     fun refresh(markRead: Boolean) {
-        coroutineScope.launch {
+        refreshJob?.cancel()
+        val requestVersion = ++refreshVersion
+        refreshJob = coroutineScope.launch {
+            val latestCachedItem = withContext(Dispatchers.IO) {
+                currentUserId?.let { userId ->
+                    AppReadCacheStore.readNotification(userId, route.notificationId)?.payload
+                        ?.toNotificationCenterItemUiModel()
+                }
+            } ?: cachedItem
+            if (!AuthSessionManager.isLoggedIn && latestCachedItem != null && OfflineAccessManager.state.isReadOnly) {
+                if (requestVersion != refreshVersion) return@launch
+                uiState = NotificationDetailUiState(
+                    isLoading = false,
+                    isOfflineReadOnly = true,
+                    statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
+                    item = latestCachedItem,
+                )
+                return@launch
+            }
             uiState = uiState.copy(isLoading = true, errorMessage = null)
             when (val result = RepositoryProvider.notificationRepository.getNotification(route.notificationId)) {
                 is ApiResult.Success -> {
+                    if (requestVersion != refreshVersion) return@launch
                     val loadedItem = result.data.toNotificationCenterItemUiModel()
+                    if (currentUserId != null) {
+                        withContext(Dispatchers.IO) {
+                            AppReadCacheStore.writeNotification(
+                                userId = currentUserId,
+                                notification = result.data,
+                            )
+                        }
+                    }
+                    cachedItem = loadedItem
+                    OfflineAccessManager.clear()
                     uiState = NotificationDetailUiState(
                         isLoading = false,
+                        isOfflineReadOnly = false,
                         item = loadedItem,
                     )
-                    if (markRead && !loadedItem.isRead) {
+                    if (markRead && !loadedItem.isRead && !uiState.isOfflineReadOnly) {
                         when (val readResult = RepositoryProvider.notificationRepository.markRead(route.notificationId)) {
                             is ApiResult.Success -> {
+                                if (requestVersion != refreshVersion) return@launch
+                                if (currentUserId != null) {
+                                    withContext(Dispatchers.IO) {
+                                        AppReadCacheStore.writeNotification(
+                                            userId = currentUserId,
+                                            notification = readResult.data,
+                                        )
+                                    }
+                                }
+                                cachedItem = readResult.data.toNotificationCenterItemUiModel()
                                 uiState = uiState.copy(
-                                    item = readResult.data.toNotificationCenterItemUiModel(),
+                                    item = cachedItem,
                                 )
                             }
                             is ApiResult.Error -> {
+                                if (requestVersion != refreshVersion) return@launch
                                 uiState = uiState.copy(
                                     errorMessage = readResult.toBackendUiMessage("标记通知已读失败。"),
                                 )
@@ -91,19 +173,76 @@ fun NotificationDetailScreen(
                     }
                 }
                 is ApiResult.Error -> {
-                    uiState = NotificationDetailUiState(
-                        isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取通知详情失败，请稍后重试。"),
-                    )
+                    if (requestVersion != refreshVersion) return@launch
+                    if (latestCachedItem != null && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
+                        val message = result.offlineReadOnlyMessage()
+                        OfflineAccessManager.enterReadOnly(message)
+                        uiState = NotificationDetailUiState(
+                            isLoading = false,
+                            isOfflineReadOnly = true,
+                            statusMessage = message,
+                            item = latestCachedItem,
+                        )
+                    } else {
+                        uiState = NotificationDetailUiState(
+                            isLoading = false,
+                            errorMessage = result.toBackendUiMessage("读取通知详情失败，请稍后重试。"),
+                        )
+                    }
                 }
                 ApiResult.Loading -> Unit
             }
+            if (refreshVersion == requestVersion) {
+                refreshJob = null
+            }
+        }
+    }
+
+    fun handleConnectivityLost() {
+        refreshJob?.cancel()
+        refreshVersion += 1
+        refreshJob = null
+        coroutineScope.launch {
+            val latestCachedItem = withContext(Dispatchers.IO) {
+                currentUserId?.let { userId ->
+                    AppReadCacheStore.readNotification(userId, route.notificationId)?.payload
+                        ?.toNotificationCenterItemUiModel()
+                }
+            } ?: uiState.item ?: cachedItem
+            val message = "网络已断开，当前显示缓存内容，恢复连接后会自动刷新。"
+            if (latestCachedItem != null) {
+                OfflineAccessManager.enterReadOnly(message)
+                uiState = NotificationDetailUiState(
+                    isLoading = false,
+                    isOfflineReadOnly = true,
+                    statusMessage = message,
+                    item = latestCachedItem,
+                )
+                return@launch
+            }
+            val hasVisibleItem = uiState.item != null
+            if (hasVisibleItem) {
+                OfflineAccessManager.enterReadOnly(message)
+            }
+            uiState = uiState.copy(
+                isLoading = false,
+                isOfflineReadOnly = hasVisibleItem,
+                errorMessage = if (hasVisibleItem) null else "当前无网络，恢复连接后会自动重试。",
+                statusMessage = if (hasVisibleItem) message else null,
+            )
         }
     }
 
     LaunchedEffect(sessionKey, route.notificationId) {
         refresh(markRead = true)
     }
+    ReconnectRefreshEffect(
+        shouldRefresh = uiState.isOfflineReadOnly ||
+            uiState.errorMessage != null ||
+            (uiState.isLoading && uiState.item == null),
+        onReconnect = { refresh(markRead = uiState.item?.isRead != true) },
+        onDisconnect = ::handleConnectivityLost,
+    )
 
     Column(
         modifier = modifier
@@ -126,6 +265,13 @@ fun NotificationDetailScreen(
 
             uiState.item != null -> {
                 val item = requireNotNull(uiState.item)
+                uiState.statusMessage?.let { message ->
+                    NotificationDetailMessageCard(
+                        message = message,
+                        actionLabel = "重试",
+                        onAction = { refresh(markRead = false) },
+                    )
+                }
                 NotificationDetailPrimaryCard(item = item)
                 NotificationDetailTargetCard(
                     item = item,

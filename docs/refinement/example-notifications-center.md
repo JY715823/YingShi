@@ -27,17 +27,21 @@
 - Open preference: whether badge state should update optimistically on the client or only after server confirmation.
 
 ## Codex Recommendations
-### Recommended for this round
+### Recommended to finish in this module
 - Recommendation: add explicit destination-failure handling when a notification points to deleted or permission-gated content.
   - Why it is worth considering: this failure mode is easy to miss in planning but very visible in real use.
   - Impact on usability, robustness, or smoothness: improves resilience and reduces confusing dead-end taps.
 - Recommendation: define one clear unread-sync rule across push entry, manual refresh, and back-navigation.
   - Why it is worth considering: unread drift is one of the fastest trust-breakers in a notification surface.
   - Impact on usability, robustness, or smoothness: improves consistency and lowers regression risk across related modules.
+- Recommendation: make notification empty, error, and offline states feel release-ready rather than debug-like placeholders.
+  - Why it is worth considering: these states often survive into production and shape trust more than happy-path polish alone.
+  - Impact on usability, robustness, or smoothness: improves resilience and perceived quality.
 
-### Good follow-up ideas
-- Refinement: consider grouped copy or lightweight filters if notification volume grows.
-  - Why it may help: keeps the center readable without immediately adding heavyweight IA changes.
+### Defer only with explicit acceptance
+- Item: grouped copy or lightweight filters for future high-volume notification streams.
+  - Why it would otherwise belong in this module: it affects long-term readability of the center.
+  - Why it might still be deferred: if current notification volume is still low, this may not block deployment readiness.
 
 ## Key Questions
 - [ ] What counts as read, opened, or consumed for each notification type?
@@ -97,6 +101,11 @@
 - Permission denial: explain why the destination cannot be opened.
 - Offline or retry: surface retry without pretending a read-state sync succeeded.
 
+## Deployment Readiness
+- Release-critical expectations: unread count, notification list state, and destination behavior must stay consistent across refresh, background resume, push entry, and back-navigation.
+- Anything that must be true before moving to the next module: deleted-target fallback, session-expiry handling, and empty/error/offline states must feel intentional rather than placeholder.
+- Acceptable defers, if any: high-volume grouping or filter controls only if current product volume does not make them urgent.
+
 ## Hidden Impact Checklist
 - Notifications: direct impact, this is the primary module.
 - Auth: direct impact through session expiry and identity-sensitive copy.
@@ -111,9 +120,10 @@
 
 ## Plan Self-check
 - Recommendation quality: top recommendations focus on trust-breaking failure points instead of broad brainstorming.
-- Scope pressure test: unread-sync rule and destination-failure handling are suitable for the first refinement round; grouping or filters stay as follow-up.
+- Scope pressure test: unread-sync rule, destination-failure handling, and release-ready non-happy-path states belong in scope; grouping or filters are the only acceptable defer candidate.
 - Contract and dependency pressure test: unread count, read-state mutation, push payload shape, auth expiry, and deep-link destinations all need explicit rechecks.
 - UX state pressure test: loading, empty, error, success, permission, offline, and return-path consistency all matter here.
+- Deployment readiness pressure test: this module should not move on while unread drift or broken destination fallback still exists.
 - Risks to watch in implement: unread drift and deep-link fallback can regress adjacent modules quickly.
 
 ## Implementation Notes
@@ -133,6 +143,7 @@
 - Validation run: example placeholder, targeted build or sanity checks would be listed here before device QA starts.
 - New behavior sanity: example placeholder, this round's unread-sync and destination-fallback behavior would be checked here.
 - Contract sanity: example placeholder, unread count shape and read-state mutation contract would be rechecked here.
+- Test plan quality: example placeholder, linked-module regression checks and device scenarios would be listed here.
 - Known gaps: example placeholder, anything unverified before device QA would be called out here.
 
 ## New Coupling Recheck
@@ -142,6 +153,32 @@
 - Module: `viewer`
   - What was rechecked: destination handoff and return path.
   - Result: example placeholder.
+
+## Implement Test Plan
+### Locally validated
+- Check: notification list refresh and unread-state mutation contract.
+- Result: example placeholder.
+
+### Linked-module regression checks
+- Module: `post-detail`
+  - What to recheck: comment or reaction notification deep-link target.
+  - Why it can regress: destination context and unread clearing can drift together.
+- Module: `auth-session`
+  - What to recheck: expiry or relogin path after opening from a push or list item.
+  - Why it can regress: the module depends on session continuity at entry and return.
+
+### Real-device checks for the user
+- Scenario: open notification center from normal navigation, open an unread item, and return.
+  - Steps: enter center, tap unread item, observe destination, go back to center.
+  - Expected result: destination opens correctly, unread state updates consistently, and badge/list stay aligned.
+- Scenario: open a notification whose destination is unavailable.
+  - Steps: use a deleted, expired, or permission-gated target.
+  - Expected result: user stays oriented, sees explicit fallback messaging, and the app does not silently fail.
+
+### Still unverified
+- Risk: push-tap entry and back-navigation timing differences on real devices.
+  - Why it remains open: emulator or local checks may not reproduce timing and lifecycle behavior well.
+  - Best next verification path: real-device test from a delivered push notification.
 
 ## Real-device Issue Log
 - None yet. Add entries using `/mnt/e/Study/App/.claude/skills/module-refinement/references/device-qa-template.md`.

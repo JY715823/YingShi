@@ -36,10 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
+import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -60,6 +62,7 @@ fun BackendDiagnosticsScreen(
     val settings = BackendDebugConfig.settings
     val scope = rememberCoroutineScope()
     val autoLoginState by BackendAutoLoginManager.uiState.collectAsState()
+    val offlineAccessState = OfflineAccessManager.state
     var baseUrlInput by rememberSaveable { mutableStateOf(settings.baseUrl) }
     var isRunning by remember { mutableStateOf(false) }
     var lastResult by remember { mutableStateOf("还没有执行操作。") }
@@ -72,107 +75,116 @@ fun BackendDiagnosticsScreen(
 
     val isBusy = isRunning || autoLoginState.inFlight
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.appBackground)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    YingShiMistBackground(
+        modifier = modifier.fillMaxSize(),
+        showWaves = false,
     ) {
-        BackendDiagnosticsTopBar(
-            onBack = onBack,
-        )
-
-        DiagnosticsSection(
-            title = "服务地址",
-            subtitle = "保存后会重新连接当前账号。",
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            OutlinedTextField(
-                value = baseUrlInput,
-                onValueChange = { baseUrlInput = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("服务地址") },
-                singleLine = true,
+            BackendDiagnosticsTopBar(
+                onBack = onBack,
             )
 
-            BackendConnectionActionButton(
-                text = "保存并连接",
-                onClick = {
-                    scope.launch {
-                        isRunning = true
-                        BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                        val outcome = BackendAutoLoginManager.loginDefault(
-                            force = true,
-                            reason = "save_base_url",
-                        )
-                        lastResult = outcome.message
-                        isRunning = false
-                    }
-                },
-                enabled = !isBusy,
-                modifier = Modifier.fillMaxWidth(),
-                emphasized = true,
-            )
-
-            ValueCard(
-                title = "当前服务地址",
-                value = RemoteServiceFactory.currentBaseUrl(),
-                note = "用于同步照片、通知和生活记录。",
-            )
-        }
-
-        DiagnosticsSection(
-            title = "登录状态",
-            subtitle = "网络恢复后，应用会自动再试一次登录。",
-        ) {
-            ValueCard(
-                title = "状态",
-                value = autoLoginState.phase.displayLabel,
-                note = autoLoginState.message,
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            DiagnosticsSection(
+                title = "服务地址",
+                subtitle = "保存后会重新连接当前账号。",
             ) {
+                OutlinedTextField(
+                    value = baseUrlInput,
+                    onValueChange = { baseUrlInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("服务地址") },
+                    singleLine = true,
+                )
+
                 BackendConnectionActionButton(
-                    text = "重新连接",
+                    text = "保存并连接",
                     onClick = {
                         scope.launch {
                             isRunning = true
+                            BackendDebugConfig.updateBaseUrl(baseUrlInput)
                             val outcome = BackendAutoLoginManager.loginDefault(
                                 force = true,
-                                reason = "manual_retry",
+                                reason = "save_base_url",
                             )
                             lastResult = outcome.message
                             isRunning = false
                         }
                     },
                     enabled = !isBusy,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     emphasized = true,
                 )
 
-                BackendConnectionActionButton(
-                    text = "退出连接",
-                    onClick = {
-                        AuthSessionManager.clearTokens()
-                        BackendAutoLoginManager.markLoggedOut("已退出当前连接")
-                        lastResult = "已退出当前连接。"
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.weight(1f),
+                ValueCard(
+                    title = "当前服务地址",
+                    value = RemoteServiceFactory.currentBaseUrl(),
+                    note = "用于同步照片、通知和生活记录。",
                 )
             }
-        }
 
-        DiagnosticsSection(
-            title = "操作结果",
-            subtitle = "最近一次连接结果。",
-        ) {
-            ResultBlock(text = lastResult)
+            DiagnosticsSection(
+                title = "连接状态",
+                subtitle = "网络恢复后，应用会自动再试一次登录；如果当前服务器不可用，会优先展示核心入口缓存。",
+            ) {
+                ValueCard(
+                    title = "状态",
+                    value = autoLoginState.phase.displayLabel,
+                    note = autoLoginState.message,
+                )
+                ValueCard(
+                    title = "离线兜底",
+                    value = if (offlineAccessState.isReadOnly) "缓存只读中" else "实时连接优先",
+                    note = offlineAccessState.message ?: "Me、照片流、相册目录、通知和回收站支持持久化读缓存。",
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    BackendConnectionActionButton(
+                        text = "重新连接",
+                        onClick = {
+                            scope.launch {
+                                isRunning = true
+                                val outcome = BackendAutoLoginManager.loginDefault(
+                                    force = true,
+                                    reason = "manual_retry",
+                                )
+                                lastResult = outcome.message
+                                isRunning = false
+                            }
+                        },
+                        enabled = !isBusy,
+                        modifier = Modifier.weight(1f),
+                        emphasized = true,
+                    )
+
+                    BackendConnectionActionButton(
+                        text = "退出连接",
+                        onClick = {
+                            AuthSessionManager.clearTokens()
+                            BackendAutoLoginManager.markLoggedOut("已退出当前连接")
+                            lastResult = "已退出当前连接。"
+                        },
+                        enabled = !isBusy,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            DiagnosticsSection(
+                title = "操作结果",
+                subtitle = "最近一次连接结果。",
+            ) {
+                ResultBlock(text = lastResult)
+            }
         }
     }
 }

@@ -1,6 +1,5 @@
 package com.example.yingshi.data.repository
 
-import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 
 enum class RepositoryMode {
@@ -10,59 +9,32 @@ enum class RepositoryMode {
 
 object RepositoryProvider {
     val currentMode: RepositoryMode
-        get() = BackendDebugConfig.settings.repositoryMode
+        get() = RepositoryMode.REAL
 
     val mediaRepository: MediaRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeMediaRepositoryShell()
-            RepositoryMode.REAL -> RealMediaRepository(RemoteServiceFactory.mediaApi)
-        }
+        get() = RealMediaRepository(RemoteServiceFactory.mediaApi)
 
     val postRepository: PostRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakePostRepositoryShell()
-            RepositoryMode.REAL -> RealPostRepository(RemoteServiceFactory.postApi)
-        }
+        get() = RealPostRepository(RemoteServiceFactory.postApi)
 
     val albumRepository: AlbumRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeAlbumRepositoryShell()
-            RepositoryMode.REAL -> RealAlbumRepository(RemoteServiceFactory.albumApi)
-        }
+        get() = RealAlbumRepository(RemoteServiceFactory.albumApi)
 
     val commentRepository: CommentRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeCommentRepositoryShell()
-            RepositoryMode.REAL -> RealCommentRepository(RemoteServiceFactory.commentApi)
-        }
+        get() = RealCommentRepository(RemoteServiceFactory.commentApi)
 
     val notificationRepository: NotificationRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeNotificationRepositoryShell()
-            RepositoryMode.REAL -> RealNotificationRepository(RemoteServiceFactory.notificationApi)
-        }
+        get() = RealNotificationRepository(RemoteServiceFactory.notificationApi)
 
     val trashRepository: TrashRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeTrashRepositoryShell()
-            RepositoryMode.REAL -> RealTrashRepository(RemoteServiceFactory.trashApi)
-        }
+        get() = RealTrashRepository(RemoteServiceFactory.trashApi)
 
     val uploadRepository: UploadRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeUploadRepositoryShell()
-            RepositoryMode.REAL -> RealUploadRepository(RemoteServiceFactory.uploadApi)
-        }
+        get() = RealUploadRepository(RemoteServiceFactory.uploadApi)
 
     val authRepository: AuthRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeAuthRepositoryShell()
-            RepositoryMode.REAL -> RealAuthRepository(RemoteServiceFactory.authApi)
-        }
+        get() = RealAuthRepository(RemoteServiceFactory.authApi)
 
     val lifeConsoleRepository: LifeConsoleRepository
-        get() = when (currentMode) {
-            RepositoryMode.FAKE -> FakeLifeConsoleRepositoryShell()
-            RepositoryMode.REAL -> RealLifeConsoleRepository(RemoteServiceFactory.lifeConsoleApi)
-        }
+        get() = RealLifeConsoleRepository(RemoteServiceFactory.lifeConsoleApi)
 }

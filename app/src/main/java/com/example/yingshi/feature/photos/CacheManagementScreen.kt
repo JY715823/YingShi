@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.photos
 
+import android.text.format.Formatter
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +37,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.cache.AppReadCacheStore
+import com.example.yingshi.data.cache.ReadCacheSummary
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.YingShiNotice
@@ -71,6 +74,14 @@ fun CacheManagementScreen(
     ) {
         value = withContext(Dispatchers.IO) {
             MediaCacheRepository.getSummary(context)
+        }
+    }
+    val readCacheSummary by produceState<ReadCacheSummary?>(
+        initialValue = null,
+        refreshVersion,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            AppReadCacheStore.summary()
         }
     }
     val currentSummary = summary
@@ -112,8 +123,27 @@ fun CacheManagementScreen(
             }
 
             CacheSection(
+                title = "离线入口缓存",
+                subtitle = "Me、照片流、相册目录、通知和回收站会把最近一次成功读取的结果写成 JSON 文件，按服务地址和账号隔离保存。",
+            ) {
+                CacheInfoRow(
+                    title = "缓存文件",
+                    value = readCacheSummary?.let { "${it.fileCount} 份" } ?: "统计中",
+                )
+                CacheInfoRow(
+                    title = "占用空间",
+                    value = readCacheSummary?.let { formatReadCacheSize(context, it.totalBytes) } ?: "统计中",
+                )
+                CacheInfoRow(
+                    title = "最近更新",
+                    value = readCacheSummary?.lastUpdatedAtMillis?.let(::formatCacheUpdatedAt)
+                        ?: "还没有离线入口缓存",
+                )
+            }
+
+            CacheSection(
                 title = "清理入口",
-                subtitle = "清理后需要重新加载对应媒体。",
+                subtitle = "清理后需要重新加载对应媒体；离线入口缓存清理后，断网时将不再显示旧内容。",
             ) {
                 CacheActionRow(
                     title = "清理缩略图 / 视频封面",
@@ -142,6 +172,22 @@ fun CacheManagementScreen(
                             refreshVersion += 1
                             showNotice(
                                 if (ok) "已清理原图和原视频缓存。" else "部分原媒体缓存清理失败，已保留可继续使用的文件。",
+                                if (ok) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
+                            )
+                        }
+                    },
+                )
+                CacheActionRow(
+                    title = "清理离线入口缓存",
+                    subtitle = "当前约 ${readCacheSummary?.let { formatReadCacheSize(context, it.totalBytes) } ?: "统计中"}。会移除 Me、照片流、相册目录、通知和回收站的持久化读缓存。",
+                    onClick = {
+                        coroutineScope.launch {
+                            val ok = withContext(Dispatchers.IO) {
+                                AppReadCacheStore.clearProtectedData()
+                            }
+                            refreshVersion += 1
+                            showNotice(
+                                if (ok) "已清理离线入口缓存。" else "部分离线入口缓存清理失败，请稍后重试。",
                                 if (ok) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
                             )
                         }
@@ -377,6 +423,18 @@ private fun CacheCircleButton(
             )
         }
     }
+}
+
+private fun formatReadCacheSize(
+    context: android.content.Context,
+    bytes: Long,
+): String {
+    return if (bytes <= 0L) "0 B" else Formatter.formatShortFileSize(context, bytes)
+}
+
+private fun formatCacheUpdatedAt(timeMillis: Long): String {
+    return java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA)
+        .format(java.util.Date(timeMillis))
 }
 
 private fun String.toCacheSourceLabel(): String {

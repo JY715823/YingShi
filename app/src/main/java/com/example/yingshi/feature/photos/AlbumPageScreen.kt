@@ -241,6 +241,15 @@ private fun RealAlbumPageScreen(
             viewModel.refresh()
         }
     }
+    ReconnectRefreshEffect(
+        shouldRefresh = uiState.isOfflineReadOnly ||
+            uiState.errorMessage != null ||
+            uiState.postsErrorMessage != null ||
+            uiState.isLoading ||
+            uiState.isPostsLoading,
+        onReconnect = viewModel::refresh,
+        onDisconnect = viewModel::handleConnectivityLost,
+    )
     LaunchedEffect(pendingSelectedAlbumId, uiState.albums) {
         val targetAlbumId = pendingSelectedAlbumId ?: return@LaunchedEffect
         if (uiState.albums.any { it.id == targetAlbumId }) {
@@ -308,22 +317,29 @@ private fun RealAlbumPageScreen(
             }
 
             else -> {
+                uiState.statusMessage?.let { statusMessage ->
+                    BackendInlineNotice(
+                        text = statusMessage,
+                        emphasized = true,
+                    )
+                }
                 AlbumSwitchSection(
                     albums = uiState.albums,
                     selectedAlbumId = uiState.selectedAlbumId.orEmpty(),
                     onSelectAlbum = viewModel::selectAlbum,
+                    actionsEnabled = !uiState.isOfflineReadOnly,
                     onCreateLargeAlbum = onCreateLargeAlbum,
                     onCreateSmallAlbum = { onCreateSmallAlbum(uiState.selectedAlbumId) },
                 )
 
                 when {
-                    uiState.isPostsLoading -> {
+                    uiState.isPostsLoading && uiState.posts.isEmpty() -> {
                         AlbumPageLoadingCard(
                             text = "正在读取这个大相册里的小相册…",
                         )
                     }
 
-                    uiState.postsErrorMessage != null -> {
+                    uiState.postsErrorMessage != null && uiState.posts.isEmpty() -> {
                         val postsErrorMessage = uiState.postsErrorMessage
                             ?: "读取这个大相册下的小相册失败。"
                         AlbumPageNoticeCard(
@@ -342,6 +358,20 @@ private fun RealAlbumPageScreen(
                     }
 
                     else -> {
+                        if (uiState.isPostsLoading) {
+                            BackendInlineNotice(
+                                text = "网络已恢复，正在刷新这个大相册里的小相册…",
+                            )
+                        }
+                        uiState.postsErrorMessage?.let { postsErrorMessage ->
+                            BackendInlineNotice(
+                                text = postsErrorMessage,
+                                actionLabel = "重试",
+                                onAction = {
+                                    uiState.selectedAlbumId?.let(viewModel::selectAlbum)
+                                },
+                            )
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -471,6 +501,7 @@ internal fun AlbumIconAction(
     contentDescription: String,
     containerColor: Color? = null,
     contentColor: Color? = null,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -478,25 +509,34 @@ internal fun AlbumIconAction(
     Surface(
         modifier = Modifier
             .size(46.dp)
-            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+            .yingShiClickable(
+                enabled = enabled,
+                shape = CircleShape,
+                pressedScale = 0.94f,
+                onClick = onClick,
+            ),
         shape = CircleShape,
-        color = containerColor ?: colors.sectionBackground.copy(alpha = 0.82f),
+        color = if (enabled) {
+            containerColor ?: colors.sectionBackground.copy(alpha = 0.82f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.58f)
+        },
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
-        shadowElevation = 1.dp,
+        shadowElevation = if (enabled) 1.dp else 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (icon != null) {
                 Icon(
                     imageVector = icon,
                     contentDescription = contentDescription,
-                    tint = resolvedContentColor,
+                    tint = if (enabled) resolvedContentColor else colors.textSecondary.copy(alpha = 0.62f),
                     modifier = Modifier.size(25.dp),
                 )
             } else {
                 Text(
                     text = text.orEmpty(),
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = resolvedContentColor,
+                    color = if (enabled) resolvedContentColor else colors.textSecondary.copy(alpha = 0.62f),
                 )
             }
         }
@@ -543,6 +583,7 @@ private fun AlbumSwitchSection(
     albums: List<AlbumSummaryUiModel>,
     selectedAlbumId: String,
     onSelectAlbum: (String) -> Unit,
+    actionsEnabled: Boolean = true,
     onCreateLargeAlbum: () -> Unit,
     onCreateSmallAlbum: () -> Unit,
 ) {
@@ -587,6 +628,7 @@ private fun AlbumSwitchSection(
                 contentDescription = "新建小相册",
                 containerColor = colors.softGreenContainer.copy(alpha = 0.92f),
                 contentColor = colors.softGreenAction,
+                enabled = actionsEnabled,
                 onClick = onCreateSmallAlbum,
             )
             AlbumIconAction(
@@ -604,9 +646,13 @@ private fun AlbumSwitchSection(
             albums = albums,
             selectedAlbumId = selectedAlbumId,
             onDismiss = { showAlbumMenu = false },
-            onCreateLargeAlbum = {
-                showAlbumMenu = false
-                onCreateLargeAlbum()
+            onCreateLargeAlbum = if (actionsEnabled) {
+                {
+                    showAlbumMenu = false
+                    onCreateLargeAlbum()
+                }
+            } else {
+                null
             },
             onSelectAlbum = { albumId ->
                 showAlbumMenu = false
@@ -890,14 +936,24 @@ private fun AlbumSwitchChip(
 @Composable
 private fun AlbumInlineActionButton(
     text: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
-        modifier = Modifier.yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick),
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
         shape = shape,
-        color = colors.softGreenContainer.copy(alpha = 0.92f),
+        color = if (enabled) {
+            colors.softGreenContainer.copy(alpha = 0.92f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.64f)
+        },
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
         shadowElevation = 0.dp,
     ) {
@@ -905,7 +961,7 @@ private fun AlbumInlineActionButton(
             text = text,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.softGreenAction,
+            color = if (enabled) colors.softGreenAction else colors.textSecondary.copy(alpha = 0.68f),
         )
     }
 }

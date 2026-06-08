@@ -53,7 +53,7 @@ internal fun AppContentInlineVideoPlayer(
     if (videoUrl.isNullOrBlank()) return
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val requestHeaders = remember(videoUrl, accessToken) {
         backendMediaRequestHeaders(videoUrl, accessToken)

@@ -66,11 +66,17 @@ fun Modifier.yingShiSoftReveal(
         animationSpec = tween(if (motionEnabled) motion.floatingMillis else 0, easing = motion.easing),
         label = "yingShiSoftRevealScale",
     )
+    val translationY by animateFloatAsState(
+        targetValue = if (visible || !motionEnabled) 0f else 18f,
+        animationSpec = tween(if (motionEnabled) motion.floatingMillis else 0, easing = motion.easing),
+        label = "yingShiSoftRevealTranslateY",
+    )
     return this
         .alpha(alpha)
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
+            this.translationY = translationY
         }
 }
 
@@ -90,11 +96,17 @@ fun Modifier.yingShiRouteReveal(
         animationSpec = tween(if (motionEnabled) motion.routeMillis else 0, easing = motion.easing),
         label = "yingShiRouteRevealScale",
     )
+    val translationY by animateFloatAsState(
+        targetValue = if (visible || !motionEnabled) 0f else 24f,
+        animationSpec = tween(if (motionEnabled) motion.routeMillis else 0, easing = motion.easing),
+        label = "yingShiRouteRevealTranslateY",
+    )
     return this
         .alpha(alpha)
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
+            this.translationY = translationY
         }
 }
 

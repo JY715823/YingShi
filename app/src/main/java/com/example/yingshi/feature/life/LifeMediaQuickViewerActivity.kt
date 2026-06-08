@@ -163,7 +163,7 @@ private fun LifeMediaQuickViewerScreen(
     val zoomState = remember(payload.mediaId, payload.imageUrl) { LifeQuickViewerZoomState() }
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val resolvedUrl = remember(payload.imageUrl) { resolveBackendMediaUrl(payload.imageUrl) }
     val request = remember(context, resolvedUrl, accessToken) {

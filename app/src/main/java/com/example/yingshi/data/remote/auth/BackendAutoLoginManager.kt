@@ -1,10 +1,12 @@
 package com.example.yingshi.data.remote.auth
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.data.remote.dto.LoginRequestDto
+import com.example.yingshi.data.remote.mapper.toRemoteModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.net.URI
@@ -127,6 +129,20 @@ object BackendAutoLoginManager {
                     refreshToken = response.refreshToken,
                     accessTokenExpireAtMillis = response.accessTokenExpireAtMillis,
                     refreshTokenExpireAtMillis = response.refreshTokenExpireAtMillis,
+                ),
+            )
+            AuthSessionManager.saveCurrentUserSnapshot(
+                RemoteCurrentUser(
+                    userId = response.userId,
+                    account = response.account,
+                    displayName = response.displayName,
+                    avatarUrl = response.avatarUrl,
+                    libraryId = response.libraryId,
+                    libraryDisplayName = response.libraryDisplayName,
+                    bio = response.bio,
+                    partner = response.partner?.toRemoteModel(),
+                    createdAtMillis = response.createdAtMillis,
+                    updatedAtMillis = response.updatedAtMillis,
                 ),
             )
 

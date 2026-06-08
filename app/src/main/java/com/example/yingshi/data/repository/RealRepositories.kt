@@ -1082,7 +1082,7 @@ private fun backendRequestErrorMessage(
         message.contains("Connection refused", ignoreCase = true) ||
         message.contains("timeout", ignoreCase = true)
     ) {
-        return "\u8bf7\u6c42\u901a\u77e5\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u3001\u5c40\u57df\u7f51\u8fde\u63a5\u548c\u670d\u52a1\u72b6\u6001\u3002"
+        return "\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u3001\u5c40\u57df\u7f51\u8fde\u63a5\u548c\u670d\u52a1\u72b6\u6001\u3002"
     }
     return message.takeIf { it.isNotBlank() } ?: fallback
 }
@@ -1259,6 +1259,20 @@ class RealAuthRepository(
         return runCatching {
             authApi.login(request).data.toRemoteModel().also {
                 AuthSessionManager.saveTokens(it.tokens)
+                AuthSessionManager.saveCurrentUserSnapshot(
+                    RemoteCurrentUser(
+                        userId = it.userId,
+                        account = it.account,
+                        displayName = it.displayName,
+                        avatarUrl = it.avatarUrl,
+                        libraryId = it.libraryId,
+                        libraryDisplayName = it.libraryDisplayName,
+                        bio = it.bio,
+                        partner = it.partner,
+                        createdAtMillis = it.createdAtMillis,
+                        updatedAtMillis = it.updatedAtMillis,
+                    ),
+                )
             }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
@@ -1324,7 +1338,7 @@ class RealAuthRepository(
 
     override suspend fun getCurrentUser(): ApiResult<RemoteCurrentUser> {
         return runCatching {
-            authApi.getCurrentUser().data.toRemoteModel()
+            authApi.getCurrentUser().data.toRemoteModel().also(AuthSessionManager::saveCurrentUserSnapshot)
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -1345,7 +1359,9 @@ class RealAuthRepository(
         request: UpdateProfileRequestDto,
     ): ApiResult<RemoteCurrentUser> {
         return runCatching {
-            authApi.updateCurrentUserProfile(request).data.toRemoteModel()
+            authApi.updateCurrentUserProfile(request).data.toRemoteModel().also(
+                AuthSessionManager::saveCurrentUserSnapshot,
+            )
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {

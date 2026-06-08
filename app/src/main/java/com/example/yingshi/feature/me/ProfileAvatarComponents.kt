@@ -44,7 +44,7 @@ fun ProfileAvatar(
     }
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val request = remember(context, resolvedAvatarUrl, accessToken) {
         backendMediaImageRequest(

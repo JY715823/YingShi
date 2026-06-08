@@ -412,6 +412,13 @@ fun RealTrashPageScreen(
             viewModel.refresh(selectedType)
         }
     }
+    ReconnectRefreshEffect(
+        shouldRefresh = uiState.isOfflineReadOnly ||
+            uiState.errorMessage != null ||
+            uiState.tokenMissing ||
+            (uiState.isLoading && uiState.entries.isEmpty()),
+        onReconnect = { viewModel.refresh(selectedType) },
+    )
 
     if (selectedType.isRealMediaTrashType()) {
         val mediaEntries = entries.sortedByDescending { it.deletedAtMillis }
@@ -1719,6 +1726,13 @@ fun RealTrashDetailScreen(
             viewModel.refresh()
         }
     }
+    ReconnectRefreshEffect(
+        shouldRefresh = uiState.isOfflineReadOnly ||
+            uiState.errorMessage != null ||
+            uiState.tokenMissing ||
+            (uiState.isLoading && uiState.detail == null),
+        onReconnect = viewModel::refresh,
+    )
 
     val mediaDetailEntry = detail?.item?.toTrashEntryUiModel()
     if (mediaDetailEntry?.type?.isRealMediaTrashType() == true) {
@@ -1867,7 +1881,7 @@ private fun RealTrashMediaViewerDetailPagerContent(
     val context = LocalContext.current
     val view = LocalView.current
     val density = LocalDensity.current
-    val accessToken = AuthSessionManager.getAccessToken()
+    val accessToken = AuthSessionManager.peekAccessToken()
     val initialEntry = detail.item.toTrashEntryUiModel()
     val viewerEntries = remember(entries, initialEntry.id) {
         entries
@@ -2267,7 +2281,7 @@ private fun RealTrashMediaViewerDetailContent(
     }
     val originalLoadState = target?.let(RealOriginalLoadRepository::getState)
         ?: OriginalLoadState.NotLoaded
-    val accessToken = AuthSessionManager.getAccessToken()
+    val accessToken = AuthSessionManager.peekAccessToken()
 
     Box(
         modifier = modifier
@@ -3214,7 +3228,7 @@ private fun RealTrashPostMediaViewerOverlay(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
-    val accessToken = AuthSessionManager.getAccessToken()
+    val accessToken = AuthSessionManager.peekAccessToken()
     val target = mediaId?.takeIf { it.isNotBlank() }?.let {
         RealOriginalMediaTarget(
             mediaId = it,

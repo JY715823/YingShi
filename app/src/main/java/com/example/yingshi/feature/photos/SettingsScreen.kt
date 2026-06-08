@@ -39,8 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.repository.fakeAuthCurrentProfile
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -65,11 +65,12 @@ fun SettingsScreen(
     val viewerPreferences = settingsState.viewerPreferences
     val sharePreferences = settingsState.sharePreferences
     val interactionPreferences = settingsState.interactionPreferences
-    val currentUser = CollaboratorDirectoryStore.currentUser ?: fakeAuthCurrentProfile()
-    val loginStatusValue = if (AuthSessionManager.isLoggedIn) {
-        "已连接"
-    } else {
-        "未连接"
+    val offlineAccessState = OfflineAccessManager.state
+    val currentUser = CollaboratorDirectoryStore.currentUser ?: AuthSessionManager.getCurrentUserSnapshot()
+    val loginStatusValue = when {
+        offlineAccessState.isReadOnly -> "缓存只读"
+        AuthSessionManager.isLoggedIn -> "已连接"
+        else -> "未连接"
     }
     val sharedSpaceValue = resolveSharedSpaceStatus(currentUser)
     val systemMediaAccessValue = if (hasSystemMediaReadAccess(context)) {
@@ -107,6 +108,11 @@ fun SettingsScreen(
                     title = "登录状态",
                     subtitle = "用于同步相册、通知和生活记录。",
                     value = loginStatusValue,
+                )
+                SettingsInfoRow(
+                    title = "离线兜底",
+                    subtitle = "服务器不可用时，核心入口会优先展示上次缓存内容。",
+                    value = if (offlineAccessState.isReadOnly) "当前已启用" else "按需启用",
                 )
                 SettingsEntryRow(
                     title = "退出登录",
@@ -287,11 +293,11 @@ fun SettingsScreen(
 
             SettingsSection(
                 title = "连接与诊断",
-                subtitle = "查看服务地址、同步状态和当前账号连接情况。",
+                subtitle = "查看服务地址、连接状态和缓存只读兜底情况。",
             ) {
                 SettingsEntryRow(
                     title = "连接设置",
-                    subtitle = "查看服务地址、登录状态和同步模式。",
+                    subtitle = "查看服务地址、重新连接和当前兜底状态。",
                     onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
                 )
                 SettingsEntryRow(
@@ -307,8 +313,8 @@ fun SettingsScreen(
 
 private fun resolveSharedSpaceStatus(currentUser: RemoteCurrentUser?): String {
     return when {
-        !AuthSessionManager.isLoggedIn -> "未登录"
-        currentUser == null -> "读取中"
+        !AuthSessionManager.isLoggedIn && !OfflineAccessManager.state.isReadOnly -> "未登录"
+        currentUser == null -> if (OfflineAccessManager.state.isReadOnly) "缓存资料" else "读取中"
         currentUser.partner != null -> currentUser.libraryDisplayName?.takeIf { it.isNotBlank() } ?: "双人空间"
         else -> "仅当前账号"
     }

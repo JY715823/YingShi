@@ -25,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,10 +39,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import android.widget.Toast
+import com.example.yingshi.data.cache.OfflineAccessManager
+import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
-import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.result.isUnauthorized
 import com.example.yingshi.data.repository.RepositoryMode
@@ -79,6 +83,7 @@ import com.example.yingshi.feature.photos.NotificationDetailRoute
 import com.example.yingshi.feature.photos.NotificationDetailScreen
 import com.example.yingshi.feature.photos.NotificationCenterItemType
 import com.example.yingshi.feature.photos.NotificationCenterItemUiModel
+import com.example.yingshi.feature.photos.offlineReadOnlyMessage
 import com.example.yingshi.feature.photos.isLifeChatTarget
 import com.example.yingshi.feature.photos.isLifeConsoleTarget
 import com.example.yingshi.feature.photos.isLifeLedgerTarget
@@ -98,6 +103,7 @@ import com.example.yingshi.feature.photos.SystemMediaImportPreviewDialog
 import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.feature.photos.TransferCenterRoute
 import com.example.yingshi.feature.photos.TransferCenterScreen
+import com.example.yingshi.feature.photos.shouldFallbackToReadCache
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
 import com.example.yingshi.feature.photos.SystemMediaViewerScreen
 import com.example.yingshi.feature.photos.SystemMediaUploadTaskUiModel
@@ -238,12 +244,13 @@ fun YingShiApp() {
     val scope = rememberCoroutineScope()
     val authSessionVersion = AuthSessionManager.sessionVersion
     val backendSettings = BackendDebugConfig.settings
+    val offlineAccessState = OfflineAccessManager.state
+    val networkState by NetworkConnectivityMonitor.state.collectAsState()
     val openLifeConsoleNonce = AppNavigationRequests.openLifeConsoleNonce
     val openLedgerRequestNonce = AppNavigationRequests.openLedgerNonce
     val openLedgerAddRequestNonce = AppNavigationRequests.openLedgerAddNonce
-    val initialCurrentUserSnapshot = remember(appContext) {
+    val initialCurrentUserSnapshot = remember(appContext, backendSettings.baseUrl) {
         AuthSessionManager.getCurrentUserSnapshot()
-            ?.takeIf { AuthSessionManager.isLoggedIn }
     }
     var currentUser by remember { mutableStateOf(initialCurrentUserSnapshot) }
     var isCheckingAuth by remember {
@@ -269,9 +276,23 @@ fun YingShiApp() {
         )
     }
 
+    fun enableOfflineReadOnly(message: String = OfflineReadOnlyDefaultMessage) {
+        val wasReadOnly = OfflineAccessManager.state.isReadOnly
+        OfflineAccessManager.enterReadOnly(message)
+        if (!wasReadOnly) {
+            showAppNotice(message, YingShiNoticeTone.WARNING)
+        }
+    }
+
     LaunchedEffect(currentUser?.userId, currentUser?.updatedAtMillis, currentUser?.partner?.userId) {
         CollaboratorDirectoryStore.update(currentUser)
         currentUser?.let(AuthSessionManager::saveCurrentUserSnapshot)
+    }
+
+    LaunchedEffect(offlineAccessState.isReadOnly) {
+        if (offlineAccessState.isReadOnly) {
+            showQuickAddSheet = false
+        }
     }
 
     fun resetAccountRoutes() {
@@ -349,15 +370,26 @@ fun YingShiApp() {
         }
     }
 
-    LaunchedEffect(authSessionVersion, backendSettings.repositoryMode, backendSettings.baseUrl) {
+    LaunchedEffect(authSessionVersion, backendSettings.baseUrl) {
+        val storedCachedUser = AuthSessionManager.getCurrentUserSnapshot()
+        val cachedUser = storedCachedUser ?: currentUser
         if (!AuthSessionManager.isLoggedIn) {
+            if (storedCachedUser != null) {
+                currentUser = storedCachedUser
+                authNoticeMessage = null
+                isCheckingAuth = false
+                isRefreshingProfile = false
+                profileRefreshMessage = OfflineReadOnlyDefaultMessage
+                enableOfflineReadOnly("当前正在显示上次缓存内容，恢复连接后会自动刷新。")
+                return@LaunchedEffect
+            }
+            OfflineAccessManager.clear()
             currentUser = null
             isCheckingAuth = false
             isRefreshingProfile = false
             profileRefreshMessage = null
             return@LaunchedEffect
         }
-        val cachedUser = currentUser ?: AuthSessionManager.getCurrentUserSnapshot()
         if (currentUser == null && cachedUser != null) {
             currentUser = cachedUser
         }
@@ -368,14 +400,22 @@ fun YingShiApp() {
                 currentUser = result.data
                 PushTokenRegistrar.registerCurrentTokenIfPossible(context)
                 authNoticeMessage = null
+                profileRefreshMessage = null
                 isCheckingAuth = false
+                OfflineAccessManager.clear()
             }
             is ApiResult.Error -> {
                 if (result.isUnauthorized()) {
                     handleUnauthorized(result.message)
                 } else {
-                    if (!hasVisibleUser) {
+                    if (cachedUser != null && result.shouldFallbackToReadCache()) {
+                        currentUser = cachedUser
+                        authNoticeMessage = null
+                        enableOfflineReadOnly(result.offlineReadOnlyMessage())
+                    } else if (!hasVisibleUser) {
                         authNoticeMessage = result.message
+                    } else {
+                        authNoticeMessage = null
                     }
                     isCheckingAuth = false
                 }
@@ -384,10 +424,15 @@ fun YingShiApp() {
         }
     }
 
-    LaunchedEffect(personalProfileRoute?.source, currentUser?.userId, backendSettings.repositoryMode, backendSettings.baseUrl) {
+    LaunchedEffect(personalProfileRoute?.source, currentUser?.userId, backendSettings.baseUrl, offlineAccessState.isReadOnly) {
         if (personalProfileRoute == null || currentUser == null) {
             isRefreshingProfile = false
             profileRefreshMessage = null
+            return@LaunchedEffect
+        }
+        if (offlineAccessState.isReadOnly && !AuthSessionManager.isLoggedIn) {
+            isRefreshingProfile = false
+            profileRefreshMessage = offlineAccessState.message ?: "当前显示的是缓存资料，恢复连接后会自动刷新。"
             return@LaunchedEffect
         }
         isRefreshingProfile = true
@@ -395,17 +440,106 @@ fun YingShiApp() {
         when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
             is ApiResult.Success -> {
                 currentUser = result.data
+                profileRefreshMessage = null
+                OfflineAccessManager.clear()
             }
             is ApiResult.Error -> {
                 if (result.isUnauthorized()) {
                     handleUnauthorized(result.message)
                     return@LaunchedEffect
                 }
-                profileRefreshMessage = result.message
+                if (result.shouldFallbackToReadCache() && currentUser != null) {
+                    val message = result.offlineReadOnlyMessage("当前显示的是缓存资料，恢复连接后会自动刷新。")
+                    profileRefreshMessage = message
+                    enableOfflineReadOnly(message)
+                } else {
+                    profileRefreshMessage = result.message
+                }
             }
             ApiResult.Loading -> Unit
         }
         isRefreshingProfile = false
+    }
+
+    LaunchedEffect(networkState.changeVersion, networkState.isConnected, currentUser?.userId, personalProfileRoute?.source) {
+        if (networkState.changeVersion <= 0 || networkState.isConnected || isLoggingOut) {
+            return@LaunchedEffect
+        }
+        isCheckingAuth = false
+        isRefreshingProfile = false
+        val cachedUser = AuthSessionManager.getCurrentUserSnapshot() ?: currentUser ?: return@LaunchedEffect
+        currentUser = cachedUser
+        authNoticeMessage = null
+        val message = "网络已断开，当前显示缓存内容，恢复连接后会自动刷新。"
+        if (personalProfileRoute != null) {
+            profileRefreshMessage = message
+        }
+        enableOfflineReadOnly(message)
+    }
+
+    LaunchedEffect(networkState.changeVersion) {
+        if (networkState.changeVersion <= 0 || !networkState.isConnected || isLoggingOut) {
+            return@LaunchedEffect
+        }
+        val cachedUser = AuthSessionManager.getCurrentUserSnapshot() ?: currentUser
+        val shouldRecover = offlineAccessState.isReadOnly ||
+            !authNoticeMessage.isNullOrBlank() ||
+            (currentUser == null && (cachedUser != null || AuthSessionManager.isLoggedIn))
+        if (!shouldRecover) {
+            return@LaunchedEffect
+        }
+        if (!AuthSessionManager.isLoggedIn) {
+            if (cachedUser == null) return@LaunchedEffect
+            val loginOutcome = BackendAutoLoginManager.loginDefault(
+                force = false,
+                reason = "shell_reconnect_recover",
+            )
+            if (!loginOutcome.success) {
+                return@LaunchedEffect
+            }
+        }
+        val latestCachedUser = AuthSessionManager.getCurrentUserSnapshot() ?: currentUser ?: cachedUser
+        if (latestCachedUser != null) {
+            currentUser = latestCachedUser
+            profileRefreshMessage = if (personalProfileRoute != null) {
+                "网络已恢复，正在刷新资料..."
+            } else {
+                profileRefreshMessage
+            }
+        } else {
+            isCheckingAuth = true
+        }
+        when (val result = RepositoryProvider.authRepository.getCurrentUser()) {
+            is ApiResult.Success -> {
+                currentUser = result.data
+                PushTokenRegistrar.registerCurrentTokenIfPossible(context)
+                authNoticeMessage = null
+                profileRefreshMessage = null
+                isCheckingAuth = false
+                isRefreshingProfile = false
+                OfflineAccessManager.clear()
+            }
+            is ApiResult.Error -> {
+                if (result.isUnauthorized()) {
+                    handleUnauthorized(result.message)
+                } else {
+                    if (latestCachedUser != null && result.shouldFallbackToReadCache()) {
+                        currentUser = latestCachedUser
+                        val message = result.offlineReadOnlyMessage("网络已恢复，但服务器暂时仍不可用，继续显示缓存内容。")
+                        authNoticeMessage = null
+                        profileRefreshMessage = message
+                        enableOfflineReadOnly(message)
+                    } else if (latestCachedUser == null) {
+                        authNoticeMessage = result.message
+                    } else {
+                        profileRefreshMessage = result.message
+                    }
+                    isCheckingAuth = false
+                    isRefreshingProfile = false
+                }
+            }
+            ApiResult.Loading -> Unit
+        }
     }
 
     if (isCheckingAuth) {
@@ -418,6 +552,8 @@ fun YingShiApp() {
             sessionMessage = authNoticeMessage,
             onLoginSuccess = { user ->
                 currentUser = user
+                AuthSessionManager.saveCurrentUserSnapshot(user)
+                OfflineAccessManager.clear()
                 authNoticeMessage = null
                 profileRefreshMessage = null
                 isCheckingAuth = false
@@ -841,8 +977,13 @@ fun YingShiApp() {
         AppShellScaffold(
             selectedDestination = selectedDestination,
             onDestinationSelected = { selectedDestinationName = it.name },
+            centerActionEnabled = !offlineAccessState.isReadOnly,
             onCenterAction = {
-                showQuickAddSheet = true
+                if (offlineAccessState.isReadOnly) {
+                    showAppNotice("当前为缓存只读，恢复连接后才能继续新建或导入。", YingShiNoticeTone.WARNING)
+                } else {
+                    showQuickAddSheet = true
+                }
             },
             showBottomBar = photoViewerRoute == null &&
                 systemMediaRoute == null &&
@@ -1256,8 +1397,7 @@ fun YingShiApp() {
 
                         personalProfileRoute != null -> PersonalProfileScreen(
                             currentUser = user,
-                            repositoryMode = backendSettings.repositoryMode,
-                            baseUrl = RemoteServiceFactory.currentBaseUrl(),
+                            isOfflineReadOnly = offlineAccessState.isReadOnly,
                             isRefreshing = isRefreshingProfile,
                             refreshErrorMessage = profileRefreshMessage,
                             onBack = { personalProfileRoute = null },
@@ -1269,8 +1409,7 @@ fun YingShiApp() {
 
                         else -> MyScreen(
                             currentUser = user,
-                            repositoryMode = backendSettings.repositoryMode,
-                            baseUrl = RemoteServiceFactory.currentBaseUrl(),
+                            isOfflineReadOnly = offlineAccessState.isReadOnly,
                             isLoggingOut = isLoggingOut,
                             onOpenProfile = {
                                 personalProfileRoute = PersonalProfileRoute(source = "my-page")

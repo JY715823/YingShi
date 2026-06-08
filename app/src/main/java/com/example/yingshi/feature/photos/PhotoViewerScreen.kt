@@ -71,6 +71,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -121,6 +122,7 @@ import coil.imageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -493,9 +495,10 @@ fun PhotoViewerScreen(
     val motion = YingShiThemeTokens.motion
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
+    val networkState by NetworkConnectivityMonitor.state.collectAsState()
     val sessionVersion = AuthSessionManager.sessionVersion
     val viewerAccessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val settingsState = SettingsRepository.getSettingsState()
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
@@ -572,6 +575,15 @@ fun PhotoViewerScreen(
                 currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType)
             RepositoryMode.FAKE -> currentItem.mediaType == AppMediaType.IMAGE
         }
+    }
+    val originalActionLabel = if (
+        RepositoryProvider.currentMode == RepositoryMode.REAL &&
+        currentOriginalState == OriginalLoadState.Loading &&
+        !networkState.isConnected
+    ) {
+        "等待网络恢复"
+    } else {
+        currentOriginalState.actionLabel()
     }
     var lastNotifiedOriginalState by remember(currentItem.mediaId) {
         mutableStateOf<OriginalLoadState?>(null)
@@ -877,6 +889,17 @@ fun PhotoViewerScreen(
                 } else {
                     FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
                 },
+                originalLoadingLabel = if (
+                    RepositoryProvider.currentMode == RepositoryMode.REAL &&
+                    viewerItems[page].mediaType == AppMediaType.IMAGE &&
+                    RealOriginalLoadRepository.getState(viewerItems[page].toRealOriginalMediaTarget()) ==
+                    OriginalLoadState.Loading &&
+                    !networkState.isConnected
+                ) {
+                    "等待网络恢复"
+                } else {
+                    "原图加载中"
+                },
                 overlaysVisible = overlaysVisible,
                 immersive = isImmersive,
                 videoControlsVisible = videoControlsVisible,
@@ -1099,6 +1122,7 @@ fun PhotoViewerScreen(
         ) {
             PhotoViewerEdgeActions(
                 overlayUiModel = overlayUiModel,
+                originalActionLabel = originalActionLabel,
                 showCommentPreview = showCommentPreview,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1126,7 +1150,13 @@ fun PhotoViewerScreen(
                             }
 
                             currentOriginalState == OriginalLoadState.Loading -> {
-                                showViewerNotice("原图加载中")
+                                showViewerNotice(
+                                    if (networkState.isConnected) {
+                                        "原图加载中"
+                                    } else {
+                                        "网络已断开，恢复后继续加载原图"
+                                    },
+                                )
                             }
 
                             currentOriginalState == OriginalLoadState.Loaded -> {
@@ -1642,6 +1672,7 @@ private fun PhotoViewerCanvas(
     zoomState: ViewerZoomState?,
     videoPlaybackState: ViewerVideoPlaybackState?,
     originalLoadState: OriginalLoadState,
+    originalLoadingLabel: String,
     overlaysVisible: Boolean,
     immersive: Boolean,
     videoControlsVisible: Boolean,
@@ -1764,6 +1795,7 @@ private fun PhotoViewerCanvas(
                             ViewerImageCanvas(
                                 media = media,
                                 originalLoadState = originalLoadState,
+                                originalLoadingLabel = originalLoadingLabel,
                                 onOriginalLoadStateChange = onOriginalLoadStateChange,
                                 contentScale = ContentScale.FillWidth,
                                 modifier = Modifier.fillMaxSize(),
@@ -1869,6 +1901,7 @@ private fun PhotoViewerCanvas(
                         ViewerImageCanvas(
                             media = media,
                             originalLoadState = originalLoadState,
+                            originalLoadingLabel = originalLoadingLabel,
                             onOriginalLoadStateChange = onOriginalLoadStateChange,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -1896,6 +1929,7 @@ private fun PhotoViewerCanvas(
 private fun ViewerImageCanvas(
     media: PhotoFeedItem,
     originalLoadState: OriginalLoadState,
+    originalLoadingLabel: String,
     onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
     contentScale: ContentScale = ContentScale.Fit,
     modifier: Modifier = Modifier,
@@ -1919,7 +1953,7 @@ private fun ViewerImageCanvas(
     val shouldRequestOriginal = originalLoadState == OriginalLoadState.Loaded
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val previewRequest = remember(context, previewUrl, previewCacheKey, accessToken) {
         backendMediaImageRequest(
@@ -2022,7 +2056,7 @@ private fun ViewerImageCanvas(
                         strokeWidth = 1.5.dp,
                     )
                     Text(
-                        text = "原图加载中",
+                        text = originalLoadingLabel,
                         style = MaterialTheme.typography.labelMedium,
                         color = ViewerSurface.copy(alpha = 0.88f),
                     )
@@ -2134,7 +2168,7 @@ internal fun ViewerVideoCanvas(
     val errorMessage = playbackState?.errorMessage
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val posterImageUrl = remember(media.mediaSource, media.mediaType) {
         media.mediaSource
@@ -2581,6 +2615,7 @@ private fun formatVideoProgress(timeMillis: Long): String {
 @Composable
 private fun PhotoViewerEdgeActions(
     overlayUiModel: PhotoViewerOverlayUiModel,
+    originalActionLabel: String,
     showCommentPreview: Boolean,
     onOpenComments: () -> Unit,
     onOpenOriginal: () -> Unit,
@@ -2606,7 +2641,7 @@ private fun PhotoViewerEdgeActions(
 
         if (overlayUiModel.showOriginalAction) {
             ViewerCapsule(
-                text = overlayUiModel.originalLoadState.actionLabel(),
+                text = originalActionLabel,
                 emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
                 enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
                 onClick = onOpenOriginal,

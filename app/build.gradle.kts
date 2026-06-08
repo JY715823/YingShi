@@ -66,7 +66,6 @@ android {
     buildTypes {
         debug {
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
-            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         create("profile") {
             initWith(getByName("release"))
@@ -75,7 +74,6 @@ android {
             isDebuggable = false
             isMinifyEnabled = false
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
-            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         create("optimizedDebug") {
             initWith(getByName("release"))
@@ -84,7 +82,6 @@ android {
             isDebuggable = false
             isMinifyEnabled = false
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
-            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
         release {
             isMinifyEnabled = false
@@ -93,7 +90,6 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"$releaseApiBaseUrl\"")
-            buildConfigField("String", "DEFAULT_REPOSITORY_MODE", "\"REAL\"")
         }
     }
 }

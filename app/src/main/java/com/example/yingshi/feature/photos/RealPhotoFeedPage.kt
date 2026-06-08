@@ -80,6 +80,14 @@ fun RealPhotoFeedPage(
             viewModel.refresh()
         }
     }
+    ReconnectRefreshEffect(
+        shouldRefresh = uiState.isOfflineReadOnly ||
+            uiState.errorMessage != null ||
+            uiState.loadMoreErrorMessage != null ||
+            uiState.isLoading,
+        onReconnect = viewModel::refresh,
+        onDisconnect = viewModel::handleConnectivityLost,
+    )
 
     if (showDeleteConfirm) {
         val selectedIds = selectionState.selectedMediaIds
@@ -265,6 +273,7 @@ fun RealPhotoFeedPage(
                             RealFeedSelectionBarV2(
                                 selectedCount = selectionState.selectedCount,
                                 isDeleting = uiState.isDeleting,
+                                writeEnabled = !uiState.isOfflineReadOnly,
                                 onShare = {
                                     val selectedItems = uiState.feedItems.filter { item ->
                                         selectionState.selectedMediaIds.contains(item.mediaId)
@@ -355,6 +364,7 @@ fun RealPhotoFeedPage(
 private fun RealFeedSelectionBarV2(
     selectedCount: Int,
     isDeleting: Boolean,
+    writeEnabled: Boolean,
     onShare: () -> Unit,
     onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
@@ -390,19 +400,19 @@ private fun RealFeedSelectionBarV2(
             )
             RealFeedSelectionChip(
                 text = "新建",
-                enabled = !isDeleting,
+                enabled = writeEnabled && !isDeleting,
                 onClick = onCreatePost,
                 shape = chipShape,
             )
             RealFeedSelectionChip(
                 text = "加入",
-                enabled = !isDeleting,
+                enabled = writeEnabled && !isDeleting,
                 onClick = onAddToPost,
                 shape = chipShape,
             )
             RealFeedSelectionChip(
                 text = if (isDeleting) "删除中…" else "回收站",
-                enabled = !isDeleting,
+                enabled = writeEnabled && !isDeleting,
                 onClick = onDelete,
                 shape = chipShape,
                 destructive = true,

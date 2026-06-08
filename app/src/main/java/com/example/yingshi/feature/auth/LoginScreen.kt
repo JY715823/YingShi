@@ -28,7 +28,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
@@ -57,13 +60,16 @@ import com.example.yingshi.ui.components.YingShiTextField
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private const val APP_NAME = "映世"
 private const val LOGIN_SUBTITLE = "和你一起，把日常留住"
 private const val LABEL_ACCOUNT = "账号"
 private const val LABEL_PASSWORD = "密码"
-private const val LABEL_ADVANCED = "连接设置"
+private const val LABEL_ADVANCED = "服务连接"
 private const val LABEL_BACKEND_ADDRESS = "服务地址"
 private const val ACTION_LOGIN = "登录"
 private const val ACTION_SAVE_ADDRESS = "保存地址"
@@ -79,6 +85,7 @@ fun LoginScreen(
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     val settings = BackendDebugConfig.settings
+    val networkState by NetworkConnectivityMonitor.state.collectAsState()
     val scope = rememberCoroutineScope()
     var account by rememberSaveable { mutableStateOf(BackendAutoLoginManager.DEFAULT_DEMO_ACCOUNT) }
     var password by rememberSaveable { mutableStateOf(BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD) }
@@ -86,7 +93,133 @@ fun LoginScreen(
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
     var advancedMessage by remember { mutableStateOf<String?>(null) }
+    var pendingLoginRequest by remember { mutableStateOf<LoginRequestDto?>(null) }
+    var waitingForNetwork by remember { mutableStateOf(false) }
+    var loginAttemptId by remember { mutableIntStateOf(0) }
+    var loginJob by remember { mutableStateOf<Job?>(null) }
+
+    fun finishLogin(session: RemoteLoginSession) {
+        pendingLoginRequest = null
+        waitingForNetwork = false
+        loginJob = null
+        isLoading = false
+        errorMessage = null
+        statusMessage = null
+        onLoginSuccess(
+            RemoteCurrentUser(
+                userId = session.userId,
+                account = session.account,
+                displayName = session.displayName,
+                avatarUrl = session.avatarUrl,
+                libraryId = session.libraryId,
+                libraryDisplayName = session.libraryDisplayName,
+                bio = session.bio,
+                partner = session.partner,
+                createdAtMillis = session.createdAtMillis,
+                updatedAtMillis = session.updatedAtMillis,
+            ),
+        )
+    }
+
+    fun launchQueuedLogin(attemptId: Int, request: LoginRequestDto) {
+        if (attemptId != loginAttemptId || pendingLoginRequest != request) {
+            return
+        }
+        if (!networkState.isConnected) {
+            loginJob?.cancel()
+            loginJob = null
+            isLoading = true
+            waitingForNetwork = true
+            errorMessage = null
+            statusMessage = "当前网络不可用，恢复后会自动登录。"
+            return
+        }
+        waitingForNetwork = false
+        errorMessage = null
+        statusMessage = null
+        isLoading = true
+        val launchConnectivityVersion = NetworkConnectivityMonitor.currentState.changeVersion
+        loginJob?.cancel()
+        var launchedJob: Job? = null
+        launchedJob = scope.launch {
+            try {
+                when (val loginResult = RepositoryProvider.authRepository.login(request)) {
+                    is ApiResult.Success -> {
+                        if (attemptId == loginAttemptId && pendingLoginRequest == request) {
+                            finishLogin(loginResult.data)
+                        }
+                    }
+                    is ApiResult.Error -> {
+                        if (attemptId != loginAttemptId || pendingLoginRequest != request) {
+                            return@launch
+                        }
+                        val connectivityChangedDuringRequest =
+                            NetworkConnectivityMonitor.currentState.changeVersion != launchConnectivityVersion
+                        val shouldWaitForReconnect =
+                            loginResult.throwable is IOException &&
+                                (
+                                    !NetworkConnectivityMonitor.currentState.isConnected ||
+                                        connectivityChangedDuringRequest
+                                    )
+                        if (shouldWaitForReconnect) {
+                            isLoading = true
+                            waitingForNetwork = true
+                            errorMessage = null
+                            statusMessage = if (NetworkConnectivityMonitor.currentState.isConnected) {
+                                "网络已恢复，正在重新登录..."
+                            } else {
+                                "网络已断开，恢复后会自动登录。"
+                            }
+                        } else {
+                            pendingLoginRequest = null
+                            waitingForNetwork = false
+                            isLoading = false
+                            errorMessage = loginResult.message
+                            statusMessage = null
+                        }
+                    }
+                    ApiResult.Loading -> Unit
+                }
+            } catch (_: CancellationException) {
+                Unit
+            } catch (throwable: Throwable) {
+                if (attemptId != loginAttemptId || pendingLoginRequest != request) {
+                    return@launch
+                }
+                val connectivityChangedDuringRequest =
+                    NetworkConnectivityMonitor.currentState.changeVersion != launchConnectivityVersion
+                val shouldWaitForReconnect =
+                    throwable is IOException &&
+                        (
+                            !NetworkConnectivityMonitor.currentState.isConnected ||
+                                connectivityChangedDuringRequest
+                            )
+                if (shouldWaitForReconnect) {
+                    isLoading = true
+                    waitingForNetwork = true
+                    errorMessage = null
+                    statusMessage = if (NetworkConnectivityMonitor.currentState.isConnected) {
+                        "网络已恢复，正在重新登录..."
+                    } else {
+                        "网络已断开，恢复后会自动登录。"
+                    }
+                } else {
+                    pendingLoginRequest = null
+                    waitingForNetwork = false
+                    isLoading = false
+                    errorMessage = throwable.message ?: ERROR_LOGIN_FAILED
+                    statusMessage = null
+                }
+            } finally {
+                if (loginJob === launchedJob) {
+                    loginJob = null
+                }
+            }
+        }
+        loginJob = launchedJob
+    }
 
     LaunchedEffect(Unit) {
         if (account.isBlank()) {
@@ -94,6 +227,28 @@ fun LoginScreen(
         }
         if (password.isBlank()) {
             password = BackendAutoLoginManager.DEFAULT_DEMO_PASSWORD
+        }
+    }
+    LaunchedEffect(settings.baseUrl) {
+        if (baseUrlInput != settings.baseUrl) {
+            baseUrlInput = settings.baseUrl
+        }
+    }
+    LaunchedEffect(networkState.changeVersion, networkState.isConnected, pendingLoginRequest, waitingForNetwork) {
+        val queuedRequest = pendingLoginRequest ?: return@LaunchedEffect
+        if (!networkState.isConnected) {
+            if (networkState.changeVersion > 0 && (isLoading || loginJob != null)) {
+                loginJob?.cancel()
+                loginJob = null
+                isLoading = true
+                waitingForNetwork = true
+                errorMessage = null
+                statusMessage = "网络已断开，恢复后会自动登录。"
+            }
+            return@LaunchedEffect
+        }
+        if ((waitingForNetwork || loginJob == null) && queuedRequest == pendingLoginRequest) {
+            launchQueuedLogin(loginAttemptId, queuedRequest)
         }
     }
 
@@ -146,7 +301,7 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                (errorMessage ?: sessionMessage)?.let { message ->
+                (errorMessage ?: statusMessage ?: sessionMessage)?.let { message ->
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(radius.lg),
@@ -178,48 +333,22 @@ fun LoginScreen(
                 }
 
                 YingShiPrimaryMistButton(
-                    text = if (isLoading) "正在登录" else ACTION_LOGIN,
+                    text = when {
+                        waitingForNetwork -> "等待网络恢复"
+                        isLoading -> "正在登录"
+                        else -> ACTION_LOGIN
+                    },
                     onClick = {
-                        scope.launch {
-                            isLoading = true
-                            errorMessage = null
-                            try {
-                                when (
-                                    val loginResult = RepositoryProvider.authRepository.login(
-                                        LoginRequestDto(
-                                            account = account.trim(),
-                                            password = password,
-                                        ),
-                                    )
-                                ) {
-                                    is ApiResult.Success -> {
-                                        val session: RemoteLoginSession = loginResult.data
-                                        onLoginSuccess(
-                                            RemoteCurrentUser(
-                                                userId = session.userId,
-                                                account = session.account,
-                                                displayName = session.displayName,
-                                                avatarUrl = session.avatarUrl,
-                                                libraryId = session.libraryId,
-                                                libraryDisplayName = session.libraryDisplayName,
-                                                bio = session.bio,
-                                                partner = session.partner,
-                                                createdAtMillis = session.createdAtMillis,
-                                                updatedAtMillis = session.updatedAtMillis,
-                                            ),
-                                        )
-                                    }
-                                    is ApiResult.Error -> {
-                                        errorMessage = loginResult.message
-                                    }
-                                    ApiResult.Loading -> Unit
-                                }
-                            } catch (throwable: Throwable) {
-                                errorMessage = throwable.message ?: ERROR_LOGIN_FAILED
-                            } finally {
-                                isLoading = false
-                            }
-                        }
+                        val request = LoginRequestDto(
+                            account = account.trim(),
+                            password = password,
+                        )
+                        loginAttemptId += 1
+                        pendingLoginRequest = request
+                        waitingForNetwork = false
+                        errorMessage = null
+                        statusMessage = null
+                        launchQueuedLogin(loginAttemptId, request)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -231,6 +360,7 @@ fun LoginScreen(
 
             AdvancedRow(
                 expanded = advancedExpanded,
+                currentBaseUrl = settings.baseUrl,
                 onClick = {
                     advancedExpanded = !advancedExpanded
                     advancedMessage = null
@@ -298,6 +428,7 @@ fun LoginScreen(
 @Composable
 private fun AdvancedRow(
     expanded: Boolean,
+    currentBaseUrl: String,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -309,13 +440,13 @@ private fun AdvancedRow(
             .fillMaxWidth()
             .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
         shape = RoundedCornerShape(radius.lg),
-        color = colors.raisedSurface.copy(alpha = 0.70f),
+        color = colors.raisedSurface.copy(alpha = 0.74f),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White.copy(alpha = 0.18f))
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
+                .background(Color.White.copy(alpha = 0.10f))
+                .padding(horizontal = spacing.lg, vertical = spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -323,14 +454,21 @@ private fun AdvancedRow(
                 imageVector = Icons.Rounded.Settings,
                 contentDescription = null,
                 tint = colors.titleAccent,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(22.dp),
             )
-            Text(
-                text = LABEL_ADVANCED,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textSecondary,
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = LABEL_ADVANCED,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.textPrimary,
+                )
+                Text(
+                    text = currentBaseUrl,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                )
+            }
             Icon(
                 imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
                 contentDescription = null,

@@ -60,6 +60,7 @@ fun AppShellScaffold(
     selectedDestination: RootDestination,
     onDestinationSelected: (RootDestination) -> Unit,
     onCenterAction: () -> Unit = {},
+    centerActionEnabled: Boolean = true,
     showBottomBar: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
@@ -75,6 +76,7 @@ fun AppShellScaffold(
                     selectedDestination = selectedDestination,
                     onDestinationSelected = onDestinationSelected,
                     onCenterAction = onCenterAction,
+                    centerActionEnabled = centerActionEnabled,
                 )
             }
         },
@@ -239,6 +241,7 @@ private fun FloatingBottomBar(
     selectedDestination: RootDestination,
     onDestinationSelected: (RootDestination) -> Unit,
     onCenterAction: () -> Unit,
+    centerActionEnabled: Boolean,
 ) {
     val colors = YingShiThemeTokens.colors
     Box(
@@ -258,17 +261,17 @@ private fun FloatingBottomBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp),
+                .height(82.dp),
         ) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(68.dp),
+                    .height(74.dp),
                 shape = RoundedCornerShape(0.dp),
-                color = colors.raisedSurface.copy(alpha = 0.92f),
+                color = colors.raisedSurface.copy(alpha = 0.94f),
                 tonalElevation = 0.dp,
-                shadowElevation = 0.dp,
+                shadowElevation = 2.dp,
                 border = BorderStroke(0.dp, Color.Transparent),
             ) {}
             Box(
@@ -296,8 +299,8 @@ private fun FloatingBottomBar(
             Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(y = 5.dp)
-                    .height(64.dp)
+                    .offset(y = 9.dp)
+                    .height(66.dp)
                     .fillMaxWidth()
                     .padding(horizontal = 10.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -319,7 +322,10 @@ private fun FloatingBottomBar(
                         .height(58.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CenterAddButton(onClick = onCenterAction)
+                    CenterAddButton(
+                        enabled = centerActionEnabled,
+                        onClick = onCenterAction,
+                    )
                 }
 
                 RootDestination.entries.drop(2).forEach { destination ->
@@ -366,7 +372,7 @@ private fun BottomNavItem(
     Surface(
         modifier = modifier
             .padding(horizontal = 2.dp)
-            .height(56.dp)
+            .height(58.dp)
             .yingShiHapticClickable(shape = shape, pressedScale = motion.pressedScale, onClick = onClick),
         shape = shape,
         color = containerColor,
@@ -380,9 +386,9 @@ private fun BottomNavItem(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 2.dp, vertical = 4.dp),
+                .padding(horizontal = 2.dp, vertical = 5.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Box(
                 modifier = Modifier.size(28.dp),
@@ -413,25 +419,44 @@ private fun BottomNavItem(
 }
 
 @Composable
-private fun CenterAddButton(onClick: () -> Unit) {
+private fun CenterAddButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
     val colors = YingShiThemeTokens.colors
     val shape = CircleShape
 
     Surface(
         modifier = Modifier
             .size(56.dp)
-            .yingShiHapticClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
+            .yingShiHapticClickable(
+                enabled = enabled,
+                shape = shape,
+                pressedScale = 0.94f,
+                onClick = onClick,
+            ),
         shape = shape,
-        color = colors.softGreenContainer.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.softGreenAction.copy(alpha = 0.20f)),
-        shadowElevation = 2.dp,
+        color = if (enabled) {
+            colors.softGreenContainer.copy(alpha = 0.98f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.92f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (enabled) {
+                colors.softGreenAction.copy(alpha = 0.24f)
+            } else {
+                colors.dividerSoft.copy(alpha = 0.68f)
+            },
+        ),
+        shadowElevation = if (enabled) 5.dp else 0.dp,
     ) {
         Box(
             modifier = Modifier.background(
                 Brush.radialGradient(
                     listOf(
-                        Color.White.copy(alpha = 0.58f),
-                        colors.glowWash.copy(alpha = 0.26f),
+                        if (enabled) Color.White.copy(alpha = 0.62f) else colors.raisedSurface.copy(alpha = 0.24f),
+                        if (enabled) colors.glowWash.copy(alpha = 0.30f) else Color.Transparent,
                         Color.Transparent,
                     ),
                 ),
@@ -441,7 +466,7 @@ private fun CenterAddButton(onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "添加",
-                tint = colors.titleAccent,
+                tint = if (enabled) colors.titleAccent else colors.textSecondary.copy(alpha = 0.72f),
                 modifier = Modifier.size(46.dp),
             )
         }

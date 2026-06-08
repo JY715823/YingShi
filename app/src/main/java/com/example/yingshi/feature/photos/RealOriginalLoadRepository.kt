@@ -5,10 +5,13 @@ import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
 import coil.imageLoader
 import coil.memory.MemoryCache
+import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
@@ -33,6 +36,12 @@ private data class RealOriginalRequestKey(
     val originalCacheKey: String?,
 )
 
+private data class PendingOriginalRequest(
+    val context: Context,
+    val target: RealOriginalMediaTarget,
+    val accessToken: String?,
+)
+
 internal fun PhotoFeedItem.toRealOriginalMediaTarget(): RealOriginalMediaTarget {
     return RealOriginalMediaTarget(
         mediaId = mediaId,
@@ -53,6 +62,20 @@ internal object RealOriginalLoadRepository {
     private val scope = CoroutineScope(SupervisorJob())
     private val statesByRequestKey = mutableStateMapOf<RealOriginalRequestKey, OriginalLoadState>()
     private val activeJobs = Collections.synchronizedMap(mutableMapOf<RealOriginalRequestKey, Job>())
+    private val pendingRequests = Collections.synchronizedMap(mutableMapOf<RealOriginalRequestKey, PendingOriginalRequest>())
+    private val requestVersions = Collections.synchronizedMap(mutableMapOf<RealOriginalRequestKey, Int>())
+
+    init {
+        scope.launch {
+            NetworkConnectivityMonitor.state.collectLatest { state ->
+                if (state.isConnected) {
+                    retryPendingRequests()
+                } else {
+                    pauseActiveRequests()
+                }
+            }
+        }
+    }
 
     fun getState(target: RealOriginalMediaTarget): OriginalLoadState {
         val key = target.requestKey() ?: return OriginalLoadState.NotLoaded
@@ -67,10 +90,13 @@ internal object RealOriginalLoadRepository {
         }
         if (state == OriginalLoadState.NotLoaded) {
             statesByRequestKey.remove(key)
+            pendingRequests.remove(key)
+            requestVersions.remove(key)
             return
         }
         statesByRequestKey[key] = state
         if (state == OriginalLoadState.Loaded) {
+            pendingRequests.remove(key)
             FakeMediaCacheRepository.markOriginalCached(target.mediaId)
         }
     }
@@ -86,48 +112,22 @@ internal object RealOriginalLoadRepository {
             return false
         }
         val currentState = getState(target)
-        if (currentState != OriginalLoadState.Loaded && currentState != OriginalLoadState.Loading) {
-            statesByRequestKey[key] = OriginalLoadState.Loading
-            synchronized(activeJobs) {
-                activeJobs[key]?.cancel()
-                activeJobs[key] = scope.launch(Dispatchers.IO) {
-                    try {
-                        Log.d("RealOriginalLoadRepo", "start original load url=${key.originalUrl}")
-                        val nextState = try {
-                            Log.d("RealOriginalLoadRepo", "begin original request body url=${key.originalUrl}")
-                            performOriginalLoad(
-                                context = context,
-                                target = target,
-                                accessToken = accessToken,
-                            )
-                        } catch (throwable: Throwable) {
-                            Log.e(
-                                "RealOriginalLoadRepo",
-                                "original load crashed url=${key.originalUrl}",
-                                throwable,
-                            )
-                            OriginalLoadState.Failed
-                        }
-                        withContext(Dispatchers.Main.immediate) {
-                            setState(target, nextState)
-                        }
-                        Log.d("RealOriginalLoadRepo", "finish original load url=${key.originalUrl} state=$nextState")
-                    } catch (throwable: Throwable) {
-                        Log.e(
-                            "RealOriginalLoadRepo",
-                            "original load crashed url=${key.originalUrl}",
-                            throwable,
-                        )
-                        withContext(Dispatchers.Main.immediate) {
-                            setState(target, OriginalLoadState.Failed)
-                        }
-                    } finally {
-                        synchronized(activeJobs) {
-                            activeJobs.remove(key)
-                        }
-                    }
-                }
-            }
+        if (currentState == OriginalLoadState.Loaded) {
+            return true
+        }
+        pendingRequests[key] = PendingOriginalRequest(
+            context = context.applicationContext,
+            target = target,
+            accessToken = accessToken,
+        )
+        statesByRequestKey[key] = OriginalLoadState.Loading
+        if (NetworkConnectivityMonitor.currentState.isConnected) {
+            launchOriginalRequest(
+                key = key,
+                context = context.applicationContext,
+                target = target,
+                accessToken = accessToken,
+            )
         }
         return true
     }
@@ -145,7 +145,11 @@ internal object RealOriginalLoadRepository {
         }
         statesByRequestKey.keys
             .filter { it.mediaId == mediaId }
-            .forEach(statesByRequestKey::remove)
+            .forEach { key ->
+                statesByRequestKey.remove(key)
+                pendingRequests.remove(key)
+                requestVersions.remove(key)
+            }
     }
 
     fun clearAllOriginals() {
@@ -154,6 +158,8 @@ internal object RealOriginalLoadRepository {
             activeJobs.clear()
         }
         statesByRequestKey.clear()
+        pendingRequests.clear()
+        requestVersions.clear()
     }
 
     fun clearCachedOriginalFiles(context: Context): Boolean {
@@ -307,6 +313,149 @@ internal object RealOriginalLoadRepository {
                     false
                 }
             }
+        }
+    }
+
+    private fun launchOriginalRequest(
+        key: RealOriginalRequestKey,
+        context: Context,
+        target: RealOriginalMediaTarget,
+        accessToken: String?,
+    ) {
+        val requestVersion = nextRequestVersion(key)
+        val launchConnectivityVersion = NetworkConnectivityMonitor.currentState.changeVersion
+        synchronized(activeJobs) {
+            activeJobs[key]?.cancel()
+            activeJobs[key] = scope.launch(Dispatchers.IO) {
+                var shouldRemovePending = false
+                var retryAfterCompletion = false
+                try {
+                    Log.d("RealOriginalLoadRepo", "start original load url=${key.originalUrl}")
+                    val nextState = try {
+                        Log.d("RealOriginalLoadRepo", "begin original request body url=${key.originalUrl}")
+                        performOriginalLoad(
+                            context = context,
+                            target = target,
+                            accessToken = accessToken,
+                        )
+                    } catch (throwable: Throwable) {
+                        Log.e(
+                            "RealOriginalLoadRepo",
+                            "original load crashed url=${key.originalUrl}",
+                            throwable,
+                        )
+                        OriginalLoadState.Failed
+                    }
+                    withContext(Dispatchers.Main.immediate) {
+                        if (requestVersions[key] != requestVersion) {
+                            return@withContext
+                        }
+                        val connectivityState = NetworkConnectivityMonitor.currentState
+                        val connectivityChangedDuringRequest =
+                            connectivityState.changeVersion != launchConnectivityVersion
+                        if (
+                            nextState == OriginalLoadState.Failed &&
+                            (
+                                !connectivityState.isConnected ||
+                                    connectivityChangedDuringRequest
+                                )
+                        ) {
+                            statesByRequestKey[key] = OriginalLoadState.Loading
+                            retryAfterCompletion = connectivityState.isConnected
+                            return@withContext
+                        }
+                        shouldRemovePending = nextState != OriginalLoadState.Loading
+                        setState(target, nextState)
+                    }
+                    Log.d("RealOriginalLoadRepo", "finish original load url=${key.originalUrl} state=$nextState")
+                } catch (throwable: Throwable) {
+                    Log.e(
+                        "RealOriginalLoadRepo",
+                        "original load crashed url=${key.originalUrl}",
+                        throwable,
+                    )
+                    withContext(Dispatchers.Main.immediate) {
+                        if (requestVersions[key] != requestVersion) {
+                            return@withContext
+                        }
+                        val connectivityState = NetworkConnectivityMonitor.currentState
+                        val connectivityChangedDuringRequest =
+                            connectivityState.changeVersion != launchConnectivityVersion
+                        if (
+                            !connectivityState.isConnected ||
+                            connectivityChangedDuringRequest
+                        ) {
+                            statesByRequestKey[key] = OriginalLoadState.Loading
+                            retryAfterCompletion = connectivityState.isConnected
+                            return@withContext
+                        }
+                        shouldRemovePending = true
+                        setState(target, OriginalLoadState.Failed)
+                    }
+                } finally {
+                    synchronized(activeJobs) {
+                        activeJobs.remove(key)
+                    }
+                    if (shouldRemovePending) {
+                        pendingRequests.remove(key)
+                    }
+                    if (retryAfterCompletion && pendingRequests.containsKey(key)) {
+                        launchOriginalRequest(
+                            key = key,
+                            context = context,
+                            target = target,
+                            accessToken = accessToken,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun pauseActiveRequests() {
+        val jobsToCancel = synchronized(activeJobs) {
+            activeJobs
+                .filterKeys { key -> statesByRequestKey[key] == OriginalLoadState.Loading }
+                .map { (key, job) ->
+                    nextRequestVersion(key)
+                    key to job
+                }
+        }
+        jobsToCancel.forEach { (_, job) ->
+            runCatching { job.cancelAndJoin() }
+        }
+        synchronized(activeJobs) {
+            jobsToCancel.forEach { (key, _) ->
+                activeJobs.remove(key)
+                if (pendingRequests.containsKey(key)) {
+                    statesByRequestKey[key] = OriginalLoadState.Loading
+                }
+            }
+        }
+    }
+
+    private fun retryPendingRequests() {
+        val pending = synchronized(pendingRequests) {
+            pendingRequests.entries.toList()
+        }
+        pending.forEach { (key, request) ->
+            if (statesByRequestKey[key] != OriginalLoadState.Loaded) {
+                statesByRequestKey[key] = OriginalLoadState.Loading
+                launchOriginalRequest(
+                    key = key,
+                    context = request.context,
+                    target = request.target,
+                    accessToken = request.accessToken,
+                )
+            }
+        }
+    }
+
+    private fun nextRequestVersion(key: RealOriginalRequestKey): Int {
+        return synchronized(requestVersions) {
+            val nextVersion = (requestVersions[key] ?: 0) + 1
+            requestVersions[key] = nextVersion
+            nextVersion
         }
     }
 

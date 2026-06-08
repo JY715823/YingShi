@@ -9,6 +9,7 @@ import coil.decode.ImageDecoderDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.feature.life.push.PushTokenRegistrar
@@ -19,6 +20,7 @@ class YingShiApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         AuthSessionManager.init(applicationContext)
         BackendDebugConfig.init(applicationContext)
+        NetworkConnectivityMonitor.init(applicationContext)
         SettingsRepository.init(applicationContext)
         PushTokenRegistrar.registerCurrentTokenIfPossible(applicationContext)
     }

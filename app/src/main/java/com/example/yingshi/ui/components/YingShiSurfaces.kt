@@ -368,7 +368,7 @@ fun YingShiMistCard(
         shape = resolvedShape,
         color = color ?: YingShiThemeTokens.colors.raisedSurface.copy(alpha = 0.94f),
         tonalElevation = 0.dp,
-        shadowElevation = 1.dp,
+        shadowElevation = 2.dp,
         border = BorderStroke(1.dp, borderColor ?: YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.70f)),
         content = content,
     )
@@ -438,7 +438,7 @@ fun YingShiPrimaryMistButton(
             width = 1.dp,
             color = if (enabled) colors.glassStroke.copy(alpha = 0.78f) else colors.dividerSoft,
         ),
-        shadowElevation = if (enabled) 1.dp else 0.dp,
+        shadowElevation = if (enabled) 2.dp else 0.dp,
     ) {
         Box(
             modifier = Modifier

@@ -45,7 +45,6 @@ import com.example.yingshi.data.model.RemotePartnerProfile
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.result.isUnauthorized
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.BackendInlineNotice
 import com.example.yingshi.ui.components.ShellPage
@@ -68,7 +67,6 @@ private const val TITLE_SHARED_SPACE = "\u6211\u4eec\u7684\u5c0f\u7a7a\u95f4"
 private const val SUMMARY_SHARED_SPACE = "\u76ee\u524d\u770b\u5230\u7684\u7167\u7247\u3001\u76f8\u518c\u3001\u5e16\u5b50\u548c\u8bc4\u8bba\uff0c\u90fd\u9ed8\u8ba4\u5c5e\u4e8e\u4f60\u4eec\u4e24\u4e2a\u4eba\u7684\u5171\u540c\u7a7a\u95f4\u3002"
 private const val LABEL_ACCOUNT = "\u8d26\u53f7"
 private const val LABEL_JOINED_AT = "\u52a0\u5165\u65f6\u95f4"
-private const val LABEL_ENV = "\u5f53\u524d\u73af\u5883"
 private const val LABEL_PARTNER_ACCOUNT = "\u5bf9\u65b9\u8d26\u53f7"
 private const val LABEL_DISPLAY_NAME = "\u6635\u79f0"
 private const val LABEL_BIO = "\u7b80\u4ecb"
@@ -98,8 +96,7 @@ data class EditProfileRoute(
 @Composable
 fun PersonalProfileScreen(
     currentUser: RemoteCurrentUser,
-    repositoryMode: RepositoryMode,
-    baseUrl: String,
+    isOfflineReadOnly: Boolean,
     isRefreshing: Boolean,
     refreshErrorMessage: String?,
     onBack: () -> Unit,
@@ -167,6 +164,12 @@ fun PersonalProfileScreen(
                                 text = "正在同步最新资料...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = colors.titleAccent,
+                            )
+                        } else if (isOfflineReadOnly && refreshErrorMessage.isNullOrBlank()) {
+                            Text(
+                                text = "当前显示的是缓存资料，恢复连接后会自动刷新。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary,
                             )
                         } else if (!refreshErrorMessage.isNullOrBlank()) {
                             Text(
@@ -572,8 +575,7 @@ private fun PersonalProfileScreenPreview() {
                 createdAtMillis = 1760000000000L,
                 updatedAtMillis = 1760000000000L,
             ),
-            repositoryMode = RepositoryMode.REAL,
-            baseUrl = "http://10.0.2.2:8080/",
+            isOfflineReadOnly = false,
             isRefreshing = false,
             refreshErrorMessage = null,
             onBack = {},

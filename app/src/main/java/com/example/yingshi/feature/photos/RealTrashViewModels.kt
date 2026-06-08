@@ -3,6 +3,10 @@ package com.example.yingshi.feature.photos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.yingshi.data.cache.AppReadCacheStore
+import com.example.yingshi.data.cache.CachedTrashList
+import com.example.yingshi.data.cache.OfflineAccessManager
+import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.auth.AuthSessionManager
@@ -10,16 +14,19 @@ import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.data.repository.TrashRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class RealTrashListUiState(
     val isLoading: Boolean = false,
     val isMutating: Boolean = false,
+    val isOfflineReadOnly: Boolean = false,
     val tokenMissing: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
@@ -30,6 +37,7 @@ data class RealTrashListUiState(
 data class RealTrashDetailUiState(
     val isLoading: Boolean = false,
     val isMutating: Boolean = false,
+    val isOfflineReadOnly: Boolean = false,
     val tokenMissing: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
@@ -77,14 +85,26 @@ class RealTrashListViewModel(
         viewModelScope.launch {
             val nextListKey = RealTrashMemoryCache.listKey(selectedType)
             val cachedState = RealTrashMemoryCache.readListState(selectedType)
+            val cachedList = withContext(Dispatchers.IO) { readCachedList(selectedType) }
             val hasCachedState = RealTrashMemoryCache.hasListState(selectedType)
             if (nextListKey != activeListKey) {
                 activeListKey = nextListKey
-                _uiState.value = cachedState ?: RealTrashListUiState(isLoading = true)
+                _uiState.value = cachedState
+                    ?: cachedList?.toUiState()
+                    ?: RealTrashListUiState(isLoading = true)
             } else if (cachedState != null && _uiState.value.entries.isEmpty()) {
                 _uiState.value = cachedState
+            } else if (cachedState == null && cachedList != null && _uiState.value.entries.isEmpty()) {
+                _uiState.value = cachedList.toUiState()
             }
             if (!AuthSessionManager.isLoggedIn) {
+                if (cachedList != null && OfflineAccessManager.state.isReadOnly) {
+                    _uiState.value = cachedList.toUiState(
+                        isOfflineReadOnly = true,
+                        statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
+                    )
+                    return@launch
+                }
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
                     force = false,
                     reason = "real_trash_list_refresh",
@@ -100,10 +120,11 @@ class RealTrashListViewModel(
                 }
             }
 
-            val shouldShowLoading = _uiState.value.entries.isEmpty() && !hasCachedState
+            val shouldShowLoading = _uiState.value.entries.isEmpty() && !hasCachedState && cachedList == null
             _uiState.update {
                 it.copy(
                     isLoading = shouldShowLoading,
+                    isOfflineReadOnly = false,
                     tokenMissing = false,
                     errorMessage = null,
                 )
@@ -117,12 +138,28 @@ class RealTrashListViewModel(
             val itemError = (itemsResult as? ApiResult.Error)
                 ?.toBackendUiMessage("读取回收站列表失败。")
             val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
+            if (successItems.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    persistTrashList(selectedType, successItems)
+                }
+                OfflineAccessManager.clear()
+            }
             if (itemError != null && _uiState.value.entries.isNotEmpty()) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = itemError,
+                val rawError = itemsResult as? ApiResult.Error
+                if (cachedList != null && rawError != null && (OfflineAccessManager.state.isReadOnly || rawError.shouldFallbackToReadCache())) {
+                    val message = rawError.offlineReadOnlyMessage()
+                    OfflineAccessManager.enterReadOnly(message)
+                    _uiState.value = cachedList.toUiState(
+                        isOfflineReadOnly = true,
+                        statusMessage = message,
                     )
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = itemError,
+                        )
+                    }
                 }
                 return@launch
             }
@@ -134,6 +171,7 @@ class RealTrashListViewModel(
 
             val nextState = RealTrashListUiState(
                 isLoading = false,
+                isOfflineReadOnly = false,
                 errorMessage = itemError,
                 entries = deduplicatedEntries,
                 pendingEntries = emptyList(),
@@ -145,6 +183,10 @@ class RealTrashListViewModel(
     }
 
     fun undoPendingCleanup(trashItemId: String, selectedType: TrashEntryType?) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能撤销回收站操作。") }
+            return
+        }
         viewModelScope.launch {
             when (val result = trashRepository.undoMoveTrashItemOut(trashItemId)) {
                 is ApiResult.Success -> {
@@ -177,6 +219,10 @@ class RealTrashListViewModel(
         onFirstRestoredMediaIds: (List<String>) -> Unit,
     ) {
         if (entries.isEmpty()) return
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能恢复回收站内容。") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -233,6 +279,10 @@ class RealTrashListViewModel(
         selectedType: TrashEntryType?,
     ) {
         if (entries.isEmpty()) return
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -303,7 +353,15 @@ class RealTrashDetailViewModel(
 
     fun refresh() {
         viewModelScope.launch {
+            val cachedDetail = withContext(Dispatchers.IO) { readCachedDetail(route.entryId) }
             if (!AuthSessionManager.isLoggedIn) {
+                if (cachedDetail != null && OfflineAccessManager.state.isReadOnly) {
+                    _uiState.value = cachedDetail.toUiState(
+                        isOfflineReadOnly = true,
+                        statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
+                    )
+                    return@launch
+                }
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
                     force = false,
                     reason = "real_trash_detail_refresh",
@@ -323,6 +381,7 @@ class RealTrashDetailViewModel(
             _uiState.update {
                 it.copy(
                     isLoading = shouldShowLoading,
+                    isOfflineReadOnly = false,
                     tokenMissing = false,
                     errorMessage = null,
                 )
@@ -332,13 +391,25 @@ class RealTrashDetailViewModel(
                     TrashActorHintStore.record(result.data.item)
                     val nextState = _uiState.value.copy(
                         isLoading = false,
+                        isOfflineReadOnly = false,
                         detail = result.data,
                     )
                     _uiState.value = nextState
                     RealTrashMemoryCache.writeDetailState(route.entryId, nextState)
+                    withContext(Dispatchers.IO) {
+                        persistTrashDetail(route.entryId, result.data)
+                    }
+                    OfflineAccessManager.clear()
                 }
                 is ApiResult.Error -> {
-                    if (_uiState.value.detail != null) {
+                    if (cachedDetail != null && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
+                        val message = result.offlineReadOnlyMessage()
+                        OfflineAccessManager.enterReadOnly(message)
+                        _uiState.value = cachedDetail.toUiState(
+                            isOfflineReadOnly = true,
+                            statusMessage = message,
+                        )
+                    } else if (_uiState.value.detail != null) {
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
@@ -358,30 +429,50 @@ class RealTrashDetailViewModel(
     }
 
     fun restore(onSuccess: (RemoteTrashItem) -> Unit) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能恢复回收站内容。") }
+            return
+        }
         mutateTrashItem("已恢复到正常列表。", onSuccess) {
             trashRepository.restoreTrashItem(route.entryId)
         }
     }
 
     fun restoreItem(trashItemId: String, onSuccess: (RemoteTrashItem) -> Unit) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能恢复回收站内容。") }
+            return
+        }
         mutateTrashItem("已恢复到正常列表。", onSuccess) {
             trashRepository.restoreTrashItem(trashItemId)
         }
     }
 
     fun remove(onSuccess: () -> Unit) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
+            return
+        }
         mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
             trashRepository.purgeTrashItem(route.entryId)
         }
     }
 
     fun removeItem(trashItemId: String, onSuccess: () -> Unit) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
+            return
+        }
         mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
             trashRepository.purgeTrashItem(trashItemId)
         }
     }
 
     fun undoRemove() {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能撤销回收站操作。") }
+            return
+        }
         mutate("已撤销移出回收站。") {
             trashRepository.undoMoveTrashItemOut(route.entryId)
         }
@@ -485,4 +576,66 @@ private fun TrashEntryType.toApiItemType(): String {
         TrashEntryType.MEDIA_REMOVED -> "mediaRemoved"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"
     }
+}
+
+private fun RealTrashListViewModel.readCachedList(selectedType: TrashEntryType?): CachedTrashList? {
+    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return null
+    return AppReadCacheStore.readTrashList(userId, selectedType?.name)?.payload
+}
+
+private fun RealTrashListViewModel.persistTrashList(
+    selectedType: TrashEntryType?,
+    items: List<RemoteTrashItem>,
+) {
+    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return
+    AppReadCacheStore.writeTrashList(
+        userId = userId,
+        selectedType = selectedType?.name,
+        items = items,
+    )
+}
+
+private fun CachedTrashList.toUiState(
+    isOfflineReadOnly: Boolean = false,
+    statusMessage: String? = null,
+): RealTrashListUiState {
+    val entries = items
+        .map { it.toTrashEntryUiModel() }
+        .distinctBy { it.businessIdentityKey() }
+    return RealTrashListUiState(
+        isLoading = false,
+        isOfflineReadOnly = isOfflineReadOnly,
+        statusMessage = statusMessage,
+        entries = entries,
+        pendingEntries = emptyList(),
+    )
+}
+
+private fun RealTrashDetailViewModel.readCachedDetail(entryId: String): RemoteTrashDetail? {
+    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return null
+    return AppReadCacheStore.readTrashDetail(userId, entryId)?.payload
+}
+
+private fun RealTrashDetailViewModel.persistTrashDetail(
+    entryId: String,
+    detail: RemoteTrashDetail,
+) {
+    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return
+    AppReadCacheStore.writeTrashDetail(
+        userId = userId,
+        entryId = entryId,
+        detail = detail,
+    )
+}
+
+private fun RemoteTrashDetail.toUiState(
+    isOfflineReadOnly: Boolean = false,
+    statusMessage: String? = null,
+): RealTrashDetailUiState {
+    return RealTrashDetailUiState(
+        isLoading = false,
+        isOfflineReadOnly = isOfflineReadOnly,
+        statusMessage = statusMessage,
+        detail = this,
+    )
 }

@@ -3,7 +3,12 @@ package com.example.yingshi.feature.photos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.yingshi.data.cache.AppReadCacheStore
+import com.example.yingshi.data.cache.CachedAlbumDirectory
+import com.example.yingshi.data.cache.OfflineAccessManager
+import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.CommentListState
+import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.toCommentListState
@@ -16,6 +21,7 @@ import com.example.yingshi.data.repository.CommentRepository
 import com.example.yingshi.data.repository.PostRepository
 import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,15 +29,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
 
 data class AlbumPageRealUiState(
     val isLoading: Boolean = false,
     val isPostsLoading: Boolean = false,
+    val isOfflineReadOnly: Boolean = false,
     val tokenMissing: Boolean = false,
     val errorMessage: String? = null,
     val postsErrorMessage: String? = null,
+    val statusMessage: String? = null,
     val albums: List<AlbumSummaryUiModel> = emptyList(),
     val selectedAlbumId: String? = null,
     val posts: List<AlbumPostCardUiModel> = emptyList(),
@@ -65,21 +74,39 @@ class AlbumPageRealViewModel(
     private val _uiState = MutableStateFlow(AlbumPageRealUiState(isLoading = true))
     val uiState: StateFlow<AlbumPageRealUiState> = _uiState.asStateFlow()
 
+    private var refreshJob: Job? = null
     private var loadPostsJob: Job? = null
     private var loadCoverJob: Job? = null
+    private var refreshVersion = 0
+    private var postsLoadVersion = 0
 
     init {
         refresh()
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        val requestVersion = ++refreshVersion
+        refreshJob = viewModelScope.launch {
+            val cachedDirectory = withContext(Dispatchers.IO) { readCachedDirectory() }
+            if (cachedDirectory != null && _uiState.value.albums.isEmpty()) {
+                applyCachedDirectory(cachedDirectory)
+            }
             if (!AuthSessionManager.isLoggedIn) {
+                if (cachedDirectory != null && OfflineAccessManager.state.isReadOnly) {
+                    applyCachedDirectory(
+                        cachedDirectory = cachedDirectory,
+                        statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
+                        isOfflineReadOnly = true,
+                    )
+                    return@launch
+                }
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
                     force = false,
                     reason = "real_album_refresh",
                 )
                 if (!loginOutcome.success) {
+                    if (requestVersion != refreshVersion) return@launch
                     _uiState.value = AlbumPageRealUiState(
                         tokenMissing = true,
                         errorMessage = loginOutcome.message.ifBlank {
@@ -93,39 +120,125 @@ class AlbumPageRealViewModel(
             _uiState.update {
                 it.copy(
                     isLoading = true,
+                    isOfflineReadOnly = false,
                     tokenMissing = false,
                     errorMessage = null,
                     postsErrorMessage = null,
+                    statusMessage = null,
                 )
             }
             when (val result = albumRepository.getAlbums()) {
                 is ApiResult.Success -> {
+                    if (requestVersion != refreshVersion) return@launch
+                    val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
                     val albums = result.data.map { album -> album.toAlbumSummaryUiModel() }
                     val selectedAlbumId = _uiState.value.selectedAlbumId
                         ?.takeIf { currentId -> albums.any { it.id == currentId } }
                         ?: albums.firstOrNull()?.id
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isOfflineReadOnly = false,
                         albums = albums,
                         selectedAlbumId = selectedAlbumId,
-                        posts = emptyList(),
+                        posts = cachedPostsByAlbumId[selectedAlbumId]
+                            .orEmpty()
+                            .map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = selectedAlbumId.orEmpty()) },
                     )
+                    withContext(Dispatchers.IO) {
+                        persistAlbumDirectory(
+                            albums = result.data,
+                            postsByAlbumId = cachedPostsByAlbumId,
+                        )
+                    }
+                    OfflineAccessManager.clear()
                     if (selectedAlbumId != null) {
                         loadAlbumPosts(selectedAlbumId)
                     }
                 }
                 is ApiResult.Error -> {
-                    _uiState.value = AlbumPageRealUiState(
-                        isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取相册失败。"),
-                    )
+                    if (requestVersion != refreshVersion) return@launch
+                    if (cachedDirectory != null && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
+                        val message = result.offlineReadOnlyMessage()
+                        OfflineAccessManager.enterReadOnly(message)
+                        applyCachedDirectory(
+                            cachedDirectory = cachedDirectory,
+                            statusMessage = message,
+                            isOfflineReadOnly = true,
+                        )
+                    } else {
+                        _uiState.value = AlbumPageRealUiState(
+                            isLoading = false,
+                            errorMessage = result.toBackendUiMessage("读取相册失败。"),
+                        )
+                    }
                 }
                 ApiResult.Loading -> Unit
+            }
+            if (refreshVersion == requestVersion) {
+                refreshJob = null
+            }
+        }
+    }
+
+    fun handleConnectivityLost() {
+        refreshJob?.cancel()
+        loadPostsJob?.cancel()
+        loadCoverJob?.cancel()
+        refreshVersion += 1
+        postsLoadVersion += 1
+        refreshJob = null
+        loadPostsJob = null
+        loadCoverJob = null
+        viewModelScope.launch {
+            val cachedDirectory = withContext(Dispatchers.IO) { readCachedDirectory() }
+            val message = "网络已断开，当前显示缓存内容，恢复连接后会自动刷新。"
+            if (cachedDirectory != null) {
+                OfflineAccessManager.enterReadOnly(message)
+                applyCachedDirectory(
+                    cachedDirectory = cachedDirectory,
+                    statusMessage = message,
+                    isOfflineReadOnly = true,
+                )
+                return@launch
+            }
+            val hasVisibleContent = _uiState.value.albums.isNotEmpty() || _uiState.value.posts.isNotEmpty()
+            if (hasVisibleContent) {
+                OfflineAccessManager.enterReadOnly(message)
+            }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    isPostsLoading = false,
+                    isOfflineReadOnly = hasVisibleContent,
+                    tokenMissing = false,
+                    errorMessage = if (hasVisibleContent) null else "当前无网络，恢复连接后会自动重试。",
+                    postsErrorMessage = null,
+                    statusMessage = if (hasVisibleContent) message else null,
+                )
             }
         }
     }
 
     fun selectAlbum(albumId: String) {
+        if (_uiState.value.isOfflineReadOnly) {
+            viewModelScope.launch {
+                val cachedPosts = withContext(Dispatchers.IO) {
+                    readCachedDirectory()?.postsByAlbumId?.get(albumId).orEmpty()
+                }
+                _uiState.update {
+                    it.copy(
+                        selectedAlbumId = albumId,
+                        posts = cachedPosts.map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = albumId) },
+                        postsErrorMessage = if (cachedPosts.isEmpty()) {
+                            "当前离线，只能查看已缓存的小相册。"
+                        } else {
+                            null
+                        },
+                    )
+                }
+            }
+            return
+        }
         if (_uiState.value.selectedAlbumId == albumId) {
             loadAlbumPosts(albumId)
             return
@@ -143,7 +256,21 @@ class AlbumPageRealViewModel(
     private fun loadAlbumPosts(albumId: String) {
         loadPostsJob?.cancel()
         loadCoverJob?.cancel()
+        val requestVersion = ++postsLoadVersion
         loadPostsJob = viewModelScope.launch {
+            if (_uiState.value.isOfflineReadOnly) {
+                val cachedPosts = withContext(Dispatchers.IO) {
+                    readCachedDirectory()?.postsByAlbumId?.get(albumId).orEmpty()
+                }
+                _uiState.update {
+                    it.copy(
+                        isPostsLoading = false,
+                        posts = cachedPosts.map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = albumId) },
+                        postsErrorMessage = if (cachedPosts.isEmpty()) "当前离线，只能查看已缓存的小相册。" else null,
+                    )
+                }
+                return@launch
+            }
             _uiState.update {
                 it.copy(
                     isPostsLoading = true,
@@ -152,12 +279,29 @@ class AlbumPageRealViewModel(
             }
             when (val result = albumRepository.getAlbumPosts(albumId)) {
                 is ApiResult.Success -> {
+                    if (requestVersion != postsLoadVersion) return@launch
                     val posts = result.data.map { post ->
                         post.toAlbumPostCardUiModel(selectedAlbumId = albumId)
+                    }
+                    val fallbackAlbums = _uiState.value.albums.map { album ->
+                        RemoteAlbum(
+                            albumId = album.id,
+                            title = album.title,
+                            subtitle = album.subtitle,
+                            coverMediaId = null,
+                            smallAlbumCount = 0,
+                        )
+                    }
+                    withContext(Dispatchers.IO) {
+                        persistAlbumDirectory(
+                            albums = readCachedAlbums().ifEmpty { fallbackAlbums },
+                            postsByAlbumId = readCachedDirectory()?.postsByAlbumId.orEmpty() + (albumId to result.data),
+                        )
                     }
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,
+                            isOfflineReadOnly = false,
                             posts = posts,
                         )
                     }
@@ -167,14 +311,37 @@ class AlbumPageRealViewModel(
                     )
                 }
                 is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            isPostsLoading = false,
-                            postsErrorMessage = result.toBackendUiMessage("读取大相册下的小相册失败。"),
-                        )
+                    if (requestVersion != postsLoadVersion) return@launch
+                    val cachedPosts = withContext(Dispatchers.IO) {
+                        readCachedDirectory()?.postsByAlbumId?.get(albumId).orEmpty()
+                    }
+                    if (cachedPosts.isNotEmpty() && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
+                        val message = result.offlineReadOnlyMessage()
+                        OfflineAccessManager.enterReadOnly(message)
+                        _uiState.update {
+                            it.copy(
+                                isPostsLoading = false,
+                                isOfflineReadOnly = true,
+                                statusMessage = message,
+                                posts = cachedPosts.map { post ->
+                                    post.toAlbumPostCardUiModel(selectedAlbumId = albumId)
+                                },
+                                postsErrorMessage = null,
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isPostsLoading = false,
+                                postsErrorMessage = result.toBackendUiMessage("读取大相册下的小相册失败。"),
+                            )
+                        }
                     }
                 }
                 ApiResult.Loading -> Unit
+            }
+            if (postsLoadVersion == requestVersion) {
+                loadPostsJob = null
             }
         }
     }
@@ -228,6 +395,53 @@ class AlbumPageRealViewModel(
                 )
             }
         }
+    }
+
+    private fun readCachedDirectory(): CachedAlbumDirectory? {
+        val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return null
+        return AppReadCacheStore.readAlbumDirectory(userId)?.payload
+    }
+
+    private fun readCachedAlbums(): List<RemoteAlbum> {
+        return readCachedDirectory()?.albums.orEmpty()
+    }
+
+    private fun persistAlbumDirectory(
+        albums: List<RemoteAlbum>,
+        postsByAlbumId: Map<String, List<RemotePostSummary>>,
+    ) {
+        val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return
+        AppReadCacheStore.writeAlbumDirectory(
+            userId = userId,
+            payload = CachedAlbumDirectory(
+                albums = albums,
+                postsByAlbumId = postsByAlbumId,
+            ),
+        )
+    }
+
+    private fun applyCachedDirectory(
+        cachedDirectory: CachedAlbumDirectory,
+        statusMessage: String? = null,
+        isOfflineReadOnly: Boolean = false,
+    ) {
+        val selectedAlbumId = _uiState.value.selectedAlbumId
+            ?.takeIf { currentId -> cachedDirectory.albums.any { it.albumId == currentId } }
+            ?: cachedDirectory.albums.firstOrNull()?.albumId
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            isPostsLoading = false,
+            isOfflineReadOnly = isOfflineReadOnly,
+            tokenMissing = false,
+            errorMessage = null,
+            postsErrorMessage = null,
+            statusMessage = statusMessage,
+            albums = cachedDirectory.albums.map(RemoteAlbum::toAlbumSummaryUiModel),
+            selectedAlbumId = selectedAlbumId,
+            posts = cachedDirectory.postsByAlbumId[selectedAlbumId]
+                .orEmpty()
+                .map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = selectedAlbumId.orEmpty()) },
+        )
     }
 
     companion object {

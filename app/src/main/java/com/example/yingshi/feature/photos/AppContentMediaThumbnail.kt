@@ -69,7 +69,7 @@ fun AppContentMediaThumbnail(
         !originalImageUrl.isNullOrBlank()
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
-        AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val modelUrl = thumbnailUrl?.takeUnless {
         mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
