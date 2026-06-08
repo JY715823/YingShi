@@ -32,7 +32,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
-import java.security.MessageDigest
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -78,6 +77,7 @@ object LocalSystemMediaBridgeRepository {
     private data class RealUploadMetadata(
         val fileName: String,
         val mimeType: String,
+        val mediaType: SystemMediaType,
         val fileSizeBytes: Long,
         val width: Int,
         val height: Int,
@@ -85,6 +85,7 @@ object LocalSystemMediaBridgeRepository {
         val displayTimeMillis: Long,
         val capturedAtMillis: Long?,
         val importedAtMillis: Long,
+        val displayTimeSource: String,
         val sourceUri: Uri,
     )
 
@@ -315,18 +316,20 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaUris: List<Uri>,
     ): Int {
-        val items = mediaUris
-            .distinct()
-            .mapIndexedNotNull { index, uri ->
-                uri.toPickedSystemMediaItem(
-                    context = context,
-                    index = index,
-                )
-            }
+        val items = mediaUris.toPickedSystemMediaItems(context)
         if (items.isEmpty()) return 0
         return enqueueImportToAppUpload(
             context = context,
             mediaItems = items,
+        )
+    }
+
+    fun buildImportPickedMediaPreview(
+        context: Context,
+        mediaUris: List<Uri>,
+    ): SystemMediaImportPreview {
+        return buildImportToAppPreview(
+            mediaItems = mediaUris.toPickedSystemMediaItems(context),
         )
     }
 
@@ -427,6 +430,17 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
+    fun buildImportToAppPreview(
+        mediaItems: List<SystemMediaItem>,
+    ): SystemMediaImportPreview {
+        return buildSystemMediaImportPreview(
+            mediaItems = mediaItems,
+            preference = SettingsRepository.getSettingsState().mediaTimePreference,
+            importedAtBaseMillis = System.currentTimeMillis(),
+            knownAppMediaIdForSource = ::knownAppMediaIdForSource,
+        )
+    }
+
     fun cancelUploadOperation(operationId: String) {
         uploadTasksState
             .filter { task -> task.operationId == operationId && !task.isTerminal }
@@ -486,6 +500,22 @@ object LocalSystemMediaBridgeRepository {
                 )
             }
         }
+    }
+
+    fun retryUploadOperation(
+        context: Context,
+        operationId: String,
+    ): Int {
+        val retryableTaskIds = uploadTasksState
+            .filter { task -> task.operationId == operationId && task.canRetry }
+            .map(SystemMediaUploadTaskUiModel::taskId)
+        var retriedCount = 0
+        retryableTaskIds.forEach { taskId ->
+            if (retryUploadTask(context, taskId)) {
+                retriedCount += 1
+            }
+        }
+        return retriedCount
     }
 
     private fun retryImportToAppUpload(
@@ -790,7 +820,7 @@ object LocalSystemMediaBridgeRepository {
     ) {
         uploadScope.launch {
             val tokenResult = RepositoryProvider.uploadRepository.createUploadToken(
-                CreateUploadTokenPayload(
+                resolvedCreateUploadTokenPayload(
                     fileName = mediaItem.displayName.ifBlank { "${mediaItem.id}.jpg" },
                     mimeType = fakeMimeType(mediaItem.type),
                     fileSizeBytes = fakeFileSizeBytes(mediaItem),
@@ -798,10 +828,7 @@ object LocalSystemMediaBridgeRepository {
                     width = mediaItem.width?.coerceAtLeast(1) ?: 1,
                     height = mediaItem.height?.coerceAtLeast(1) ?: 1,
                     durationMillis = null,
-                    displayTimeMillis = mediaItem.displayTimeMillis,
-                    capturedAtMillis = mediaItem.displayTimeMillis,
-                    importedAtMillis = System.currentTimeMillis(),
-                    displayTimeSource = "ORIGINAL",
+                    mediaItem = mediaItem,
                 ),
             )
             val uploadId = when (tokenResult) {
@@ -1118,15 +1145,15 @@ object LocalSystemMediaBridgeRepository {
                     fileName = metadata.fileName,
                     mimeType = metadata.mimeType,
                     fileSizeBytes = metadata.fileSizeBytes,
-                    mediaType = mediaItem.type.name.lowercase(Locale.ROOT),
+                    mediaType = metadata.mediaType.name.lowercase(Locale.ROOT),
                     width = metadata.width,
                     height = metadata.height,
                     durationMillis = metadata.durationMillis,
                     displayTimeMillis = metadata.displayTimeMillis,
                     capturedAtMillis = metadata.capturedAtMillis,
                     importedAtMillis = metadata.importedAtMillis,
-                    displayTimeSource = "ORIGINAL",
-                    sourceFingerprint = mediaItem.sourceFingerprint(),
+                    displayTimeSource = metadata.displayTimeSource,
+                    sourceFingerprint = mediaItem.stableImportSourceFingerprint(),
                 )
                 val tokenResult = runUploadApiWithTimeout(
                     timeoutMillis = CreateUploadTokenTimeoutMillis,
@@ -1974,6 +2001,12 @@ object LocalSystemMediaBridgeRepository {
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: mediaItem.mimeType.ifBlank { fakeMimeType(mediaItem.type) }
+        val resolvedMediaType = resolvePickedMediaType(
+            uri = mediaItem.uri,
+            displayName = fileName,
+            mimeType = mimeType,
+            fallback = mediaItem.type,
+        )
         val fileSizeBytes = queriedSizeBytes
             ?: mediaItem.sizeBytes?.takeIf { it > 0L }
             ?: contentResolver.openAssetFileDescriptor(mediaItem.uri, "r")?.use { descriptor ->
@@ -1986,29 +2019,41 @@ object LocalSystemMediaBridgeRepository {
         val (resolvedWidth, resolvedHeight, resolvedDuration) = resolvePickedMediaMetadata(
             context = context,
             uri = mediaItem.uri,
-            type = mediaItem.type,
+            type = resolvedMediaType,
         )
         val (uploadWidth, uploadHeight) = resolveUploadDimensions(
-            mediaItem = mediaItem,
+            mediaType = resolvedMediaType,
+            aspectRatio = mediaItem.aspectRatio,
+            width = mediaItem.width,
+            height = mediaItem.height,
             resolvedWidth = resolvedWidth,
             resolvedHeight = resolvedHeight,
         )
-        val displayTimeMillis = normalizeUploadTimeMillis(mediaItem.displayTimeMillis)
         val importedAtMillis = System.currentTimeMillis()
+        val resolvedTime = resolvePreferredMediaDisplayTime(
+            metadata = DeviceMediaTimeMetadata(
+                capturedAtMillis = mediaItem.capturedAtMillis,
+                fileModifiedAtMillis = mediaItem.fileModifiedAtMillis,
+            ),
+            importedAtMillis = importedAtMillis,
+            preference = SettingsRepository.getSettingsState().mediaTimePreference,
+        )
         RealUploadMetadata(
             fileName = fileName,
             mimeType = mimeType,
+            mediaType = resolvedMediaType,
             fileSizeBytes = fileSizeBytes,
             width = uploadWidth,
             height = uploadHeight,
-            durationMillis = if (mediaItem.type == SystemMediaType.VIDEO) {
+            durationMillis = if (resolvedMediaType == SystemMediaType.VIDEO) {
                 resolvedDuration ?: mediaItem.videoDurationMillis
             } else {
                 null
             },
-            displayTimeMillis = displayTimeMillis,
-            capturedAtMillis = displayTimeMillis,
-            importedAtMillis = importedAtMillis,
+            displayTimeMillis = resolvedTime.displayTimeMillis,
+            capturedAtMillis = resolvedTime.capturedAtMillis,
+            importedAtMillis = resolvedTime.importedAtMillis,
+            displayTimeSource = resolvedTime.displayTimeSource,
             sourceUri = mediaItem.uri,
         )
     }
@@ -2058,7 +2103,11 @@ object LocalSystemMediaBridgeRepository {
     private fun normalizeSystemMedia(
         mediaItems: List<SystemMediaItem>,
     ): List<SystemMediaItem> {
-        return mediaItems.distinctBy { it.sourceDeduplicationKey() }
+        return normalizeSystemMediaForImport(
+            mediaItems = mediaItems,
+            preference = SettingsRepository.getSettingsState().mediaTimePreference,
+            importedAtBaseMillis = System.currentTimeMillis(),
+        ).distinctBy(SystemMediaItem::stableImportSourceKey)
     }
 
     private data class DeduplicatedImportItems(
@@ -2091,7 +2140,7 @@ object LocalSystemMediaBridgeRepository {
     private fun knownAppMediaIdForSource(
         item: SystemMediaItem,
     ): String? {
-        val sourceKey = item.sourceDeduplicationKey()
+        val sourceKey = item.stableImportSourceKey()
         appMediaIdBySystemSourceKey[sourceKey]?.let { return it }
         if (RepositoryProvider.currentMode != RepositoryMode.REAL) {
             FakePhotoFeedRepository.findPhotoFeedItem(item.id)?.mediaId?.let { mediaId ->
@@ -2107,28 +2156,7 @@ object LocalSystemMediaBridgeRepository {
         appMediaId: String,
     ) {
         if (appMediaId.isBlank()) return
-        appMediaIdBySystemSourceKey[item.sourceDeduplicationKey()] = appMediaId
-    }
-
-    private fun SystemMediaItem.sourceDeduplicationKey(): String {
-        val uriString = uri.toString().trim()
-        if (!id.startsWith("picked-") && mediaStoreId > 0L) {
-            return "store:${type.name.lowercase(Locale.ROOT)}:$mediaStoreId"
-        }
-        if (id.startsWith("picked-")) {
-            return metadataDeduplicationKey()
-        }
-        if (uriString.isNotBlank()) {
-            return "uri:$uriString"
-        }
-        return metadataDeduplicationKey()
-    }
-
-    private fun SystemMediaItem.sourceFingerprint(): String {
-        val bytes = sourceDeduplicationKey().toByteArray(Charsets.UTF_8)
-        return MessageDigest.getInstance("SHA-256")
-            .digest(bytes)
-            .joinToString(separator = "") { byte -> "%02x".format(byte) }
+        appMediaIdBySystemSourceKey[item.stableImportSourceKey()] = appMediaId
     }
 
     private fun PhotoFeedItem.toCreatePostSystemMediaItem(): SystemMediaItem {
@@ -2154,6 +2182,9 @@ object LocalSystemMediaBridgeRepository {
             displayName = mediaId,
             bucketName = "照片流",
             displayTimeMillis = mediaDisplayTimeMillis,
+            capturedAtMillis = capturedAtMillis,
+            fileModifiedAtMillis = null,
+            displayTimeSource = displayTimeSource ?: DisplayTimeSourceOriginal,
             displayYear = calendar.get(java.util.Calendar.YEAR),
             displayMonth = calendar.get(java.util.Calendar.MONTH) + 1,
             displayDay = calendar.get(java.util.Calendar.DAY_OF_MONTH),
@@ -2165,27 +2196,6 @@ object LocalSystemMediaBridgeRepository {
             videoDurationMillis = videoDurationMillis,
             uploadedByUserId = uploadedByUserId,
         )
-    }
-
-    private fun SystemMediaItem.metadataDeduplicationKey(): String {
-        return buildString {
-            append("meta:")
-            append(type.name.lowercase(Locale.ROOT))
-            append('|')
-            append(mimeType.trim().lowercase(Locale.ROOT))
-            append('|')
-            append(displayName.trim().lowercase(Locale.ROOT))
-            append('|')
-            append(sizeBytes ?: -1L)
-            append('|')
-            append(displayTimeMillis)
-            append('|')
-            append(width ?: -1)
-            append('x')
-            append(height ?: -1)
-            append('|')
-            append(videoDurationMillis ?: -1L)
-        }
     }
 
     private fun publishDuplicateNoticeIfNeeded(
@@ -2213,25 +2223,36 @@ object LocalSystemMediaBridgeRepository {
     ): SystemMediaItem? {
         val contentResolver = context.contentResolver
         val mimeType = contentResolver.getType(this).orEmpty()
-        val type = if (mimeType.startsWith("video/", ignoreCase = true)) {
-            SystemMediaType.VIDEO
-        } else {
-            SystemMediaType.IMAGE
-        }
         val displayName = resolvePickedDisplayName(context, index)
+        val type = resolvePickedMediaType(
+            uri = this,
+            displayName = displayName,
+            mimeType = mimeType,
+            fallback = SystemMediaType.IMAGE,
+        )
         val sizeBytes = resolvePickedSizeBytes(context)
         val (width, height, durationMillis) = resolvePickedMediaMetadata(context, this, type)
         val aspectRatio = resolvePickedMediaAspectRatio(width, height, type)
-        val displayTimeMillis = resolvePickedMediaDisplayTimeMillis(context, index)
+        val importedAtMillis = System.currentTimeMillis() - (index * 1_000L)
+        val timeMetadata = queryDeviceMediaTimeMetadata(
+            context = context,
+            uri = this,
+            mediaType = type,
+        )
+        val resolvedTime = resolvePreferredMediaDisplayTime(
+            metadata = timeMetadata,
+            importedAtMillis = importedAtMillis,
+            preference = SettingsRepository.getSettingsState().mediaTimePreference,
+        )
         val calendar = java.util.Calendar.getInstance(java.util.Locale.CHINA).apply {
-            timeInMillis = displayTimeMillis
+            timeInMillis = resolvedTime.displayTimeMillis
         }
 
         return SystemMediaItem(
             id = buildPickedMediaId(
                 uri = this,
                 displayName = displayName,
-                displayTimeMillis = displayTimeMillis,
+                displayTimeMillis = resolvedTime.displayTimeMillis,
                 sizeBytes = sizeBytes,
                 type = type,
             ),
@@ -2241,7 +2262,10 @@ object LocalSystemMediaBridgeRepository {
             mimeType = mimeType.ifBlank { if (type == SystemMediaType.VIDEO) "video/mp4" else "image/jpeg" },
             displayName = displayName,
             bucketName = "系统选择器",
-            displayTimeMillis = displayTimeMillis,
+            displayTimeMillis = resolvedTime.displayTimeMillis,
+            capturedAtMillis = resolvedTime.capturedAtMillis,
+            fileModifiedAtMillis = resolvedTime.fileModifiedAtMillis,
+            displayTimeSource = resolvedTime.displayTimeSource,
             displayYear = calendar.get(java.util.Calendar.YEAR),
             displayMonth = calendar.get(java.util.Calendar.MONTH) + 1,
             displayDay = calendar.get(java.util.Calendar.DAY_OF_MONTH),
@@ -2312,60 +2336,26 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
-    private fun Uri.resolvePickedMediaDisplayTimeMillis(
-        context: Context,
-        index: Int,
-    ): Long {
-        val fallbackTimeMillis = System.currentTimeMillis() - (index * 1_000L)
-        val (dateTakenMillis, dateModifiedSeconds) = queryPickedMediaTimes(context)
-        return when {
-            dateTakenMillis != null && dateTakenMillis > 0L -> dateTakenMillis
-            dateModifiedSeconds != null && dateModifiedSeconds > 0L -> dateModifiedSeconds * 1000L
-            else -> fallbackTimeMillis
-        }
-    }
-
-    private fun Uri.queryPickedMediaTimes(
-        context: Context,
-    ): Pair<Long?, Long?> {
-        return runCatching {
-            context.contentResolver.query(
-                this,
-                arrayOf("datetaken", MediaStore.MediaColumns.DATE_MODIFIED),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val dateTakenMillis = cursor.getLongOrNull(cursor.getColumnIndex("datetaken"))
-                    val dateModifiedSeconds = cursor.getLongOrNull(
-                        cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED),
-                    )
-                    dateTakenMillis to dateModifiedSeconds
-                } else {
-                    null to null
-                }
-            } ?: (null to null)
-        }.getOrDefault(null to null)
-    }
-
     private fun resolveUploadDimensions(
-        mediaItem: SystemMediaItem,
+        mediaType: SystemMediaType,
+        aspectRatio: Float,
+        width: Int?,
+        height: Int?,
         resolvedWidth: Int?,
         resolvedHeight: Int?,
     ): Pair<Int, Int> {
         if (resolvedWidth != null && resolvedHeight != null && resolvedWidth > 0 && resolvedHeight > 0) {
             return resolvedWidth to resolvedHeight
         }
-        if (mediaItem.width != null && mediaItem.height != null && mediaItem.width > 0 && mediaItem.height > 0) {
-            return mediaItem.width to mediaItem.height
+        if (width != null && height != null && width > 0 && height > 0) {
+            return width to height
         }
 
-        val ratio = mediaItem.aspectRatio
+        val ratio = aspectRatio
             .takeIf { it.isFinite() && it > 0f }
             ?.coerceIn(0.15f, 6f)
-            ?: if (mediaItem.type == SystemMediaType.VIDEO) 16f / 9f else 1f
-        val longEdge = if (mediaItem.type == SystemMediaType.VIDEO) 1920 else 1600
+            ?: if (mediaType == SystemMediaType.VIDEO) 16f / 9f else 1f
+        val longEdge = if (mediaType == SystemMediaType.VIDEO) 1920 else 1600
         return if (ratio >= 1f) {
             longEdge to (longEdge / ratio).roundToInt().coerceAtLeast(1)
         } else {
@@ -2373,8 +2363,85 @@ object LocalSystemMediaBridgeRepository {
         }
     }
 
-    private fun normalizeUploadTimeMillis(timeMillis: Long): Long {
-        return timeMillis.takeIf { it > 0L } ?: System.currentTimeMillis()
+    private fun resolvePickedMediaType(
+        uri: Uri,
+        displayName: String,
+        mimeType: String,
+        fallback: SystemMediaType,
+    ): SystemMediaType {
+        if (mimeType.startsWith("video/", ignoreCase = true)) {
+            return SystemMediaType.VIDEO
+        }
+        if (mimeType.startsWith("image/", ignoreCase = true)) {
+            return SystemMediaType.IMAGE
+        }
+        val normalizedName = displayName.trim().lowercase(Locale.ROOT)
+        if (normalizedName.endsWith(".mp4") ||
+            normalizedName.endsWith(".mov") ||
+            normalizedName.endsWith(".m4v") ||
+            normalizedName.endsWith(".3gp") ||
+            normalizedName.endsWith(".webm") ||
+            normalizedName.endsWith(".mkv")
+        ) {
+            return SystemMediaType.VIDEO
+        }
+        val normalizedUri = uri.toString().trim().lowercase(Locale.ROOT)
+        if (normalizedUri.contains("/video/") ||
+            normalizedUri.endsWith(".mp4") ||
+            normalizedUri.endsWith(".mov") ||
+            normalizedUri.endsWith(".m4v") ||
+            normalizedUri.endsWith(".3gp") ||
+            normalizedUri.endsWith(".webm") ||
+            normalizedUri.endsWith(".mkv")
+        ) {
+            return SystemMediaType.VIDEO
+        }
+        return fallback
+    }
+
+    private fun resolvedCreateUploadTokenPayload(
+        fileName: String,
+        mimeType: String,
+        fileSizeBytes: Long,
+        mediaType: String,
+        width: Int,
+        height: Int,
+        durationMillis: Long?,
+        mediaItem: SystemMediaItem,
+    ): CreateUploadTokenPayload {
+        val resolvedTime = resolvePreferredMediaDisplayTime(
+            metadata = DeviceMediaTimeMetadata(
+                capturedAtMillis = mediaItem.capturedAtMillis,
+                fileModifiedAtMillis = mediaItem.fileModifiedAtMillis,
+            ),
+            importedAtMillis = System.currentTimeMillis(),
+            preference = SettingsRepository.getSettingsState().mediaTimePreference,
+        )
+        return CreateUploadTokenPayload(
+            fileName = fileName,
+            mimeType = mimeType,
+            fileSizeBytes = fileSizeBytes,
+            mediaType = mediaType,
+            width = width,
+            height = height,
+            durationMillis = durationMillis,
+            displayTimeMillis = resolvedTime.displayTimeMillis,
+            capturedAtMillis = resolvedTime.capturedAtMillis,
+            importedAtMillis = resolvedTime.importedAtMillis,
+            displayTimeSource = resolvedTime.displayTimeSource,
+        )
+    }
+
+    private fun List<Uri>.toPickedSystemMediaItems(
+        context: Context,
+    ): List<SystemMediaItem> {
+        return distinct()
+            .mapIndexedNotNull { index, uri ->
+                uri.toPickedSystemMediaItem(
+                    context = context,
+                    index = index,
+                )
+            }
     }
 
     private fun android.database.Cursor.getLongOrNull(columnIndex: Int): Long? {

@@ -125,7 +125,10 @@ fun TrashPageScreen(
     var collaboratorSelectionInitialized by rememberSaveable {
         mutableStateOf(false)
     }
-    val selectedType = TrashEntryType.valueOf(selectedTypeName)
+    val selectedType = parseTrashEntryTypeOrDefault(
+        value = selectedTypeName,
+        default = TrashEntryType.MEDIA_SYSTEM_DELETED,
+    )
     LaunchedEffect(allCollaboratorUserIds, selectedTypeName) {
         if (allCollaboratorUserIds.isEmpty()) return@LaunchedEffect
         savedSelectedCollaboratorUserIds = if (!collaboratorSelectionInitialized) {
@@ -1109,7 +1112,7 @@ private fun TrashEntryUiModel.primaryPreviewMedia(): TrashMediaSnapshot? {
 
 private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
     return when (entry.type) {
-        TrashEntryType.POST_DELETED -> "小相册已进入回收站"
+        TrashEntryType.SMALL_ALBUM_DELETED -> "小相册已进入回收站"
         TrashEntryType.MEDIA_REMOVED -> "只移除了当前小相册关联"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从照片流和相关小相册删除"
     }
@@ -1117,7 +1120,7 @@ private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
 
 private fun trashEntrySourceLine(entry: TrashEntryUiModel): String {
     return when (entry.type) {
-        TrashEntryType.POST_DELETED -> {
+        TrashEntryType.SMALL_ALBUM_DELETED -> {
             val albumCount = entry.postSnapshot?.post?.albumIds?.size?.coerceAtLeast(1) ?: 0
             val mediaCount = entry.postSnapshot?.mediaSnapshots?.size ?: entry.relatedMediaIds.size
             "所属相册 $albumCount 个 · 媒体 $mediaCount 项"

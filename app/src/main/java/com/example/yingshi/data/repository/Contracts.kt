@@ -86,8 +86,8 @@ interface PostRepository {
         orderedMediaIds: List<String>,
     ): ApiResult<RemotePostDetail>
 
-    suspend fun deletePost(
-        postId: String,
+    suspend fun deleteSmallAlbum(
+        smallAlbumId: String,
     ): ApiResult<RemoteTrashItem>
 }
 

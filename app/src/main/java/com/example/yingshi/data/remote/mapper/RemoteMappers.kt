@@ -49,7 +49,7 @@ import com.example.yingshi.data.remote.dto.UploadTokenDto
 
 fun MediaDto.toRemoteModel(): RemoteMedia {
     val normalizedDisplayTime = displayTimeMillis.takeIf { it > 0L } ?: createdAtMillis ?: 0L
-    val accessItems = access.map(MediaAccessDto::toRemoteModel)
+    val accessItems = access.orEmpty().map(MediaAccessDto::toRemoteModel)
     val previewAccess = accessItems.accessFor("preview")
     val originalAccess = accessItems.accessFor("original")
     val videoAccess = accessItems.accessFor("video")
@@ -65,7 +65,7 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         aspectRatio = aspectRatio,
         displayTimeMillis = normalizedDisplayTime,
         commentCount = 0,
-        smallAlbumIds = smallAlbumIds,
+        smallAlbumIds = smallAlbumIds.orEmpty(),
         thumbnailUrl = previewAccess?.requestUrl ?: thumbnailUrl ?: previewUrl,
         mediaUrl = originalAccess?.requestUrl ?: videoAccess?.requestUrl ?: mediaUrl ?: url,
         coverUrl = coverAccess?.requestUrl ?: coverUrl,
@@ -193,7 +193,7 @@ fun PostSummaryDto.toRemoteSummary(): RemotePostSummary {
 
 fun PostMediaDto.toRemotePostMedia(): RemotePostMedia {
     val normalizedDisplayTime = media.displayTimeMillis.takeIf { it > 0L } ?: media.createdAtMillis ?: 0L
-    val accessItems = media.access.map(MediaAccessDto::toRemoteModel)
+    val accessItems = media.access.orEmpty().map(MediaAccessDto::toRemoteModel)
     val previewAccess = accessItems.accessFor("preview")
     val originalAccess = accessItems.accessFor("original")
     val videoAccess = accessItems.accessFor("video")

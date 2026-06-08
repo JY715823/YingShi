@@ -115,7 +115,7 @@ fun PhotoFeedScreen(
     disabledSelectionLabel: String? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val settingsState = FakeSettingsRepository.getSettingsState()
+    val settingsState = SettingsRepository.getSettingsState()
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     val currentCollaboratorUserId = collaboratorDirectory.currentUser?.userId
     val partnerCollaboratorUserId = collaboratorDirectory.partner?.userId

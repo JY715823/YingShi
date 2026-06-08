@@ -33,6 +33,9 @@ object FakeAlbumRepository {
         val width: Int? = null,
         val height: Int? = null,
         val videoDurationMillis: Long? = null,
+        val capturedAtMillis: Long? = null,
+        val importedAtMillis: Long? = null,
+        val displayTimeSource: String? = null,
         val mediaSource: AppContentMediaSource? = null,
         val isCover: Boolean,
     )
@@ -488,6 +491,9 @@ object FakeAlbumRepository {
                 width = media.width,
                 height = media.height,
                 videoDurationMillis = media.videoDurationMillis,
+                capturedAtMillis = media.capturedAtMillis,
+                importedAtMillis = media.importedAtMillis,
+                displayTimeSource = media.displayTimeSource,
                 mediaSource = media.mediaSource,
             )
         }.filterNot { media ->
@@ -873,6 +879,9 @@ object FakeAlbumRepository {
                         width = dimensions.first,
                         height = dimensions.second,
                         videoDurationMillis = descriptor.videoDurationMillis,
+                        capturedAtMillis = null,
+                        importedAtMillis = null,
+                        displayTimeSource = null,
                         mediaSource = null,
                         isCover = index == 0,
                     ),
@@ -994,6 +1003,9 @@ object FakeAlbumRepository {
             aspectRatio = aspectRatio,
             isCover = isCover,
             videoDurationMillis = videoDurationMillis,
+            capturedAtMillis = capturedAtMillis,
+            importedAtMillis = importedAtMillis,
+            displayTimeSource = displayTimeSource,
             mediaSource = mediaSource,
         )
     }
@@ -1041,6 +1053,9 @@ object FakeAlbumRepository {
             displayName = mediaId,
             bucketName = "照片流",
             displayTimeMillis = mediaDisplayTimeMillis,
+            capturedAtMillis = capturedAtMillis,
+            fileModifiedAtMillis = null,
+            displayTimeSource = displayTimeSource ?: DisplayTimeSourceOriginal,
             displayYear = dateParts.first,
             displayMonth = dateParts.second,
             displayDay = dateParts.third,
@@ -1076,6 +1091,9 @@ object FakeAlbumRepository {
             width = width,
             height = height,
             videoDurationMillis = videoDurationMillis,
+            capturedAtMillis = null,
+            importedAtMillis = null,
+            displayTimeSource = null,
             mediaSource = mediaSource,
             isCover = isCover,
         )
@@ -1107,6 +1125,9 @@ object FakeAlbumRepository {
             width = width,
             height = height,
             videoDurationMillis = null,
+            capturedAtMillis = capturedAtMillis,
+            importedAtMillis = null,
+            displayTimeSource = displayTimeSource,
             mediaSource = this.toAppContentMediaSource(),
             isCover = isCover,
         )

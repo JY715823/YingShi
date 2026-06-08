@@ -1313,7 +1313,7 @@ private suspend fun loadNotificationTrashVisual(trashItemId: String): Notificati
             palette = media.palette,
         )
     }
-    val smallAlbumVisual = if (entry.type == TrashEntryType.POST_DELETED) {
+    val smallAlbumVisual = if (entry.type == TrashEntryType.SMALL_ALBUM_DELETED) {
         NotificationVisual.SmallAlbum(
             title = entry.title.ifBlank { "回收站小相册" },
             metaLabel = "${formatNotificationTime(entry.deletedAtMillis)} · ${entry.relatedMediaIds.size.takeIf { it > 0 } ?: 0} 项",

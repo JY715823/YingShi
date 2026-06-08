@@ -481,7 +481,7 @@ class RealTrashDetailViewModel(
 
 private fun TrashEntryType.toApiItemType(): String {
     return when (this) {
-        TrashEntryType.POST_DELETED -> "smallAlbumDeleted"
+        TrashEntryType.SMALL_ALBUM_DELETED -> "smallAlbumDeleted"
         TrashEntryType.MEDIA_REMOVED -> "mediaRemoved"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"
     }

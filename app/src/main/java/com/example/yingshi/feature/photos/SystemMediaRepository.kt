@@ -54,6 +54,7 @@ private object LocalSystemMediaQueryCache {
 class MediaStoreSystemMediaDataSource(
     context: Context,
 ) : SystemMediaDataSource {
+    private val appContext = context.applicationContext
     private val contentResolver = context.contentResolver
 
     override suspend fun queryMedia(): List<SystemMediaItem> {
@@ -116,12 +117,18 @@ class MediaStoreSystemMediaDataSource(
                 val bucketName = cursor.getStringOrNull(bucketNameIndex)
                 val rawWidth = cursor.getIntOrNull(widthIndex)
                 val rawHeight = cursor.getIntOrNull(heightIndex)
-                val displayTimeMillis = resolveTimeMillis(
-                    dateTakenMillis = cursor.getLongOrNull(dateTakenIndex),
-                    dateModifiedSeconds = cursor.getLongOrNull(dateModifiedIndex),
-                )
-                val dateParts = displayTimeMillis.toDateParts()
                 val contentUri = buildContentUri(type, mediaStoreId)
+                val timeMetadata = resolveDeviceMediaTimeMetadata(
+                    context = appContext,
+                    uri = contentUri,
+                    mediaType = type,
+                    dateTakenMillis = cursor.getLongOrNull(dateTakenIndex),
+                    fileModifiedAtMillis = cursor.getLongOrNull(dateModifiedIndex)?.times(1000L),
+                )
+                val displayTimeMillis = timeMetadata.capturedAtMillis
+                    ?: timeMetadata.fileModifiedAtMillis
+                    ?: System.currentTimeMillis()
+                val dateParts = displayTimeMillis.toDateParts()
                 val width = rawWidth
                 val height = rawHeight
                 val durationMillis = if (type == SystemMediaType.VIDEO) {
@@ -140,6 +147,15 @@ class MediaStoreSystemMediaDataSource(
                     displayName = displayName,
                     bucketName = bucketName,
                     displayTimeMillis = displayTimeMillis,
+                    capturedAtMillis = timeMetadata.capturedAtMillis,
+                    fileModifiedAtMillis = timeMetadata.fileModifiedAtMillis,
+                    displayTimeSource = if (timeMetadata.capturedAtMillis != null) {
+                        DisplayTimeSourceOriginal
+                    } else if (timeMetadata.fileModifiedAtMillis != null) {
+                        DisplayTimeSourceFileModified
+                    } else {
+                        DisplayTimeSourceImported
+                    },
                     displayYear = dateParts.year,
                     displayMonth = dateParts.month,
                     displayDay = dateParts.day,
@@ -170,17 +186,6 @@ class MediaStoreSystemMediaDataSource(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 mediaStoreId,
             )
-        }
-    }
-
-    private fun resolveTimeMillis(
-        dateTakenMillis: Long?,
-        dateModifiedSeconds: Long?,
-    ): Long {
-        return when {
-            dateTakenMillis != null && dateTakenMillis > 0L -> dateTakenMillis
-            dateModifiedSeconds != null && dateModifiedSeconds > 0L -> dateModifiedSeconds * 1000L
-            else -> System.currentTimeMillis()
         }
     }
 

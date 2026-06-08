@@ -155,6 +155,13 @@ fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
         width = width,
         height = height,
         videoDurationMillis = durationMillis,
+        capturedAtMillis = capturedAtMillis,
+        importedAtMillis = importedAtMillis,
+        displayTimeSource = if (MediaTimeOverrides.get(mediaId) != null) {
+            DisplayTimeSourceManual
+        } else {
+            displayTimeSource
+        },
         mediaSource = toAppContentMediaSource(),
     )
 }
@@ -234,6 +241,9 @@ fun RemotePostMedia.toPostDetailMediaUiModel(): PostDetailMediaUiModel {
         width = width,
         height = height,
         videoDurationMillis = videoDurationMillis,
+        capturedAtMillis = capturedAtMillis,
+        importedAtMillis = importedAtMillis,
+        displayTimeSource = displayTimeSource,
         mediaSource = toAppContentMediaSource(),
     )
 }
@@ -329,16 +339,16 @@ private fun RemotePostMedia.toResolvedAspectRatio(mediaType: AppMediaType): Floa
 
 private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {
     return when (itemType) {
-        "smallAlbumDeleted" -> TrashEntryType.POST_DELETED
+        "smallAlbumDeleted", "postDeleted" -> TrashEntryType.SMALL_ALBUM_DELETED
         "mediaRemoved" -> TrashEntryType.MEDIA_REMOVED
         "mediaSystemDeleted" -> TrashEntryType.MEDIA_SYSTEM_DELETED
-        else -> TrashEntryType.POST_DELETED
+        else -> TrashEntryType.SMALL_ALBUM_DELETED
     }
 }
 
 private fun RemoteTrashItem.defaultTrashTitle(): String {
     return when (toTrashEntryType()) {
-        TrashEntryType.POST_DELETED -> "已删除小相册"
+        TrashEntryType.SMALL_ALBUM_DELETED -> "已删除小相册"
         TrashEntryType.MEDIA_REMOVED -> "已移出媒体"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "已删除媒体"
     }
@@ -346,7 +356,7 @@ private fun RemoteTrashItem.defaultTrashTitle(): String {
 
 private fun RemoteTrashItem.defaultTrashPreview(): String {
     return when (toTrashEntryType()) {
-        TrashEntryType.POST_DELETED -> "小相册已移入回收站"
+        TrashEntryType.SMALL_ALBUM_DELETED -> "小相册已移入回收站"
         TrashEntryType.MEDIA_REMOVED -> "媒体已从小相册中移出"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从空间中删除"
     }

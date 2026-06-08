@@ -27,6 +27,9 @@ data class PhotoFeedSourceEntry(
     val width: Int? = null,
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
+    val capturedAtMillis: Long? = mediaDisplayTimeMillis,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = DisplayTimeSourceOriginal,
     val mediaSource: AppContentMediaSource? = null,
 ) {
     val postId: String?
@@ -49,6 +52,9 @@ data class PhotoFeedItem(
     val width: Int? = null,
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
     val mediaSource: AppContentMediaSource? = null,
 ) {
     val postIds: List<String>

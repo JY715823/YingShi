@@ -15,6 +15,15 @@ import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
+import com.example.yingshi.feature.photos.DeviceMediaTimeMetadata
+import com.example.yingshi.feature.photos.DisplayTimeSourceFileModified
+import com.example.yingshi.feature.photos.DisplayTimeSourceImported
+import com.example.yingshi.feature.photos.DisplayTimeSourceOriginal
+import com.example.yingshi.feature.photos.MediaTimePreference
+import com.example.yingshi.feature.photos.SettingsRepository
+import com.example.yingshi.feature.photos.SystemMediaType
+import com.example.yingshi.feature.photos.queryDeviceMediaTimeMetadata
+import com.example.yingshi.feature.photos.resolvePreferredMediaDisplayTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,8 +93,16 @@ object LifeConsoleUploadBridge {
             resolveImageMetadata(context, uri)
         }
         val nowMillis = System.currentTimeMillis()
-        val capturedAtMillis = queryMediaTime(context, uri)
-        val displayTimeMillis = capturedAtMillis ?: nowMillis
+        val timeMetadata = queryDeviceMediaTimeMetadata(
+            context = context,
+            uri = uri,
+            mediaType = if (isVideo) SystemMediaType.VIDEO else SystemMediaType.IMAGE,
+        )
+        val resolvedTime = resolvePreferredMediaDisplayTime(
+            metadata = timeMetadata,
+            importedAtMillis = nowMillis,
+            preference = SettingsRepository.getSettingsState().mediaTimePreference,
+        )
         return UploadMetadata(
             fileName = fileName,
             mimeType = mimeType,
@@ -94,9 +111,10 @@ object LifeConsoleUploadBridge {
             width = width.coerceAtLeast(1),
             height = height.coerceAtLeast(1),
             durationMillis = durationMillis,
-            displayTimeMillis = displayTimeMillis,
-            capturedAtMillis = capturedAtMillis,
-            importedAtMillis = nowMillis,
+            displayTimeMillis = resolvedTime.displayTimeMillis,
+            capturedAtMillis = resolvedTime.capturedAtMillis,
+            importedAtMillis = resolvedTime.importedAtMillis,
+            displayTimeSource = resolvedTime.displayTimeSource,
         )
     }
 
@@ -120,28 +138,6 @@ object LifeConsoleUploadBridge {
                     0L
                 }
             } ?: 0L
-    }
-
-    private fun queryMediaTime(context: Context, uri: Uri): Long? {
-        return runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf("datetaken", MediaStore.MediaColumns.DATE_MODIFIED),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val dateTakenMillis = cursor.getLongOrNull(cursor.getColumnIndex("datetaken"))
-                    val dateModifiedSeconds = cursor.getLongOrNull(
-                        cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED),
-                    )
-                    dateTakenMillis ?: dateModifiedSeconds?.times(1000L)
-                } else {
-                    null
-                }
-            }
-        }.getOrNull()
     }
 
     private fun resolveImageMetadata(context: Context, uri: Uri): Triple<Int, Int, Long?> {
@@ -223,6 +219,7 @@ object LifeConsoleUploadBridge {
         val displayTimeMillis: Long,
         val capturedAtMillis: Long?,
         val importedAtMillis: Long,
+        val displayTimeSource: String,
     ) {
         fun toTokenPayload(): CreateUploadTokenPayload {
             return CreateUploadTokenPayload(
@@ -236,7 +233,7 @@ object LifeConsoleUploadBridge {
                 displayTimeMillis = displayTimeMillis,
                 capturedAtMillis = capturedAtMillis,
                 importedAtMillis = importedAtMillis,
-                displayTimeSource = if (capturedAtMillis == null) "IMPORTED" else "ORIGINAL",
+                displayTimeSource = displayTimeSource,
             )
         }
     }

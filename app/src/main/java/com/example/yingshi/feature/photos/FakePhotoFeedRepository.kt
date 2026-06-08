@@ -49,6 +49,15 @@ object FakePhotoFeedRepository {
                     width = latestEntry.width,
                     height = latestEntry.height,
                     videoDurationMillis = latestEntry.videoDurationMillis,
+                    capturedAtMillis = latestEntry.capturedAtMillis,
+                    importedAtMillis = latestEntry.importedAtMillis,
+                    displayTimeSource = if (
+                        displayTimeOverridesByMediaId.containsKey(latestEntry.mediaId)
+                    ) {
+                        DisplayTimeSourceManual
+                    } else {
+                        latestEntry.displayTimeSource
+                    },
                     mediaSource = latestEntry.mediaSource,
                 )
             }
@@ -79,6 +88,9 @@ object FakePhotoFeedRepository {
                             width = item.width,
                             height = item.height,
                             videoDurationMillis = null,
+                            capturedAtMillis = item.capturedAtMillis,
+                            importedAtMillis = null,
+                            displayTimeSource = item.displayTimeSource,
                             mediaSource = item.toAppContentMediaSource(),
                         ),
                     )

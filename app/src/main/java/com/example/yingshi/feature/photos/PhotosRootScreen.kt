@@ -104,6 +104,7 @@ fun PhotosRootScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val context = LocalContext.current
     val transferTasks = LocalSystemMediaBridgeRepository.uploadTasks
     val hasTransferFailure = transferTasks.any { it.canRetry || it.state == UploadState.FAILURE }
     val runningTransferCount = transferTasks.count {
@@ -141,6 +142,7 @@ fun PhotosRootScreen(
     }
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableIntStateOf(0) }
+    var photoShareInFlight by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val albumSummaries = FakeAlbumRepository.getAlbums()
     val albumPosts = FakeAlbumRepository.getPosts()
@@ -510,6 +512,44 @@ fun PhotosRootScreen(
                                     ) {
                                         PhotoSelectionActionBarV2(
                                             selectedCount = photoSelectionState.selectedCount,
+                                            onShare = {
+                                                val selectedItems = feedItems.filter { item ->
+                                                    photoSelectionState.selectedMediaIds.contains(item.mediaId)
+                                                }
+                                                if (selectedItems.isEmpty()) {
+                                                    showNotice("没有找到可分享的媒体。", YingShiNoticeTone.WARNING)
+                                                    return@PhotoSelectionActionBarV2
+                                                }
+                                                if (photoShareInFlight) {
+                                                    showNotice("正在准备分享文件…")
+                                                    return@PhotoSelectionActionBarV2
+                                                }
+                                                coroutineScope.launch {
+                                                    photoShareInFlight = true
+                                                    showNotice("正在准备分享文件…")
+                                                    try {
+                                                        when (
+                                                            val result = MediaShareManager.shareMedia(
+                                                                context = context,
+                                                                items = selectedItems.map(PhotoFeedItem::toShareableMediaItem),
+                                                                packageBaseName = "映世-照片流-${selectedItems.size}项",
+                                                            )
+                                                        ) {
+                                                            is MediaShareLaunchResult.Success -> {
+                                                                showNotice(
+                                                                    result.toNoticeMessage(),
+                                                                    YingShiNoticeTone.SUCCESS,
+                                                                )
+                                                            }
+                                                            is MediaShareLaunchResult.Error -> {
+                                                                showNotice(result.message, YingShiNoticeTone.WARNING)
+                                                            }
+                                                        }
+                                                    } finally {
+                                                        photoShareInFlight = false
+                                                    }
+                                                }
+                                            },
                                             onCreatePost = {
                                                 val selectedIds = photoSelectionState.selectedMediaIds.toList()
                                                 if (selectedIds.isEmpty()) {
@@ -990,6 +1030,7 @@ private fun PhotoBellButton(
 @Composable
 private fun PhotoSelectionActionBarV2(
     selectedCount: Int,
+    onShare: () -> Unit,
     onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
     onDelete: () -> Unit,
@@ -1040,6 +1081,13 @@ private fun PhotoSelectionActionBarV2(
                     text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.textPrimary,
+                )
+                SelectionActionRow(
+                    text = "分享所选",
+                    onClick = {
+                        showActions = false
+                        onShare()
+                    },
                 )
                 SelectionActionRow(
                     text = "新建小相册",

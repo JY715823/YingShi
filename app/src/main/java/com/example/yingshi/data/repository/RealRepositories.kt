@@ -312,14 +312,14 @@ class RealPostRepository(
         )
     }
 
-    override suspend fun deletePost(postId: String): ApiResult<RemoteTrashItem> {
+    override suspend fun deleteSmallAlbum(smallAlbumId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
-            postApi.deletePost(postId = postId).data.toRemoteModel()
+            postApi.deleteSmallAlbum(smallAlbumId = smallAlbumId).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
                 ApiResult.Error(
-                    code = "POST_DELETE_REQUEST_FAILED",
+                    code = "SMALL_ALBUM_DELETE_REQUEST_FAILED",
                     message = backendRequestErrorMessage(it, "删除小相册失败，请稍后重试。"),
                     throwable = it,
                 )

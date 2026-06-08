@@ -80,6 +80,9 @@ data class SmallAlbumDetailMediaUiModel(
     val width: Int? = null,
     val height: Int? = null,
     val videoDurationMillis: Long? = null,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
     val mediaSource: AppContentMediaSource? = null,
 )
 
@@ -161,6 +164,9 @@ data class ManagedSmallAlbumMediaUiModel(
     val aspectRatio: Float,
     val isCover: Boolean,
     val videoDurationMillis: Long? = null,
+    val capturedAtMillis: Long? = null,
+    val importedAtMillis: Long? = null,
+    val displayTimeSource: String? = null,
     val mediaSource: AppContentMediaSource? = null,
 )
 

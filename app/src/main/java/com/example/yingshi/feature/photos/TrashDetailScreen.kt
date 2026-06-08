@@ -112,7 +112,7 @@ fun TrashDetailScreen(
         return
     }
 
-    if (entry.type == TrashEntryType.POST_DELETED) {
+    if (entry.type == TrashEntryType.SMALL_ALBUM_DELETED) {
         TrashPostViewerDetailScreen(
             entry = entry,
             directory = collaboratorDirectory,
@@ -160,7 +160,7 @@ fun TrashDetailScreen(
         TrashDetailStatusCard(entry = entry)
 
         when (entry.type) {
-            TrashEntryType.POST_DELETED -> TrashDeletedPostContent(entry = entry)
+            TrashEntryType.SMALL_ALBUM_DELETED -> TrashDeletedPostContent(entry = entry)
             TrashEntryType.MEDIA_REMOVED -> TrashDeletedMediaContent(
                 entry = entry,
                 systemWide = false,
@@ -1731,7 +1731,7 @@ private fun TrashDetailMissingState(
         TrashDetailTopBar(
             entry = TrashEntryUiModel(
                 id = "missing",
-                type = TrashEntryType.POST_DELETED,
+                type = TrashEntryType.SMALL_ALBUM_DELETED,
                 deletedAtMillis = System.currentTimeMillis(),
                 title = "回收站项目不可用",
                 previewInfo = "当前删除项不存在。",

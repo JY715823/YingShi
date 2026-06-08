@@ -13,11 +13,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
 fun rememberYingShiMotionEnabled(): Boolean {
-    return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ValueAnimator.areAnimatorsEnabled()
+    val followSystemReducedMotion = SettingsRepository.getSettingsState()
+        .interactionPreferences
+        .followSystemReducedMotion
+    val systemMotionEnabled = Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ValueAnimator.areAnimatorsEnabled()
+    return if (followSystemReducedMotion) systemMotionEnabled else true
 }
 
 @Composable

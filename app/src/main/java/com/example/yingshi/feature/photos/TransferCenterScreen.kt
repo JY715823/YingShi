@@ -159,9 +159,21 @@ fun TransferCenterScreen(
                     ) { group ->
                         TransferOperationCard(
                             tasks = group,
-                            onRetryTask = { taskId ->
-                                LocalSystemMediaBridgeRepository.retryUploadTask(context, taskId)
-                                showNotice("已重新加入传输队列", YingShiNoticeTone.SUCCESS)
+                            onRetryOperation = { operationId ->
+                                val retriedCount = LocalSystemMediaBridgeRepository
+                                    .retryUploadOperation(context, operationId)
+                                if (retriedCount > 0) {
+                                    showNotice(
+                                        if (retriedCount > 1) {
+                                            "已重试 $retriedCount 项失败任务"
+                                        } else {
+                                            "已重新加入传输队列"
+                                        },
+                                        YingShiNoticeTone.SUCCESS,
+                                    )
+                                } else {
+                                    showNotice("当前没有可重试的任务", YingShiNoticeTone.WARNING)
+                                }
                             },
                             onCancelOperation = {
                                 LocalSystemMediaBridgeRepository.cancelUploadOperation(it)
@@ -204,7 +216,7 @@ private fun TransferEmptyState() {
 @Composable
 private fun TransferOperationCard(
     tasks: List<SystemMediaUploadTaskUiModel>,
-    onRetryTask: (String) -> Unit,
+    onRetryOperation: (String) -> Unit,
     onCancelOperation: (String) -> Unit,
     onClearTask: (String) -> Unit,
     onOpen: (SystemMediaUploadTaskUiModel) -> Unit,
@@ -215,7 +227,7 @@ private fun TransferOperationCard(
     val primaryTask = tasks.first()
     val openTargetTask = tasks.openTargetTask()
     val canOpen = openTargetTask != null
-    val failedTasks = tasks.filter { it.canRetry }
+    val retryableTasks = tasks.filter { it.canRetry }
     val runningTasks = tasks.filterNot { it.isTerminal }
     val allTerminal = tasks.all { it.isTerminal }
     val successCount = tasks.count { it.state == UploadState.SUCCESS }
@@ -225,11 +237,14 @@ private fun TransferOperationCard(
         .filter { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED || it.canRetry }
         .distinctBy { it.taskId }
     val totalCount = primaryTask.operationMediaCount.coerceAtLeast(tasks.size)
-    val averageProgress = if (tasks.isEmpty()) {
-        0
-    } else {
-        tasks.map { it.progressPercent.coerceIn(0, 100) }.average().toInt()
-    }
+    val operationProgress = calculateTransferOperationProgressPercent(
+        tasks = tasks,
+        totalCount = totalCount,
+    )
+    val processedCount = calculateTransferOperationProcessedCount(
+        tasks = tasks,
+        totalCount = totalCount,
+    )
     var showFailureDetails by rememberSaveable(primaryTask.operationId) { mutableStateOf(false) }
     var showClearGroupDialog by rememberSaveable(primaryTask.operationId) { mutableStateOf(false) }
 
@@ -287,6 +302,8 @@ private fun TransferOperationCard(
                     Text(
                         text = operationStateLabel(
                             tasks = tasks,
+                            totalCount = totalCount,
+                            processedCount = processedCount,
                             successCount = successCount,
                             failureCount = failureCount,
                             cancelledCount = cancelledCount,
@@ -296,7 +313,7 @@ private fun TransferOperationCard(
                         maxLines = 2,
                     )
                     LinearProgressIndicator(
-                        progress = { averageProgress / 100f },
+                        progress = { operationProgress / 100f },
                         modifier = Modifier.fillMaxWidth().height(4.dp),
                         color = colors.primaryActionPressed,
                         trackColor = colors.sectionBackground.copy(alpha = 0.72f),
@@ -350,10 +367,10 @@ private fun TransferOperationCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                failedTasks.firstOrNull()?.let { task ->
-                    TransferActionPill(text = if (failedTasks.size > 1) "重试失败项" else "重试", onClick = {
+                retryableTasks.firstOrNull()?.let { task ->
+                    TransferActionPill(text = transferRetryActionLabel(retryableTasks.size), onClick = {
                         showFailureDetails = false
-                        onRetryTask(task.taskId)
+                        onRetryOperation(task.operationId)
                     })
                 }
                 runningTasks.firstOrNull()?.let { task ->
@@ -766,11 +783,12 @@ private fun failureReasonLabel(task: SystemMediaUploadTaskUiModel): String {
 
 private fun operationStateLabel(
     tasks: List<SystemMediaUploadTaskUiModel>,
+    totalCount: Int,
+    processedCount: Int,
     successCount: Int,
     failureCount: Int,
     cancelledCount: Int,
 ): String {
-    val terminalCount = tasks.count { it.isTerminal }
     val primaryTask = tasks.first()
     val targetLabel = primaryTask.operationTitle ?: primaryTask.targetLabel
     val countText = "成功 $successCount，失败 $failureCount，取消 $cancelledCount"
@@ -779,11 +797,11 @@ private fun operationStateLabel(
     val hasSuccess = successCount > 0
     return when {
         tasks.any { it.state == UploadState.UPLOADING } && (hasFailure || hasCancelled) ->
-            "正在重试失败项：已处理 ${terminalCount}/${tasks.size} 项"
-        tasks.any { it.state == UploadState.UPLOADING } -> "正在处理 ${terminalCount}/${tasks.size} 项"
+            "正在重试失败项：已处理 ${processedCount}/${totalCount} 项"
+        tasks.any { it.state == UploadState.UPLOADING } -> "正在处理 ${processedCount}/${totalCount} 项"
         tasks.any { it.state == UploadState.WAITING } && (hasFailure || hasCancelled) ->
-            "正在重试失败项：等待处理 ${terminalCount}/${tasks.size} 项"
-        tasks.any { it.state == UploadState.WAITING } -> "等待处理 ${terminalCount}/${tasks.size} 项"
+            "正在重试失败项：等待处理 ${processedCount}/${totalCount} 项"
+        tasks.any { it.state == UploadState.WAITING } -> "等待处理 ${processedCount}/${totalCount} 项"
         cancelledCount == tasks.size -> "已取消：未完成项不会继续处理，可清理传输记录。"
         hasCancelled && hasSuccess && !hasFailure -> "部分完成后取消：$countText。成功项已保留，未完成项已取消。"
         hasFailure || hasCancelled -> when (primaryTask.operationType) {
@@ -808,6 +826,42 @@ private fun operationStateLabel(
                 "已加入「$targetLabel」：成功 $successCount 项，可查看目标小相册"
         }
         else -> "任务已更新"
+    }
+}
+
+internal fun calculateTransferOperationProcessedCount(
+    tasks: List<SystemMediaUploadTaskUiModel>,
+    totalCount: Int,
+): Int {
+    val virtualCompletedCount = (totalCount - tasks.size).coerceAtLeast(0)
+    return (virtualCompletedCount + tasks.count { it.isTerminal })
+        .coerceIn(0, totalCount.coerceAtLeast(0))
+}
+
+internal fun calculateTransferOperationProgressPercent(
+    tasks: List<SystemMediaUploadTaskUiModel>,
+    totalCount: Int,
+): Int {
+    if (tasks.isEmpty()) return 0
+    if (totalCount <= 0) return 0
+    val virtualCompletedUnits = (totalCount - tasks.size).coerceAtLeast(0) * 100
+    val taskUnits = tasks.sumOf { task ->
+        if (task.isTerminal) {
+            100
+        } else {
+            task.progressPercent.coerceIn(0, 100)
+        }
+    }
+    return ((virtualCompletedUnits + taskUnits).toFloat() / totalCount)
+        .toInt()
+        .coerceIn(0, 100)
+}
+
+internal fun transferRetryActionLabel(retryableCount: Int): String {
+    return if (retryableCount > 1) {
+        "重试 $retryableCount 项"
+    } else {
+        "重试"
     }
 }
 

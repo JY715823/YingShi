@@ -1,10 +1,13 @@
 package com.example.yingshi.data.remote.auth
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.remote.config.BackendDebugConfig
+import com.example.yingshi.data.remote.config.RemoteConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 
 enum class BackendAutoLoginPhase {
@@ -44,7 +47,7 @@ object BackendAutoLoginManager {
         force: Boolean = false,
         reason: String = "app_start",
     ): BackendAutoLoginOutcome {
-        if (reason.startsWith("real_")) {
+        if (reason.startsWith("real_") && !shouldAllowAutoLoginForBaseUrl(BackendDebugConfig.currentBaseUrl())) {
             val message = "需要先完成登录，请检查连接设置后重试。"
             state.value = state.value.copy(
                 phase = BackendAutoLoginPhase.Failed,
@@ -167,5 +170,32 @@ object BackendAutoLoginManager {
             lastReason = "manual_logout",
             lastAttemptAtMillis = System.currentTimeMillis(),
         )
+    }
+
+    internal fun shouldAllowAutoLoginForBaseUrl(baseUrl: String): Boolean {
+        val normalized = baseUrl.trim()
+        if (normalized.isBlank()) return false
+        val host = runCatching { URI(normalized).host?.trim()?.lowercase() }.getOrNull()
+            ?: return false
+        if (host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2") {
+            return true
+        }
+        if (host.endsWith(".local") || host.endsWith(".localhost")) {
+            return true
+        }
+        if (host.startsWith("10.")) {
+            return true
+        }
+        if (host.startsWith("192.168.")) {
+            return true
+        }
+        if (host.startsWith("172.")) {
+            val secondSegment = host.split('.').getOrNull(1)?.toIntOrNull()
+            if (secondSegment != null && secondSegment in 16..31) {
+                return true
+            }
+        }
+        return normalized == RemoteConfig.DEBUG_EMULATOR_BASE_URL ||
+            normalized == RemoteConfig.DEBUG_DEVICE_LOOPBACK_BASE_URL
     }
 }

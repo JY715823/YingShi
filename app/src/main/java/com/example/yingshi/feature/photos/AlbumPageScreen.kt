@@ -97,7 +97,7 @@ fun AlbumPageScreen(
 
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-    val settingsState = FakeSettingsRepository.getSettingsState()
+    val settingsState = SettingsRepository.getSettingsState()
     var selectedAlbumId by rememberSaveable(albums) {
         mutableStateOf(albums.firstOrNull()?.id.orEmpty())
     }
@@ -227,7 +227,7 @@ private fun RealAlbumPageScreen(
     val pendingSelectedAlbumId = AlbumPageStateStore.pendingSelectedAlbumId
     val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
     val spacing = YingShiThemeTokens.spacing
-    val settingsState = FakeSettingsRepository.getSettingsState()
+    val settingsState = SettingsRepository.getSettingsState()
     var densityName by rememberSaveable {
         mutableStateOf<String?>(null)
     }

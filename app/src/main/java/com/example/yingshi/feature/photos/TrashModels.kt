@@ -6,7 +6,7 @@ enum class TrashEntryType(
     val label: String,
     val summary: String,
 ) {
-    POST_DELETED(
+    SMALL_ALBUM_DELETED(
         label = "小相册删除",
         summary = "恢复小相册本体、小相册评论和小相册与媒体关系。",
     ),
@@ -22,7 +22,7 @@ enum class TrashEntryType(
 
 val TrashCategoryMenuTypes: List<TrashEntryType> = listOf(
     TrashEntryType.MEDIA_SYSTEM_DELETED,
-    TrashEntryType.POST_DELETED,
+    TrashEntryType.SMALL_ALBUM_DELETED,
     TrashEntryType.MEDIA_REMOVED,
 )
 
@@ -104,6 +104,19 @@ data class TrashDetailRoute(
 data class TrashPendingCleanupRoute(
     val source: String = "trash-page",
 )
+
+fun parseTrashEntryTypeOrDefault(value: String?, default: TrashEntryType): TrashEntryType {
+    return parseTrashEntryTypeOrNull(value) ?: default
+}
+
+fun parseTrashEntryTypeOrNull(value: String?): TrashEntryType? {
+    val normalized = value?.trim().orEmpty()
+    if (normalized.isBlank()) return null
+    return when {
+        normalized.equals("POST_DELETED", ignoreCase = true) -> TrashEntryType.SMALL_ALBUM_DELETED
+        else -> TrashEntryType.entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) }
+    }
+}
 
 fun TrashEntryUiModel.restoreTargetMediaIds(): List<String> {
     return buildList {

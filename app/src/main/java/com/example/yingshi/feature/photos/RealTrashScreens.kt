@@ -291,7 +291,10 @@ fun RealTrashPageScreen(
     onSelectionModeChange: (Boolean) -> Unit = { },
 ) {
     val sessionKey = realBackendSessionKey("real-trash-list")
-    val selectedType = TrashEntryType.valueOf(selectedTypeName)
+    val selectedType = parseTrashEntryTypeOrDefault(
+        value = selectedTypeName,
+        default = TrashEntryType.MEDIA_SYSTEM_DELETED,
+    )
     val viewModel: RealTrashListViewModel = viewModel(
         key = sessionKey,
         factory = RealTrashListViewModel.factory(initialSelectedType = selectedType),
@@ -564,7 +567,7 @@ fun RealTrashPageScreen(
                 }
             }
         }
-    } else if (selectedType == TrashEntryType.POST_DELETED) {
+    } else if (selectedType == TrashEntryType.SMALL_ALBUM_DELETED) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             modifier = modifier,
@@ -1530,6 +1533,7 @@ private fun TrashEntryUiModel.toTrashPostDetailUiModel(mediaIds: List<String>): 
                 palette = realPaletteFor(mediaId),
                 mediaType = AppMediaType.IMAGE,
                 aspectRatio = 1f,
+                displayTimeSource = DisplayTimeSourceImported,
                 mediaSource = realTrashMediaSource(mediaId),
             )
         },
@@ -1676,7 +1680,7 @@ private fun RealTrashPostTopIconButton(
 
 private fun realTrashEntrySourceLine(entry: TrashEntryUiModel): String {
     return when (entry.type) {
-        TrashEntryType.POST_DELETED -> {
+        TrashEntryType.SMALL_ALBUM_DELETED -> {
             val mediaCount = entry.relatedMediaIds.size
             "小相册删除 · 媒体 $mediaCount 项"
         }
@@ -1747,7 +1751,7 @@ fun RealTrashDetailScreen(
         )
         return
     }
-    if (detail != null && mediaDetailEntry?.type == TrashEntryType.POST_DELETED) {
+    if (detail != null && mediaDetailEntry?.type == TrashEntryType.SMALL_ALBUM_DELETED) {
         RealTrashPostViewerDetailContent(
             detail = detail,
             directory = collaboratorDirectory,
@@ -3577,7 +3581,7 @@ private fun RealTrashDeletedPreview(
         mediaIds.isNotEmpty() -> {
             RealTrashMediaStrip(
                 title = when (type) {
-                    TrashEntryType.POST_DELETED -> "原小相册媒体"
+                    TrashEntryType.SMALL_ALBUM_DELETED -> "原小相册媒体"
                     TrashEntryType.MEDIA_REMOVED -> "被移除的媒体"
                     TrashEntryType.MEDIA_SYSTEM_DELETED -> "被删除的媒体"
                 },
@@ -3585,7 +3589,7 @@ private fun RealTrashDeletedPreview(
             )
         }
 
-        type == TrashEntryType.POST_DELETED -> {
+        type == TrashEntryType.SMALL_ALBUM_DELETED -> {
             RealTrashSectionCard(
                 title = "原小相册内容",
                 body = "这个小相册的照片内容已不可查看，仅保留标题和说明。",
@@ -3744,6 +3748,7 @@ private fun TrashMediaSnapshot.toViewerPhotoFeedItem(): PhotoFeedItem {
         width = width,
         height = height,
         videoDurationMillis = videoDurationMillis,
+        displayTimeSource = DisplayTimeSourceImported,
         mediaSource = mediaSource,
     )
 }

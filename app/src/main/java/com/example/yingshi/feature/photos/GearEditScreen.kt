@@ -546,7 +546,7 @@ private fun RealGearEditScreen(
                     text = if (uiState.isDeleting) "处理中…" else "确认删除",
                     onClick = {
                         showDeletePostDialog = false
-                        viewModel.deletePost(
+                        viewModel.deleteSmallAlbum(
                             onSuccess = {
                                 onDeleteCurrentPost(route.postId, false)
                             },

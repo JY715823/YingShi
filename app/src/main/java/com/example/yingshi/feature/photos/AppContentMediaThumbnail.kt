@@ -122,13 +122,23 @@ fun AppContentMediaThumbnail(
     val previewState = previewPainter.state
     val originalState = originalPainter.state
     val videoPosterUrl = if (mediaType == AppMediaType.VIDEO) {
-        mediaSource.viewerVideoUrl(mediaType)
-            ?: thumbnailUrl?.takeIf { looksLikeVideoSource(it, mediaSource?.mimeType) }
+        listOfNotNull(
+            mediaSource?.coverUrl,
+            mediaSource?.thumbnailUrl?.takeUnless { looksLikeVideoSource(it, mediaSource?.mimeType) },
+            mediaSource?.mediaUrl?.takeUnless { looksLikeVideoSource(it, mediaSource?.mimeType) },
+            mediaSource.viewerVideoUrl(mediaType),
+            thumbnailUrl?.takeIf { looksLikeVideoSource(it, mediaSource?.mimeType) },
+        ).firstOrNull()
     } else {
         null
     }
     val videoPosterCacheKey = remember(mediaSource, mediaType) {
-        mediaSource.viewerVideoCacheKey(mediaType)
+        listOfNotNull(
+            mediaSource?.coverCacheKey,
+            mediaSource?.thumbnailCacheKey,
+            mediaSource?.mediaCacheKey,
+            mediaSource.viewerVideoCacheKey(mediaType),
+        ).firstOrNull()
     }
     val videoPosterState = if (mediaType == AppMediaType.VIDEO && !videoPosterUrl.isNullOrBlank()) {
         rememberVideoPosterState(

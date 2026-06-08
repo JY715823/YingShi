@@ -34,9 +34,9 @@ data class MediaDto(
     val recordOwnerUserId: String? = null,
     val uploadedByUserId: String? = null,
     val createdAtMillis: Long? = null,
-    val smallAlbumIds: List<String> = emptyList(),
-    val access: List<MediaAccessDto> = emptyList(),
+    val smallAlbumIds: List<String>? = null,
+    val access: List<MediaAccessDto>? = null,
 ) {
     val postIds: List<String>
-        get() = smallAlbumIds
+        get() = smallAlbumIds.orEmpty()
 }

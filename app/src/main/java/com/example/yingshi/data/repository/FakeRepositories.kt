@@ -241,10 +241,10 @@ class FakePostRepositoryShell : PostRepository {
         return getPostDetail(postId)
     }
 
-    override suspend fun deletePost(postId: String): ApiResult<RemoteTrashItem> {
+    override suspend fun deleteSmallAlbum(smallAlbumId: String): ApiResult<RemoteTrashItem> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",
-            message = "FAKE post delete keeps using local fake flow in this stage",
+            message = "FAKE small album delete keeps using local fake flow in this stage",
         )
     }
 }
@@ -983,7 +983,7 @@ private fun com.example.yingshi.feature.photos.NotificationCenterItemUiModel.toR
 }
 
 private fun String.toTrashEntryTypeOrNull(): TrashEntryType? {
-    return TrashEntryType.entries.firstOrNull { it.name.equals(this, ignoreCase = true) }
+    return com.example.yingshi.feature.photos.parseTrashEntryTypeOrNull(this)
 }
 
 private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashItem(
@@ -992,7 +992,7 @@ private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashIt
     return RemoteTrashItem(
         trashItemId = id,
         itemType = when (type) {
-            TrashEntryType.POST_DELETED -> "smallAlbumDeleted"
+            TrashEntryType.SMALL_ALBUM_DELETED -> "smallAlbumDeleted"
             TrashEntryType.MEDIA_REMOVED -> "mediaRemoved"
             TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"
         },

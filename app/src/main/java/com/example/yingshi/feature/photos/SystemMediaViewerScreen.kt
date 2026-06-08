@@ -978,7 +978,7 @@ private fun SystemMediaViewerInfoCard(
                 color = colors.viewerTextSecondary,
             )
             Text(
-                text = "日期：${formatSystemMediaViewerTime(item.displayTimeMillis)}",
+                text = "日期：${buildMediaDisplayTimeLabel(item.displayTimeMillis, item.displayTimeSource)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.viewerTextSecondary,
             )
@@ -1175,10 +1175,6 @@ private fun SystemMediaViewerCircleButton(
             )
         }
     }
-}
-
-private fun formatSystemMediaViewerTime(timeMillis: Long): String {
-    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
 }
 
 private fun formatVideoProgress(timeMillis: Long): String {

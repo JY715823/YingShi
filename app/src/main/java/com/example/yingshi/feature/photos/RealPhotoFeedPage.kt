@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.ui.components.YingShiNotice
@@ -43,6 +44,7 @@ fun RealPhotoFeedPage(
     scrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionKey = realBackendSessionKey("real-photo-feed")
     val viewModel: RealPhotoFeedViewModel = viewModel(
@@ -57,6 +59,7 @@ fun RealPhotoFeedPage(
     var addToPostPendingPostId by rememberSaveable { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by rememberSaveable { mutableStateOf(0) }
+    var shareInFlight by remember { mutableStateOf(false) }
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
@@ -262,6 +265,41 @@ fun RealPhotoFeedPage(
                             RealFeedSelectionBarV2(
                                 selectedCount = selectionState.selectedCount,
                                 isDeleting = uiState.isDeleting,
+                                onShare = {
+                                    val selectedItems = uiState.feedItems.filter { item ->
+                                        selectionState.selectedMediaIds.contains(item.mediaId)
+                                    }
+                                    if (selectedItems.isEmpty()) {
+                                        showNotice("没有找到可分享的媒体。")
+                                        return@RealFeedSelectionBarV2
+                                    }
+                                    if (shareInFlight) {
+                                        showNotice("正在准备分享文件…")
+                                        return@RealFeedSelectionBarV2
+                                    }
+                                    scope.launch {
+                                        shareInFlight = true
+                                        showNotice("正在准备分享文件…")
+                                        try {
+                                            when (
+                                                val result = MediaShareManager.shareMedia(
+                                                    context = context,
+                                                    items = selectedItems.map(PhotoFeedItem::toShareableMediaItem),
+                                                    packageBaseName = "映世-照片流-${selectedItems.size}项",
+                                                )
+                                            ) {
+                                                is MediaShareLaunchResult.Success -> {
+                                                    showNotice(result.toNoticeMessage())
+                                                }
+                                                is MediaShareLaunchResult.Error -> {
+                                                    showNotice(result.message)
+                                                }
+                                            }
+                                        } finally {
+                                            shareInFlight = false
+                                        }
+                                    }
+                                },
                                 onCreatePost = {
                                     val selectedIds = selectionState.selectedMediaIds.toList()
                                     if (selectedIds.isEmpty()) {
@@ -317,6 +355,7 @@ fun RealPhotoFeedPage(
 private fun RealFeedSelectionBarV2(
     selectedCount: Int,
     isDeleting: Boolean,
+    onShare: () -> Unit,
     onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
     onDelete: () -> Unit,
@@ -342,6 +381,12 @@ private fun RealFeedSelectionBarV2(
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textPrimary,
+            )
+            RealFeedSelectionChip(
+                text = "分享",
+                enabled = !isDeleting,
+                onClick = onShare,
+                shape = chipShape,
             )
             RealFeedSelectionChip(
                 text = "新建",

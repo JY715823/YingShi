@@ -55,13 +55,16 @@ fun SettingsScreen(
     route: SettingsRoute,
     onBack: () -> Unit,
     onOpenBackendDiagnostics: (BackendDiagnosticsRoute) -> Unit,
+    onOpenCacheManagement: (CacheManagementRoute) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
-    val settingsState = FakeSettingsRepository.getSettingsState()
+    val settingsState = SettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
+    val sharePreferences = settingsState.sharePreferences
+    val interactionPreferences = settingsState.interactionPreferences
     val currentUser = CollaboratorDirectoryStore.currentUser ?: fakeAuthCurrentProfile()
     val loginStatusValue = if (AuthSessionManager.isLoggedIn) {
         "已连接"
@@ -75,6 +78,7 @@ fun SettingsScreen(
         "未授权"
     }
     val notificationPermissionValue = resolveNotificationPermissionStatus(context)
+    val cacheSummary = MediaCacheRepository.getSummary(context)
 
     YingShiMistBackground(modifier = modifier, showWaves = false) {
         Column(
@@ -113,8 +117,44 @@ fun SettingsScreen(
             }
 
             SettingsSection(
-                title = "浏览偏好",
-                subtitle = "重新进入页面时使用这些默认偏好。",
+                title = "分享",
+                subtitle = "决定多项媒体默认怎么分享，优先发真实文件，不做相册链接。",
+            ) {
+                SettingsChoiceRow(
+                    title = "多项分享方式",
+                    subtitle = "智能默认是 1-9 项直接分享，10 项起打包 ZIP。",
+                    options = ShareDeliveryPreference.entries,
+                    selectedOption = sharePreferences.deliveryPreference,
+                    optionLabel = { it.label },
+                    onOptionSelected = { SettingsRepository.updateShareDeliveryPreference(it) },
+                )
+                SettingsChoiceRow(
+                    title = "图片默认画质",
+                    subtitle = "原图更适合正式分享，缩略图更适合快速转发。",
+                    options = ShareImageQualityPreference.entries,
+                    selectedOption = sharePreferences.imageQualityPreference,
+                    optionLabel = { it.label },
+                    onOptionSelected = { SettingsRepository.updateShareImageQualityPreference(it) },
+                )
+                SettingsChoiceRow(
+                    title = "智能打包阈值",
+                    subtitle = "仅在“智能默认”下生效。",
+                    options = listOf(10, 20, 50),
+                    selectedOption = sharePreferences.zipThreshold,
+                    optionLabel = { "${it}项" },
+                    onOptionSelected = { SettingsRepository.updateShareZipThreshold(it) },
+                )
+                SettingsSwitchRow(
+                    title = "分享时包含视频",
+                    subtitle = "关闭后会只分享图片，视频会被跳过。",
+                    checked = sharePreferences.includeVideos,
+                    onCheckedChange = { SettingsRepository.updateShareIncludeVideos(it) },
+                )
+            }
+
+            SettingsSection(
+                title = "浏览密度",
+                subtitle = "重新进入页面时使用这些默认排布。",
             ) {
                 SettingsChoiceRow(
                     title = "照片页默认网格密度",
@@ -122,7 +162,7 @@ fun SettingsScreen(
                     options = PhotoFeedDensity.entries,
                     selectedOption = settingsState.defaultPhotoFeedDensity,
                     optionLabel = { it.label },
-                    onOptionSelected = { FakeSettingsRepository.updateDefaultPhotoFeedDensity(it) },
+                    onOptionSelected = { SettingsRepository.updateDefaultPhotoFeedDensity(it) },
                 )
                 SettingsChoiceRow(
                     title = "相册页默认列数",
@@ -130,35 +170,89 @@ fun SettingsScreen(
                     options = AlbumGridDensity.entries,
                     selectedOption = settingsState.defaultAlbumGridDensity,
                     optionLabel = { it.label },
-                    onOptionSelected = { FakeSettingsRepository.updateDefaultAlbumGridDensity(it) },
+                    onOptionSelected = { SettingsRepository.updateDefaultAlbumGridDensity(it) },
+                )
+                SettingsChoiceRow(
+                    title = "系统媒体默认网格密度",
+                    subtitle = "默认跟照片流接近，也允许你单独记住更密或更松的浏览方式。",
+                    options = PhotoFeedDensity.entries,
+                    selectedOption = settingsState.defaultSystemMediaDensity,
+                    optionLabel = { it.label },
+                    onOptionSelected = { SettingsRepository.updateDefaultSystemMediaDensity(it) },
                 )
             }
 
             SettingsSection(
                 title = "查看器偏好",
-                subtitle = "控制全屏看图和视频切换时的行为。",
+                subtitle = "控制全屏看图、长图阅读和视频切换时的行为。",
             ) {
-                SettingsInfoRow(
-                    title = "评论预览默认状态",
-                    subtitle = "当前固定为默认关闭，通过评论气泡再展开预览层。",
-                    value = "默认关闭",
+                SettingsSwitchRow(
+                    title = "长图自动阅读模式",
+                    subtitle = "检测到长图后默认按屏幕宽度阅读，并支持上下滚动。",
+                    checked = viewerPreferences.autoLongImageReading,
+                    onCheckedChange = { SettingsRepository.updateAutoLongImageReading(it) },
                 )
                 SettingsSwitchRow(
                     title = "缩放时弱化操作层",
                     subtitle = "缩放后优先查看内容，恢复到适配屏幕后再把操作层完整显示回来。",
                     checked = viewerPreferences.hideOverlaysWhenZoomed,
-                    onCheckedChange = { FakeSettingsRepository.updateHideViewerOverlaysWhenZoomed(it) },
+                    onCheckedChange = { SettingsRepository.updateHideViewerOverlaysWhenZoomed(it) },
                 )
                 SettingsSwitchRow(
                     title = "切换媒体时自动暂停视频",
                     subtitle = "避免视频播放状态串到下一张媒体上。",
                     checked = viewerPreferences.autoPauseVideoOnMediaSwitch,
-                    onCheckedChange = { FakeSettingsRepository.updateAutoPauseVideoOnMediaSwitch(it) },
+                    onCheckedChange = { SettingsRepository.updateAutoPauseVideoOnMediaSwitch(it) },
+                )
+                SettingsInfoRow(
+                    title = "原图加载方式",
+                    subtitle = "当前保持按需加载，避免看图时默默占满缓存。",
+                    value = "按需加载",
                 )
             }
 
             SettingsSection(
-                title = "权限状态",
+                title = "时间排序",
+                subtitle = "决定系统媒体导入和上传到照片流后默认按什么时间排。",
+            ) {
+                SettingsChoiceRow(
+                    title = "媒体显示时间策略",
+                    subtitle = "拍摄优先会先用拍摄时间，缺失时再退回文件时间和导入时间。",
+                    options = MediaTimePreference.entries,
+                    selectedOption = settingsState.mediaTimePreference,
+                    optionLabel = { it.label },
+                    onOptionSelected = { SettingsRepository.updateMediaTimePreference(it) },
+                )
+                SettingsInfoRow(
+                    title = "当前兜底链路",
+                    subtitle = "避免相机上周拍的照片，今天导出后全挤到今天。",
+                    value = "拍摄 → 文件 → 导入",
+                )
+            }
+
+            SettingsSection(
+                title = "缓存与存储",
+                subtitle = "查看当前媒体缓存占用，按需清理，不做激进自动删除。",
+            ) {
+                SettingsInfoRow(
+                    title = "媒体缓存占用",
+                    subtitle = "含预览图、封面图、原图和视频缓存。",
+                    value = cacheSummary.totalSizeLabel,
+                )
+                SettingsInfoRow(
+                    title = "缓存统计",
+                    subtitle = "已登记 ${cacheSummary.registeredMediaCount} 项媒体，预览 ${cacheSummary.registeredPreviewCount}，原图 ${cacheSummary.registeredOriginalCount}。",
+                    value = "${cacheSummary.registeredVideoCount} 段视频",
+                )
+                SettingsEntryRow(
+                    title = "打开缓存管理",
+                    subtitle = "查看明细并手动清理缩略图、原图和视频缓存。",
+                    onClick = { onOpenCacheManagement(CacheManagementRoute(source = "settings")) },
+                )
+            }
+
+            SettingsSection(
+                title = "权限与通知",
                 subtitle = "查看照片、通知和系统媒体相关状态。",
             ) {
                 SettingsInfoRow(
@@ -174,18 +268,37 @@ fun SettingsScreen(
             }
 
             SettingsSection(
-                title = "关于",
-                subtitle = "应用信息与服务连接。",
+                title = "交互体验",
+                subtitle = "把触感和动效控制在有用的范围里，不打断浏览。",
             ) {
-                SettingsInfoRow(
-                    title = "应用名称",
-                    subtitle = "双人私密相册与生活记录。",
-                    value = "映世",
+                SettingsSwitchRow(
+                    title = "触感反馈",
+                    subtitle = "保留关键点击反馈，不做每一步都震动。",
+                    checked = interactionPreferences.hapticEnabled,
+                    onCheckedChange = { SettingsRepository.updateHapticEnabled(it) },
                 )
+                SettingsSwitchRow(
+                    title = "动效跟随系统减少动画",
+                    subtitle = "开启后遵循系统动画开关，关闭后始终保留轻量动效。",
+                    checked = interactionPreferences.followSystemReducedMotion,
+                    onCheckedChange = { SettingsRepository.updateFollowSystemReducedMotion(it) },
+                )
+            }
+
+            SettingsSection(
+                title = "连接与诊断",
+                subtitle = "查看服务地址、同步状态和当前账号连接情况。",
+            ) {
                 SettingsEntryRow(
                     title = "连接设置",
                     subtitle = "查看服务地址、登录状态和同步模式。",
                     onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
+                )
+                SettingsEntryRow(
+                    title = "退出登录",
+                    subtitle = "清除当前账号会话",
+                    destructive = true,
+                    onClick = onLogout,
                 )
             }
         }
@@ -268,6 +381,11 @@ private fun SettingsSection(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
             )
             content()
         }
@@ -559,6 +677,7 @@ private fun SettingsScreenPreview() {
             route = SettingsRoute(),
             onBack = { },
             onOpenBackendDiagnostics = { },
+            onOpenCacheManagement = { },
             onLogout = { },
         )
     }

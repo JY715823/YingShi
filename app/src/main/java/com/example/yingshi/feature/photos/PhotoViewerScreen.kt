@@ -149,6 +149,7 @@ private const val MinViewerScale = 1f
 private const val MaxViewerScale = 4f
 private const val ViewerZoomResetThreshold = 1.02f
 private const val DefaultViewerVideoDurationMillis = 18_000L
+private const val LongImageHeightWidthRatioThreshold = 2.2f
 
 private object ViewerLayoutTuning {
     val topBarStartInset = 4.dp
@@ -496,7 +497,7 @@ fun PhotoViewerScreen(
     val viewerAccessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val settingsState = FakeSettingsRepository.getSettingsState()
+    val settingsState = SettingsRepository.getSettingsState()
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     var viewerItems by remember(route) {
         mutableStateOf(route.mediaItems)
@@ -510,11 +511,13 @@ fun PhotoViewerScreen(
     var openCommentComposerOnSheet by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showTimeEditorSheet by remember { mutableStateOf(false) }
+    var shareInFlight by remember { mutableStateOf(false) }
     var viewerNotice by remember { mutableStateOf<ViewerNotice?>(null) }
     var viewerNoticeNonce by remember { mutableIntStateOf(0) }
     var videoPlaybackState by remember {
         mutableStateOf(ViewerVideoPlaybackState())
     }
+    var videoPlaybackStateCache by remember { mutableStateOf<Map<String, ViewerVideoPlaybackState>>(emptyMap()) }
     var videoControlsVisible by remember { mutableStateOf(true) }
     var videoControlsActivityNonce by remember { mutableIntStateOf(0) }
     val pagerState = rememberPagerState(
@@ -555,6 +558,7 @@ fun PhotoViewerScreen(
         ViewerLayoutTuning.photoFlowEdgeActionsBottomPadding
     }
     val hideOverlaysWhenZoomed = settingsState.viewerPreferences.hideOverlaysWhenZoomed
+    val autoPauseVideoOnMediaSwitch = settingsState.viewerPreferences.autoPauseVideoOnMediaSwitch
     val overlaysVisible = !zoomState.isZoomed || !hideOverlaysWhenZoomed
     val appOverlaysVisible = overlaysVisible && !isImmersive
     val overlayAlpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
@@ -648,7 +652,10 @@ fun PhotoViewerScreen(
     ) {
         PhotoViewerOverlayUiModel(
             commentCountLabel = mediaComments.size.toString(),
-            timeLabel = formatViewerTime(currentItem.mediaDisplayTimeMillis),
+            timeLabel = buildMediaDisplayTimeLabel(
+                timeMillis = currentItem.mediaDisplayTimeMillis,
+                source = currentItem.displayTimeSource,
+            ),
             pageLabel = "",
             originalLoadState = currentOriginalState,
             showOriginalAction = canOpenOriginal,
@@ -671,7 +678,7 @@ fun PhotoViewerScreen(
         accessToken = viewerAccessToken,
     )
 
-    LaunchedEffect(currentIndex) {
+    LaunchedEffect(currentIndex, currentItem.mediaId, autoPauseVideoOnMediaSwitch) {
         zoomState.reset()
         showCommentPreview = false
         commentPanelState = null
@@ -679,9 +686,19 @@ fun PhotoViewerScreen(
         showTimeEditorSheet = false
         viewerNotice = null
         openCommentComposerOnSheet = false
-        videoPlaybackState = ViewerVideoPlaybackState(
-            mediaId = currentItem.mediaId.takeIf { currentItem.mediaType == AppMediaType.VIDEO },
-        )
+        videoPlaybackState = if (currentItem.mediaType == AppMediaType.VIDEO) {
+            if (autoPauseVideoOnMediaSwitch) {
+                ViewerVideoPlaybackState(mediaId = currentItem.mediaId)
+            } else {
+                videoPlaybackStateCache[currentItem.mediaId]?.copy(
+                    mediaId = currentItem.mediaId,
+                    errorMessage = null,
+                    isLoading = false,
+                ) ?: ViewerVideoPlaybackState(mediaId = currentItem.mediaId)
+            }
+        } else {
+            ViewerVideoPlaybackState()
+        }
         videoControlsVisible = true
         videoControlsActivityNonce += 1
     }
@@ -912,6 +929,7 @@ fun PhotoViewerScreen(
                     )
                 },
                 onVideoPlaybackStateChange = { mediaId, state ->
+                    videoPlaybackStateCache = videoPlaybackStateCache + (mediaId to state)
                     if (mediaId == currentItem.mediaId) {
                         videoPlaybackState = state
                     }
@@ -939,6 +957,8 @@ fun PhotoViewerScreen(
                         }
                     }
                 },
+                autoLongImageReading = settingsState.viewerPreferences.autoLongImageReading,
+                autoPauseVideoOnMediaSwitch = autoPauseVideoOnMediaSwitch,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -984,7 +1004,32 @@ fun PhotoViewerScreen(
                 timeLabel = overlayUiModel.timeLabel,
                 uploaderIdentity = uploaderIdentity,
                 onShare = {
-                    showViewerNotice("当前设备未提供可用分享入口")
+                    if (shareInFlight) {
+                        showViewerNotice("正在准备分享文件…")
+                    } else {
+                        coroutineScope.launch {
+                            shareInFlight = true
+                            showViewerNotice("正在准备分享文件…")
+                            try {
+                                when (
+                                    val result = MediaShareManager.shareMedia(
+                                        context = context,
+                                        items = listOf(currentItem.toShareableMediaItem()),
+                                        packageBaseName = "映世-${currentItem.mediaId}",
+                                    )
+                                ) {
+                                    is MediaShareLaunchResult.Success -> {
+                                        showViewerNotice(result.toNoticeMessage(), emphasized = true)
+                                    }
+                                    is MediaShareLaunchResult.Error -> {
+                                        showViewerNotice(result.message)
+                                    }
+                                }
+                            } finally {
+                                shareInFlight = false
+                            }
+                        }
+                    }
                 },
                 onEditTime = { showTimeEditorSheet = true },
                 onDelete = { showDeleteConfirm = true },
@@ -1605,11 +1650,16 @@ private fun PhotoViewerCanvas(
     onSeekPlayback: (Long) -> Unit,
     onVideoPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
+    autoLongImageReading: Boolean,
+    autoPauseVideoOnMediaSwitch: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val density = LocalDensity.current
     val isVideo = media.mediaType == AppMediaType.VIDEO
+    val useLongImageReading = !isVideo &&
+        autoLongImageReading &&
+        media.shouldUseLongImageReading()
     val topPadding by animateDpAsState(
         targetValue = if (immersive) ViewerLayoutTuning.immersiveCanvasTopPadding else ViewerLayoutTuning.canvasTopPadding,
         label = "viewerCanvasTopPadding",
@@ -1643,12 +1693,18 @@ private fun PhotoViewerCanvas(
         } else {
             maxHeight
         }
-        val canvasWidth = if (isVideo) maxWidth else fittedMediaWidth
-        val canvasHeight = if (isVideo) maxHeight else fittedMediaHeight
+        val canvasWidth = if (isVideo || useLongImageReading) maxWidth else fittedMediaWidth
+        val canvasHeight = if (isVideo) {
+            maxHeight
+        } else if (useLongImageReading) {
+            (maxWidth / mediaAspectRatio).coerceAtLeast(maxHeight)
+        } else {
+            fittedMediaHeight
+        }
         val contentSize = with(density) {
             IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
         }
-        val zoomTransformModifier = if (zoomState != null) {
+        val zoomTransformModifier = if (zoomState != null && !useLongImageReading) {
             Modifier
                 .graphicsLayer {
                     scaleX = zoomState.scale
@@ -1659,13 +1715,19 @@ private fun PhotoViewerCanvas(
         } else {
             Modifier
         }
-        val gestureModifier = if (zoomState != null) {
+        val gestureModifier = if (zoomState != null && !useLongImageReading) {
             Modifier.viewerZoomGesture(
                 zoomState = zoomState,
                 contentSize = contentSize,
             )
         } else {
             Modifier
+        }
+        val longImageScrollState = rememberScrollState()
+        LaunchedEffect(media.mediaId, useLongImageReading) {
+            if (useLongImageReading) {
+                longImageScrollState.scrollTo(0)
+            }
         }
         var mediaEnterActive by remember(media.mediaId, zoomState != null) { mutableStateOf(false) }
         LaunchedEffect(media.mediaId, zoomState != null) {
@@ -1682,9 +1744,47 @@ private fun PhotoViewerCanvas(
             modifier = Modifier
                 .fillMaxSize()
                 .then(gestureModifier),
-            contentAlignment = Alignment.Center,
+            contentAlignment = if (useLongImageReading) Alignment.TopCenter else Alignment.Center,
         ) {
-            if (isVideo) {
+            if (useLongImageReading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(longImageScrollState),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(canvasWidth)
+                            .height(canvasHeight)
+                            .then(mediaEnterModifier)
+                            .background(ViewerNightBottom),
+                    ) {
+                        if (media.mediaSource != null) {
+                            ViewerImageCanvas(
+                                media = media,
+                                originalLoadState = originalLoadState,
+                                onOriginalLoadStateChange = onOriginalLoadStateChange,
+                                contentScale = ContentScale.FillWidth,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            Surface(
+                                modifier = Modifier.align(Alignment.Center),
+                                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                                color = ViewerNightTop.copy(alpha = 0.82f),
+                            ) {
+                                Text(
+                                    text = "暂无可用媒体预览",
+                                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = ViewerSurface.copy(alpha = 0.82f),
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (isVideo) {
                 Box(
                     modifier = Modifier
                         .width(canvasWidth)
@@ -1695,6 +1795,7 @@ private fun PhotoViewerCanvas(
                         media = media,
                         playbackState = videoPlaybackState,
                         isCurrent = zoomState != null,
+                        autoPauseOnMediaSwitch = autoPauseVideoOnMediaSwitch,
                         originalLoadState = originalLoadState,
                         onPlaybackStateChange = onVideoPlaybackStateChange,
                         modifier = Modifier
@@ -1796,6 +1897,7 @@ private fun ViewerImageCanvas(
     media: PhotoFeedItem,
     originalLoadState: OriginalLoadState,
     onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
+    contentScale: ContentScale = ContentScale.Fit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1880,7 +1982,7 @@ private fun ViewerImageCanvas(
                 painter = previewPainter,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                contentScale = contentScale,
             )
         }
 
@@ -1889,7 +1991,7 @@ private fun ViewerImageCanvas(
                 painter = originalPainter,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                contentScale = contentScale,
             )
         }
 
@@ -2013,6 +2115,7 @@ internal fun ViewerVideoCanvas(
     media: PhotoFeedItem,
     playbackState: ViewerVideoPlaybackState?,
     isCurrent: Boolean,
+    autoPauseOnMediaSwitch: Boolean = true,
     originalLoadState: OriginalLoadState,
     onPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
     modifier: Modifier = Modifier,
@@ -2116,7 +2219,10 @@ internal fun ViewerVideoCanvas(
         )
     }
 
-    LaunchedEffect(media.mediaId, videoUrl) {
+    LaunchedEffect(media.mediaId, videoUrl, autoPauseOnMediaSwitch) {
+        if (!autoPauseOnMediaSwitch && playbackState?.mediaId == media.mediaId) {
+            return@LaunchedEffect
+        }
         if (videoUrl.isNullOrBlank()) {
             onPlaybackStateChange(
                 media.mediaId,
@@ -2213,7 +2319,9 @@ internal fun ViewerVideoCanvas(
     DisposableEffect(isCurrent) {
         if (!isCurrent) {
             player?.pause()
-            updatePlaybackState { it.copy(isPlaying = false) }
+            if (autoPauseOnMediaSwitch) {
+                updatePlaybackState { it.copy(isPlaying = false) }
+            }
         }
         onDispose {
         }
@@ -2442,6 +2550,17 @@ private fun PhotoFeedItem.viewerAspectRatio(): Float {
         return widthValue.toFloat() / heightValue.toFloat()
     }
     return aspectRatio.coerceAtLeast(0.2f)
+}
+
+internal fun PhotoFeedItem.shouldUseLongImageReading(): Boolean {
+    if (mediaType != AppMediaType.IMAGE) return false
+    val widthValue = width
+    val heightValue = height
+    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
+        return heightValue.toFloat() / widthValue.toFloat() >= LongImageHeightWidthRatioThreshold
+    }
+    val normalizedAspectRatio = aspectRatio.takeIf { it > 0f } ?: return false
+    return 1f / normalizedAspectRatio >= LongImageHeightWidthRatioThreshold
 }
 
 internal fun PhotoFeedItem.viewerVideoDurationMillis(): Long {
@@ -3242,6 +3361,7 @@ private fun PhotoFeedItem.withViewerDisplayTime(timeMillis: Long): PhotoFeedItem
         displayYear = calendar.get(Calendar.YEAR),
         displayMonth = calendar.get(Calendar.MONTH) + 1,
         displayDay = calendar.get(Calendar.DAY_OF_MONTH),
+        displayTimeSource = DisplayTimeSourceManual,
     )
 }
 

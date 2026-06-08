@@ -980,7 +980,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                     modifier = Modifier.clickable(enabled = !isSaving) {
                         scope.launch {
                             isSaving = true
-                            when (val result = RepositoryProvider.postRepository.deletePost(route.postId)) {
+                            when (val result = RepositoryProvider.postRepository.deleteSmallAlbum(route.postId)) {
                                 is ApiResult.Success -> {
                                     notifyRealBackendContentChanged(postIds = setOf(route.postId))
                                     showDeleteCurrentPostConfirm = false

@@ -93,6 +93,9 @@ import com.example.yingshi.feature.photos.SettingsRoute
 import com.example.yingshi.feature.photos.SettingsScreen
 import com.example.yingshi.feature.photos.SystemMediaRoute
 import com.example.yingshi.feature.photos.SystemMediaScreen
+import com.example.yingshi.feature.photos.SystemMediaImportPreview
+import com.example.yingshi.feature.photos.SystemMediaImportPreviewDialog
+import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.feature.photos.TransferCenterRoute
 import com.example.yingshi.feature.photos.TransferCenterScreen
 import com.example.yingshi.feature.photos.SystemMediaViewerRoute
@@ -139,6 +142,9 @@ fun YingShiApp() {
     }
     var showQuickAddSheet by rememberSaveable {
         mutableStateOf(false)
+    }
+    var pendingQuickAddImportPreview by remember {
+        mutableStateOf<SystemMediaImportPreview?>(null)
     }
     var ledgerRouteActive by rememberSaveable {
         mutableStateOf(false)
@@ -580,16 +586,13 @@ fun YingShiApp() {
         showQuickAddSheet = false
         runCatching {
             com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
-                .enqueueImportPickedMediaToAppUpload(
+                .buildImportPickedMediaPreview(
                     context = context,
                     mediaUris = uris,
                 )
-        }.onSuccess { importedCount ->
-            if (importedCount > 0) {
-                showAppNotice(
-                    "已加入导入队列，完成后会出现在照片流。",
-                    YingShiNoticeTone.SUCCESS,
-                )
+        }.onSuccess { preview ->
+            if (preview.requestedCount > 0) {
+                pendingQuickAddImportPreview = preview
             } else {
                 showAppNotice(
                     "没有找到可导入的图片或视频。",
@@ -602,6 +605,37 @@ fun YingShiApp() {
                 YingShiNoticeTone.WARNING,
             )
         }
+    }
+
+    pendingQuickAddImportPreview?.let { preview ->
+        SystemMediaImportPreviewDialog(
+            preview = preview,
+            timePreferenceLabel = SettingsRepository.getSettingsState().mediaTimePreference.label,
+            onDismiss = { pendingQuickAddImportPreview = null },
+            onConfirmImport = {
+                val previewSnapshot = pendingQuickAddImportPreview ?: return@SystemMediaImportPreviewDialog
+                if (!previewSnapshot.hasImportableItems) {
+                    pendingQuickAddImportPreview = null
+                    return@SystemMediaImportPreviewDialog
+                }
+                val importedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
+                    context = context,
+                    mediaItems = previewSnapshot.importableItems,
+                )
+                pendingQuickAddImportPreview = null
+                if (importedCount > 0) {
+                    showAppNotice(
+                        "已加入导入队列，完成后会出现在照片流。",
+                        YingShiNoticeTone.SUCCESS,
+                    )
+                } else {
+                    showAppNotice(
+                        "这些媒体已经在导入队列里，或没有可导入的媒体。",
+                        YingShiNoticeTone.WARNING,
+                    )
+                }
+            },
+        )
     }
 
     LaunchedEffect(operationResults.size) {
@@ -949,6 +983,7 @@ fun YingShiApp() {
                         route = route,
                         onBack = { settingsRoute = null },
                         onOpenBackendDiagnostics = { backendDiagnosticsRoute = it },
+                        onOpenCacheManagement = { cacheManagementRoute = it },
                         onLogout = { performLogout() },
                     )
                 }
@@ -1570,9 +1605,7 @@ private fun NotificationCenterItemUiModel.toNotificationPostRoute(): PostDetailP
 }
 
 private fun String?.toTrashEntryTypeOrNull(): TrashEntryType? {
-    val value = this?.trim().orEmpty()
-    if (value.isBlank()) return null
-    return TrashEntryType.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+    return com.example.yingshi.feature.photos.parseTrashEntryTypeOrNull(this)
 }
 
 private val NotificationPlaceholderPalette = PhotoThumbnailPalette(

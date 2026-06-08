@@ -95,7 +95,7 @@ object FakeTrashRepository {
         val entry = getEntry(entryId)
         if (entry != null) {
             entries.remove(entry)
-            if (entry.type == TrashEntryType.POST_DELETED && entry.sourcePostId != null) {
+            if (entry.type == TrashEntryType.SMALL_ALBUM_DELETED && entry.sourcePostId != null) {
                 removeMediaRemovedEntriesForPost(entry.sourcePostId)
             }
             latestSnackbarMessage = TrashSnackbarMessageUiModel(
@@ -118,7 +118,7 @@ object FakeTrashRepository {
             )
 
         val restored = when (entry.type) {
-            TrashEntryType.POST_DELETED -> {
+            TrashEntryType.SMALL_ALBUM_DELETED -> {
                 entry.postSnapshot?.let(FakeAlbumRepository::restorePost) == true
             }
 
@@ -158,7 +158,7 @@ object FakeTrashRepository {
             TrashMutationResult(
                 success = true,
                 message = when (entry.type) {
-                    TrashEntryType.POST_DELETED -> "已恢复小相册删除。"
+                    TrashEntryType.SMALL_ALBUM_DELETED -> "已恢复小相册删除。"
                     TrashEntryType.MEDIA_REMOVED -> "已恢复媒体与原帖关系。"
                     TrashEntryType.MEDIA_SYSTEM_DELETED -> "已恢复媒体本体和关联关系。"
                 },
@@ -180,7 +180,7 @@ object FakeTrashRepository {
             0,
             TrashEntryUiModel(
                 id = "trash-post-${snapshot.post.id}-$deletedAtMillis",
-                type = TrashEntryType.POST_DELETED,
+                type = TrashEntryType.SMALL_ALBUM_DELETED,
                 deletedAtMillis = deletedAtMillis,
                 title = snapshot.post.title.ifBlank { "未命名小相册" },
                 previewInfo = "删除于 ${formatTrashTime(deletedAtMillis)} · ${snapshot.mediaSnapshots.size} 张媒体 · ${snapshot.post.albumIds.size.coerceAtLeast(1)} 个所属相册",
@@ -266,10 +266,10 @@ object FakeTrashRepository {
 
     private fun removeDuplicatePostEntry(postId: String) {
         entries.removeAll { entry ->
-            entry.type == TrashEntryType.POST_DELETED && entry.sourcePostId == postId
+            entry.type == TrashEntryType.SMALL_ALBUM_DELETED && entry.sourcePostId == postId
         }
         pendingRemovals.removeAll { pending ->
-            pending.entry.type == TrashEntryType.POST_DELETED && pending.entry.sourcePostId == postId
+            pending.entry.type == TrashEntryType.SMALL_ALBUM_DELETED && pending.entry.sourcePostId == postId
         }
     }
 

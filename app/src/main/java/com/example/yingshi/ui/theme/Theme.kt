@@ -6,6 +6,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import com.example.yingshi.feature.photos.SettingsRepository
 
 private val AppSpacing = YingShiSpacing()
 private val AppRadius = YingShiRadius()
@@ -58,16 +59,20 @@ fun YingShiTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
+    val settingsState = SettingsRepository.getSettingsState()
     val colorScheme = when {
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    val motion = AppMotion.copy(
+        hapticEnabled = settingsState.interactionPreferences.hapticEnabled,
+    )
 
     CompositionLocalProvider(
         LocalYingShiSpacing provides AppSpacing,
         LocalYingShiRadius provides AppRadius,
         LocalYingShiColors provides AppColors,
-        LocalYingShiMotion provides AppMotion,
+        LocalYingShiMotion provides motion,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

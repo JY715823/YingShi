@@ -333,7 +333,7 @@ class RealGearEditViewModel(
         }
     }
 
-    fun deletePost(onSuccess: () -> Unit) {
+    fun deleteSmallAlbum(onSuccess: () -> Unit) {
         if (!AuthSessionManager.isLoggedIn) {
             _uiState.update {
                 it.copy(errorMessage = "登录状态已失效，请先重新登录。")
@@ -349,7 +349,7 @@ class RealGearEditViewModel(
                     statusMessage = null,
                 )
             }
-            when (val result = postRepository.deletePost(route.postId)) {
+            when (val result = postRepository.deleteSmallAlbum(route.postId)) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -545,7 +545,7 @@ class RealMediaManagementViewModel(
                     statusMessage = null,
                 )
             }
-            when (val result = postRepository.deletePost(route.postId)) {
+            when (val result = postRepository.deleteSmallAlbum(route.postId)) {
                 is ApiResult.Success -> {
                     _uiState.update {
                         it.copy(

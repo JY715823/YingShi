@@ -42,9 +42,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -479,6 +479,7 @@ private fun RealSmallAlbumDetailContent(
     var showPhotoFeedPicker by rememberSaveable(detail.postId) {
         mutableStateOf(false)
     }
+    var shareAllInFlight by remember { mutableStateOf(false) }
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.getAccessToken()?.takeIf { it.isNotBlank() }
@@ -568,8 +569,38 @@ private fun RealSmallAlbumDetailContent(
         topBar = {
             SmallAlbumDetailTopBar(
                 onBack = onBack,
-                onExport = {
-                    onShowActionNotice("当前设备未提供可用导出入口。")
+                onShareAll = {
+                    val shareItems = detail.mediaItems.map(PostDetailMediaUiModel::toShareableMediaItem)
+                    if (shareItems.isEmpty()) {
+                        onShowActionNotice("当前小相册还没有可分享的媒体。")
+                    } else if (shareAllInFlight) {
+                        onShowActionNotice("正在准备分享文件…")
+                    } else {
+                        coroutineScope.launch {
+                            shareAllInFlight = true
+                            onShowActionNotice("正在准备分享文件…")
+                            try {
+                                when (
+                                    val result = MediaShareManager.shareMedia(
+                                        context = context,
+                                        items = shareItems,
+                                        packageBaseName = detail.title.ifBlank {
+                                            "映世小相册-${detail.postId}"
+                                        },
+                                    )
+                                ) {
+                                    is MediaShareLaunchResult.Success -> {
+                                        onShowActionNotice(result.toNoticeMessage())
+                                    }
+                                    is MediaShareLaunchResult.Error -> {
+                                        onShowActionNotice(result.message)
+                                    }
+                                }
+                            } finally {
+                                shareAllInFlight = false
+                            }
+                        }
+                    }
                 },
                 onEdit = onOpenGearEdit,
             )
@@ -947,7 +978,7 @@ private fun PostDetailInfoState(
     ) {
         SmallAlbumDetailTopBar(
             onBack = onBack,
-            onExport = {},
+            onShareAll = {},
             onEdit = {},
         )
         Surface(
@@ -1057,7 +1088,7 @@ private fun PostDetailMissingState(
     ) {
         SmallAlbumDetailTopBar(
             onBack = onBack,
-            onExport = {},
+            onShareAll = {},
             onEdit = {},
         )
         Text(
@@ -1082,10 +1113,13 @@ private fun SmallAlbumDetailContent(
     onShowActionNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var displayDetail by remember(detail.postId) { mutableStateOf(detail) }
     var showPhotoFeedPicker by rememberSaveable(detail.postId) {
         mutableStateOf(false)
     }
+    var shareAllInFlight by remember { mutableStateOf(false) }
     LaunchedEffect(detail) {
         displayDetail = detail
     }
@@ -1162,8 +1196,38 @@ private fun SmallAlbumDetailContent(
         topBar = {
             SmallAlbumDetailTopBar(
                 onBack = onBack,
-                onExport = {
-                    onShowActionNotice("当前设备未提供可用导出入口。")
+                onShareAll = {
+                    val shareItems = displayDetail.mediaItems.map(PostDetailMediaUiModel::toShareableMediaItem)
+                    if (shareItems.isEmpty()) {
+                        onShowActionNotice("当前小相册还没有可分享的媒体。")
+                    } else if (shareAllInFlight) {
+                        onShowActionNotice("正在准备分享文件…")
+                    } else {
+                        coroutineScope.launch {
+                            shareAllInFlight = true
+                            onShowActionNotice("正在准备分享文件…")
+                            try {
+                                when (
+                                    val result = MediaShareManager.shareMedia(
+                                        context = context,
+                                        items = shareItems,
+                                        packageBaseName = displayDetail.title.ifBlank {
+                                            "映世小相册-${displayDetail.postId}"
+                                        },
+                                    )
+                                ) {
+                                    is MediaShareLaunchResult.Success -> {
+                                        onShowActionNotice(result.toNoticeMessage())
+                                    }
+                                    is MediaShareLaunchResult.Error -> {
+                                        onShowActionNotice(result.message)
+                                    }
+                                }
+                            } finally {
+                                shareAllInFlight = false
+                            }
+                        }
+                    }
                 },
                 onEdit = onOpenGearEdit,
             )
@@ -1293,7 +1357,7 @@ fun PostDetailBodyLayout(
 @Composable
 private fun SmallAlbumDetailTopBar(
     onBack: () -> Unit,
-    onExport: () -> Unit,
+    onShareAll: () -> Unit,
     onEdit: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1317,7 +1381,7 @@ private fun SmallAlbumDetailTopBar(
             color = colors.titleAccent,
             maxLines = 1,
         )
-        PostIconButton(icon = Icons.Rounded.Download, contentDescription = "保存", onClick = onExport)
+        PostIconButton(icon = Icons.Default.IosShare, contentDescription = "分享整个小相册", onClick = onShareAll)
         PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
     }
 }
@@ -2235,6 +2299,7 @@ private fun SmallAlbumMediaGridSection(
     onShowNotice: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
@@ -2243,6 +2308,7 @@ private fun SmallAlbumMediaGridSection(
     var selectedIds by rememberSaveable(postId) { mutableStateOf(emptySet<String>()) }
     var isMutating by rememberSaveable(postId) { mutableStateOf(false) }
     var showDeleteSelectedConfirm by rememberSaveable(postId) { mutableStateOf(false) }
+    var shareInFlight by remember { mutableStateOf(false) }
     val density = PhotoFeedDensity.valueOf(densityName)
     val sortedMediaItems = remember(mediaItems) { mediaItems.sortedForSmallAlbumDisplay() }
     val mediaById = remember(sortedMediaItems) { sortedMediaItems.associateBy { it.id } }
@@ -2594,6 +2660,37 @@ private fun SmallAlbumMediaGridSection(
                         selectionMode = false
                         selectedIds = emptySet()
                     },
+                    onShare = {
+                        val selectedItems = sortedMediaItems.filter { media -> selectedIds.contains(media.id) }
+                        if (selectedItems.isEmpty()) {
+                            onShowNotice("没有找到可分享的媒体。")
+                        } else if (shareInFlight) {
+                            onShowNotice("正在准备分享文件…")
+                        } else {
+                            scope.launch {
+                                shareInFlight = true
+                                onShowNotice("正在准备分享文件…")
+                                try {
+                                    when (
+                                        val result = MediaShareManager.shareMedia(
+                                            context = context,
+                                            items = selectedItems.map(PostDetailMediaUiModel::toShareableMediaItem),
+                                            packageBaseName = "映世小相册-${selectedItems.size}项",
+                                        )
+                                    ) {
+                                        is MediaShareLaunchResult.Success -> {
+                                            onShowNotice(result.toNoticeMessage())
+                                        }
+                                        is MediaShareLaunchResult.Error -> {
+                                            onShowNotice(result.message)
+                                        }
+                                    }
+                                } finally {
+                                    shareInFlight = false
+                                }
+                            }
+                        }
+                    },
                     onDelete = {
                         if (!isMutating && selectedIds.isNotEmpty()) {
                             showDeleteSelectedConfirm = true
@@ -2698,6 +2795,7 @@ private fun SmallAlbumSelectionTopBar(
 @Composable
 private fun SmallAlbumSelectionBottomBar(
     onCancel: () -> Unit,
+    onShare: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2715,6 +2813,10 @@ private fun SmallAlbumSelectionBottomBar(
             PostActionChip(
                 text = "取消",
                 onClick = onCancel,
+            )
+            PostActionChip(
+                text = "分享",
+                onClick = onShare,
             )
             PostIconButton(
                 icon = Icons.Filled.Delete,
@@ -3068,6 +3170,9 @@ private fun List<PostDetailMediaUiModel>.toSmallAlbumFeedItems(postId: String): 
             width = media.width,
             height = media.height,
             videoDurationMillis = media.videoDurationMillis,
+            capturedAtMillis = media.capturedAtMillis,
+            importedAtMillis = media.importedAtMillis,
+            displayTimeSource = media.displayTimeSource,
             mediaSource = media.mediaSource,
         )
     }

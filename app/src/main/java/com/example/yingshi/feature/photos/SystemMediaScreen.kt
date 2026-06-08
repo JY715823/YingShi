@@ -170,6 +170,9 @@ fun SystemMediaScreen(
         mutableStateOf(false)
     }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingImportPreview by remember {
+        mutableStateOf<SystemMediaImportPreview?>(null)
+    }
     var pendingTrashIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
@@ -179,7 +182,9 @@ fun SystemMediaScreen(
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableIntStateOf(0) }
     var densityName by rememberSaveable {
-        mutableStateOf(PhotoFeedDensity.DENSE_4.name)
+        mutableStateOf(
+            LocalSystemMediaPageStateStore.savedDensityName ?: PhotoFeedDensity.DENSE_4.name,
+        )
     }
     var scrubberInteracting by remember {
         mutableStateOf(false)
@@ -204,6 +209,18 @@ fun SystemMediaScreen(
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
+    val settingsState = SettingsRepository.getSettingsState()
+    LaunchedEffect(Unit) {
+        if (densityName == PhotoFeedDensity.DENSE_4.name && LocalSystemMediaPageStateStore.savedDensityName == null) {
+            densityName = settingsState.defaultSystemMediaDensity.name
+        }
+    }
+    LaunchedEffect(densityName) {
+        LocalSystemMediaPageStateStore.savedDensityName = densityName
+        runCatching { densityName?.let { enumValueOf<PhotoFeedDensity>(it) } }
+            .getOrNull()
+            ?.let(SettingsRepository::updateDefaultSystemMediaDensity)
+    }
     val density = PhotoFeedDensity.valueOf(densityName)
 
     fun showNotice(
@@ -665,6 +682,33 @@ fun SystemMediaScreen(
         )
     }
 
+    pendingImportPreview?.let { preview ->
+        SystemMediaImportPreviewDialog(
+            preview = preview,
+            timePreferenceLabel = settingsState.mediaTimePreference.label,
+            onDismiss = { pendingImportPreview = null },
+            onConfirmImport = {
+                val previewSnapshot = pendingImportPreview ?: return@SystemMediaImportPreviewDialog
+                if (!previewSnapshot.hasImportableItems) {
+                    pendingImportPreview = null
+                    return@SystemMediaImportPreviewDialog
+                }
+                val importedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
+                    context = context,
+                    mediaItems = previewSnapshot.importableItems,
+                )
+                pendingImportPreview = null
+                if (importedCount > 0) {
+                    selectedIds = emptyList()
+                    selectionMode = false
+                    showNotice("已加入导入队列，完成后会出现在照片流。", YingShiNoticeTone.SUCCESS)
+                } else {
+                    showNotice("这些媒体已经在导入队列里，或没有可导入的媒体。", YingShiNoticeTone.WARNING)
+                }
+            },
+        )
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -935,17 +979,9 @@ fun SystemMediaScreen(
                         showNotice("请先选择要导入照片流的媒体。", YingShiNoticeTone.WARNING)
                         return@SystemMediaSelectionBar
                     }
-                    val importedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
-                        context = context,
-                        mediaItems = selectedItems,
+                    pendingImportPreview = LocalSystemMediaBridgeRepository.buildImportToAppPreview(
+                        selectedItems,
                     )
-                    if (importedCount > 0) {
-                        selectedIds = emptyList()
-                        selectionMode = false
-                        showNotice("已加入导入队列，完成后会出现在照片流。", YingShiNoticeTone.SUCCESS)
-                    } else {
-                        showNotice("这些媒体已经在导入队列里，或没有可导入的媒体。", YingShiNoticeTone.WARNING)
-                    }
                 },
                 onCreatePost = {
                     val selectedSnapshot = selectedItems

@@ -9,7 +9,7 @@ data class RemoteMediaAccess(
     val revision: String?,
 ) {
     val requestUrl: String?
-        get() = signedUrl?.takeIf { it.isNotBlank() } ?: url?.takeIf { it.isNotBlank() }
+        get() = url?.takeIf { it.isNotBlank() } ?: signedUrl?.takeIf { it.isNotBlank() }
 }
 
 data class RemoteMedia(
