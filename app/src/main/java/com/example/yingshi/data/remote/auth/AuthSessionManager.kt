@@ -10,6 +10,14 @@ import com.example.yingshi.data.cache.AppReadCacheStore
 import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.RemoteCurrentUser
+import java.util.Locale
+import java.util.UUID
+
+private fun SharedPreferences.Editor.persist() {
+    if (!commit()) {
+        apply()
+    }
+}
 
 interface TokenProvider {
     fun getAccessToken(): String?
@@ -57,7 +65,7 @@ private class SharedPreferencesTokenStore(
             .putString(KEY_REFRESH_TOKEN, tokens.refreshToken)
             .putLong(KEY_ACCESS_EXPIRES_AT, tokens.accessTokenExpireAtMillis)
             .putLong(KEY_REFRESH_EXPIRES_AT, tokens.refreshTokenExpireAtMillis)
-            .apply()
+            .persist()
     }
 
     override fun clearTokens() {
@@ -66,7 +74,7 @@ private class SharedPreferencesTokenStore(
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_ACCESS_EXPIRES_AT)
             .remove(KEY_REFRESH_EXPIRES_AT)
-            .apply()
+            .persist()
     }
 
     private companion object {
@@ -80,10 +88,15 @@ private class SharedPreferencesTokenStore(
 object AuthSessionManager : TokenProvider {
     private const val ACCESS_TOKEN_EXPIRY_SKEW_MILLIS = 30_000L
     private const val PREFS_NAME = "auth_session"
+    private const val KEY_DEVICE_ID = "device_id"
+    private const val KEY_LAST_SIGNED_IN_ACCOUNT = "last_signed_in_account"
+    private const val KEY_REMEMBERED_LOGIN_PREFIX = "remembered_login_token_"
+    private const val KEY_REMEMBERED_LOGIN_EXPIRE_PREFIX = "remembered_login_expire_"
 
     private var tokenStore: TokenStore = InMemoryTokenStore()
     private var sessionPreferences: SharedPreferences? = null
     private var currentUserSnapshot: RemoteCurrentUser? = null
+    private var installDeviceId: String = UUID.randomUUID().toString()
     var sessionVersion by mutableIntStateOf(0)
         private set
 
@@ -93,6 +106,12 @@ object AuthSessionManager : TokenProvider {
         tokenStore = SharedPreferencesTokenStore(
             preferences = requireNotNull(sessionPreferences),
         )
+        installDeviceId = sessionPreferences
+            ?.getString(KEY_DEVICE_ID, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: UUID.randomUUID().toString().also { deviceId ->
+                sessionPreferences?.edit()?.putString(KEY_DEVICE_ID, deviceId)?.persist()
+            }
         currentUserSnapshot = AppReadCacheStore.readCurrentUser()?.payload
         sessionVersion += 1
     }
@@ -118,6 +137,8 @@ object AuthSessionManager : TokenProvider {
 
     fun peekTokens(): AuthTokens? = tokenStore.getTokens()
 
+    fun getDeviceId(): String = installDeviceId
+
     fun saveTokens(tokens: AuthTokens) {
         tokenStore.saveTokens(tokens)
         sessionVersion += 1
@@ -127,9 +148,17 @@ object AuthSessionManager : TokenProvider {
         return currentUserSnapshot
     }
 
+    fun getLastSignedInAccount(): String? {
+        return sessionPreferences
+            ?.getString(KEY_LAST_SIGNED_IN_ACCOUNT, null)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
     fun saveCurrentUserSnapshot(user: RemoteCurrentUser) {
         currentUserSnapshot = user
         AppReadCacheStore.writeCurrentUser(user)
+        sessionPreferences?.edit()?.putString(KEY_LAST_SIGNED_IN_ACCOUNT, user.account.trim())?.persist()
     }
 
     fun clearCurrentUserSnapshot() {
@@ -145,10 +174,80 @@ object AuthSessionManager : TokenProvider {
         sessionVersion += 1
     }
 
+    fun clearTokensPreservingReadCache() {
+        tokenStore.clearTokens()
+        sessionVersion += 1
+    }
+
     fun clearTokensIfAccessToken(accessToken: String?) {
         if (accessToken.isNullOrBlank() || tokenStore.getTokens()?.accessToken == accessToken) {
-            clearTokens()
+            clearTokensPreservingReadCache()
         }
+    }
+
+    fun saveRememberedLogin(
+        account: String,
+        token: String?,
+        expireAtMillis: Long?,
+    ) {
+        val preferences = sessionPreferences ?: return
+        val normalizedAccount = normalizeAccountKey(account) ?: return
+        val tokenKey = KEY_REMEMBERED_LOGIN_PREFIX + normalizedAccount
+        val expireKey = KEY_REMEMBERED_LOGIN_EXPIRE_PREFIX + normalizedAccount
+        if (token.isNullOrBlank() || expireAtMillis == null || expireAtMillis <= System.currentTimeMillis()) {
+            preferences.edit()
+                .remove(tokenKey)
+                .remove(expireKey)
+                .persist()
+            return
+        }
+        preferences.edit()
+            .putString(tokenKey, token)
+            .putLong(expireKey, expireAtMillis)
+            .persist()
+    }
+
+    fun getRememberedLoginToken(account: String): String? {
+        val preferences = sessionPreferences ?: return null
+        val normalizedAccount = normalizeAccountKey(account) ?: return null
+        val tokenKey = KEY_REMEMBERED_LOGIN_PREFIX + normalizedAccount
+        val expireKey = KEY_REMEMBERED_LOGIN_EXPIRE_PREFIX + normalizedAccount
+        val token = preferences.getString(tokenKey, null)?.takeIf { it.isNotBlank() } ?: return null
+        val expireAtMillis = preferences.getLong(expireKey, 0L)
+        if (expireAtMillis <= System.currentTimeMillis()) {
+            preferences.edit()
+                .remove(tokenKey)
+                .remove(expireKey)
+                .persist()
+            return null
+        }
+        return token
+    }
+
+    fun clearRememberedLogin(account: String) {
+        val preferences = sessionPreferences ?: return
+        val normalizedAccount = normalizeAccountKey(account) ?: return
+        preferences.edit()
+            .remove(KEY_REMEMBERED_LOGIN_PREFIX + normalizedAccount)
+            .remove(KEY_REMEMBERED_LOGIN_EXPIRE_PREFIX + normalizedAccount)
+            .persist()
+    }
+
+    fun clearAllRememberedLogins() {
+        val preferences = sessionPreferences ?: return
+        val editor = preferences.edit()
+        preferences.all.keys
+            .filter {
+                it.startsWith(KEY_REMEMBERED_LOGIN_PREFIX) ||
+                    it.startsWith(KEY_REMEMBERED_LOGIN_EXPIRE_PREFIX)
+            }
+            .forEach(editor::remove)
+        editor.persist()
+    }
+
+    fun clearAllAuthState() {
+        clearTokens()
+        clearAllRememberedLogins()
     }
 
     override val isLoggedIn: Boolean
@@ -157,4 +256,11 @@ object AuthSessionManager : TokenProvider {
             return tokens.refreshToken.isNotBlank() &&
                 tokens.refreshTokenExpireAtMillis > System.currentTimeMillis()
         }
+
+    private fun normalizeAccountKey(account: String): String? {
+        return account.trim()
+            .takeIf { it.isNotBlank() }
+            ?.lowercase(Locale.ROOT)
+    }
+
 }

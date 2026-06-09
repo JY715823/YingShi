@@ -19,6 +19,7 @@ import com.example.yingshi.data.model.RemoteLifeConsoleHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleMediaSlot
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteLifeConsoleUser
+import com.example.yingshi.data.model.RemoteLoginChallenge
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
@@ -36,8 +37,11 @@ import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.dto.LoginRequestDto
+import com.example.yingshi.data.remote.dto.RememberedLoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.ResendLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
+import com.example.yingshi.data.remote.dto.VerifyLoginChallengeRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.feature.photos.AppMediaType
 import com.example.yingshi.feature.photos.AlbumPostCardUiModel
@@ -589,12 +593,69 @@ class FakeUploadRepositoryShell : UploadRepository {
 }
 
 class FakeAuthRepositoryShell : AuthRepository {
-    override suspend fun login(
+    private var pendingAccount = "fake@yingshi.local"
+
+    override suspend fun requestLoginChallenge(
         request: LoginRequestDto,
+    ): ApiResult<RemoteLoginChallenge> {
+        pendingAccount = request.account.ifBlank { pendingAccount }
+        return ApiResult.Success(
+            RemoteLoginChallenge(
+                challengeId = "fake-challenge-${System.currentTimeMillis()}",
+                maskedEmail = pendingAccount,
+                expireAtMillis = System.currentTimeMillis() + 5 * 60 * 1000L,
+                resendAvailableAtMillis = System.currentTimeMillis() + 60 * 1000L,
+            ),
+        )
+    }
+
+    override suspend fun resendLoginChallenge(
+        request: ResendLoginChallengeRequestDto,
+    ): ApiResult<RemoteLoginChallenge> {
+        return ApiResult.Success(
+            RemoteLoginChallenge(
+                challengeId = request.challengeId.ifBlank { "fake-challenge-${System.currentTimeMillis()}" },
+                maskedEmail = pendingAccount,
+                expireAtMillis = System.currentTimeMillis() + 5 * 60 * 1000L,
+                resendAvailableAtMillis = System.currentTimeMillis() + 60 * 1000L,
+            ),
+        )
+    }
+
+    override suspend fun verifyLoginChallenge(
+        request: VerifyLoginChallengeRequestDto,
     ): ApiResult<RemoteLoginSession> {
-        val profile = fakeAuthLoginProfile(request.account.ifBlank { "fake@yingshi.local" })
-        val session = profile.toFakeLoginSession()
+        val profile = fakeAuthLoginProfile(pendingAccount.ifBlank { "fake@yingshi.local" })
+        val session = profile.toFakeLoginSession().copy(
+            rememberedLoginToken = "fake-remembered-${System.currentTimeMillis()}",
+            rememberedLoginExpireAtMillis = System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000L,
+        )
+        AuthSessionManager.saveRememberedLogin(
+            account = session.account,
+            token = session.rememberedLoginToken,
+            expireAtMillis = session.rememberedLoginExpireAtMillis,
+        )
         AuthSessionManager.saveTokens(session.tokens)
+        AuthSessionManager.saveCurrentUserSnapshot(profile)
+        return ApiResult.Success(session)
+    }
+
+    override suspend fun loginWithRememberedDevice(
+        request: RememberedLoginRequestDto,
+    ): ApiResult<RemoteLoginSession> {
+        pendingAccount = request.account.ifBlank { pendingAccount }
+        val profile = fakeAuthLoginProfile(pendingAccount.ifBlank { "fake@yingshi.local" })
+        val session = profile.toFakeLoginSession().copy(
+            rememberedLoginToken = "fake-remembered-${System.currentTimeMillis()}",
+            rememberedLoginExpireAtMillis = System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000L,
+        )
+        AuthSessionManager.saveRememberedLogin(
+            account = session.account,
+            token = session.rememberedLoginToken,
+            expireAtMillis = session.rememberedLoginExpireAtMillis,
+        )
+        AuthSessionManager.saveTokens(session.tokens)
+        AuthSessionManager.saveCurrentUserSnapshot(profile)
         return ApiResult.Success(session)
     }
 

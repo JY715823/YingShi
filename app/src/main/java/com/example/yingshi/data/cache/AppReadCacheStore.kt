@@ -1,5 +1,8 @@
 package com.example.yingshi.data.cache
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import android.content.Context
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
@@ -69,6 +72,8 @@ object AppReadCacheStore {
     private val gson = Gson()
     private val lock = Any()
     private var cacheDirectory: File? = null
+    var changeVersion by mutableIntStateOf(0)
+        private set
 
     private val remoteNotificationListType: Type =
         object : TypeToken<List<RemoteNotification>>() {}.type
@@ -103,7 +108,10 @@ object AppReadCacheStore {
 
     fun clearCurrentUser() {
         synchronized(lock) {
-            fileFor(scope = CURRENT_USER_SCOPE, userId = null).delete()
+            val deleted = fileFor(scope = CURRENT_USER_SCOPE, userId = null).delete()
+            if (deleted) {
+                changeVersion += 1
+            }
         }
     }
 
@@ -263,13 +271,22 @@ object AppReadCacheStore {
         synchronized(lock) {
             val directory = cacheDirectoryOrNull() ?: return true
             val files = directory.listFiles().orEmpty()
-            return files.fold(true) { cleared, file ->
+            var deletedAny = false
+            val cleared = files.fold(true) { allCleared, file ->
                 if (file.isDirectory) {
-                    cleared && file.deleteRecursively()
+                    val deleted = file.deleteRecursively()
+                    deletedAny = deletedAny || deleted
+                    allCleared && deleted
                 } else {
-                    cleared && file.delete()
+                    val deleted = file.delete()
+                    deletedAny = deletedAny || deleted
+                    allCleared && deleted
                 }
             }
+            if (deletedAny) {
+                changeVersion += 1
+            }
+            return cleared
         }
     }
 
@@ -341,6 +358,8 @@ object AppReadCacheStore {
                     gson.toJson(envelope, envelopeType(payloadType)),
                     StandardCharsets.UTF_8,
                 )
+            }.onSuccess {
+                changeVersion += 1
             }
         }
     }

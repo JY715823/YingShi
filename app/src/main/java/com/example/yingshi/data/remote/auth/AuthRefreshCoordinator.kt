@@ -79,7 +79,7 @@ object AuthRefreshCoordinator {
                 refreshedTokens
             } catch (exception: Exception) {
                 if ((exception as? HttpException)?.code() == 401) {
-                    AuthSessionManager.clearTokens()
+                    AuthSessionManager.clearTokensPreservingReadCache()
                 }
                 null
             }

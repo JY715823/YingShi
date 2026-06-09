@@ -93,7 +93,7 @@ fun BackendDiagnosticsScreen(
 
             DiagnosticsSection(
                 title = "服务地址",
-                subtitle = "保存后会重新连接当前账号。",
+                subtitle = "保存后会清除当前会话，并回到重新登录的状态。",
             ) {
                 OutlinedTextField(
                     value = baseUrlInput,
@@ -104,7 +104,7 @@ fun BackendDiagnosticsScreen(
                 )
 
                 BackendConnectionActionButton(
-                    text = "保存并连接",
+                    text = "保存地址",
                     onClick = {
                         scope.launch {
                             isRunning = true
@@ -131,7 +131,7 @@ fun BackendDiagnosticsScreen(
 
             DiagnosticsSection(
                 title = "连接状态",
-                subtitle = "网络恢复后，应用会自动再试一次登录；如果当前服务器不可用，会优先展示核心入口缓存。",
+                subtitle = "网络恢复后，若会话仍有效会自动恢复；若会话已失效，会保留缓存并提示重新登录。",
             ) {
                 ValueCard(
                     title = "状态",
@@ -149,7 +149,7 @@ fun BackendDiagnosticsScreen(
                     horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
                     BackendConnectionActionButton(
-                        text = "重新连接",
+                        text = "检查会话",
                         onClick = {
                             scope.launch {
                                 isRunning = true

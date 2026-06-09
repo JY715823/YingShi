@@ -57,7 +57,7 @@ object BackendDebugConfig {
         }
         settings = settings.copy(baseUrl = nextValue)
         preferencesOrNull()?.edit()?.putString(KEY_BASE_URL, nextValue)?.apply()
-        AuthSessionManager.clearTokens()
+        AuthSessionManager.clearAllAuthState()
         sessionVersion += 1
         RemoteServiceFactory.invalidate()
     }

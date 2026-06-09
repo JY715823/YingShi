@@ -28,6 +28,13 @@ data class RemoteCurrentUser(
     val updatedAtMillis: Long? = null,
 )
 
+data class RemoteLoginChallenge(
+    val challengeId: String,
+    val maskedEmail: String,
+    val expireAtMillis: Long,
+    val resendAvailableAtMillis: Long,
+)
+
 data class RemoteLoginSession(
     val userId: String,
     val account: String,
@@ -39,5 +46,7 @@ data class RemoteLoginSession(
     val partner: RemotePartnerProfile? = null,
     val createdAtMillis: Long? = null,
     val updatedAtMillis: Long? = null,
+    val rememberedLoginToken: String? = null,
+    val rememberedLoginExpireAtMillis: Long? = null,
     val tokens: AuthTokens,
 )

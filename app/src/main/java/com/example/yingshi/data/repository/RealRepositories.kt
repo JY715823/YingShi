@@ -13,6 +13,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
 import com.example.yingshi.data.model.RemoteLifeConsoleHistory
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
+import com.example.yingshi.data.model.RemoteLoginChallenge
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
@@ -42,9 +43,12 @@ import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.LifeConsoleMediaRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
+import com.example.yingshi.data.remote.dto.RememberedLoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
+import com.example.yingshi.data.remote.dto.ResendLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
+import com.example.yingshi.data.remote.dto.VerifyLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
@@ -1253,35 +1257,79 @@ private fun uploadRequestErrorMessage(
 class RealAuthRepository(
     private val authApi: AuthApi,
 ) : AuthRepository {
-    override suspend fun login(
+    override suspend fun requestLoginChallenge(
         request: LoginRequestDto,
-    ): ApiResult<RemoteLoginSession> {
+    ): ApiResult<RemoteLoginChallenge> {
         return runCatching {
-            authApi.login(request).data.toRemoteModel().also {
-                AuthSessionManager.saveTokens(it.tokens)
-                AuthSessionManager.saveCurrentUserSnapshot(
-                    RemoteCurrentUser(
-                        userId = it.userId,
-                        account = it.account,
-                        displayName = it.displayName,
-                        avatarUrl = it.avatarUrl,
-                        libraryId = it.libraryId,
-                        libraryDisplayName = it.libraryDisplayName,
-                        bio = it.bio,
-                        partner = it.partner,
-                        createdAtMillis = it.createdAtMillis,
-                        updatedAtMillis = it.updatedAtMillis,
-                    ),
-                )
-            }
+            authApi.requestLoginChallenge(request).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
                 ApiResult.Error(
-                    code = "AUTH_LOGIN_REQUEST_FAILED",
+                    code = "AUTH_LOGIN_CHALLENGE_REQUEST_FAILED",
                     message = authRequestErrorMessage(
                         throwable = it,
-                        fallback = "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u5730\u5740\u3001\u5c40\u57df\u7f51\u8fde\u901a\u6027\u548c\u670d\u52a1\u72b6\u6001\u3002",
+                        fallback = "发送验证码失败，请检查服务地址、网络连接和邮件服务配置。",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun resendLoginChallenge(
+        request: ResendLoginChallengeRequestDto,
+    ): ApiResult<RemoteLoginChallenge> {
+        return runCatching {
+            authApi.resendLoginChallenge(request).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_LOGIN_CHALLENGE_RESEND_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "重新发送验证码失败，请稍后重试。",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun verifyLoginChallenge(
+        request: VerifyLoginChallengeRequestDto,
+    ): ApiResult<RemoteLoginSession> {
+        return runCatching {
+            authApi.verifyLoginChallenge(request).data.toRemoteModel().also(::saveLoginSession)
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_LOGIN_VERIFY_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "登录验证失败，请检查验证码后重试。",
+                    ),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun loginWithRememberedDevice(
+        request: RememberedLoginRequestDto,
+    ): ApiResult<RemoteLoginSession> {
+        return runCatching {
+            authApi.loginWithRememberedDevice(request).data.toRemoteModel().also(::saveLoginSession)
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "AUTH_REMEMBERED_LOGIN_FAILED",
+                    message = authRequestErrorMessage(
+                        throwable = it,
+                        fallback = "本机快速登录失败，请重新获取验证码。",
                     ),
                     throwable = it,
                 )
@@ -1378,6 +1426,29 @@ class RealAuthRepository(
         )
     }
 
+    private fun saveLoginSession(session: RemoteLoginSession) {
+        AuthSessionManager.saveTokens(session.tokens)
+        AuthSessionManager.saveRememberedLogin(
+            account = session.account,
+            token = session.rememberedLoginToken,
+            expireAtMillis = session.rememberedLoginExpireAtMillis,
+        )
+        AuthSessionManager.saveCurrentUserSnapshot(
+            RemoteCurrentUser(
+                userId = session.userId,
+                account = session.account,
+                displayName = session.displayName,
+                avatarUrl = session.avatarUrl,
+                libraryId = session.libraryId,
+                libraryDisplayName = session.libraryDisplayName,
+                bio = session.bio,
+                partner = session.partner,
+                createdAtMillis = session.createdAtMillis,
+                updatedAtMillis = session.updatedAtMillis,
+            ),
+        )
+    }
+
     override suspend fun uploadCurrentUserAvatar(
         fileName: String,
         mimeType: String,
@@ -1425,10 +1496,11 @@ private fun authRequestErrorMessage(
             backendCode == "AUTH_SESSION_INVALID" ||
                 backendCode == "AUTH_TOKEN_EXPIRED" ||
                 backendCode == "AUTH_UNAUTHORIZED" -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
+            backendCode == "NOT_FOUND" -> "\u5f53\u524d\u670d\u52a1\u7aef\u8fd8\u6ca1\u5347\u7ea7\u5230\u9a8c\u8bc1\u7801\u767b\u5f55\u7248\u672c\uff0c\u8bf7\u91cd\u542f\u6216\u91cd\u65b0\u90e8\u7f72\u540e\u7aef\u3002"
             httpException.code() == 400 -> "\u8bf7\u6c42\u53c2\u6570\u4e0d\u5b8c\u6574\uff0c\u8bf7\u68c0\u67e5\u540e\u91cd\u8bd5\u3002"
             httpException.code() == 401 -> "\u767b\u5f55\u72b6\u6001\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002"
             httpException.code() == 403 -> "\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u6267\u884c\u8be5\u64cd\u4f5c\u7684\u6743\u9650\u3002"
-            httpException.code() == 404 -> "\u6ca1\u6709\u627e\u5230\u5bf9\u5e94\u7684\u8d26\u53f7\u63a5\u53e3\u3002"
+            httpException.code() == 404 -> "\u5f53\u524d\u670d\u52a1\u7aef\u8fd8\u6ca1\u5347\u7ea7\u5230\u9a8c\u8bc1\u7801\u767b\u5f55\u7248\u672c\uff0c\u8bf7\u91cd\u542f\u6216\u91cd\u65b0\u90e8\u7f72\u540e\u7aef\u3002"
             httpException.code() in 500..599 -> "\u670d\u52a1\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
             else -> "\u8bf7\u6c42\u5931\u8d25\uff08${httpException.code()}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002"
         }

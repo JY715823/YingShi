@@ -10,6 +10,7 @@ import com.example.yingshi.data.model.RemoteCommentPage
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemoteLoginChallenge
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
 import com.example.yingshi.data.model.RemoteLifeConsoleHistory
@@ -28,8 +29,11 @@ import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import java.io.InputStream
 import com.example.yingshi.data.remote.dto.LoginRequestDto
+import com.example.yingshi.data.remote.dto.RememberedLoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
+import com.example.yingshi.data.remote.dto.ResendLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
+import com.example.yingshi.data.remote.dto.VerifyLoginChallengeRequestDto
 import com.example.yingshi.data.remote.result.ApiResult
 
 interface MediaRepository {
@@ -187,8 +191,20 @@ interface UploadRepository {
 }
 
 interface AuthRepository {
-    suspend fun login(
+    suspend fun requestLoginChallenge(
         request: LoginRequestDto,
+    ): ApiResult<RemoteLoginChallenge>
+
+    suspend fun resendLoginChallenge(
+        request: ResendLoginChallengeRequestDto,
+    ): ApiResult<RemoteLoginChallenge>
+
+    suspend fun verifyLoginChallenge(
+        request: VerifyLoginChallengeRequestDto,
+    ): ApiResult<RemoteLoginSession>
+
+    suspend fun loginWithRememberedDevice(
+        request: RememberedLoginRequestDto,
     ): ApiResult<RemoteLoginSession>
 
     suspend fun refreshToken(

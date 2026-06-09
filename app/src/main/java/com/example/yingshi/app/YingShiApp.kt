@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -276,6 +277,14 @@ fun YingShiApp() {
         )
     }
 
+    fun sessionExpiredReadOnlyMessage(): String {
+        return "登录状态已失效，当前显示缓存内容，重新登录后可恢复实时同步。"
+    }
+
+    fun sessionExpiredNoticeMessage(): String {
+        return "登录状态已失效，请重新登录。"
+    }
+
     fun enableOfflineReadOnly(message: String = OfflineReadOnlyDefaultMessage) {
         val wasReadOnly = OfflineAccessManager.state.isReadOnly
         OfflineAccessManager.enterReadOnly(message)
@@ -342,15 +351,24 @@ fun YingShiApp() {
     }
 
     fun handleUnauthorized(message: String?) {
-        AuthSessionManager.clearTokens()
-        currentUser = null
+        val cachedUser = AuthSessionManager.getCurrentUserSnapshot() ?: currentUser
+        AuthSessionManager.clearTokensPreservingReadCache()
         isCheckingAuth = false
         isRefreshingProfile = false
         isLoggingOut = false
-        profileRefreshMessage = null
-        authNoticeMessage = message ?: "登录状态已失效，请重新登录。"
         clearProtectedUiRoutes()
         selectedDestinationName = RootDestination.HOME.name
+        if (cachedUser != null) {
+            currentUser = cachedUser
+            authNoticeMessage = message ?: sessionExpiredNoticeMessage()
+            profileRefreshMessage = sessionExpiredReadOnlyMessage()
+            enableOfflineReadOnly(sessionExpiredReadOnlyMessage())
+        } else {
+            OfflineAccessManager.clear()
+            currentUser = null
+            profileRefreshMessage = null
+            authNoticeMessage = message ?: sessionExpiredNoticeMessage()
+        }
     }
 
     fun performLogout() {
@@ -376,11 +394,11 @@ fun YingShiApp() {
         if (!AuthSessionManager.isLoggedIn) {
             if (storedCachedUser != null) {
                 currentUser = storedCachedUser
-                authNoticeMessage = null
+                authNoticeMessage = sessionExpiredNoticeMessage()
                 isCheckingAuth = false
                 isRefreshingProfile = false
-                profileRefreshMessage = OfflineReadOnlyDefaultMessage
-                enableOfflineReadOnly("当前正在显示上次缓存内容，恢复连接后会自动刷新。")
+                profileRefreshMessage = sessionExpiredReadOnlyMessage()
+                enableOfflineReadOnly(sessionExpiredReadOnlyMessage())
                 return@LaunchedEffect
             }
             OfflineAccessManager.clear()
@@ -432,7 +450,7 @@ fun YingShiApp() {
         }
         if (offlineAccessState.isReadOnly && !AuthSessionManager.isLoggedIn) {
             isRefreshingProfile = false
-            profileRefreshMessage = offlineAccessState.message ?: "当前显示的是缓存资料，恢复连接后会自动刷新。"
+            profileRefreshMessage = offlineAccessState.message ?: sessionExpiredReadOnlyMessage()
             return@LaunchedEffect
         }
         isRefreshingProfile = true
@@ -489,14 +507,13 @@ fun YingShiApp() {
             return@LaunchedEffect
         }
         if (!AuthSessionManager.isLoggedIn) {
-            if (cachedUser == null) return@LaunchedEffect
-            val loginOutcome = BackendAutoLoginManager.loginDefault(
-                force = false,
-                reason = "shell_reconnect_recover",
-            )
-            if (!loginOutcome.success) {
-                return@LaunchedEffect
+            if (cachedUser != null) {
+                currentUser = cachedUser
+                authNoticeMessage = sessionExpiredNoticeMessage()
+                profileRefreshMessage = sessionExpiredReadOnlyMessage()
+                enableOfflineReadOnly(sessionExpiredReadOnlyMessage())
             }
+            return@LaunchedEffect
         }
         val latestCachedUser = AuthSessionManager.getCurrentUserSnapshot() ?: currentUser ?: cachedUser
         if (latestCachedUser != null) {
@@ -548,18 +565,21 @@ fun YingShiApp() {
     }
 
     if (currentUser == null) {
-        LoginScreen(
-            sessionMessage = authNoticeMessage,
-            onLoginSuccess = { user ->
-                currentUser = user
-                AuthSessionManager.saveCurrentUserSnapshot(user)
-                OfflineAccessManager.clear()
-                authNoticeMessage = null
-                profileRefreshMessage = null
-                isCheckingAuth = false
-                selectedDestinationName = RootDestination.HOME.name
-            },
-        )
+        val loginScreenRestoreKey = "$authSessionVersion:${AuthSessionManager.getLastSignedInAccount().orEmpty()}"
+        key(loginScreenRestoreKey) {
+            LoginScreen(
+                sessionMessage = authNoticeMessage,
+                onLoginSuccess = { user ->
+                    currentUser = user
+                    AuthSessionManager.saveCurrentUserSnapshot(user)
+                    OfflineAccessManager.clear()
+                    authNoticeMessage = null
+                    profileRefreshMessage = null
+                    isCheckingAuth = false
+                    selectedDestinationName = RootDestination.HOME.name
+                },
+            )
+        }
         return
     }
 
@@ -1279,13 +1299,13 @@ fun YingShiApp() {
                             selectedDestinationName = RootDestination.PHOTOS.name
                             photosTopDestinationName = PhotosTopDestination.PHOTOS.name
                         },
-                        onOpenLife = {
+                        onOpenLedger = {
                             selectedDestinationName = RootDestination.LIFE.name
-                            ledgerRouteActive = false
+                            lifeConsoleRouteActive = false
                             chatViewerRouteActive = false
-                        },
-                        onOpenMe = {
-                            selectedDestinationName = RootDestination.ME.name
+                            ledgerOpenAddNonce = 0
+                            ledgerOpenHomeNonce += 1
+                            ledgerRouteActive = true
                         },
                         onOpenNotifications = {
                             notificationCenterRoute = NotificationCenterRoute(source = "home-bell")

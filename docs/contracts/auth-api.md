@@ -1,31 +1,75 @@
 # Auth API Contract
 
-Updated: 2026-05-25
+Updated: 2026-06-09
 
 ## Status
 
-- This document is aligned with the current `YingShi-Server` code.
 - Base path: `/api/auth`
-- `POST /login` and `POST /refresh-token` are public.
-- `GET /me`, `PATCH /me/profile`, `POST /logout`, `POST /me/avatar`, and `GET /avatar/{userId}` require bearer auth.
-- Android `REAL` mode already consumes login, refresh-token, current-user, logout, profile update, avatar upload, and avatar read/display.
+- Public routes: `POST /login/challenge`, `POST /login/challenge/resend`, `POST /login/verify`, `POST /login/remembered`, `POST /refresh-token`
+- Bearer-auth routes: `GET /me`, `PATCH /me/profile`, `POST /logout`, `POST /me/avatar`, `GET /avatar/{userId}`
+- Android login is now a two-step flow: `账号密码 -> 邮箱验证码 -> 建立会话`
 
-## Token Rules
+## Seed Accounts
 
-- login returns access token plus refresh token
-- refresh rotates both tokens
-- auth sessions are persisted on the server
-- reusing an old refresh token returns `AUTH_SESSION_INVALID`
-- logout revokes the current session on the server
+- `1085060329@qq.com / 123456`
+- `2926315047@qq.com / 123456`
 
-## 1. `POST /api/auth/login`
+## Login Code Rules
+
+- code length: `6`
+- code TTL: `5 minutes`
+- resend cooldown: `60 seconds`
+- per-account rate limit: `30 minutes up to 5 sends`
+- per-challenge max wrong attempts: `5`
+
+## 1. `POST /api/auth/login/challenge`
 
 Request:
 
 ```json
 {
-  "account": "demo.a@yingshi.local",
-  "password": "demo123456"
+  "account": "1085060329@qq.com",
+  "password": "123456"
+}
+```
+
+Response:
+
+```json
+{
+  "challengeId": "login_challenge_xxx",
+  "maskedEmail": "108***29@qq.com",
+  "expireAtMillis": 1780000000000,
+  "resendAvailableAtMillis": 1780000060000
+}
+```
+
+Notes:
+
+- this step only validates account/password and sends the QQ email code
+- no access token or refresh token is returned here
+
+## 2. `POST /api/auth/login/challenge/resend`
+
+Request:
+
+```json
+{
+  "challengeId": "login_challenge_xxx"
+}
+```
+
+Response shape matches `/api/auth/login/challenge`.
+
+## 3. `POST /api/auth/login/verify`
+
+Request:
+
+```json
+{
+  "challengeId": "login_challenge_xxx",
+  "code": "123456",
+  "deviceId": "android-install-id"
 }
 ```
 
@@ -41,12 +85,34 @@ Response `data` contains:
 - `partner`
 - `createdAtMillis`
 - `updatedAtMillis`
+- `rememberedLoginToken`
+- `rememberedLoginExpireAtMillis`
 - `accessToken`
 - `refreshToken`
 - `accessTokenExpireAtMillis`
 - `refreshTokenExpireAtMillis`
 
-## 2. `POST /api/auth/refresh-token`
+Notes:
+
+- session creation happens only after code verification succeeds
+- Android persists the returned tokens, current-user snapshot, and the same-device remembered-login token at this step
+
+## 4. `POST /api/auth/login/remembered`
+
+Request:
+
+```json
+{
+  "account": "1085060329@qq.com",
+  "password": "123456",
+  "deviceId": "android-install-id",
+  "rememberedLoginToken": "opaque-remembered-login-token"
+}
+```
+
+Response shape matches `/api/auth/login/verify`.
+
+## 5. `POST /api/auth/refresh-token`
 
 Request:
 
@@ -62,23 +128,18 @@ Response:
 - new refresh token
 - new expiry timestamps
 
-Android note:
+## 6. `GET /api/auth/me`
 
-- `AuthRefreshCoordinator` now centralizes refresh-token exchange and request retry for protected backend calls
+- core Android session-restore endpoint
+- response fields match the current-user portion of the verify-login response
 
-## 3. `GET /api/auth/me`
-
-This is the core Android session-restore endpoint.
-
-Response fields match the current-user portion of the login response.
-
-## 4. `PATCH /api/auth/me/profile`
+## 7. `PATCH /api/auth/me/profile`
 
 Request:
 
 ```json
 {
-  "displayName": "Demo A",
+  "displayName": "映世小屋",
   "bio": "Updated profile bio"
 }
 ```
@@ -88,11 +149,7 @@ Validation:
 - `displayName` required, max `80`
 - `bio` optional, max `280`
 
-Android note:
-
-- the edit-profile page already uses this endpoint
-
-## 5. `POST /api/auth/logout`
+## 8. `POST /api/auth/logout`
 
 Body may be empty or may include:
 
@@ -110,12 +167,7 @@ Response:
 }
 ```
 
-Current behavior:
-
-- server-side session revocation is enabled
-- the current access token becomes unusable after logout
-
-## 6. `POST /api/auth/me/avatar`
+## 9. `POST /api/auth/me/avatar`
 
 Request:
 
@@ -126,38 +178,45 @@ Response:
 
 - updated current-user payload
 
-Current Android state:
-
-- edit-profile already supports selecting and uploading the current user's avatar
-- `My` and profile pages already display backend avatars
-
-## 7. `GET /api/auth/avatar/{userId}`
+## 10. `GET /api/auth/avatar/{userId}`
 
 Response:
 
 - `200 image/jpeg` when present
 - `404` when the user has no avatar
 
-## Current Android Mapping
+## Android Mapping
 
-- login page -> `POST /api/auth/login`
+- login page step 1 -> `POST /api/auth/login/challenge`
+- login page resend -> `POST /api/auth/login/challenge/resend`
+- login page step 2 -> `POST /api/auth/login/verify`
+- same-device re-login -> `POST /api/auth/login/remembered`
 - session restore -> `GET /api/auth/me`
 - profile pages -> `GET /api/auth/me`
 - edit profile -> `PATCH /api/auth/me/profile`
 - logout -> `POST /api/auth/logout`
 - refresh-token path -> `RealAuthRepository.refreshToken()`
-- automatic retry path -> `AuthRefreshCoordinator` + OkHttp `Authenticator`
 - avatar upload -> `POST /api/auth/me/avatar`
 - avatar display -> `GET /api/auth/avatar/{userId}`
 
-## Seed Accounts
+## Session Behavior
 
-- `demo.a@yingshi.local / demo123456`
-- `demo.b@yingshi.local / demo123456`
+- token refresh and retry are still centralized in `AuthRefreshCoordinator`
+- if token is missing or expired, Android no longer silently replays stored account/password
+- after a successful verified login, Android can keep a same-device remembered-login token for short-term re-login after manual logout
+- when cached user data exists, the app may stay in cached read-only mode and prompt for re-verification
 
 ## Error Codes
 
 - `AUTH_INVALID_CREDENTIALS`
+- `AUTH_LOGIN_CHALLENGE_INVALID`
+- `AUTH_LOGIN_CODE_EXPIRED`
+- `AUTH_LOGIN_CODE_INVALID`
+- `AUTH_LOGIN_CODE_RATE_LIMITED`
+- `AUTH_LOGIN_CODE_RESEND_TOO_FAST`
+- `AUTH_LOGIN_CODE_SEND_FAILED`
+- `AUTH_REMEMBERED_LOGIN_EXPIRED`
+- `AUTH_REMEMBERED_LOGIN_INVALID`
 - `AUTH_TOKEN_EXPIRED`
 - `AUTH_UNAUTHORIZED`
 - `AUTH_SESSION_INVALID`

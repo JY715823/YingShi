@@ -2,21 +2,21 @@
 
 Updated: 2026-05-25
 
-This repository hosts the YingShi Android client. The app has moved beyond placeholder-shell status and now has a usable `REAL` integration path for auth, photos, posts, comments, uploads, and trash.
+This repository hosts the YingShi Android client. The current local deployment flow now uses the real backend with two-step QQ email verification login, plus real integrations for photos, posts, comments, uploads, trash, ledger snapshot, and imported-chat snapshot.
 
 ## Current App State
 
-- `debug`, `profile`, and `optimizedDebug` default to `REAL`
-- runtime still supports switching `FAKE / REAL` inside the app
+- runtime defaults to the real backend path for normal usage
 - auth session data is persisted locally and restored on app launch
-- changing backend `Base URL` clears the old session and rebuilds the network graph
-- fake repositories are intentionally retained for UI-only iteration and isolation
+- login now uses `账号密码 -> 邮箱验证码 -> 建立会话`
+- changing backend `Base URL` clears the old session and requires a fresh email verification
+- when session expires but cached data exists, the app can stay in cached read-only mode until re-verification
 
 ## Latest Progress
 
 - The primary shell is stable as `Home / Photos / Life / Me`.
 - The photos module already covers feed, albums, posts, viewer, comments, uploads, and trash.
-- Real auth is connected for login, refresh-token, logout, current-user, and profile update.
+- Real auth is connected for challenge-login, resend, verify, refresh-token, logout, current-user, and profile update.
 - The `Me` section, settings, cache management, and backend diagnostics are usable.
 - The life page now keeps only ledger and chat-viewer entries.
 - The old anniversary entry is intentionally removed from the life page.
@@ -24,9 +24,9 @@ This repository hosts the YingShi Android client. The app has moved beyond place
 
 ## Current Frontend Backend Alignment
 
-Already consumed in Android `REAL` mode:
+Already consumed in Android runtime:
 
-- auth: `login / refresh-token / me / logout / me/profile`
+- auth: `login/challenge / login/challenge/resend / login/verify / refresh-token / me / logout / me/profile`
 - albums: list and album-posts
 - posts: list, detail, create, update, cover, media-order, add-media, delete
 - media: feed, backend file delivery, delete-from-post, system delete
@@ -34,7 +34,7 @@ Already consumed in Android `REAL` mode:
 - trash: list, detail, restore, remove, purge, undo-remove, pending-cleanup
 - upload: token, multipart upload, task status, confirm, cancel
 
-Backend-ready but not fully exposed in Android UI:
+Backend-ready and already covered in the current app shell:
 
 - avatar upload / avatar display
 - notifications API
@@ -81,7 +81,7 @@ Inside the app:
 
 1. Open `My -> Settings -> Backend Debug Diagnostics`
 2. Confirm or edit `Base URL`
-3. Tap save-and-relogin
-4. Run the health check
-5. Switch to `REAL`
-6. Reopen the target page to reload with the active repository session
+3. Save the address if needed
+4. Reopen login and complete QQ email verification
+5. Run the health check if needed
+6. Reopen the target page to reload with the active session

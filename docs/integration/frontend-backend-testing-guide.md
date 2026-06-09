@@ -24,8 +24,9 @@ Quick bootstrap mode still exists:
 
 ## Seed Accounts
 
-- `demo.a@yingshi.local / demo123456`
-- `demo.b@yingshi.local / demo123456`
+- `1085060329@qq.com / 123456`
+- `2926315047@qq.com / 123456`
+- 登录需要读取 QQ 邮箱验证码；若 smoke 脚本未传 `-LoginCode`，会在控制台提示手动输入
 
 ## Backend Start
 
@@ -84,16 +85,15 @@ Inside the app:
 Current diagnostics responsibilities:
 
 - edit `Base URL`
-- apply emulator or loopback preset
-- save and relogin with the seeded demo account
+- 保存地址并清除旧会话
+- 检查当前会话是否仍有效
 - clear local auth cache
-- switch `FAKE / REAL`
 - run a minimal health check
 - show the latest result
 
-## Current `REAL` Verification Targets
+## Current Verification Targets
 
-After login and health check, switch to `REAL` and reopen the target pages:
+After login and health check, reopen the target pages:
 
 - `Me`: current user, shared-library, partner information, avatar display, and avatar upload from edit-profile
 - `Photos`: real feed data, viewer loading, and media comments
@@ -109,7 +109,7 @@ After login and health check, switch to `REAL` and reopen the target pages:
 
 Run this short pass after backend smoke:
 
-1. Log in with `demo.a@yingshi.local`, switch to `REAL`, and confirm `Me` shows the shared library and partner info.
+1. Log in with `1085060329@qq.com`, complete the QQ email verification, and confirm `Me` shows the shared library and partner info.
 2. Open `Photos -> Albums`, create a large album, then create a small album under it and reopen the detail page.
 3. Enter that small album, open the top-right comment icon, send a comment, then open one media item and confirm the in-album viewer still shows the bottom progress bar.
 4. From `Photos`, use system media or existing App media to create another small album and verify the created result can reopen.
@@ -124,11 +124,12 @@ Run this short pass after backend smoke:
 
 ## Common Problems
 
-`REAL` pages still ask you to log in:
+页面仍然要求重新登录:
 
-- the page was opened before `REAL` login completed
+- the page was opened before email verification completed
 - `Base URL` changed and the old session was cleared
 - the backend restarted and the old token is no longer valid
+- the login code expired or was entered too many times
 
 Emulator cannot connect:
 

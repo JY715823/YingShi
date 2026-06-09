@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -483,6 +484,7 @@ fun YingShiTextField(
     singleLine: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingContent: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = YingShiThemeTokens.colors
     varFocusedField(
@@ -496,6 +498,7 @@ fun YingShiTextField(
         keyboardOptions = keyboardOptions,
         visualTransformation = visualTransformation,
         textStyle = MaterialTheme.typography.titleMedium.copy(color = colors.textPrimary),
+        trailingContent = trailingContent,
     )
 }
 
@@ -511,6 +514,7 @@ private fun varFocusedField(
     keyboardOptions: KeyboardOptions,
     visualTransformation: VisualTransformation,
     textStyle: TextStyle,
+    trailingContent: (@Composable RowScope.() -> Unit)?,
 ) {
     val colors = YingShiThemeTokens.colors
     val radius = YingShiThemeTokens.radius
@@ -569,6 +573,13 @@ private fun varFocusedField(
                     }
                 },
             )
+            if (trailingContent != null) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = trailingContent,
+                )
+            }
         }
     }
 }

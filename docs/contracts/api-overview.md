@@ -25,7 +25,9 @@ Authorization: Bearer <accessToken>
 
 ### Auth
 
-- `POST /api/auth/login`
+- `POST /api/auth/login/challenge`
+- `POST /api/auth/login/challenge/resend`
+- `POST /api/auth/login/verify`
 - `POST /api/auth/refresh-token`
 - `GET /api/auth/me`
 - `PATCH /api/auth/me/profile`

@@ -5,6 +5,30 @@ data class LoginRequestDto(
     val password: String,
 )
 
+data class LoginChallengeResponseDto(
+    val challengeId: String,
+    val maskedEmail: String,
+    val expireAtMillis: Long,
+    val resendAvailableAtMillis: Long,
+)
+
+data class ResendLoginChallengeRequestDto(
+    val challengeId: String,
+)
+
+data class VerifyLoginChallengeRequestDto(
+    val challengeId: String,
+    val code: String,
+    val deviceId: String,
+)
+
+data class RememberedLoginRequestDto(
+    val account: String,
+    val password: String,
+    val deviceId: String,
+    val rememberedLoginToken: String,
+)
+
 data class LoginResponseDto(
     val userId: String,
     val account: String,
@@ -16,6 +40,8 @@ data class LoginResponseDto(
     val partner: PartnerProfileDto? = null,
     val createdAtMillis: Long = 0L,
     val updatedAtMillis: Long = 0L,
+    val rememberedLoginToken: String? = null,
+    val rememberedLoginExpireAtMillis: Long? = null,
     val accessToken: String,
     val refreshToken: String,
     val accessTokenExpireAtMillis: Long,
