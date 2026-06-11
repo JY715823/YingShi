@@ -88,11 +88,14 @@ import com.example.yingshi.feature.photos.offlineReadOnlyMessage
 import com.example.yingshi.feature.photos.isLifeChatTarget
 import com.example.yingshi.feature.photos.isLifeConsoleTarget
 import com.example.yingshi.feature.photos.isLifeLedgerTarget
+import com.example.yingshi.feature.photos.PhotoSelectionBottomBar
+import com.example.yingshi.feature.photos.PhotoSelectionShellAction
 import com.example.yingshi.feature.photos.PhotoViewerRoute
 import com.example.yingshi.feature.photos.PhotoViewerScreen
 import com.example.yingshi.feature.photos.GlobalPhotoFeedPageStateStore
 import com.example.yingshi.feature.photos.PhotoThumbnailPalette
 import com.example.yingshi.feature.photos.PhotosRootScreen
+import com.example.yingshi.feature.photos.PhotosRootSelectionUiState
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
 import com.example.yingshi.feature.photos.SettingsRoute
@@ -173,6 +176,15 @@ fun YingShiApp() {
     }
     var photoFeedScrollTrigger by remember { mutableIntStateOf(0) }
     var photoSelectionClearTrigger by remember { mutableIntStateOf(0) }
+    var photoSelectionShellState by remember {
+        mutableStateOf(PhotosRootSelectionUiState())
+    }
+    var photoSelectionAction by remember {
+        mutableStateOf<PhotoSelectionShellAction?>(null)
+    }
+    var photoSelectionActionNonce by rememberSaveable {
+        mutableIntStateOf(0)
+    }
     var systemMediaScrollTrigger by remember { mutableIntStateOf(0) }
     var systemMediaRoute by remember {
         mutableStateOf<SystemMediaRoute?>(null)
@@ -972,6 +984,7 @@ fun YingShiApp() {
             !chatViewerRouteActive &&
             !lifeConsoleRouteActive &&
             !isProfileFlowActive &&
+            !photoSelectionShellState.isActive &&
             !showQuickAddSheet
     if (rootExitEligible) {
         BackHandler {
@@ -992,6 +1005,38 @@ fun YingShiApp() {
         postDetailRoute != null ||
         gearEditRoute != null ||
         mediaManagementRoute != null
+    val showRootBottomBar = photoViewerRoute == null &&
+        systemMediaRoute == null &&
+        createPostRoute == null &&
+        trashDetailRoute == null &&
+        postDetailRoute == null &&
+        gearEditRoute == null &&
+        mediaManagementRoute == null &&
+        notificationCenterRoute == null &&
+        transferCenterRoute == null &&
+        notificationDetailRoute == null &&
+        settingsRoute == null &&
+        backendDiagnosticsRoute == null &&
+        cacheManagementRoute == null &&
+        !isProfileFlowActive &&
+        !ledgerRouteActive &&
+        !chatViewerRouteActive &&
+        !lifeConsoleRouteActive
+    val showPhotoSelectionBottomBar = showRootBottomBar &&
+        selectedDestination == RootDestination.PHOTOS &&
+        photosTopDestinationName == PhotosTopDestination.PHOTOS.name &&
+        photoSelectionShellState.isActive
+
+    if (showPhotoSelectionBottomBar) {
+        BackHandler {
+            photoSelectionClearTrigger += 1
+        }
+    }
+
+    fun dispatchPhotoSelectionAction(action: PhotoSelectionShellAction) {
+        photoSelectionAction = action
+        photoSelectionActionNonce += 1
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AppShellScaffold(
@@ -1005,23 +1050,19 @@ fun YingShiApp() {
                     showQuickAddSheet = true
                 }
             },
-            showBottomBar = photoViewerRoute == null &&
-                systemMediaRoute == null &&
-                createPostRoute == null &&
-                trashDetailRoute == null &&
-                postDetailRoute == null &&
-                gearEditRoute == null &&
-                mediaManagementRoute == null &&
-                notificationCenterRoute == null &&
-                transferCenterRoute == null &&
-                notificationDetailRoute == null &&
-                settingsRoute == null &&
-                backendDiagnosticsRoute == null &&
-                cacheManagementRoute == null &&
-                !isProfileFlowActive &&
-                !ledgerRouteActive &&
-                !chatViewerRouteActive &&
-                !lifeConsoleRouteActive,
+            showBottomBar = showRootBottomBar,
+            bottomBarOverride = if (showPhotoSelectionBottomBar) {
+                {
+                    PhotoSelectionBottomBar(
+                        selectedCount = photoSelectionShellState.selectedCount,
+                        writeEnabled = photoSelectionShellState.writeEnabled,
+                        deleteInFlight = photoSelectionShellState.isDeleting,
+                        onAction = ::dispatchPhotoSelectionAction,
+                    )
+                }
+            } else {
+                null
+            },
         ) {
             val openNotificationTarget: (NotificationCenterItemUiModel) -> Unit = { item ->
                 captureNotificationReturnRoute()
@@ -1350,6 +1391,9 @@ fun YingShiApp() {
                         onAddedMediaToPost = openPostDetailAfterAdd,
                         photoFeedScrollTrigger = photoFeedScrollTrigger,
                         photoSelectionClearTrigger = photoSelectionClearTrigger,
+                        onPhotoSelectionShellStateChange = { photoSelectionShellState = it },
+                        photoSelectionAction = photoSelectionAction,
+                        photoSelectionActionNonce = photoSelectionActionNonce,
                         inlineVideoAutoPlayEnabled = photoViewerRoute == null,
                     )
                     RootDestination.LIFE -> {

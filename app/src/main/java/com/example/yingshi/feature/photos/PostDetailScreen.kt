@@ -2406,12 +2406,13 @@ private fun SmallAlbumMediaGridSection(
     var scrubberDragProgress by remember { mutableStateOf<Float?>(null) }
     var scrubberDragLabel by remember { mutableStateOf("") }
     var lastRequestedAnchorIndex by remember { mutableStateOf(-1) }
-    val currentVisibleDateLabel by remember(listState, blocks, feedItems) {
+    val currentVisibleDateLabel by remember(listState, blocks, feedItems, density) {
         derivedStateOf {
             resolveCurrentVisibleDateLabel(
                 itemIndex = listState.firstVisibleItemIndex,
                 blocks = blocks,
                 fallbackItems = feedItems,
+                density = density,
             )
         }
     }
@@ -2718,7 +2719,7 @@ private fun SmallAlbumMediaGridSection(
                             .coerceIn(0, scrollAnchors.lastIndex)
                         scrubberDragProgress = progress.coerceIn(0f, 1f)
                         scrubberDragLabel = scrollAnchors.getOrNull(anchorIndex)
-                            ?.let { anchor -> formatScrubberDateLabel(anchor.timeMillis) }
+                            ?.let { anchor -> formatScrubberDateLabel(anchor.timeMillis, density) }
                             .orEmpty()
                         if (anchorIndex == lastRequestedAnchorIndex) {
                             return@PhotoFeedTimeScrubber

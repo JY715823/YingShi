@@ -85,19 +85,23 @@ class RealPhotoFeedViewModel(
             }
 
             val minLoadedItemCount = _uiState.value.feedItems.size.coerceAtLeast(pageSize)
+            val showBlockingLoading = _uiState.value.feedItems.isEmpty()
             nextCursor = null
             loadMoreInFlight = false
             loadMoreBlockedByError = false
             _uiState.update {
+                val nextOfflineReadOnly = if (showBlockingLoading) false else it.isOfflineReadOnly
+                val nextHasMore = if (showBlockingLoading) false else it.hasMore
+                val nextStatusMessage = if (showBlockingLoading) null else it.statusMessage
                 it.copy(
-                    isLoading = true,
+                    isLoading = showBlockingLoading,
                     isLoadingMore = false,
                     loadMoreErrorMessage = null,
-                    isOfflineReadOnly = false,
+                    isOfflineReadOnly = nextOfflineReadOnly,
                     tokenMissing = false,
-                    hasMore = false,
+                    hasMore = nextHasMore,
                     errorMessage = null,
-                    statusMessage = null,
+                    statusMessage = nextStatusMessage,
                 )
             }
             when (val result = loadRefreshPages(minLoadedItemCount = minLoadedItemCount)) {
@@ -112,6 +116,8 @@ class RealPhotoFeedViewModel(
                         it.copy(
                             isLoading = false,
                             isOfflineReadOnly = false,
+                            errorMessage = null,
+                            statusMessage = null,
                             feedItems = result.data.items.map { item -> item.toPhotoFeedItem() },
                             hasMore = result.data.hasMore,
                             loadMoreErrorMessage = null,
@@ -287,6 +293,18 @@ class RealPhotoFeedViewModel(
         loadNextPage()
     }
 
+    fun clearStatusMessage(expectedMessage: String? = null) {
+        _uiState.update { state ->
+            if (expectedMessage != null && state.statusMessage != expectedMessage) {
+                state
+            } else if (state.statusMessage == null) {
+                state
+            } else {
+                state.copy(statusMessage = null)
+            }
+        }
+    }
+
     fun deleteSelectedMedia(
         mediaIds: Set<String>,
         onCompleted: (deletedIds: Set<String>) -> Unit = {},
@@ -355,10 +373,24 @@ class RealPhotoFeedViewModel(
                 )
             }
             if (deletedIds.isNotEmpty()) {
-                notifyRealBackendContentChanged(mediaIds = deletedIds)
+                withContext(Dispatchers.IO) {
+                    persistCurrentFeedSnapshot()
+                }
+                notifyRealBackendContentChangedWithoutPhotoFeed(mediaIds = deletedIds)
             }
             onCompleted(deletedIds)
         }
+    }
+
+    private fun persistCurrentFeedSnapshot() {
+        val currentState = _uiState.value
+        persistFeed(
+            RefreshPageBundle(
+                items = currentState.feedItems.map(PhotoFeedItem::toCachedRemoteMedia),
+                nextCursor = nextCursor,
+                hasMore = currentState.hasMore,
+            ),
+        )
     }
 
     private fun readCachedFeed(): CachedPhotoFeed? {

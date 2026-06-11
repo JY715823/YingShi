@@ -1,9 +1,9 @@
 # 首页精修
 
-> 首页本轮按“共享门厅 + 轻摘要 + 照片优先”收尾，作为部署前的正式版本，不再保留静态欢迎页和快捷入口占位。
+> 首页本轮按“两张卡片 + 照片优先 + 克制流光”收尾，作为部署前的正式版本，不再保留静态欢迎页和快捷入口占位。
 
 - Module key: `home`
-- Status: `implementing`
+- Status: `closed`
 - Last updated: `2026-06-09`
 - Primary surfaces: `android`
 - Linked server brief: `none`
@@ -14,15 +14,16 @@
 - Success criteria:
   - 首页不再出现欢迎文案、中间说明卡、底部三枚快捷入口卡
   - 顶部仅保留 `映世` 与通知铃铛
-  - 主体变成照片优先门厅 + `最近照片` / `账本信号` 两条轻摘要
+  - 首页总共只保留两张内容卡：一张大 `最近照片` 卡、一张 `账本信号` 卡
+  - `最近照片` 卡内置双方上传筛选圆点，`账本信号` 卡内置账本筛选
   - 首页支持缓存只读展示，不新增后端接口
   - 账本摘要支持“最近一笔 + 本月支出”并可直达记账
 
 ## Current State
 - What exists today:
-  - `HomeScreen.kt` 仍是静态欢迎页结构，使用通用波浪背景、说明卡和三枚快捷入口
-  - 首页没有本地 summary 聚合层，也没有直达记账入口
-  - 首页对缓存内容、通知未读和本地账本没有正式接法
+  - `HomeScreen.kt` 已切到两张卡片版首页，不再保留欢迎说明和快捷入口
+  - 首页已接入本地 summary 聚合层，可读照片缓存、通知未读和本地账本摘要
+  - 顶部铃铛已改为正式通知图标样式，账本信号卡已重做主次层级，首页直达记账入口已接通
 - Known constraints:
   - 本轮不新增后端接口
   - 首页不能抢照片页风头，要服从既有浅色壳层与颜色系统
@@ -42,7 +43,7 @@
 
 ## Codex Recommendations
 ### Recommended to finish in this module
-- 重做首页为“共享门厅”:
+- 重做首页为“两张卡片式内容入口”:
   - Why it is worth considering: 首页将从说明页变成真实内容入口，更像最终上线版本
   - Impact on usability, robustness, or smoothness: 首屏理解成本更低，进入照片与账本更直接
 - 增加本地 Home summary 聚合层:
@@ -58,7 +59,7 @@
   - Why it might still be deferred: 这轮已明确不扩到聊天和生活重摘要，避免首页先跨模块膨胀
 
 ## Key Questions
-- [x] 首页固定走 `共享门厅 + 轻摘要 + 照片优先 + 克制流光`
+- [x] 首页固定走 `两张卡片 + 照片优先 + 克制流光`
 - [x] `账本信号` 固定为 `最近一笔 + 本月支出`
 - [x] 本轮不新增后端接口，不扩到聊天 / 今日痕迹 / 重生活摘要
 
@@ -121,8 +122,8 @@
 - 账本信号以默认账本为准
 
 ## UI and Visual Details
-- Layout or information hierarchy: 顶部品牌与铃铛，主体为照片门厅，其下是 `最近照片` 与 `账本信号`
-- Components and states: 门厅拼贴、轻摘要卡、未读角标、空态占位、只读轻提示
+- Layout or information hierarchy: 顶部品牌与铃铛，其下仅保留一张大 `最近照片` 卡和一张 `账本信号` 卡
+- Components and states: 照片拼贴卡、账本信号卡、照片筛选圆点、账本筛选、未读角标、空态占位、只读轻提示
 - Motion or transitions: 只做轻 reveal 和轻 glow，不做持续装饰动画
 - Copy notes: 去掉解释型首页文案，只保留轻标签和状态型文案
 
@@ -157,7 +158,7 @@
 - Copy and empty states: 轻文案、轻空态，不回到说明页
 
 ## Plan Self-check
-- Recommendation quality: 已把首页从静态壳升级到共享门厅，并补足了缓存刷新和直达账本这两个部署前真正有价值的点。
+- Recommendation quality: 已把首页从静态壳升级到两张卡片式内容入口，并补足了缓存刷新和直达账本这两个部署前真正有价值的点。
 - Scope pressure test: 范围聚焦在首页与轻耦合壳层，不扩张到聊天和生活重摘要。
 - Contract and dependency pressure test: 只复用现有缓存、通知、账本与路由能力，不新增后端契约。
 - UX state pressure test: 覆盖正常、空态、缓存只读和通知未读变化等关键状态。
@@ -166,11 +167,12 @@
 
 ## Implementation Notes
 ### Client
-- `HomeScreen` 已重做为照片优先的共享门厅：
+- `HomeScreen` 已重做为两张总卡片结构：
   - 顶部只保留 `映世` 与通知铃铛
   - 删除旧欢迎文案、中间说明卡和三枚快捷入口
-  - 主体改为照片拼贴门厅，点击直达照片页
-  - 下方改为 `最近照片` 与 `账本信号` 两条轻摘要
+  - 第一张为大尺寸 `最近照片` 卡，直接承载照片拼贴和双方上传筛选圆点
+  - 第二张为 `账本信号` 卡，在卡头提供账本切换并显示最近一笔与本月支出
+  - `verify` 轮中已把铃铛从手绘线稿换成正式图标，并把账本信号从并排双块改成主卡 + 次卡层级
 - 新增 `HomeSummary.kt`：
   - 增加 `HomeUiState / HomeRecentPhotosSummary / HomeLedgerSummary`
   - 首页内部聚合当前用户快照、照片缓存、通知缓存和本地账本摘要
@@ -183,16 +185,14 @@
 - 无改动。
 
 ### Design
-- 首页背景改为独立门厅变体：
-  - 珍珠浅蓝大底
-  - 多层径向流光和 aurora 式雾面洗色
-  - 照片拼贴成为视觉主体，不再靠说明文案撑页面
-- 摘要卡保持轻量，延续 `珍珠玉蓝 · 温暖记忆点缀版`
-- 铃铛角标和只读提示只做小范围强调，不抢门厅主体
+- 首页背景进一步加强为更绚烂的流光雾面层，不再依赖简单线条
+- 照片卡成为视觉主角，账本卡保持更轻，继续服从 `珍珠玉蓝 · 温暖记忆点缀版`
+- 铃铛角标、筛选圆点和账本筛选都压在卡片体系内，不额外制造杂讯
+- 铃铛改为更成熟的圆角通知图标；账本卡改为“大月支出 + 最近一笔”的主次层级
 
 ### Interaction Feedback
-- 门厅主视觉与 `最近照片` 摘要直达照片页
-- `账本信号` 直达记账
+- 大 `最近照片` 卡直达照片页，右上双圆点筛选双方上传内容
+- `账本信号` 卡直达记账，卡头账本筛选切换不同账本
 - 通知铃铛继续打开通知中心，并显示未读角标
 - 无照片缓存、无账本记录、缓存只读三种状态都给了轻量回退
 
@@ -221,7 +221,7 @@
 
 ### Linked-module regression checks
 - Module: `photos`
-  - What to recheck: 首页门厅和 `最近照片` 摘要点击是否正确落到照片页；缩略图是否正常显示。
+  - What to recheck: 首页大 `最近照片` 卡点击是否正确落到照片页；缩略图与双方筛选是否正常显示。
   - Why it can regress: 首页开始直接复用照片缓存和媒体缩略图组件。
 - Module: `ledger`
   - What to recheck: 首页点 `账本信号` 是否直接进入记账首页，且不打断原有账本路由。
@@ -233,10 +233,10 @@
 ### Real-device checks for the user
 - Scenario: 正常态首页
   - Steps: 打开 App 进入首页，确认有照片缓存、有账本记录、有未读通知。
-  - Expected result: 首页显示门厅拼贴、两条轻摘要和未读角标，不再出现旧欢迎卡与快捷入口。
+  - Expected result: 首页只显示一张大 `最近照片` 卡、一张 `账本信号` 卡和未读角标，不再出现旧欢迎卡与快捷入口。
 - Scenario: 无照片缓存
   - Steps: 在新环境或清缓存后进入首页。
-  - Expected result: 门厅保留高级空态，不会像坏掉的空页面。
+  - Expected result: `最近照片` 卡保留高级空态，不会像坏掉的空页面。
 - Scenario: 无账本记录
   - Steps: 在没有账本交易的情况下打开首页并点 `账本信号`。
   - Expected result: 首页显示轻空态提示，点击后直接进入记账。
@@ -253,29 +253,80 @@
   - Best next verification path: 在常用主力机和一台较小屏设备上做一次首页进入、返回、断网只读与通知回流联测。
 
 ## Real-device Issue Log
-- None yet. Add entries using `references/device-qa-template.md`.
+### Issue 2026-06-09-01
+- Date: 2026-06-09
+- Build version: 未提供
+- Device / OS: 未提供
+- Module key: `home`
+- Test environment: Android 真机首页验证
+- Repro steps:
+  1. 打开 App 首页
+  2. 观察顶部通知铃铛图标
+- Expected result: 铃铛图标应有成品感，和首页其余视觉精度一致
+- Actual result: 铃铛仍像旧线稿，观感偏丑
+- Evidence: 用户口述，未附截图
+- Severity: `polish`
+- Server-related: `no`
+- Reproducibility: `always`
+- Suspected area: `HomeNotificationBellButton`
+- Next action: 已在本轮改成正式通知图标；用户接受进入 close，后续若再动首页需复看角标比例
+
+### Issue 2026-06-09-02
+- Date: 2026-06-09
+- Build version: 未提供
+- Device / OS: 未提供
+- Module key: `home`
+- Test environment: Android 真机首页验证
+- Repro steps:
+  1. 打开 App 首页
+  2. 观察 `账本信号` 卡的信息组织
+- Expected result: 账本信号应有更清晰的主次层级，重点信息更突出
+- Actual result: 现有呈现层次不够，信息显得平
+- Evidence: 用户口述，未附截图
+- Severity: `polish`
+- Server-related: `no`
+- Reproducibility: `always`
+- Suspected area: `HomeLedgerCard`
+- Next action: 已在本轮改成主卡 + 次卡层级；用户接受进入 close，后续若再动首页需复看小屏层级
+
+## Next Fix Queue
+- None. 模块按当前验收结果关闭，仅保留轻量视觉残余风险。
 
 ## Validation Snapshot
 ### Verified
 - 首页实现已完成并通过 Kotlin 编译。
 - 首页本地 summary 层、首页直达记账和缓存刷新触发已接通。
+- 两张卡片结构、铃铛新图标与账本主次层级已落地，用户接受进入 close。
 
 ### Pending
-- 真机视觉细节与交互联调。
+- None. 仅剩小屏视觉比例风险，已在 closeout 中显式记录并接受。
 
 ### Blocked
 - None.
 
 ## Closeout Summary
 - What shipped:
+  - 首页从静态欢迎壳收口为正式两卡结构，只保留一张大 `最近照片` 卡和一张 `账本信号` 卡
+  - 首页已接入本地 `HomeUiState` 聚合层，统一读取照片缓存、通知未读、本地账本与只读状态
+  - `最近照片` 卡支持双方上传筛选；`账本信号` 卡支持账本筛选，并强化为“大月支出 + 最近一笔”的层级
+  - 顶部铃铛已换成正式通知图标，首页继续保持通知回流和缓存只读语义
+- What was validated:
+  - 本地已通过 `gradlew.bat :app:compileDebugKotlin`
+  - 用户已做真机观感回看，并在铃铛与账本层级修正后接受当前结果进入关闭
+  - 首页直达照片、直达记账、通知入口与本地缓存聚合路径已在代码层打通
 - What remains risky:
+  - 不同真机尺寸下，铃铛角标比例和 `账本信号` 卡的小屏层级仍有轻量视觉风险
+  - 该风险已接受，不阻塞当前部署节奏；若后续再动首页视觉，需优先复看这两处
 - What was intentionally deferred:
+  - 首页不扩到聊天、今日痕迹、复杂生活摘要
+  - 本轮不新增后端接口，不改动照片/通知/账本模块主流程
 
 ## Carry-forward Notes
 - Fact future modules must remember: 首页本轮只聚合照片与账本，不扩聊天和今日痕迹。
 - Adjacent module to revisit later: 若后续生活模块要做首页摘要，应基于当前 `HomeUiState` 扩展而不是重开一套首页结构。
+- Visual note: 若后续再改首页，优先复看铃铛角标比例和 `账本信号` 在小屏上的层级密度。
 
 ## Closeout Self-check
-- Brief completeness:
-- Remaining risk clarity:
-- Carry-forward quality:
+- Brief completeness: 最终结构、筛选规则、缓存接法、真机问题和验收结果都已写回 brief。
+- Remaining risk clarity: 剩余风险已压缩为小屏视觉比例问题，并明确标注为已接受的轻量残余风险。
+- Carry-forward quality: 后续模块只需记住首页当前只聚合照片与账本，以及再次触碰首页时要优先复看两处视觉点。

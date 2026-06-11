@@ -61,8 +61,8 @@ internal fun buildCollaborativePhotoFeedBlocks(
         currentUserId in selectedIds &&
         partnerUserId in selectedIds
 
-    return if (normalizedBucketHours >= DefaultCollaborativeBucketHours) {
-        buildCollaborativeDayBlocks(
+    return when (density) {
+        PhotoFeedDensity.OVERVIEW_16 -> buildCollaborativeYearBlocks(
             items = visibleItems,
             density = density,
             currentIdentity = currentIdentity,
@@ -71,8 +71,8 @@ internal fun buildCollaborativePhotoFeedBlocks(
             partnerUserId = partnerUserId,
             showsBoth = showsBoth,
         )
-    } else {
-        buildCollaborativeHourBlocks(
+
+        PhotoFeedDensity.OVERVIEW_8 -> buildCollaborativeMonthBlocks(
             items = visibleItems,
             density = density,
             currentIdentity = currentIdentity,
@@ -80,8 +80,30 @@ internal fun buildCollaborativePhotoFeedBlocks(
             currentUserId = currentUserId,
             partnerUserId = partnerUserId,
             showsBoth = showsBoth,
-            bucketHours = normalizedBucketHours,
         )
+
+        else -> if (normalizedBucketHours >= DefaultCollaborativeBucketHours) {
+            buildCollaborativeDayBlocks(
+                items = visibleItems,
+                density = density,
+                currentIdentity = currentIdentity,
+                partnerIdentity = partnerIdentity,
+                currentUserId = currentUserId,
+                partnerUserId = partnerUserId,
+                showsBoth = showsBoth,
+            )
+        } else {
+            buildCollaborativeHourBlocks(
+                items = visibleItems,
+                density = density,
+                currentIdentity = currentIdentity,
+                partnerIdentity = partnerIdentity,
+                currentUserId = currentUserId,
+                partnerUserId = partnerUserId,
+                showsBoth = showsBoth,
+                bucketHours = normalizedBucketHours,
+            )
+        }
     }
 }
 
@@ -117,24 +139,10 @@ internal fun buildPhotoFeedScrubberAnchors(
                 !hasFineGrainedAnchors &&
                 block is PhotoFeedSectionHeader &&
                 block.anchorTimeMillis != null -> {
-                val fallbackLabel = blocks
-                    .drop(index + 1)
-                    .firstOrNull { it is PhotoFeedGridRow }
-                    ?.let { it as? PhotoFeedGridRow }
-                    ?.items
-                    ?.firstOrNull()
-                    ?.let { item ->
-                        formatDayScrubberLabel(
-                            year = item.displayYear,
-                            month = item.displayMonth,
-                            day = item.displayDay,
-                        )
-                    }
-                    ?: block.title
                 PhotoFeedScrubberAnchor(
                     blockKey = block.key,
                     itemIndex = leadingItemCount + index,
-                    label = fallbackLabel,
+                    label = block.scrubberFallbackLabel(),
                     timeMillis = block.anchorTimeMillis,
                 )
             }
@@ -187,6 +195,9 @@ private fun buildMonthAndDayBlocks(
         blocks += PhotoFeedSectionHeader(
             key = "month-${monthGroup.year}-${monthGroup.month}",
             title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            granularity = PhotoFeedTimeGranularity.MONTH,
+            year = monthGroup.year,
+            month = monthGroup.month,
             anchorTimeMillis = monthGroup.anchorTimeMillis,
         )
 
@@ -194,6 +205,9 @@ private fun buildMonthAndDayBlocks(
             blocks += PhotoFeedDayHeader(
                 key = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
                 title = formatDayTitle(dayGroup.month, dayGroup.day),
+                year = dayGroup.year,
+                month = dayGroup.month,
+                day = dayGroup.day,
                 scrubberLabel = formatDayScrubberLabel(dayGroup.year, dayGroup.month, dayGroup.day),
                 anchorTimeMillis = dayGroup.anchorTimeMillis,
             )
@@ -219,6 +233,9 @@ private fun buildMonthBlocks(
         blocks += PhotoFeedSectionHeader(
             key = "month-${monthGroup.year}-${monthGroup.month}",
             title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            granularity = PhotoFeedTimeGranularity.MONTH,
+            year = monthGroup.year,
+            month = monthGroup.month,
             anchorTimeMillis = monthGroup.anchorTimeMillis,
         )
         addGridRows(
@@ -241,7 +258,9 @@ private fun buildYearBlocks(
     yearGroups(items).forEach { yearGroup ->
         blocks += PhotoFeedSectionHeader(
             key = "year-${yearGroup.year}",
-            title = "${yearGroup.year}年",
+            title = formatYearTitle(yearGroup.year),
+            granularity = PhotoFeedTimeGranularity.YEAR,
+            year = yearGroup.year,
             anchorTimeMillis = yearGroup.anchorTimeMillis,
         )
         addGridRows(
@@ -252,6 +271,73 @@ private fun buildYearBlocks(
         )
     }
 
+    return blocks
+}
+
+private fun buildCollaborativeMonthBlocks(
+    items: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
+    currentIdentity: CollaboratorIdentityUiModel?,
+    partnerIdentity: CollaboratorIdentityUiModel?,
+    currentUserId: String?,
+    partnerUserId: String?,
+    showsBoth: Boolean,
+): List<PhotoFeedBlock> {
+    val blocks = mutableListOf<PhotoFeedBlock>()
+    monthGroups(items).forEach { monthGroup ->
+        blocks += PhotoFeedSectionHeader(
+            key = "month-${monthGroup.year}-${monthGroup.month}",
+            title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            granularity = PhotoFeedTimeGranularity.MONTH,
+            year = monthGroup.year,
+            month = monthGroup.month,
+            anchorTimeMillis = monthGroup.anchorTimeMillis,
+        )
+        addCollaborativeGridRows(
+            target = blocks,
+            prefix = "month-${monthGroup.year}-${monthGroup.month}",
+            items = monthGroup.items,
+            columns = density.columns,
+            currentIdentity = currentIdentity,
+            partnerIdentity = partnerIdentity,
+            currentUserId = currentUserId,
+            partnerUserId = partnerUserId,
+            showsBoth = showsBoth,
+        )
+    }
+    return blocks
+}
+
+private fun buildCollaborativeYearBlocks(
+    items: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
+    currentIdentity: CollaboratorIdentityUiModel?,
+    partnerIdentity: CollaboratorIdentityUiModel?,
+    currentUserId: String?,
+    partnerUserId: String?,
+    showsBoth: Boolean,
+): List<PhotoFeedBlock> {
+    val blocks = mutableListOf<PhotoFeedBlock>()
+    yearGroups(items).forEach { yearGroup ->
+        blocks += PhotoFeedSectionHeader(
+            key = "year-${yearGroup.year}",
+            title = formatYearTitle(yearGroup.year),
+            granularity = PhotoFeedTimeGranularity.YEAR,
+            year = yearGroup.year,
+            anchorTimeMillis = yearGroup.anchorTimeMillis,
+        )
+        addCollaborativeGridRows(
+            target = blocks,
+            prefix = "year-${yearGroup.year}",
+            items = yearGroup.items,
+            columns = density.columns,
+            currentIdentity = currentIdentity,
+            partnerIdentity = partnerIdentity,
+            currentUserId = currentUserId,
+            partnerUserId = partnerUserId,
+            showsBoth = showsBoth,
+        )
+    }
     return blocks
 }
 
@@ -269,12 +355,18 @@ private fun buildCollaborativeDayBlocks(
         blocks += PhotoFeedSectionHeader(
             key = "month-${monthGroup.year}-${monthGroup.month}",
             title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            granularity = PhotoFeedTimeGranularity.MONTH,
+            year = monthGroup.year,
+            month = monthGroup.month,
             anchorTimeMillis = monthGroup.anchorTimeMillis,
         )
         dayGroups(monthGroup.items).forEach { dayGroup ->
             blocks += PhotoFeedDayHeader(
                 key = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
                 title = formatDayTitle(dayGroup.month, dayGroup.day),
+                year = dayGroup.year,
+                month = dayGroup.month,
+                day = dayGroup.day,
                 scrubberLabel = formatDayScrubberLabel(dayGroup.year, dayGroup.month, dayGroup.day),
                 anchorTimeMillis = dayGroup.anchorTimeMillis,
             )
@@ -309,12 +401,18 @@ private fun buildCollaborativeHourBlocks(
         blocks += PhotoFeedSectionHeader(
             key = "month-${monthGroup.year}-${monthGroup.month}",
             title = formatMonthTitle(monthGroup.year, monthGroup.month),
+            granularity = PhotoFeedTimeGranularity.MONTH,
+            year = monthGroup.year,
+            month = monthGroup.month,
             anchorTimeMillis = monthGroup.anchorTimeMillis,
         )
         dayGroups(monthGroup.items).forEach { dayGroup ->
             blocks += PhotoFeedDayHeader(
                 key = "day-${dayGroup.year}-${dayGroup.month}-${dayGroup.day}",
                 title = formatDayTitle(dayGroup.month, dayGroup.day),
+                year = dayGroup.year,
+                month = dayGroup.month,
+                day = dayGroup.day,
                 scrubberLabel = formatDayScrubberLabel(dayGroup.year, dayGroup.month, dayGroup.day),
                 anchorTimeMillis = dayGroup.anchorTimeMillis,
             )
@@ -635,9 +733,63 @@ private fun collaborativeBucketStartMillis(
     return calendar.timeInMillis
 }
 
+internal fun scrubberGranularityForDensity(density: PhotoFeedDensity): PhotoFeedTimeGranularity {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2,
+        PhotoFeedDensity.COMFORT_3,
+        PhotoFeedDensity.DENSE_4,
+        -> PhotoFeedTimeGranularity.DAY
+
+        PhotoFeedDensity.OVERVIEW_8 -> PhotoFeedTimeGranularity.MONTH
+        PhotoFeedDensity.OVERVIEW_16 -> PhotoFeedTimeGranularity.YEAR
+    }
+}
+
+internal fun formatScrubberLabel(
+    year: Int,
+    month: Int,
+    day: Int,
+    density: PhotoFeedDensity,
+): String {
+    return when (scrubberGranularityForDensity(density)) {
+        PhotoFeedTimeGranularity.YEAR -> formatYearTitle(year)
+        PhotoFeedTimeGranularity.MONTH -> formatMonthScrubberLabel(year, month)
+        PhotoFeedTimeGranularity.DAY -> formatDayScrubberLabel(year, month, day)
+    }
+}
+
+internal fun formatScrubberDateLabel(
+    timeMillis: Long,
+    density: PhotoFeedDensity,
+): String {
+    val calendar = calendarFor(timeMillis)
+    val year = calendar.get(Calendar.YEAR)
+    val month = calendar.get(Calendar.MONTH) + 1
+    val day = calendar.get(Calendar.DAY_OF_MONTH)
+    return formatScrubberLabel(year = year, month = month, day = day, density = density)
+}
+
+private fun PhotoFeedSectionHeader.scrubberFallbackLabel(): String {
+    val resolvedYear = year ?: anchorTimeMillis?.let { calendarFor(it).get(Calendar.YEAR) } ?: return title
+    return when (granularity) {
+        PhotoFeedTimeGranularity.YEAR -> formatYearTitle(resolvedYear)
+        PhotoFeedTimeGranularity.MONTH -> {
+            val resolvedMonth = month
+                ?: anchorTimeMillis?.let { calendarFor(it).get(Calendar.MONTH) + 1 }
+                ?: return title
+            formatMonthScrubberLabel(resolvedYear, resolvedMonth)
+        }
+        PhotoFeedTimeGranularity.DAY -> title
+    }
+}
+
+private fun formatYearTitle(year: Int): String = "${year}年"
+
 private fun formatMonthTitle(year: Int, month: Int): String = "${year}年${month}月"
 
 private fun formatDayTitle(month: Int, day: Int): String = "${month}月${day}日"
+
+private fun formatMonthScrubberLabel(year: Int, month: Int): String = "${year}年${month}月"
 
 private fun formatDayScrubberLabel(year: Int, month: Int, day: Int): String {
     return "${year}年${month}月${day}日"

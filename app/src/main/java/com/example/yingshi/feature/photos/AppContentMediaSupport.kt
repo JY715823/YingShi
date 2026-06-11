@@ -147,14 +147,7 @@ internal fun AppContentMediaSource?.thumbnailModelUrl(
             originalUrl,
             coverUrl,
         )
-        AppMediaType.VIDEO -> firstNotBlank(
-            thumbnailUrl.takeIf { canUseAsVideoPoster(thumbnailUrl, mimeType) },
-            coverUrl.takeIf { canUseAsVideoPoster(coverUrl, mimeType) },
-            mediaUrl.takeIf { canUseAsVideoPoster(mediaUrl, mimeType) },
-            originalUrl.takeIf { canUseAsVideoPoster(originalUrl, mimeType) },
-            videoUrl,
-            mediaUrl,
-        )
+        AppMediaType.VIDEO -> videoPosterImageUrl(mediaType) ?: videoPosterVideoUrl(mediaType)
     }
 }
 
@@ -169,13 +162,59 @@ internal fun AppContentMediaSource?.thumbnailModelCacheKey(
             originalCacheKey,
             coverCacheKey,
         )
-        AppMediaType.VIDEO -> firstNotBlank(
-            thumbnailCacheKey,
-            coverCacheKey,
-            mediaCacheKey,
-            originalCacheKey,
-            videoCacheKey,
-        )
+        AppMediaType.VIDEO -> videoPosterImageCacheKey(mediaType) ?: videoPosterVideoCacheKey(mediaType)
+    }
+}
+
+internal fun AppContentMediaSource?.videoPosterImageUrl(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    return firstNotBlank(
+        thumbnailUrl.takeIf { canUseAsVideoPoster(thumbnailUrl, mimeType) },
+        coverUrl.takeIf { canUseAsVideoPoster(coverUrl, mimeType) },
+        mediaUrl.takeIf { canUseAsVideoPoster(mediaUrl, mimeType) },
+        originalUrl.takeIf { canUseAsVideoPoster(originalUrl, mimeType) },
+    )
+}
+
+internal fun AppContentMediaSource?.videoPosterImageCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    val posterImageUrl = videoPosterImageUrl(mediaType) ?: return null
+    return when (posterImageUrl) {
+        thumbnailUrl -> thumbnailCacheKey
+        coverUrl -> coverCacheKey
+        mediaUrl -> mediaCacheKey
+        originalUrl -> originalCacheKey
+        else -> null
+    }
+}
+
+internal fun AppContentMediaSource?.videoPosterVideoUrl(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    return firstNotBlank(
+        videoUrl,
+        mediaUrl.takeIf { looksLikeVideoUrl(it) },
+        originalUrl.takeIf { looksLikeVideoUrl(it) },
+        thumbnailUrl.takeIf { looksLikeVideoUrl(it) },
+    )
+}
+
+internal fun AppContentMediaSource?.videoPosterVideoCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    val posterVideoUrl = videoPosterVideoUrl(mediaType) ?: return null
+    return when (posterVideoUrl) {
+        videoUrl -> videoCacheKey
+        mediaUrl -> mediaCacheKey
+        originalUrl -> originalCacheKey
+        thumbnailUrl -> thumbnailCacheKey
+        else -> null
     }
 }
 

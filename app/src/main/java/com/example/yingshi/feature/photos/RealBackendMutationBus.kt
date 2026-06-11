@@ -92,6 +92,14 @@ private val RealBackendContentScopes = setOf(
     RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
 )
 
+private val RealBackendContentScopesWithoutPhotoFeed = setOf(
+    RealBackendRefreshScope.ALBUMS,
+    RealBackendRefreshScope.POST_DETAIL,
+    RealBackendRefreshScope.MEDIA_MANAGEMENT,
+    RealBackendRefreshScope.TRASH,
+    RealBackendRefreshScope.SYSTEM_MEDIA_DESTINATIONS,
+)
+
 private val RealBackendPostScopes = setOf(
     RealBackendRefreshScope.PHOTO_FEED,
     RealBackendRefreshScope.ALBUMS,
@@ -140,6 +148,19 @@ internal fun notifyRealBackendCommentChanged(
     RealBackendMutationBus.notifyChanged(
         RealBackendMutationEvent(
             scopes = RealBackendCommentScopes,
+            postIds = postIds,
+            mediaIds = mediaIds,
+        ),
+    )
+}
+
+internal fun notifyRealBackendContentChangedWithoutPhotoFeed(
+    postIds: Set<String> = emptySet(),
+    mediaIds: Set<String> = emptySet(),
+) {
+    RealBackendMutationBus.notifyChanged(
+        RealBackendMutationEvent(
+            scopes = RealBackendContentScopesWithoutPhotoFeed,
             postIds = postIds,
             mediaIds = mediaIds,
         ),

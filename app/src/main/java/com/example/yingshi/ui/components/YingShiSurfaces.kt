@@ -74,22 +74,12 @@ data class YingShiNotice(
 fun YingShiMistBackground(
     modifier: Modifier = Modifier,
     showWaves: Boolean = true,
+    variant: YingShiBackdropVariant = YingShiBackdropVariant.SHELL,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        colors.appBackground,
-                        colors.sectionBackground.copy(alpha = 0.72f),
-                        colors.glowWash,
-                        colors.appBackground,
-                    ),
-                ),
-            ),
+    YingShiAuroraBackdrop(
+        modifier = modifier.fillMaxSize(),
+        variant = variant,
     ) {
         if (showWaves) {
             MistWaveCanvas(modifier = Modifier.matchParentSize())

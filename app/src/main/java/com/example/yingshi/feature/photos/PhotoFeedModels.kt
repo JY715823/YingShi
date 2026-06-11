@@ -72,6 +72,17 @@ enum class PhotoFeedDensity(
     OVERVIEW_16(columns = 16, label = "16列"),
 }
 
+enum class PhotoFeedPresentation {
+    MAIN_STREAM,
+    EMBEDDED,
+}
+
+enum class PhotoFeedTimeGranularity {
+    YEAR,
+    MONTH,
+    DAY,
+}
+
 sealed interface PhotoFeedBlock {
     val key: String
 }
@@ -79,12 +90,18 @@ sealed interface PhotoFeedBlock {
 data class PhotoFeedSectionHeader(
     override val key: String,
     val title: String,
+    val granularity: PhotoFeedTimeGranularity,
+    val year: Int? = null,
+    val month: Int? = null,
     val anchorTimeMillis: Long? = null,
 ) : PhotoFeedBlock
 
 data class PhotoFeedDayHeader(
     override val key: String,
     val title: String,
+    val year: Int,
+    val month: Int,
+    val day: Int,
     val scrubberLabel: String = title,
     val anchorTimeMillis: Long? = null,
 ) : PhotoFeedBlock

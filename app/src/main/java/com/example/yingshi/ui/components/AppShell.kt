@@ -62,6 +62,7 @@ fun AppShellScaffold(
     onCenterAction: () -> Unit = {},
     centerActionEnabled: Boolean = true,
     showBottomBar: Boolean = true,
+    bottomBarOverride: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -72,7 +73,7 @@ fun AppShellScaffold(
         contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
             if (showBottomBar) {
-                FloatingBottomBar(
+                bottomBarOverride?.invoke() ?: FloatingBottomBar(
                     selectedDestination = selectedDestination,
                     onDestinationSelected = onDestinationSelected,
                     onCenterAction = onCenterAction,

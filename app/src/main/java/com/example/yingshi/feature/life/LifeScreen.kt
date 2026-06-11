@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -45,6 +46,7 @@ fun LifeScreen(
     YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
         showWaves = false,
+        variant = YingShiBackdropVariant.LIFE,
     ) {
         Column(
             modifier = Modifier

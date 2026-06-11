@@ -41,31 +41,41 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -80,18 +90,108 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.yingShiMemoryGlow
+import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
+import com.example.yingshi.ui.theme.YingShiColors
+import com.example.yingshi.ui.theme.YingShiMotion
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 private const val PhotoFeedLeadingItemCount = 0
 private const val PhotoFeedPendingTargetRefreshGraceMillis = 450L
 private const val PhotoFeedNewImportBadgeMillis = 12_000L
+private const val PhotoFeedDensityMorphVisibleLimit = 28
+private const val PhotoFeedDensitySourceVisibleLimit = 48
+private const val PhotoFeedDensityTransitionThumbnailMax = 256
+
+private enum class PhotoFeedDensityTransitionStage {
+    IDLE,
+    PREVIEWING,
+    REBOUNDING,
+    COMMITTING,
+    SETTLING,
+}
+
+private data class PhotoFeedDensityTransitionRequest(
+    val token: Int,
+    val fromDensity: PhotoFeedDensity,
+    val toDensity: PhotoFeedDensity,
+    val anchorMediaId: String?,
+    val overlayCandidates: List<PhotoFeedDensityTransitionCandidate>,
+    val releasePreviewBoundsByMediaId: Map<String, Rect>,
+)
+
+private data class PhotoFeedDensityTransitionCandidate(
+    val item: PhotoFeedItem,
+    val startBounds: Rect,
+    val distanceScore: Float,
+)
+
+private data class PhotoFeedDensityTransitionOverlayEntry(
+    val item: PhotoFeedItem,
+    val startBounds: Rect,
+    val endBounds: Rect,
+)
+
+private data class PhotoFeedHeaderTransitionOverlayEntry(
+    val snapshot: PhotoFeedVisibleHeaderSnapshot,
+    val startBounds: Rect,
+    val endBounds: Rect,
+    val matchedFromSource: Boolean,
+)
+
+private sealed interface PhotoFeedVisibleHeaderSnapshot {
+    val bounds: Rect
+
+    data class Section(
+        val header: PhotoFeedSectionHeader,
+        val density: PhotoFeedDensity,
+        val presentation: PhotoFeedPresentation,
+        override val bounds: Rect,
+    ) : PhotoFeedVisibleHeaderSnapshot
+
+    data class Day(
+        val header: PhotoFeedDayHeader,
+        val density: PhotoFeedDensity,
+        val presentation: PhotoFeedPresentation,
+        override val bounds: Rect,
+    ) : PhotoFeedVisibleHeaderSnapshot
+
+    data class TimeBucket(
+        val header: PhotoFeedTimeBucketHeader,
+        val density: PhotoFeedDensity,
+        override val bounds: Rect,
+    ) : PhotoFeedVisibleHeaderSnapshot
+
+    data class Collaborator(
+        val identity: CollaboratorIdentityUiModel,
+        override val bounds: Rect,
+    ) : PhotoFeedVisibleHeaderSnapshot
+
+    data class Divider(
+        override val bounds: Rect,
+    ) : PhotoFeedVisibleHeaderSnapshot
+}
+
+private data class PhotoFeedTimeScrubberSnapshot(
+    val progress: Float,
+    val label: String,
+    val showLabel: Boolean,
+    val yearMarkers: List<PhotoFeedScrubberYearMarker>,
+)
+
+private data class PhotoFeedDensityPreviewScene(
+    val sourceLiveAlpha: Float,
+    val sourceOverlayAlpha: Float,
+    val targetOverlayAlpha: Float,
+    val liveTargetAlpha: Float,
+    val liveHeaderScale: Float,
+    val targetOverlayScale: Float,
+)
 
 @Composable
 fun PhotoFeedScreen(
@@ -113,8 +213,11 @@ fun PhotoFeedScreen(
     allowOpenMediaWhileSelecting: Boolean = true,
     disabledMediaIds: Set<String> = emptySet(),
     disabledSelectionLabel: String? = null,
+    presentation: PhotoFeedPresentation = PhotoFeedPresentation.EMBEDDED,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
     val settingsState = SettingsRepository.getSettingsState()
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     val currentCollaboratorUserId = collaboratorDirectory.currentUser?.userId
@@ -168,6 +271,9 @@ fun PhotoFeedScreen(
     val mediaPositionLookup = remember(displayFeedItems) {
         displayFeedItems.mapIndexed { index, item -> item.mediaId to index }.toMap()
     }
+    val mediaById = remember(displayFeedItems) {
+        displayFeedItems.associateBy { it.mediaId }
+    }
     LaunchedEffect(displayFeedItems) {
         pageStateStore.visibleMediaIds = displayFeedItems.mapTo(linkedSetOf()) { it.mediaId }
     }
@@ -181,6 +287,39 @@ fun PhotoFeedScreen(
     var selectionFlashByMediaId by remember { mutableStateOf<Map<String, SelectionNumberFlash>>(emptyMap()) }
     var highlightedTargetMediaId by remember { mutableStateOf<String?>(null) }
     var highlightedTargetNonce by remember { mutableIntStateOf(0) }
+    var feedViewportBounds by remember { mutableStateOf<Rect?>(null) }
+    val itemBoundsByMediaId = remember { mutableStateMapOf<String, Rect>() }
+    var densityTransitionStage by remember { mutableStateOf(PhotoFeedDensityTransitionStage.IDLE) }
+    var densityPreviewState by remember { mutableStateOf<DiscreteZoomPreviewState<PhotoFeedDensity>?>(null) }
+    var densityTransitionAnchorMediaId by remember { mutableStateOf<String?>(null) }
+    var densityTransitionPreviewCandidates by remember {
+        mutableStateOf<List<PhotoFeedDensityTransitionCandidate>>(emptyList())
+    }
+    var densityTransitionSourceVisibleCandidates by remember {
+        mutableStateOf<List<PhotoFeedDensityTransitionCandidate>>(emptyList())
+    }
+    var densityTransitionToken by remember { mutableIntStateOf(0) }
+    var densityTransitionRequest by remember { mutableStateOf<PhotoFeedDensityTransitionRequest?>(null) }
+    var densityTransitionOverlayEntries by remember {
+        mutableStateOf<List<PhotoFeedDensityTransitionOverlayEntry>>(emptyList())
+    }
+    var densityTransitionOverlayAnimationActive by remember { mutableStateOf(false) }
+    var densityTransitionPreviewProgress by remember { mutableStateOf(0f) }
+    var densityTransitionReleaseProgress by remember { mutableStateOf(0f) }
+    var densityTransitionTemporarilySuspendInlineVideo by remember { mutableStateOf(false) }
+    var densityTransitionSourceHeaderSnapshots by remember {
+        mutableStateOf<List<PhotoFeedVisibleHeaderSnapshot>>(emptyList())
+    }
+    var densityTransitionSourceScrubberSnapshot by remember { mutableStateOf<PhotoFeedTimeScrubberSnapshot?>(null) }
+    var densityTransitionTargetHeaderSnapshots by remember {
+        mutableStateOf<List<PhotoFeedVisibleHeaderSnapshot>>(emptyList())
+    }
+    var densityTransitionTargetScrubberSnapshot by remember { mutableStateOf<PhotoFeedTimeScrubberSnapshot?>(null) }
+    var densityTransitionTargetLocalBoundsByMediaId by remember {
+        mutableStateOf<Map<String, Rect>>(emptyMap())
+    }
+    val densityMorphProgress = remember { Animatable(1f) }
+    val densityHeaderRevealAlpha = remember { Animatable(1f) }
 
     LaunchedEffect(selectionState.selectedMediaIds) {
         liveSelectedIds.value = selectionState.selectedMediaIds
@@ -195,11 +334,21 @@ fun PhotoFeedScreen(
     val density = PhotoFeedDensity.valueOf(
         densityName ?: settingsState.defaultPhotoFeedDensity.name,
     )
+    val densityTransitionEnabled = presentation == PhotoFeedPresentation.MAIN_STREAM &&
+        displayFeedItems.isNotEmpty() &&
+        !selectionState.isInSelectionMode &&
+        !isLoadingMore &&
+        loadMoreErrorMessage == null
+    val densityTransitionAnimated = densityTransitionEnabled && motionEnabled
     LaunchedEffect(densityName) {
         pageStateStore.savedDensityName = densityName
     }
     val gridEdgePadding = rowSpacing(density)
     val thumbnailRequestSize = photoFeedThumbnailRequestSize(density)
+    val transitionThumbnailRequestSize = minOf(
+        thumbnailRequestSize,
+        PhotoFeedDensityTransitionThumbnailMax,
+    )
     PrefetchPhotoFeedThumbnails(
         feedItems = displayFeedItems,
         density = density,
@@ -207,7 +356,8 @@ fun PhotoFeedScreen(
     )
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
         !selectionState.isInSelectionMode &&
-        density.columns <= 4
+        density.columns <= 4 &&
+        !densityTransitionTemporarilySuspendInlineVideo
     val blocks = remember(
         displayFeedItems,
         density,
@@ -222,6 +372,26 @@ fun PhotoFeedScreen(
             selectedUserIds = selectedCollaboratorUserIds,
             timeBucketHours = timeBucketHours,
         )
+    }
+    val densityTransitionBlockCache = remember(
+        displayFeedItems,
+        collaboratorDirectory,
+        selectedCollaboratorUserIds,
+        timeBucketHours,
+    ) {
+        mutableMapOf<PhotoFeedDensity, List<PhotoFeedBlock>>()
+    }
+    fun resolveBlocksForDensity(targetDensity: PhotoFeedDensity): List<PhotoFeedBlock> {
+        if (targetDensity == density) return blocks
+        return densityTransitionBlockCache.getOrPut(targetDensity) {
+            buildCollaborativePhotoFeedBlocks(
+                items = displayFeedItems,
+                density = targetDensity,
+                directory = collaboratorDirectory,
+                selectedUserIds = selectedCollaboratorUserIds,
+                timeBucketHours = timeBucketHours,
+            )
+        }
     }
     val rowKeyToMediaIds = remember(blocks) {
         buildMap {
@@ -310,6 +480,45 @@ fun PhotoFeedScreen(
             }
         }
     }
+    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+        val context = LocalContext.current
+        val sessionVersion = AuthSessionManager.sessionVersion
+        val accessToken = remember(sessionVersion) {
+            AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
+        }
+        LaunchedEffect(visibleInlineVideoIds, mediaById, accessToken, thumbnailRequestSize) {
+            val imageLoader = context.imageLoader
+            visibleInlineVideoIds.forEach { mediaId ->
+                val item = mediaById[mediaId] ?: return@forEach
+                val mediaSource = item.mediaSource
+                val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
+                val posterImageCacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType)
+                if (!posterImageUrl.isNullOrBlank()) {
+                    backendMediaImageRequest(
+                        context = context,
+                        url = posterImageUrl,
+                        accessToken = accessToken,
+                        memoryCacheKey = photoFeedPreviewMemoryCacheKey(
+                            url = posterImageUrl,
+                            cacheKey = posterImageCacheKey,
+                            requestSize = transitionThumbnailRequestSize,
+                        ),
+                        placeholderMemoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
+                        diskCacheKey = posterImageCacheKey,
+                        size = transitionThumbnailRequestSize,
+                    )?.let(imageLoader::enqueue)
+                    return@forEach
+                }
+                val posterVideoUrl = mediaSource.videoPosterVideoUrl(item.mediaType) ?: return@forEach
+                prefetchVideoPoster(
+                    context = context,
+                    url = posterVideoUrl,
+                    accessToken = accessToken,
+                    cacheKey = mediaSource.videoPosterVideoCacheKey(item.mediaType),
+                )
+            }
+        }
+    }
     val hitTestAdapter = remember(
         listState,
         blocks,
@@ -365,12 +574,13 @@ fun PhotoFeedScreen(
     }
     val coroutineScope = rememberCoroutineScope()
     var lastRequestedAnchorIndex by remember { mutableIntStateOf(-1) }
-    val currentVisibleDateLabel by remember(listState, blocks, displayFeedItems) {
+    val currentVisibleDateLabel by remember(listState, blocks, displayFeedItems, density) {
         derivedStateOf {
             resolveCurrentVisibleDateLabel(
                 itemIndex = listState.firstVisibleItemIndex,
                 blocks = blocks,
                 fallbackItems = displayFeedItems,
+                density = density,
             )
         }
     }
@@ -391,6 +601,555 @@ fun PhotoFeedScreen(
         scrubberDragLabel.ifBlank { currentVisibleDateLabel }
     } else {
         currentVisibleDateLabel
+    }
+    val densityTransitionOverlayActive = densityTransitionOverlayEntries.isNotEmpty()
+    val densityTransitionActiveOverlayProgress = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING -> densityTransitionPreviewProgress
+        PhotoFeedDensityTransitionStage.REBOUNDING -> if (densityTransitionOverlayAnimationActive) {
+            densityMorphProgress.value
+        } else {
+            densityTransitionPreviewProgress
+        }
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> if (densityTransitionOverlayAnimationActive) {
+            densityMorphProgress.value
+        } else {
+            densityTransitionReleaseProgress
+        }
+
+        PhotoFeedDensityTransitionStage.SETTLING -> 1f
+        else -> 0f
+    }
+    val densityTransitionSourceProgress = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING -> densityTransitionPreviewProgress
+        PhotoFeedDensityTransitionStage.REBOUNDING -> densityMorphProgress.value
+        else -> 0f
+    }
+    val densityTransitionPreviewTargetProgress = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING -> densityTransitionPreviewProgress
+        PhotoFeedDensityTransitionStage.REBOUNDING -> densityMorphProgress.value
+        else -> 0f
+    }
+    val densityTransitionTargetMorphProgress = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING -> densityTransitionPreviewProgress
+        PhotoFeedDensityTransitionStage.REBOUNDING -> densityMorphProgress.value
+        PhotoFeedDensityTransitionStage.COMMITTING -> if (densityTransitionOverlayAnimationActive) {
+            lerpPhotoFeedFloat(
+                start = densityTransitionReleaseProgress,
+                end = 1f,
+                progress = densityMorphProgress.value,
+            )
+        } else {
+            densityTransitionReleaseProgress
+        }
+
+        PhotoFeedDensityTransitionStage.SETTLING,
+        PhotoFeedDensityTransitionStage.IDLE,
+        -> 1f
+    }
+    val densityTransitionSourceLiveAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> photoFeedDensitySourceSceneAlpha(densityTransitionSourceProgress)
+
+        PhotoFeedDensityTransitionStage.IDLE -> 1f
+        else -> 0f
+    }
+    val densityTransitionTargetPreviewAlpha = photoFeedDensityTargetSceneAlpha(
+        progress = densityTransitionPreviewTargetProgress,
+    )
+    val densityTransitionReleaseTargetAlpha = photoFeedDensityTargetSceneAlpha(
+        progress = densityTransitionReleaseProgress,
+    )
+    val densityTransitionHasTargetSupplementaryOverlay =
+        densityTransitionTargetHeaderSnapshots.isNotEmpty() ||
+            densityTransitionTargetScrubberSnapshot != null
+    val densityTransitionTargetLiveAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.COMMITTING -> if (densityTransitionOverlayAnimationActive) {
+            if (densityTransitionHasTargetSupplementaryOverlay) {
+                photoFeedDensityCommitLiveTargetAlpha(densityMorphProgress.value)
+            } else {
+                photoFeedDensityCommitFallbackLiveTargetAlpha(
+                    releaseAlpha = densityTransitionReleaseTargetAlpha,
+                    progress = densityMorphProgress.value,
+                )
+            }
+        } else {
+            densityTransitionReleaseTargetAlpha
+        }
+        PhotoFeedDensityTransitionStage.SETTLING -> densityHeaderRevealAlpha.value
+        PhotoFeedDensityTransitionStage.IDLE -> 1f
+        else -> 0f
+    }
+    val densityTransitionReleaseSourceMediaAlpha = photoFeedDensitySourceMediaAlpha(
+        progress = densityTransitionReleaseProgress,
+    )
+    val densityTransitionSourceOverlayAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> 0f
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> if (densityTransitionOverlayAnimationActive) {
+            photoFeedDensityCommitSourceOverlayAlpha(
+                releaseAlpha = densityTransitionReleaseSourceMediaAlpha,
+                progress = densityMorphProgress.value,
+            )
+        } else {
+            densityTransitionReleaseSourceMediaAlpha
+        }
+
+        else -> 0f
+    }
+    val densityTransitionSourceSupplementaryOverlayAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> 0f
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> if (densityTransitionOverlayAnimationActive) {
+            photoFeedDensityCommitSourceOverlayAlpha(
+                releaseAlpha = photoFeedDensitySourceSupplementaryAlpha(densityTransitionReleaseProgress),
+                progress = densityMorphProgress.value,
+            )
+        } else {
+            photoFeedDensitySourceSupplementaryAlpha(densityTransitionReleaseProgress)
+        }
+
+        else -> 0f
+    }
+    val densityTransitionPreviewTargetHeaderScale = 1f
+    val densityTransitionCommitTargetHeaderScale = 1f
+    val densityTransitionSettleHeaderScale = 1f
+    val densityTransitionTargetOverlayAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING -> densityTransitionTargetPreviewAlpha
+        PhotoFeedDensityTransitionStage.REBOUNDING -> densityTransitionTargetPreviewAlpha
+        PhotoFeedDensityTransitionStage.COMMITTING -> if (densityTransitionOverlayAnimationActive) {
+            photoFeedDensityCommitTargetOverlayAlpha(
+                releaseAlpha = densityTransitionReleaseTargetAlpha,
+                progress = densityMorphProgress.value,
+            )
+        } else {
+            densityTransitionReleaseTargetAlpha
+        }
+
+        PhotoFeedDensityTransitionStage.SETTLING -> 1f - densityHeaderRevealAlpha.value
+        PhotoFeedDensityTransitionStage.IDLE -> 0f
+    }
+    val densityTransitionTargetSupplementaryOverlayAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> densityTransitionTargetOverlayAlpha * 0.82f
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> densityTransitionTargetOverlayAlpha
+        PhotoFeedDensityTransitionStage.SETTLING -> 1f - densityHeaderRevealAlpha.value
+        else -> 0f
+    }
+    val densityTransitionTargetOverlayScale = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING -> densityTransitionPreviewTargetHeaderScale
+        PhotoFeedDensityTransitionStage.COMMITTING -> densityTransitionCommitTargetHeaderScale
+        PhotoFeedDensityTransitionStage.SETTLING -> densityTransitionSettleHeaderScale
+        PhotoFeedDensityTransitionStage.IDLE -> 1f
+    }
+    val densityTransitionFallbackPreviewActive = (
+        densityTransitionStage == PhotoFeedDensityTransitionStage.PREVIEWING ||
+            densityTransitionStage == PhotoFeedDensityTransitionStage.REBOUNDING
+        ) && densityTransitionOverlayEntries.isEmpty()
+    val densityTransitionContentScale = if (densityTransitionFallbackPreviewActive) {
+        photoFeedDensityFallbackContentScale(
+            previewState = densityPreviewState,
+            progress = densityTransitionSourceProgress,
+        )
+    } else {
+        1f
+    }
+    val densityTransitionSourceOverlayScale = 1f
+    val densityTransitionPreviewScene = PhotoFeedDensityPreviewScene(
+        sourceLiveAlpha = densityTransitionSourceLiveAlpha,
+        sourceOverlayAlpha = densityTransitionSourceOverlayAlpha,
+        targetOverlayAlpha = densityTransitionTargetOverlayAlpha,
+        liveTargetAlpha = densityTransitionTargetLiveAlpha,
+        liveHeaderScale = when (densityTransitionStage) {
+            PhotoFeedDensityTransitionStage.SETTLING -> densityTransitionSettleHeaderScale
+            else -> 1f
+        },
+        targetOverlayScale = densityTransitionTargetOverlayScale,
+    )
+    val densityTransitionHeaderOverlayProgress = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING -> densityTransitionPreviewTargetProgress
+        PhotoFeedDensityTransitionStage.REBOUNDING -> densityTransitionPreviewTargetProgress
+        PhotoFeedDensityTransitionStage.COMMITTING -> densityTransitionTargetMorphProgress
+        PhotoFeedDensityTransitionStage.SETTLING -> 1f
+        PhotoFeedDensityTransitionStage.IDLE -> 0f
+    }
+    val densityTransitionTargetHeaderMorphEntries = remember(
+        densityTransitionSourceHeaderSnapshots,
+        densityTransitionTargetHeaderSnapshots,
+    ) {
+        buildPhotoFeedHeaderTransitionOverlayEntries(
+            sourceSnapshots = densityTransitionSourceHeaderSnapshots,
+            targetSnapshots = densityTransitionTargetHeaderSnapshots,
+        )
+    }
+    val densityTransitionMatchedHeaderKeys = remember(
+        densityTransitionTargetHeaderMorphEntries,
+    ) {
+        densityTransitionTargetHeaderMorphEntries
+            .filter { it.matchedFromSource }
+            .mapNotNull { entry -> photoFeedHeaderTransitionKey(entry.snapshot) }
+            .toSet()
+    }
+    val densityTransitionLiveSupplementaryAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> photoFeedDensitySourceSupplementaryAlpha(densityTransitionSourceProgress)
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> densityTransitionTargetLiveAlpha
+        PhotoFeedDensityTransitionStage.SETTLING -> densityTransitionPreviewScene.liveTargetAlpha
+        PhotoFeedDensityTransitionStage.IDLE -> 1f
+    }
+    val densityTransitionLiveMediaAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> photoFeedDensitySourceMediaAlpha(densityTransitionSourceProgress)
+
+        PhotoFeedDensityTransitionStage.IDLE,
+        -> 1f
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> 0.88f
+        PhotoFeedDensityTransitionStage.SETTLING -> lerpPhotoFeedFloat(
+            start = 0.88f,
+            end = 1f,
+            progress = densityHeaderRevealAlpha.value,
+        )
+    }
+    fun resetDensityTransitionState() {
+        densityPreviewState = null
+        densityTransitionAnchorMediaId = null
+        densityTransitionPreviewCandidates = emptyList()
+        densityTransitionSourceVisibleCandidates = emptyList()
+        densityTransitionRequest = null
+        densityTransitionOverlayEntries = emptyList()
+        densityTransitionOverlayAnimationActive = false
+        densityTransitionPreviewProgress = 0f
+        densityTransitionReleaseProgress = 0f
+        densityTransitionTemporarilySuspendInlineVideo = false
+        densityTransitionSourceHeaderSnapshots = emptyList()
+        densityTransitionSourceScrubberSnapshot = null
+        densityTransitionTargetHeaderSnapshots = emptyList()
+        densityTransitionTargetScrubberSnapshot = null
+        densityTransitionTargetLocalBoundsByMediaId = emptyMap()
+        densityTransitionStage = PhotoFeedDensityTransitionStage.IDLE
+    }
+    fun startDensityPreviewFallback(previewState: DiscreteZoomPreviewState<PhotoFeedDensity>) {
+        densityPreviewState = previewState
+        densityTransitionAnchorMediaId = null
+        densityTransitionPreviewCandidates = emptyList()
+        densityTransitionOverlayEntries = emptyList()
+        densityTransitionTargetHeaderSnapshots = emptyList()
+        densityTransitionTargetScrubberSnapshot = null
+        densityTransitionTargetLocalBoundsByMediaId = emptyMap()
+        densityTransitionOverlayAnimationActive = false
+        densityTransitionPreviewProgress = previewState.renderProgress
+        densityTransitionTemporarilySuspendInlineVideo = true
+        densityTransitionStage = PhotoFeedDensityTransitionStage.PREVIEWING
+    }
+    fun syncDensityPreview(previewState: DiscreteZoomPreviewState<PhotoFeedDensity>) {
+        val viewportBounds = feedViewportBounds ?: run {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        val targetBlocks = resolveBlocksForDensity(previewState.targetLevel)
+        val shouldInitializePreview = densityTransitionPreviewCandidates.isEmpty() ||
+            densityTransitionAnchorMediaId == null ||
+            densityPreviewState?.sourceLevel != previewState.sourceLevel ||
+            densityPreviewState?.targetLevel != previewState.targetLevel ||
+            densityTransitionTargetLocalBoundsByMediaId.isEmpty()
+        val visibleCandidates = if (shouldInitializePreview) {
+            visiblePhotoFeedDensityTransitionCandidates(
+                blocks = blocks,
+                listState = listState,
+                itemBoundsByMediaId = itemBoundsByMediaId,
+                viewportBounds = viewportBounds,
+                density = density,
+                densityScope = densityScope,
+            )
+        } else {
+            emptyList()
+        }
+        val candidates = if (shouldInitializePreview) {
+            visibleCandidates.take(PhotoFeedDensityMorphVisibleLimit)
+        } else {
+            densityTransitionPreviewCandidates
+        }
+        if (candidates.isEmpty()) {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        val candidateMediaIds = candidates.mapTo(linkedSetOf()) { it.item.mediaId }
+        val anchorMediaId = listOfNotNull(
+            if (shouldInitializePreview) null else densityTransitionAnchorMediaId,
+            densityTransitionAnchorMediaId,
+            candidates.firstOrNull()?.item?.mediaId,
+            pageStateStore.savedFirstVisibleMediaId,
+        ).firstOrNull { it in candidateMediaIds } ?: run {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        val targetLocalBoundsByMediaId = if (shouldInitializePreview) {
+            buildPhotoFeedPredictedLocalBoundsByMediaId(
+                blocks = resolveBlocksForDensity(previewState.targetLevel),
+                targetDensity = previewState.targetLevel,
+                viewportBounds = viewportBounds,
+                densityScope = densityScope,
+                presentation = presentation,
+            )
+        } else {
+            densityTransitionTargetLocalBoundsByMediaId
+        }
+        val anchorStartBounds = candidates.firstOrNull { it.item.mediaId == anchorMediaId }?.startBounds
+            ?: run {
+                startDensityPreviewFallback(previewState)
+                return
+            }
+        if (densityTransitionSourceHeaderSnapshots.isEmpty()) {
+            densityTransitionSourceHeaderSnapshots = captureVisiblePhotoFeedHeaderSnapshots(
+                blocks = blocks,
+                listState = listState,
+                viewportBounds = viewportBounds,
+                density = density,
+                presentation = presentation,
+                contentStartPx = edgePaddingPx,
+            )
+        }
+        if (densityTransitionSourceScrubberSnapshot == null && scrollAnchors.size > 1) {
+            densityTransitionSourceScrubberSnapshot = PhotoFeedTimeScrubberSnapshot(
+                progress = displayedScrubberProgress,
+                label = displayedScrubberLabel,
+                showLabel = scrubberInteracting,
+                yearMarkers = scrubberYearMarkers,
+            )
+        }
+        val targetHeaderSnapshots = if (
+            shouldInitializePreview ||
+            densityTransitionTargetHeaderSnapshots.isEmpty()
+        ) {
+            buildPhotoFeedPredictedHeaderSnapshots(
+                blocks = targetBlocks,
+                targetDensity = previewState.targetLevel,
+                viewportBounds = viewportBounds,
+                densityScope = densityScope,
+                presentation = presentation,
+                anchorMediaId = anchorMediaId,
+                anchorStartBounds = anchorStartBounds,
+                targetLocalBoundsByMediaId = targetLocalBoundsByMediaId,
+            )
+        } else {
+            densityTransitionTargetHeaderSnapshots
+        }
+        val targetScrubberSnapshot = if (
+            shouldInitializePreview ||
+            densityTransitionTargetScrubberSnapshot == null
+        ) {
+            buildPhotoFeedTargetScrubberSnapshot(
+                blocks = targetBlocks,
+                density = previewState.targetLevel,
+                fallbackItems = displayFeedItems,
+                anchorMediaId = anchorMediaId,
+                currentProgress = currentScrollProgress,
+            )
+        } else {
+            densityTransitionTargetScrubberSnapshot
+        }
+        val overlayEntries = buildPhotoFeedDensityPreviewOverlayEntries(
+            candidates = candidates,
+            targetLocalBoundsByMediaId = targetLocalBoundsByMediaId,
+            anchorMediaId = anchorMediaId,
+        )
+        if (overlayEntries.isEmpty()) {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        if (shouldInitializePreview) {
+            densityTransitionTargetLocalBoundsByMediaId = targetLocalBoundsByMediaId
+        }
+        densityPreviewState = previewState
+        densityTransitionAnchorMediaId = anchorMediaId
+        densityTransitionPreviewCandidates = candidates
+        densityTransitionOverlayEntries = overlayEntries
+        densityTransitionTargetHeaderSnapshots = targetHeaderSnapshots
+        densityTransitionTargetScrubberSnapshot = targetScrubberSnapshot
+        densityTransitionOverlayAnimationActive = false
+        densityTransitionPreviewProgress = previewState.renderProgress
+        densityTransitionTemporarilySuspendInlineVideo = true
+        densityTransitionStage = PhotoFeedDensityTransitionStage.PREVIEWING
+    }
+    fun reboundDensityPreview(finalPreviewState: DiscreteZoomPreviewState<PhotoFeedDensity>?) {
+        val previewState = finalPreviewState ?: densityPreviewState ?: run {
+            resetDensityTransitionState()
+            return
+        }
+        densityPreviewState = previewState
+        densityTransitionOverlayAnimationActive = false
+        densityTransitionStage = PhotoFeedDensityTransitionStage.REBOUNDING
+        coroutineScope.launch {
+            densityTransitionOverlayAnimationActive = true
+            densityMorphProgress.snapTo(previewState.renderProgress)
+            densityMorphProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = if (densityTransitionAnimated) motion.densityPreviewMillis else 0,
+                    easing = motion.easing,
+                ),
+            )
+            resetDensityTransitionState()
+        }
+    }
+    fun beginDensityTransition(
+        fromDensity: PhotoFeedDensity,
+        toDensity: PhotoFeedDensity,
+        finalPreviewState: DiscreteZoomPreviewState<PhotoFeedDensity>?,
+    ) {
+        val viewportBounds = feedViewportBounds
+        val previewState = finalPreviewState
+        val candidates = densityTransitionPreviewCandidates.ifEmpty {
+            visiblePhotoFeedDensityTransitionCandidates(
+                blocks = blocks,
+                listState = listState,
+                itemBoundsByMediaId = itemBoundsByMediaId,
+                viewportBounds = viewportBounds,
+                density = density,
+                densityScope = densityScope,
+            ).take(PhotoFeedDensityMorphVisibleLimit)
+        }
+        if (densityTransitionSourceVisibleCandidates.isEmpty()) {
+            densityTransitionSourceVisibleCandidates = visiblePhotoFeedDensityTransitionCandidates(
+                blocks = blocks,
+                listState = listState,
+                itemBoundsByMediaId = itemBoundsByMediaId,
+                viewportBounds = viewportBounds,
+                density = density,
+                densityScope = densityScope,
+            ).take(PhotoFeedDensitySourceVisibleLimit)
+        }
+        if (densityTransitionSourceHeaderSnapshots.isEmpty() && previewState != null && viewportBounds != null) {
+            densityTransitionSourceHeaderSnapshots = captureVisiblePhotoFeedHeaderSnapshots(
+                blocks = blocks,
+                listState = listState,
+                viewportBounds = viewportBounds,
+                density = fromDensity,
+                presentation = presentation,
+                contentStartPx = edgePaddingPx,
+            )
+        }
+        if (densityTransitionSourceScrubberSnapshot == null && scrollAnchors.size > 1) {
+            densityTransitionSourceScrubberSnapshot = PhotoFeedTimeScrubberSnapshot(
+                progress = displayedScrubberProgress,
+                label = displayedScrubberLabel,
+                showLabel = scrubberInteracting,
+                yearMarkers = scrubberYearMarkers,
+            )
+        }
+        val candidateMediaIds = candidates.mapTo(linkedSetOf()) { it.item.mediaId }
+        val anchorMediaId = listOfNotNull(
+            densityTransitionAnchorMediaId,
+            candidates.firstOrNull()?.item?.mediaId,
+            pageStateStore.savedFirstVisibleMediaId,
+        ).firstOrNull { it in candidateMediaIds }
+        val targetLocalBoundsByMediaId = if (previewState != null && viewportBounds != null) {
+            densityTransitionTargetLocalBoundsByMediaId.ifEmpty {
+                buildPhotoFeedPredictedLocalBoundsByMediaId(
+                    blocks = resolveBlocksForDensity(toDensity),
+                    targetDensity = toDensity,
+                    viewportBounds = viewportBounds,
+                    densityScope = densityScope,
+                    presentation = presentation,
+                )
+            }
+        } else {
+            emptyMap()
+        }
+        val anchorStartBounds = if (anchorMediaId != null) {
+            candidates.firstOrNull { it.item.mediaId == anchorMediaId }?.startBounds
+        } else {
+            null
+        }
+        val targetHeaderSnapshots = if (
+            previewState != null &&
+            viewportBounds != null &&
+            anchorMediaId != null &&
+            anchorStartBounds != null
+        ) {
+            densityTransitionTargetHeaderSnapshots.ifEmpty {
+                buildPhotoFeedPredictedHeaderSnapshots(
+                    blocks = resolveBlocksForDensity(toDensity),
+                    targetDensity = toDensity,
+                    viewportBounds = viewportBounds,
+                    densityScope = densityScope,
+                    presentation = presentation,
+                    anchorMediaId = anchorMediaId,
+                    anchorStartBounds = anchorStartBounds,
+                    targetLocalBoundsByMediaId = targetLocalBoundsByMediaId,
+                )
+            }
+        } else {
+            emptyList()
+        }
+        val targetScrubberSnapshot = if (previewState != null && anchorMediaId != null) {
+            densityTransitionTargetScrubberSnapshot ?: buildPhotoFeedTargetScrubberSnapshot(
+                blocks = resolveBlocksForDensity(toDensity),
+                density = toDensity,
+                fallbackItems = displayFeedItems,
+                anchorMediaId = anchorMediaId,
+                currentProgress = currentScrollProgress,
+            )
+        } else {
+            null
+        }
+        val releasePreviewBoundsByMediaId = if (previewState != null && viewportBounds != null && anchorMediaId != null) {
+            val targetBounds = buildPhotoFeedPredictedBoundsByMediaId(
+                candidates = candidates,
+                targetLocalBoundsByMediaId = targetLocalBoundsByMediaId,
+                anchorMediaId = anchorMediaId,
+            )
+            candidates.associate { candidate ->
+                val endBounds = targetBounds[candidate.item.mediaId] ?: candidate.startBounds
+                candidate.item.mediaId to interpolatePhotoFeedRect(
+                    start = candidate.startBounds,
+                    end = endBounds,
+                    progress = previewState.renderProgress,
+                )
+            }
+        } else {
+            emptyMap()
+        }
+        val shouldAnimate = densityTransitionAnimated &&
+            viewportBounds != null &&
+            previewState != null &&
+            candidates.isNotEmpty() &&
+            anchorMediaId != null &&
+            releasePreviewBoundsByMediaId.isNotEmpty() &&
+            densityTransitionStage != PhotoFeedDensityTransitionStage.COMMITTING
+        densityPreviewState = previewState
+        if (!shouldAnimate) {
+            resetDensityTransitionState()
+            return
+        }
+        densityTransitionToken += 1
+        densityTransitionOverlayAnimationActive = false
+        densityTransitionReleaseProgress = previewState.renderProgress
+        densityTransitionTargetHeaderSnapshots = targetHeaderSnapshots
+        densityTransitionTargetScrubberSnapshot = targetScrubberSnapshot
+        densityTransitionTargetLocalBoundsByMediaId = targetLocalBoundsByMediaId
+        densityTransitionRequest = PhotoFeedDensityTransitionRequest(
+            token = densityTransitionToken,
+            fromDensity = fromDensity,
+            toDensity = toDensity,
+            anchorMediaId = anchorMediaId,
+            overlayCandidates = candidates,
+            releasePreviewBoundsByMediaId = releasePreviewBoundsByMediaId,
+        )
+        densityTransitionTemporarilySuspendInlineVideo = true
+        densityTransitionStage = PhotoFeedDensityTransitionStage.COMMITTING
     }
     val updateDensity = remember(density) {
         { nextDensity: PhotoFeedDensity ->
@@ -556,42 +1315,220 @@ fun PhotoFeedScreen(
             }
         }
     }
+    LaunchedEffect(densityTransitionRequest?.token, density, blocks, feedViewportBounds) {
+        val request = densityTransitionRequest ?: return@LaunchedEffect
+        if (densityTransitionStage != PhotoFeedDensityTransitionStage.COMMITTING) return@LaunchedEffect
+        if (request.toDensity != density) return@LaunchedEffect
+        val viewportBounds = feedViewportBounds ?: run {
+            resetDensityTransitionState()
+            return@LaunchedEffect
+        }
+        val anchorMediaId = request.anchorMediaId ?: run {
+            resetDensityTransitionState()
+            return@LaunchedEffect
+        }
+        val targetBlockIndex = findBlockIndexForMedia(blocks, anchorMediaId)
+        if (targetBlockIndex >= 0) {
+            val targetScrollOffset = calculatePhotoFeedTargetScrollOffset(listState)
+            listState.scrollToItem(
+                index = targetBlockIndex,
+                scrollOffset = targetScrollOffset,
+            )
+            withFrameNanos { }
+            correctPhotoFeedDensityTransitionAnchorOffset(
+                anchorMediaId = anchorMediaId,
+                itemBoundsByMediaId = itemBoundsByMediaId,
+                viewportBounds = viewportBounds,
+                listState = listState,
+            )
+            withFrameNanos { }
+        }
+        val overlayEntries = buildPhotoFeedDensityCommitOverlayEntries(
+            candidates = request.overlayCandidates,
+            releasePreviewBoundsByMediaId = request.releasePreviewBoundsByMediaId,
+            itemBoundsByMediaId = itemBoundsByMediaId,
+        )
+        densityHeaderRevealAlpha.snapTo(0f)
+        if (overlayEntries.isEmpty()) {
+            densityHeaderRevealAlpha.snapTo(1f)
+            resetDensityTransitionState()
+            return@LaunchedEffect
+        }
+        densityTransitionOverlayEntries = overlayEntries
+        densityTransitionOverlayAnimationActive = true
+        densityMorphProgress.snapTo(0f)
+        densityMorphProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = if (densityTransitionAnimated) motion.densityMorphMillis else 0,
+                easing = motion.easing,
+            ),
+        )
+        densityTransitionOverlayAnimationActive = false
+        densityTransitionOverlayEntries = emptyList()
+        densityHeaderRevealAlpha.snapTo(1f)
+        resetDensityTransitionState()
+    }
+
+    val densityTransitionSourceControlsAlpha = 0f
+    val densityTransitionTargetControlsAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        PhotoFeedDensityTransitionStage.COMMITTING,
+        -> densityTransitionTargetSupplementaryOverlayAlpha * 0.82f
+
+        PhotoFeedDensityTransitionStage.SETTLING -> 1f - densityHeaderRevealAlpha.value
+        PhotoFeedDensityTransitionStage.IDLE -> 0f
+    }
+    val densityTransitionLiveControlsAlpha = when (densityTransitionStage) {
+        PhotoFeedDensityTransitionStage.PREVIEWING,
+        PhotoFeedDensityTransitionStage.REBOUNDING,
+        -> photoFeedDensitySourceSupplementaryAlpha(densityTransitionSourceProgress)
+
+        PhotoFeedDensityTransitionStage.COMMITTING -> densityTransitionTargetLiveAlpha
+        PhotoFeedDensityTransitionStage.SETTLING,
+        PhotoFeedDensityTransitionStage.IDLE,
+        -> 1f
+    }
+    val densityTransitionControlsScale = 1f
 
     Column(
         modifier = modifier
-            .fillMaxSize()
-            .background(YingShiThemeTokens.colors.appBackground),
+            .fillMaxSize(),
     ) {
         if (collaboratorDirectory.all.isNotEmpty()) {
-            PhotoFeedCollaboratorControlsRow(
-                directory = collaboratorDirectory,
-                selectedUserIds = selectedCollaboratorUserIds,
-                timeBucketHours = timeBucketHours,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.xs, vertical = spacing.xxs),
-                onToggleCollaborator = { userId ->
-                    pageStateStore.selectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
-                        currentSelection = selectedCollaboratorUserIds,
-                        toggledUserId = userId,
-                        allUserIds = allCollaboratorUserIds,
+            Box {
+                densityPreviewState?.let { previewState ->
+                    if (densityTransitionSourceControlsAlpha > 0f) {
+                        PhotoFeedCollaboratorControlsSceneRow(
+                            directory = collaboratorDirectory,
+                            selectedUserIds = selectedCollaboratorUserIds,
+                            timeBucketHours = timeBucketHours,
+                            density = previewState.sourceLevel,
+                            alpha = densityTransitionSourceControlsAlpha,
+                            scale = densityTransitionControlsScale,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                            onToggleCollaborator = { userId ->
+                                pageStateStore.selectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                                    currentSelection = selectedCollaboratorUserIds,
+                                    toggledUserId = userId,
+                                    allUserIds = allCollaboratorUserIds,
+                                )
+                                pageStateStore.collaboratorSelectionInitialized = true
+                            },
+                            onTimeBucketHoursChange = { nextHours ->
+                                pageStateStore.timeBucketHours = nextHours
+                            },
+                        )
+                    }
+                    if (densityTransitionTargetControlsAlpha > 0f) {
+                        PhotoFeedCollaboratorControlsSceneRow(
+                            directory = collaboratorDirectory,
+                            selectedUserIds = selectedCollaboratorUserIds,
+                            timeBucketHours = timeBucketHours,
+                            density = previewState.targetLevel,
+                            alpha = densityTransitionTargetControlsAlpha,
+                            scale = 1f,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                            onToggleCollaborator = { userId ->
+                                pageStateStore.selectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                                    currentSelection = selectedCollaboratorUserIds,
+                                    toggledUserId = userId,
+                                    allUserIds = allCollaboratorUserIds,
+                                )
+                                pageStateStore.collaboratorSelectionInitialized = true
+                            },
+                            onTimeBucketHoursChange = { nextHours ->
+                                pageStateStore.timeBucketHours = nextHours
+                            },
+                        )
+                    }
+                }
+                if (densityTransitionLiveControlsAlpha > 0f) {
+                    PhotoFeedCollaboratorControlsSceneRow(
+                        directory = collaboratorDirectory,
+                        selectedUserIds = selectedCollaboratorUserIds,
+                        timeBucketHours = timeBucketHours,
+                        density = density,
+                        alpha = densityTransitionLiveControlsAlpha,
+                        scale = densityTransitionControlsScale,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                        onToggleCollaborator = { userId ->
+                            pageStateStore.selectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
+                                currentSelection = selectedCollaboratorUserIds,
+                                toggledUserId = userId,
+                                allUserIds = allCollaboratorUserIds,
+                            )
+                            pageStateStore.collaboratorSelectionInitialized = true
+                        },
+                        onTimeBucketHoursChange = { nextHours ->
+                            pageStateStore.timeBucketHours = nextHours
+                        },
                     )
-                    pageStateStore.collaboratorSelectionInitialized = true
-                },
-                onTimeBucketHoursChange = { nextHours ->
-                    pageStateStore.timeBucketHours = nextHours
-                },
-            )
+                }
+            }
         }
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    feedViewportBounds = coordinates.boundsInRoot()
+                }
+                .clipToBounds()
                 .discreteZoomLevelGesture(
                     enabled = !selectionState.isInSelectionMode,
                     levels = PhotoFeedDensity.entries.toList(),
                     currentLevel = density,
                     onLevelChange = updateDensity,
+                    commitOnGestureEnd = true,
+                    onPreviewStateChange = { previewState ->
+                        if (!densityTransitionAnimated ||
+                            densityTransitionStage == PhotoFeedDensityTransitionStage.REBOUNDING ||
+                            densityTransitionStage == PhotoFeedDensityTransitionStage.COMMITTING ||
+                            densityTransitionStage == PhotoFeedDensityTransitionStage.SETTLING
+                        ) {
+                            return@discreteZoomLevelGesture
+                        }
+                        if (previewState != null) {
+                            syncDensityPreview(previewState)
+                        }
+                    },
+                    onGestureFinished = { committed, finalPreviewState, committedTargetLevel ->
+                        densityPreviewState = finalPreviewState
+                        val nextDensity = committedTargetLevel as? PhotoFeedDensity
+                        when {
+                            !committed || nextDensity == null || nextDensity == density -> {
+                                if (
+                                    densityTransitionAnimated &&
+                                    densityTransitionStage == PhotoFeedDensityTransitionStage.PREVIEWING &&
+                                    finalPreviewState != null
+                                ) {
+                                    reboundDensityPreview(finalPreviewState)
+                                } else {
+                                    resetDensityTransitionState()
+                                }
+                            }
+
+                            densityTransitionAnimated -> {
+                                beginDensityTransition(
+                                    fromDensity = density,
+                                    toDensity = nextDensity,
+                                    finalPreviewState = finalPreviewState,
+                                )
+                            }
+
+                            else -> {
+                                resetDensityTransitionState()
+                            }
+                        }
+                    },
                 )
                 .multiSelectSwipeGesture(
                     enabled = selectionState.isInSelectionMode,
@@ -609,11 +1546,21 @@ fun PhotoFeedScreen(
                     onAutoScroll = { delta -> listState.scrollBy(delta) },
                 ),
         ) {
-            PhotoFeedAtmosphereLayer(modifier = Modifier.matchParentSize())
+            PhotoFeedAtmosphereLayer(
+                modifier = Modifier.matchParentSize(),
+                presentation = presentation,
+            )
 
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = densityTransitionLiveMediaAlpha
+                        scaleX = densityTransitionContentScale
+                        scaleY = densityTransitionContentScale
+                        transformOrigin = TransformOrigin.Center
+                    },
                 verticalArrangement = Arrangement.spacedBy(sectionSpacing(density)),
                 contentPadding = PaddingValues(
                     top = 0.dp,
@@ -637,16 +1584,104 @@ fun PhotoFeedScreen(
                     },
                 ) { block ->
                     when (block) {
-                        is PhotoFeedSectionHeader -> PhotoFeedSectionHeaderRow(title = block.title)
-                        is PhotoFeedDayHeader -> PhotoFeedDayHeaderRow(title = block.title)
-                        is PhotoFeedTimeBucketHeader -> PhotoFeedTimeBucketHeaderRow(
-                            header = block,
-                            density = density,
-                        )
-                        is PhotoFeedCollaboratorHeader -> PhotoFeedCollaboratorHeaderRow(
-                            identity = block.identity,
-                        )
-                        is PhotoFeedCollaboratorDivider -> PhotoFeedCollaboratorDividerRow()
+                        is PhotoFeedSectionHeader -> Box(
+                            modifier = Modifier.graphicsLayer {
+                                alpha = photoFeedLiveHeaderAlpha(
+                                    stage = densityTransitionStage,
+                                    baseAlpha = densityTransitionLiveSupplementaryAlpha,
+                                    matchedHeaderKeys = densityTransitionMatchedHeaderKeys,
+                                    snapshot = PhotoFeedVisibleHeaderSnapshot.Section(
+                                        header = block,
+                                        density = density,
+                                        presentation = presentation,
+                                        bounds = Rect.Zero,
+                                    ),
+                                )
+                                scaleX = densityTransitionPreviewScene.liveHeaderScale
+                                scaleY = densityTransitionPreviewScene.liveHeaderScale
+                                transformOrigin = TransformOrigin(0f, 0.5f)
+                            },
+                        ) {
+                            PhotoFeedSectionHeaderRow(
+                                header = block,
+                                density = density,
+                                presentation = presentation,
+                            )
+                        }
+                        is PhotoFeedDayHeader -> Box(
+                            modifier = Modifier.graphicsLayer {
+                                alpha = photoFeedLiveHeaderAlpha(
+                                    stage = densityTransitionStage,
+                                    baseAlpha = densityTransitionLiveSupplementaryAlpha,
+                                    matchedHeaderKeys = densityTransitionMatchedHeaderKeys,
+                                    snapshot = PhotoFeedVisibleHeaderSnapshot.Day(
+                                        header = block,
+                                        density = density,
+                                        presentation = presentation,
+                                        bounds = Rect.Zero,
+                                    ),
+                                )
+                                scaleX = densityTransitionPreviewScene.liveHeaderScale
+                                scaleY = densityTransitionPreviewScene.liveHeaderScale
+                                transformOrigin = TransformOrigin(0f, 0.5f)
+                            },
+                        ) {
+                            PhotoFeedDayHeaderRow(
+                                header = block,
+                                density = density,
+                                presentation = presentation,
+                            )
+                        }
+                        is PhotoFeedTimeBucketHeader -> Box(
+                            modifier = Modifier.graphicsLayer(
+                                alpha = photoFeedLiveHeaderAlpha(
+                                    stage = densityTransitionStage,
+                                    baseAlpha = densityTransitionLiveSupplementaryAlpha,
+                                    matchedHeaderKeys = densityTransitionMatchedHeaderKeys,
+                                    snapshot = PhotoFeedVisibleHeaderSnapshot.TimeBucket(
+                                        header = block,
+                                        density = density,
+                                        bounds = Rect.Zero,
+                                    ),
+                                ),
+                            ),
+                        ) {
+                            PhotoFeedTimeBucketHeaderRow(
+                                header = block,
+                                density = density,
+                            )
+                        }
+                        is PhotoFeedCollaboratorHeader -> Box(
+                            modifier = Modifier.graphicsLayer(
+                                alpha = photoFeedLiveHeaderAlpha(
+                                    stage = densityTransitionStage,
+                                    baseAlpha = densityTransitionLiveSupplementaryAlpha,
+                                    matchedHeaderKeys = densityTransitionMatchedHeaderKeys,
+                                    snapshot = PhotoFeedVisibleHeaderSnapshot.Collaborator(
+                                        identity = block.identity,
+                                        bounds = Rect.Zero,
+                                    ),
+                                ),
+                            ),
+                        ) {
+                            PhotoFeedCollaboratorHeaderRow(
+                                identity = block.identity,
+                            )
+                        }
+                        is PhotoFeedCollaboratorDivider -> Box(
+                            modifier = Modifier.graphicsLayer(
+                                alpha = photoFeedLiveHeaderAlpha(
+                                    stage = densityTransitionStage,
+                                    baseAlpha = densityTransitionLiveSupplementaryAlpha,
+                                    matchedHeaderKeys = densityTransitionMatchedHeaderKeys,
+                                    snapshot = PhotoFeedVisibleHeaderSnapshot.Divider(
+                                        bounds = Rect.Zero,
+                                    ),
+                                ),
+                            ),
+                        ) {
+                            PhotoFeedCollaboratorDividerRow()
+                        }
                         is PhotoFeedGridRow -> PhotoFeedGridRowContent(
                             row = block,
                             density = density,
@@ -667,6 +1702,13 @@ fun PhotoFeedScreen(
                             onToggleInlineVideo = onToggleInlineVideo,
                             onInlineVideoProgressChange = { item, progress ->
                                 inlineVideoProgressById = inlineVideoProgressById + (item.mediaId to progress)
+                            },
+                            onItemBoundsChange = { mediaId, bounds ->
+                                if (bounds == null) {
+                                    itemBoundsByMediaId.remove(mediaId)
+                                } else {
+                                    itemBoundsByMediaId[mediaId] = bounds
+                                }
                             },
                             thumbnailRequestSize = thumbnailRequestSize,
                             onMediaClick = { item ->
@@ -767,9 +1809,65 @@ fun PhotoFeedScreen(
                     }
                 }
             }
+            if (densityTransitionStage == PhotoFeedDensityTransitionStage.COMMITTING &&
+                densityTransitionSourceSupplementaryOverlayAlpha > 0f &&
+                densityTransitionSourceHeaderSnapshots.isNotEmpty()
+            ) {
+                PhotoFeedDensityHeaderOverlay(
+                    snapshots = densityTransitionSourceHeaderSnapshots,
+                    alpha = densityTransitionSourceSupplementaryOverlayAlpha,
+                    scale = densityTransitionSourceOverlayScale,
+                    viewportBounds = feedViewportBounds,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+
+            if (densityTransitionStage == PhotoFeedDensityTransitionStage.COMMITTING &&
+                densityTransitionSourceOverlayAlpha > 0f &&
+                densityTransitionSourceVisibleCandidates.isNotEmpty()
+            ) {
+                PhotoFeedStaticMediaOverlay(
+                    candidates = densityTransitionSourceVisibleCandidates,
+                    viewportBounds = feedViewportBounds,
+                    alpha = densityTransitionSourceOverlayAlpha,
+                    thumbnailRequestSize = transitionThumbnailRequestSize,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+
+            if (densityTransitionStage != PhotoFeedDensityTransitionStage.IDLE &&
+                densityTransitionTargetSupplementaryOverlayAlpha > 0f &&
+                densityTransitionTargetHeaderMorphEntries.isNotEmpty()
+            ) {
+                PhotoFeedDensityHeaderMorphOverlay(
+                    entries = densityTransitionTargetHeaderMorphEntries,
+                    progress = densityTransitionHeaderOverlayProgress,
+                    alpha = densityTransitionTargetSupplementaryOverlayAlpha,
+                    scale = densityTransitionPreviewScene.targetOverlayScale,
+                    viewportBounds = feedViewportBounds,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+
+            if (densityTransitionOverlayEntries.isNotEmpty()) {
+                PhotoFeedDensityMorphOverlay(
+                    entries = densityTransitionOverlayEntries,
+                    viewportBounds = feedViewportBounds,
+                    progress = densityTransitionActiveOverlayProgress,
+                    thumbnailRequestSize = transitionThumbnailRequestSize,
+                    fadeAtEdges = false,
+                    sceneAlpha = densityTransitionTargetOverlayAlpha,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
 
             androidx.compose.animation.AnimatedVisibility(
-                visible = scrubberVisible && scrollAnchors.size > 1,
+                visible = (scrubberVisible && scrollAnchors.size > 1) ||
+                    (densityTransitionStage == PhotoFeedDensityTransitionStage.COMMITTING &&
+                        densityTransitionSourceSupplementaryOverlayAlpha > 0f) ||
+                    densityTransitionTargetSupplementaryOverlayAlpha > 0f ||
+                    (densityTransitionStage != PhotoFeedDensityTransitionStage.IDLE &&
+                        densityTransitionLiveSupplementaryAlpha > 0f),
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
@@ -777,49 +1875,104 @@ fun PhotoFeedScreen(
                     .padding(end = 2.dp)
                     .fillMaxHeight(),
             ) {
-                PhotoFeedTimeScrubber(
+                Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(184.dp),
-                    progress = displayedScrubberProgress,
-                    label = displayedScrubberLabel,
-                    showLabel = scrubberInteracting,
-                    yearMarkers = scrubberYearMarkers,
-                    onSeekToProgress = { progress ->
-                        if (scrollAnchors.isEmpty()) {
-                            return@PhotoFeedTimeScrubber
+                ) {
+                    if (scrubberVisible && scrollAnchors.size > 1) {
+                        PhotoFeedTimeScrubber(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .graphicsLayer {
+                                    alpha = densityTransitionLiveSupplementaryAlpha
+                                    scaleX = densityTransitionPreviewScene.liveHeaderScale * densityTransitionContentScale
+                                    scaleY = densityTransitionPreviewScene.liveHeaderScale * densityTransitionContentScale
+                                    transformOrigin = TransformOrigin(1f, 0.5f)
+                                },
+                            progress = displayedScrubberProgress,
+                            label = displayedScrubberLabel,
+                            showLabel = scrubberInteracting,
+                            yearMarkers = scrubberYearMarkers,
+                            onSeekToProgress = { progress ->
+                                if (scrollAnchors.isEmpty()) {
+                                    return@PhotoFeedTimeScrubber
+                                }
+                                val anchorIndex = (progress * scrollAnchors.lastIndex)
+                                    .roundToInt()
+                                    .coerceIn(0, scrollAnchors.lastIndex)
+                                scrubberDragProgress = progress.coerceIn(0f, 1f)
+                                scrubberDragLabel = scrollAnchors.getOrNull(anchorIndex)
+                                    ?.let { anchor -> formatScrubberDateLabel(anchor.timeMillis, density) }
+                                    .orEmpty()
+                                if (anchorIndex == lastRequestedAnchorIndex) {
+                                    return@PhotoFeedTimeScrubber
+                                }
+                                scrollAnchors.getOrNull(anchorIndex)?.let { anchor ->
+                                    lastRequestedAnchorIndex = anchorIndex
+                                    coroutineScope.launch {
+                                        listState.scrollToItem(
+                                            index = anchor.itemIndex,
+                                            scrollOffset = calculatePhotoFeedScrubberScrollOffset(listState),
+                                        )
+                                    }
+                                }
+                            },
+                            onInteractingChanged = { interacting ->
+                                scrubberInteracting = interacting
+                                if (interacting) {
+                                    scrubberDragProgress = currentScrollProgress
+                                    scrubberDragLabel = currentVisibleDateLabel
+                                } else {
+                                    scrubberDragProgress = null
+                                    scrubberDragLabel = ""
+                                }
+                            },
+                        )
+                    }
+                    densityTransitionTargetScrubberSnapshot?.let { snapshot ->
+                        if (densityTransitionTargetSupplementaryOverlayAlpha > 0f) {
+                            PhotoFeedTimeScrubber(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .graphicsLayer(
+                                        alpha = densityTransitionTargetSupplementaryOverlayAlpha,
+                                        scaleX = densityTransitionPreviewScene.targetOverlayScale,
+                                        scaleY = densityTransitionPreviewScene.targetOverlayScale,
+                                        transformOrigin = TransformOrigin(1f, 0.5f),
+                                    ),
+                                progress = snapshot.progress,
+                                label = snapshot.label,
+                                showLabel = snapshot.showLabel,
+                                yearMarkers = snapshot.yearMarkers,
+                                onSeekToProgress = {},
+                                onInteractingChanged = {},
+                            )
                         }
-                        val anchorIndex = (progress * scrollAnchors.lastIndex)
-                            .roundToInt()
-                            .coerceIn(0, scrollAnchors.lastIndex)
-                        scrubberDragProgress = progress.coerceIn(0f, 1f)
-                        scrubberDragLabel = scrollAnchors.getOrNull(anchorIndex)
-                            ?.let { anchor -> formatScrubberDateLabel(anchor.timeMillis) }
-                            .orEmpty()
-                        if (anchorIndex == lastRequestedAnchorIndex) {
-                            return@PhotoFeedTimeScrubber
+                    }
+                    densityTransitionSourceScrubberSnapshot?.let { snapshot ->
+                        if (densityTransitionStage == PhotoFeedDensityTransitionStage.COMMITTING &&
+                            densityTransitionSourceSupplementaryOverlayAlpha > 0f
+                        ) {
+                            PhotoFeedTimeScrubber(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .graphicsLayer(
+                                        alpha = densityTransitionSourceSupplementaryOverlayAlpha,
+                                        scaleX = densityTransitionSourceOverlayScale,
+                                        scaleY = densityTransitionSourceOverlayScale,
+                                        transformOrigin = TransformOrigin(1f, 0.5f),
+                                    ),
+                                progress = snapshot.progress,
+                                label = snapshot.label,
+                                showLabel = snapshot.showLabel,
+                                yearMarkers = snapshot.yearMarkers,
+                                onSeekToProgress = {},
+                                onInteractingChanged = {},
+                            )
                         }
-                        scrollAnchors.getOrNull(anchorIndex)?.let { anchor ->
-                            lastRequestedAnchorIndex = anchorIndex
-                            coroutineScope.launch {
-                                listState.scrollToItem(
-                                    index = anchor.itemIndex,
-                                    scrollOffset = calculatePhotoFeedScrubberScrollOffset(listState),
-                                )
-                            }
-                        }
-                    },
-                    onInteractingChanged = { interacting ->
-                        scrubberInteracting = interacting
-                        if (interacting) {
-                            scrubberDragProgress = currentScrollProgress
-                            scrubberDragLabel = currentVisibleDateLabel
-                        } else {
-                            scrubberDragProgress = null
-                            scrubberDragLabel = ""
-                        }
-                    },
-                )
+                    }
+                }
             }
         }
     }
@@ -828,16 +1981,22 @@ fun PhotoFeedScreen(
 @Composable
 private fun PhotoFeedAtmosphereLayer(
     modifier: Modifier = Modifier,
+    presentation: PhotoFeedPresentation = PhotoFeedPresentation.EMBEDDED,
 ) {
     val colors = YingShiThemeTokens.colors
     val motion = YingShiThemeTokens.motion
+    val atmosphereAlpha = if (presentation == PhotoFeedPresentation.MAIN_STREAM) {
+        motion.feedAtmosphereAlpha * 1.28f
+    } else {
+        motion.feedAtmosphereAlpha * 0.74f
+    }
     Box(
         modifier = modifier
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        colors.glowWash.copy(alpha = 0.30f * motion.feedAtmosphereAlpha),
-                        colors.sectionBackground.copy(alpha = 0.16f * motion.feedAtmosphereAlpha),
+                        colors.glowWash.copy(alpha = 0.30f * atmosphereAlpha),
+                        colors.sectionBackground.copy(alpha = 0.16f * atmosphereAlpha),
                         Color.Transparent,
                     ),
                     center = Offset(0f, 0f),
@@ -847,10 +2006,24 @@ private fun PhotoFeedAtmosphereLayer(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        colors.glowWash.copy(alpha = 0.10f * motion.feedAtmosphereAlpha),
+                        colors.glowWash.copy(alpha = 0.10f * atmosphereAlpha),
                         Color.Transparent,
-                        colors.sectionBackground.copy(alpha = 0.08f * motion.feedAtmosphereAlpha),
+                        colors.sectionBackground.copy(alpha = 0.08f * atmosphereAlpha),
                     ),
+                ),
+            )
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        if (presentation == PhotoFeedPresentation.MAIN_STREAM) {
+                            colors.memoryContainer.copy(alpha = 0.18f * atmosphereAlpha)
+                        } else {
+                            colors.memoryContainer.copy(alpha = 0.08f * atmosphereAlpha)
+                        },
+                        Color.Transparent,
+                    ),
+                    center = Offset(980f, 180f),
+                    radius = if (presentation == PhotoFeedPresentation.MAIN_STREAM) 640f else 420f,
                 ),
             ),
     )
@@ -883,23 +2056,49 @@ private fun PrefetchPhotoFeedThumbnails(
             .take(photoFeedPrefetchCount(density))
             .mapNotNull { item ->
                 val mediaSource = item.mediaSource
-                val url = mediaSource.thumbnailModelUrl(item.mediaType) ?: return@mapNotNull null
-                PrefetchTarget(
-                    url = url,
-                    cacheKey = mediaSource.thumbnailModelCacheKey(item.mediaType),
-                    mediaType = item.mediaType,
-                    mimeType = mediaSource?.mimeType,
-                )
+                when (item.mediaType) {
+                    AppMediaType.IMAGE -> {
+                        val url = mediaSource.thumbnailModelUrl(item.mediaType) ?: return@mapNotNull null
+                        PrefetchTarget(
+                            url = url,
+                            cacheKey = mediaSource.thumbnailModelCacheKey(item.mediaType),
+                            mediaType = item.mediaType,
+                            mimeType = mediaSource?.mimeType,
+                        )
+                    }
+
+                    AppMediaType.VIDEO -> {
+                        val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
+                        val posterVideoUrl = mediaSource.videoPosterVideoUrl(item.mediaType)
+                        when {
+                            !posterImageUrl.isNullOrBlank() -> PrefetchTarget(
+                                url = posterImageUrl,
+                                cacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType),
+                                mediaType = item.mediaType,
+                                mimeType = mediaSource?.mimeType,
+                                extractVideoPoster = false,
+                            )
+
+                            !posterVideoUrl.isNullOrBlank() -> PrefetchTarget(
+                                url = posterVideoUrl,
+                                cacheKey = mediaSource.videoPosterVideoCacheKey(item.mediaType),
+                                mediaType = item.mediaType,
+                                mimeType = mediaSource?.mimeType,
+                                extractVideoPoster = true,
+                            )
+
+                            else -> null
+                        }
+                    }
+                }
             }
-            .distinctBy { "${it.mediaType}:${it.cacheKey ?: it.url}" }
+            .distinctBy { "${it.mediaType}:${it.extractVideoPoster}:${it.cacheKey ?: it.url}" }
     }
 
     LaunchedEffect(context, prefetchTargets, accessToken) {
         val imageLoader = context.imageLoader
         prefetchTargets.forEach { target ->
-            if (target.mediaType == AppMediaType.VIDEO &&
-                looksLikeVideoSource(target.url, target.mimeType)
-            ) {
+            if (target.mediaType == AppMediaType.VIDEO && target.extractVideoPoster) {
                 prefetchVideoPoster(
                     context = context,
                     url = target.url,
@@ -930,6 +2129,7 @@ private data class PrefetchTarget(
     val cacheKey: String?,
     val mediaType: AppMediaType,
     val mimeType: String?,
+    val extractVideoPoster: Boolean = false,
 )
 
 private data class PhotoFeedVisiblePosition(
@@ -1359,20 +2559,92 @@ internal fun PhotoFeedTimeScrubber(
 }
 
 @Composable
+internal fun PhotoFeedSectionHeaderRow(
+    header: PhotoFeedSectionHeader,
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+    modifier: Modifier = Modifier,
+) {
+    val metrics = photoFeedSectionHeaderMetrics(
+        granularity = header.granularity,
+        density = density,
+        presentation = presentation,
+    )
+    val palette = photoFeedTimeTitlePalette(
+        granularity = header.granularity,
+        month = header.month,
+        colors = YingShiThemeTokens.colors,
+    )
+    PhotoFeedTimeHeaderText(
+        text = header.title,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                start = 4.dp,
+                top = metrics.topPadding,
+                bottom = metrics.bottomPadding,
+            ),
+        textStyle = metrics.style,
+        granularity = header.granularity,
+        palette = palette,
+        presentation = presentation,
+    )
+}
+
+@Composable
 internal fun PhotoFeedSectionHeaderRow(title: String) {
-    val colors = YingShiThemeTokens.colors
-    Text(
+    val palette = photoFeedTimeTitlePalette(
+        granularity = PhotoFeedTimeGranularity.MONTH,
+        month = null,
+        colors = YingShiThemeTokens.colors,
+    )
+    PhotoFeedTimeHeaderText(
         text = title,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
-        style = MaterialTheme.typography.headlineSmall.copy(
-            fontSize = 32.sp,
-            lineHeight = 36.sp,
+        textStyle = MaterialTheme.typography.headlineSmall.copy(
+            fontSize = 30.sp,
+            lineHeight = 34.sp,
             fontWeight = FontWeight.ExtraBold,
         ),
-        color = colors.titleAccent,
+        granularity = PhotoFeedTimeGranularity.MONTH,
+        palette = palette,
+        presentation = PhotoFeedPresentation.EMBEDDED,
     )
+}
+
+@Composable
+private fun PhotoFeedCollaboratorControlsSceneRow(
+    directory: CollaboratorDirectorySnapshot,
+    selectedUserIds: Set<String>,
+    timeBucketHours: Int,
+    density: PhotoFeedDensity,
+    alpha: Float,
+    scale: Float,
+    onToggleCollaborator: (String) -> Unit,
+    onTimeBucketHoursChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (alpha <= 0f) return
+    Box(
+        modifier = modifier.graphicsLayer(
+            alpha = alpha.coerceIn(0f, 1f),
+            scaleX = scale,
+            scaleY = scale,
+            transformOrigin = TransformOrigin(1f, 0.5f),
+        ),
+    ) {
+        PhotoFeedCollaboratorControlsRow(
+            directory = directory,
+            selectedUserIds = selectedUserIds,
+            timeBucketHours = timeBucketHours,
+            density = density,
+            onToggleCollaborator = onToggleCollaborator,
+            onTimeBucketHoursChange = onTimeBucketHoursChange,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 @Composable
@@ -1380,6 +2652,7 @@ private fun PhotoFeedCollaboratorControlsRow(
     directory: CollaboratorDirectorySnapshot,
     selectedUserIds: Set<String>,
     timeBucketHours: Int,
+    density: PhotoFeedDensity,
     onToggleCollaborator: (String) -> Unit,
     onTimeBucketHoursChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -1403,34 +2676,36 @@ private fun PhotoFeedCollaboratorControlsRow(
                     labelText = identity.displayName,
                 )
             }
-            Box {
-                PhotoFeedTimeBucketButton(
-                    timeBucketHours = timeBucketHours,
-                    onClick = { expanded = true },
-                )
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false },
-                ) {
-                    CollaborativeBucketHoursOptions.forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = "${option}h",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (option == timeBucketHours) {
-                                            FontWeight.SemiBold
-                                        } else {
-                                            FontWeight.Medium
-                                        },
-                                    ),
-                                )
-                            },
-                            onClick = {
-                                expanded = false
-                                onTimeBucketHoursChange(option)
-                            },
-                        )
+            if (density.columns <= 4) {
+                Box {
+                    PhotoFeedTimeBucketButton(
+                        timeBucketHours = timeBucketHours,
+                        onClick = { expanded = true },
+                    )
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false },
+                    ) {
+                        CollaborativeBucketHoursOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "${option}h",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (option == timeBucketHours) {
+                                                FontWeight.SemiBold
+                                            } else {
+                                                FontWeight.Medium
+                                            },
+                                        ),
+                                    )
+                                },
+                                onClick = {
+                                    expanded = false
+                                    onTimeBucketHoursChange(option)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -1631,20 +2906,345 @@ private fun PhotoFeedEmptyCollaboratorState(
 }
 
 @Composable
+internal fun PhotoFeedDayHeaderRow(
+    header: PhotoFeedDayHeader,
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+    modifier: Modifier = Modifier,
+) {
+    val metrics = photoFeedDayHeaderMetrics(
+        density = density,
+        presentation = presentation,
+    )
+    val palette = photoFeedTimeTitlePalette(
+        granularity = PhotoFeedTimeGranularity.DAY,
+        month = header.month,
+        colors = YingShiThemeTokens.colors,
+    )
+    PhotoFeedTimeHeaderText(
+        text = header.title,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, top = metrics.topPadding, bottom = metrics.bottomPadding),
+        textStyle = metrics.style,
+        granularity = PhotoFeedTimeGranularity.DAY,
+        palette = palette,
+        presentation = presentation,
+    )
+}
+
+@Composable
 internal fun PhotoFeedDayHeaderRow(title: String) {
-    val colors = YingShiThemeTokens.colors
-    Text(
+    val palette = photoFeedTimeTitlePalette(
+        granularity = PhotoFeedTimeGranularity.DAY,
+        month = null,
+        colors = YingShiThemeTokens.colors,
+    )
+    PhotoFeedTimeHeaderText(
         text = title,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
-        style = MaterialTheme.typography.titleLarge.copy(
+        textStyle = MaterialTheme.typography.titleLarge.copy(
             fontSize = 22.sp,
             lineHeight = 26.sp,
             fontWeight = FontWeight.Bold,
         ),
-        color = colors.textPrimary.copy(alpha = 0.84f),
+        granularity = PhotoFeedTimeGranularity.DAY,
+        palette = palette,
+        presentation = PhotoFeedPresentation.EMBEDDED,
     )
+}
+
+private data class PhotoFeedHeaderMetrics(
+    val style: TextStyle,
+    val topPadding: Dp,
+    val bottomPadding: Dp,
+)
+
+private data class PhotoFeedTimeTitlePalette(
+    val base: Color,
+    val glint: Color,
+    val glow: Color,
+    val shadow: Color,
+    val mist: Color,
+)
+
+@Composable
+private fun PhotoFeedTimeHeaderText(
+    text: String,
+    textStyle: TextStyle,
+    granularity: PhotoFeedTimeGranularity,
+    palette: PhotoFeedTimeTitlePalette,
+    presentation: PhotoFeedPresentation,
+    modifier: Modifier = Modifier,
+) {
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val isYearHero = presentation == PhotoFeedPresentation.MAIN_STREAM &&
+        granularity == PhotoFeedTimeGranularity.YEAR
+    Box(
+        modifier = modifier.yingShiSoftReveal(
+            visible = true,
+            motionEnabled = motionEnabled,
+        ),
+    ) {
+        if (presentation == PhotoFeedPresentation.MAIN_STREAM) {
+            if (isYearHero) {
+                Text(
+                    text = text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = 4.dp)
+                        .graphicsLayer {
+                            scaleX = 1.016f
+                            scaleY = 1.04f
+                        },
+                    style = textStyle.copy(
+                        shadow = Shadow(
+                            color = palette.shadow.copy(alpha = 0.54f),
+                            offset = Offset(0f, 5.2f),
+                            blurRadius = 28f,
+                        ),
+                    ),
+                    color = palette.mist.copy(alpha = 0.34f),
+                )
+                Text(
+                    text = text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-1).dp, y = (-2).dp),
+                    style = textStyle.copy(
+                        shadow = Shadow(
+                            color = palette.glint.copy(alpha = 0.96f),
+                            offset = Offset(0f, -2.2f),
+                            blurRadius = 24f,
+                        ),
+                    ),
+                    color = palette.glint.copy(alpha = 0.56f),
+                )
+                Text(
+                    text = text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            scaleX = 1.008f
+                            scaleY = 1.02f
+                        },
+                    style = textStyle.copy(
+                        shadow = Shadow(
+                            color = palette.glow.copy(alpha = 0.80f),
+                            offset = Offset(0f, 0f),
+                            blurRadius = 34f,
+                        ),
+                    ),
+                    color = palette.glow.copy(alpha = 0.36f),
+                )
+            }
+            Text(
+                text = text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset(y = if (isYearHero) 3.dp else 2.dp),
+                style = textStyle.copy(
+                    shadow = Shadow(
+                        color = palette.shadow.copy(alpha = if (isYearHero) 0.48f else 0.40f),
+                        offset = Offset(0f, if (isYearHero) 4.4f else 3.8f),
+                        blurRadius = if (isYearHero) 22f else 18f,
+                    ),
+                ),
+                color = palette.mist.copy(alpha = if (isYearHero) 0.28f else 0.24f),
+            )
+            Text(
+                text = text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset(x = 1.dp, y = if (isYearHero) (-2).dp else (-1).dp),
+                style = textStyle.copy(
+                    shadow = Shadow(
+                        color = palette.glint.copy(alpha = if (isYearHero) 0.90f else 0.84f),
+                        offset = Offset(0f, if (isYearHero) -2f else -1.6f),
+                        blurRadius = if (isYearHero) 22f else 18f,
+                    ),
+                ),
+                color = palette.glint.copy(alpha = if (isYearHero) 0.48f else 0.42f),
+            )
+            Text(
+                text = text,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        if (isYearHero) {
+                            scaleX = 1.012f
+                            scaleY = 1.018f
+                        }
+                    },
+                style = textStyle.copy(
+                    shadow = Shadow(
+                        color = palette.glow.copy(alpha = if (isYearHero) 0.70f else 0.58f),
+                        offset = Offset(0f, 0f),
+                        blurRadius = if (isYearHero) 28f else 22f,
+                    ),
+                ),
+                color = palette.base.copy(alpha = if (isYearHero) 0.98f else 1f),
+            )
+        } else {
+            Text(
+                text = text,
+                modifier = Modifier.fillMaxWidth(),
+                style = textStyle.copy(
+                    shadow = Shadow(
+                        color = palette.glow.copy(alpha = 0.18f),
+                        offset = Offset(0f, 1.2f),
+                        blurRadius = 8f,
+                    ),
+                ),
+                color = palette.base.copy(alpha = 0.90f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun photoFeedSectionHeaderMetrics(
+    granularity: PhotoFeedTimeGranularity,
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+): PhotoFeedHeaderMetrics {
+    val isMain = presentation == PhotoFeedPresentation.MAIN_STREAM
+    return when (granularity) {
+        PhotoFeedTimeGranularity.YEAR -> PhotoFeedHeaderMetrics(
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontSize = if (isMain) 40.sp else 32.sp,
+                lineHeight = if (isMain) 44.sp else 36.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = (-0.34).sp,
+            ),
+            topPadding = if (isMain) 18.dp else 12.dp,
+            bottomPadding = 8.dp,
+        )
+
+        PhotoFeedTimeGranularity.MONTH -> PhotoFeedHeaderMetrics(
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontSize = if (isMain) {
+                    if (density == PhotoFeedDensity.OVERVIEW_8) 34.sp else 32.sp
+                } else {
+                    29.sp
+                },
+                lineHeight = if (isMain) 38.sp else 34.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.15).sp,
+            ),
+            topPadding = if (isMain) 14.dp else 12.dp,
+            bottomPadding = if (density.columns >= 8) 8.dp else 6.dp,
+        )
+
+        PhotoFeedTimeGranularity.DAY -> PhotoFeedHeaderMetrics(
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = if (isMain) 24.sp else 22.sp,
+                lineHeight = if (isMain) 28.sp else 26.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.08).sp,
+            ),
+            topPadding = if (isMain) 7.dp else 6.dp,
+            bottomPadding = 5.dp,
+        )
+    }
+}
+
+@Composable
+private fun photoFeedDayHeaderMetrics(
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+): PhotoFeedHeaderMetrics {
+    return photoFeedSectionHeaderMetrics(
+        granularity = PhotoFeedTimeGranularity.DAY,
+        density = density,
+        presentation = presentation,
+    )
+}
+
+private fun photoFeedTimeTitlePalette(
+    granularity: PhotoFeedTimeGranularity,
+    month: Int?,
+    colors: YingShiColors,
+): PhotoFeedTimeTitlePalette {
+    return when (granularity) {
+        PhotoFeedTimeGranularity.YEAR -> PhotoFeedTimeTitlePalette(
+            base = Color(0xFF305C83),
+            glint = Color(0xFFFFF6E9),
+            glow = Color(0xFF9CE4FF),
+            shadow = Color(0xFF69CFFF),
+            mist = Color(0xFFE9F7FF),
+        )
+
+        PhotoFeedTimeGranularity.MONTH -> when (month) {
+            12, 1, 2 -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF35546E),
+                glint = Color(0xFFF1F7FF),
+                glow = Color(0xFFBADFFF),
+                shadow = Color(0xFF8FCFFF),
+                mist = Color(0xFFDFF3FF),
+            )
+
+            3, 4, 5 -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF2F665C),
+                glint = Color(0xFFF0FFF8),
+                glow = Color(0xFFB9F0E1),
+                shadow = Color(0xFF8ADBC8),
+                mist = Color(0xFFE5FFF5),
+            )
+
+            6, 7, 8 -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF325B7A),
+                glint = Color(0xFFEFFFFF),
+                glow = Color(0xFFAEEBFF),
+                shadow = Color(0xFF83D8FF),
+                mist = Color(0xFFE5FAFF),
+            )
+
+            else -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF70553C),
+                glint = Color(0xFFFFF2DE),
+                glow = Color(0xFFFFD9B8),
+                shadow = Color(0xFFEAB98C),
+                mist = Color(0xFFFFF2E6),
+            )
+        }
+
+        PhotoFeedTimeGranularity.DAY -> when (month) {
+            12, 1, 2 -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF486074),
+                glint = Color(0xFFF4F9FF),
+                glow = Color(0xFFD0E9FF),
+                shadow = Color(0xFFB3D9FF),
+                mist = Color(0xFFE8F5FF),
+            )
+
+            3, 4, 5 -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF47675E),
+                glint = Color(0xFFF5FFF9),
+                glow = Color(0xFFD1F3E9),
+                shadow = Color(0xFFB3E7D9),
+                mist = Color(0xFFEFFFF7),
+            )
+
+            6, 7, 8 -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF466175),
+                glint = Color(0xFFF2FBFF),
+                glow = Color(0xFFD1F0FF),
+                shadow = Color(0xFFAFDEFF),
+                mist = Color(0xFFE9F9FF),
+            )
+
+            else -> PhotoFeedTimeTitlePalette(
+                base = Color(0xFF6A5A46),
+                glint = Color(0xFFFFF6E8),
+                glow = Color(0xFFFFE2C8),
+                shadow = Color(0xFFF1CFAD),
+                mist = Color(0xFFFFF5EA),
+            )
+        }
+    }
 }
 
 @Composable
@@ -1667,6 +3267,7 @@ private fun PhotoFeedGridRowContent(
     inlineVideoProgressById: Map<String, InlineVideoPlaybackProgress>,
     onToggleInlineVideo: (PhotoFeedItem) -> Unit,
     onInlineVideoProgressChange: (PhotoFeedItem, InlineVideoPlaybackProgress) -> Unit,
+    onItemBoundsChange: (String, Rect?) -> Unit,
     thumbnailRequestSize: Int,
     onMediaClick: (PhotoFeedItem) -> Unit,
     onOpenMedia: (PhotoFeedItem) -> Unit,
@@ -1679,32 +3280,35 @@ private fun PhotoFeedGridRowContent(
         horizontalArrangement = Arrangement.spacedBy(spacing),
     ) {
         row.items.forEach { item ->
-            PhotoFeedCard(
-                item = item,
-                density = density,
-                isInSelectionMode = selectionState.isInSelectionMode,
-                isSelected = selectionState.contains(item.mediaId),
-                disabled = item.mediaId in disabledMediaIds,
-                disabledSelectionLabel = disabledSelectionLabel,
-                selectionFlash = selectionFlash[item.mediaId],
-                isHighlighted = highlightedMediaId == item.mediaId,
-                highlightNonce = highlightNonce,
-                isNewImported = item.mediaId in newImportedMediaIds,
-                isRestored = item.mediaId in restoredMediaIds,
-                inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
-                allowOpenMediaWhileSelecting = allowOpenMediaWhileSelecting,
-                isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
-                isInlineVideoActive = activeInlineVideoId == item.mediaId,
-                isInlineVideoPaused = item.mediaId in pausedInlineVideoIds,
-                inlineVideoProgress = inlineVideoProgressById[item.mediaId],
-                modifier = Modifier.weight(1f),
-                thumbnailRequestSize = thumbnailRequestSize,
-                onClick = { onMediaClick(item) },
-                onOpenMedia = { onOpenMedia(item) },
-                onLongPress = { onMediaLongPress(item) },
-                onToggleInlineVideo = { onToggleInlineVideo(item) },
-                onInlineVideoProgressChange = { progress -> onInlineVideoProgressChange(item, progress) },
-            )
+            key(item.mediaId) {
+                PhotoFeedCard(
+                    item = item,
+                    density = density,
+                    isInSelectionMode = selectionState.isInSelectionMode,
+                    isSelected = selectionState.contains(item.mediaId),
+                    disabled = item.mediaId in disabledMediaIds,
+                    disabledSelectionLabel = disabledSelectionLabel,
+                    selectionFlash = selectionFlash[item.mediaId],
+                    isHighlighted = highlightedMediaId == item.mediaId,
+                    highlightNonce = highlightNonce,
+                    isNewImported = item.mediaId in newImportedMediaIds,
+                    isRestored = item.mediaId in restoredMediaIds,
+                    inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                    allowOpenMediaWhileSelecting = allowOpenMediaWhileSelecting,
+                    isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
+                    isInlineVideoActive = activeInlineVideoId == item.mediaId,
+                    isInlineVideoPaused = item.mediaId in pausedInlineVideoIds,
+                    inlineVideoProgress = inlineVideoProgressById[item.mediaId],
+                    modifier = Modifier.weight(1f),
+                    thumbnailRequestSize = thumbnailRequestSize,
+                    onBoundsChange = { bounds -> onItemBoundsChange(item.mediaId, bounds) },
+                    onClick = { onMediaClick(item) },
+                    onOpenMedia = { onOpenMedia(item) },
+                    onLongPress = { onMediaLongPress(item) },
+                    onToggleInlineVideo = { onToggleInlineVideo(item) },
+                    onInlineVideoProgressChange = { progress -> onInlineVideoProgressChange(item, progress) },
+                )
+            }
         }
 
         repeat(density.columns - row.items.size) {
@@ -1735,6 +3339,7 @@ private fun PhotoFeedCard(
     inlineVideoProgress: InlineVideoPlaybackProgress?,
     modifier: Modifier = Modifier,
     thumbnailRequestSize: Int,
+    onBoundsChange: (Rect?) -> Unit,
     onClick: () -> Unit,
     onOpenMedia: () -> Unit,
     onLongPress: () -> Unit,
@@ -1762,6 +3367,11 @@ private fun PhotoFeedCard(
         animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
         label = "photoFeedCardSelectionBorder",
     )
+    DisposableEffect(item.mediaId) {
+        onDispose {
+            onBoundsChange(null)
+        }
+    }
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -1771,6 +3381,9 @@ private fun PhotoFeedCard(
             }
             .clipToBounds()
             .background(Color.Transparent)
+            .onGloballyPositioned { coordinates ->
+                onBoundsChange(coordinates.boundsInRoot())
+            }
             .combinedClickable(
                 onClick = if (disabled) ({}) else if (selectionHotspotOnly) onOpenMedia else onClick,
                 onLongClick = if (disabled) ({}) else onLongPress,
@@ -2116,13 +3729,974 @@ private fun TargetMediaHighlightOverlay(
     }
 }
 
+@Composable
+private fun PhotoFeedDensityMorphOverlay(
+    entries: List<PhotoFeedDensityTransitionOverlayEntry>,
+    viewportBounds: Rect?,
+    progress: Float,
+    thumbnailRequestSize: Int,
+    fadeAtEdges: Boolean,
+    sceneAlpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    val clampedSceneAlpha = sceneAlpha.coerceIn(0f, 1f)
+    if (entries.isEmpty() || clampedSceneAlpha <= 0f) return
+    val localDensity = LocalDensity.current
+    val viewportLeft = viewportBounds?.left ?: 0f
+    val viewportTop = viewportBounds?.top ?: 0f
+    Box(modifier = modifier.clipToBounds()) {
+        entries.forEach { entry ->
+            key(entry.item.mediaId) {
+                val currentBounds = interpolatePhotoFeedRect(
+                    start = entry.startBounds,
+                    end = entry.endBounds,
+                    progress = clampedProgress,
+                )
+                val baseAlpha = if (fadeAtEdges) {
+                    when {
+                        clampedProgress < 0.12f -> 0.80f + (clampedProgress / 0.12f) * 0.20f
+                        clampedProgress > 0.90f -> 1f - ((clampedProgress - 0.90f) / 0.10f).coerceIn(0f, 1f) * 0.28f
+                        else -> 1f
+                    }.coerceIn(0f, 1f)
+                } else {
+                    1f
+                }
+                val overlayAlpha = clampedSceneAlpha *
+                    baseAlpha *
+                    photoFeedMorphOverlayViewportAlpha(currentBounds, viewportBounds)
+                val startBounds = entry.startBounds
+                val widthDp = with(localDensity) { startBounds.width.toDp() }
+                val heightDp = with(localDensity) { startBounds.height.toDp() }
+                val translateX = currentBounds.left - startBounds.left
+                val translateY = currentBounds.top - startBounds.top
+                val scaleX = (currentBounds.width / startBounds.width.coerceAtLeast(1f)).coerceAtLeast(0.01f)
+                val scaleY = (currentBounds.height / startBounds.height.coerceAtLeast(1f)).coerceAtLeast(0.01f)
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                x = (startBounds.left - viewportLeft).roundToInt(),
+                                y = (startBounds.top - viewportTop).roundToInt(),
+                            )
+                        }
+                        .width(widthDp)
+                        .height(heightDp)
+                        .graphicsLayer {
+                            alpha = overlayAlpha
+                            translationX = translateX
+                            translationY = translateY
+                            this.scaleX = scaleX
+                            this.scaleY = scaleY
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        },
+                ) {
+                    AppContentMediaThumbnail(
+                        mediaSource = entry.item.mediaSource,
+                        mediaType = entry.item.mediaType,
+                        palette = entry.item.palette,
+                        modifier = Modifier.matchParentSize(),
+                        contentDescription = entry.item.mediaId,
+                        requestSize = thumbnailRequestSize,
+                        showLoadingIndicator = false,
+                        showVideoPlayOverlay = true,
+                    )
+                    YingShiMediaFrame(
+                        modifier = Modifier.matchParentSize(),
+                        selected = false,
+                        memoryActive = false,
+                        topScrimAlpha = if (entry.item.mediaType == AppMediaType.VIDEO) 0.20f else 0.12f,
+                        bottomGlowAlpha = 0.12f,
+                    )
+                    if (entry.item.mediaType == AppMediaType.VIDEO) {
+                        VideoDurationBadge(
+                            durationMillis = entry.item.gridVideoBadgeDurationMillis(progress = null),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoFeedStaticMediaOverlay(
+    candidates: List<PhotoFeedDensityTransitionCandidate>,
+    viewportBounds: Rect?,
+    alpha: Float,
+    thumbnailRequestSize: Int,
+    modifier: Modifier = Modifier,
+) {
+    val clampedAlpha = alpha.coerceIn(0f, 1f)
+    if (candidates.isEmpty() || clampedAlpha <= 0f) return
+    val localDensity = LocalDensity.current
+    val viewportLeft = viewportBounds?.left ?: 0f
+    val viewportTop = viewportBounds?.top ?: 0f
+    Box(modifier = modifier.clipToBounds()) {
+        candidates.forEach { candidate ->
+            key(candidate.item.mediaId) {
+                val bounds = candidate.startBounds
+                val widthDp = with(localDensity) { bounds.width.toDp() }
+                val heightDp = with(localDensity) { bounds.height.toDp() }
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                x = (bounds.left - viewportLeft).roundToInt(),
+                                y = (bounds.top - viewportTop).roundToInt(),
+                            )
+                        }
+                        .width(widthDp)
+                        .height(heightDp)
+                        .graphicsLayer {
+                            this.alpha = clampedAlpha *
+                                photoFeedMorphOverlayViewportAlpha(bounds, viewportBounds)
+                        },
+                ) {
+                    AppContentMediaThumbnail(
+                        mediaSource = candidate.item.mediaSource,
+                        mediaType = candidate.item.mediaType,
+                        palette = candidate.item.palette,
+                        modifier = Modifier.matchParentSize(),
+                        contentDescription = candidate.item.mediaId,
+                        requestSize = thumbnailRequestSize,
+                        showLoadingIndicator = false,
+                        showVideoPlayOverlay = true,
+                    )
+                    YingShiMediaFrame(
+                        modifier = Modifier.matchParentSize(),
+                        selected = false,
+                        memoryActive = false,
+                        topScrimAlpha = if (candidate.item.mediaType == AppMediaType.VIDEO) 0.20f else 0.12f,
+                        bottomGlowAlpha = 0.12f,
+                    )
+                    if (candidate.item.mediaType == AppMediaType.VIDEO) {
+                        VideoDurationBadge(
+                            durationMillis = candidate.item.gridVideoBadgeDurationMillis(progress = null),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoFeedDensityHeaderOverlay(
+    snapshots: List<PhotoFeedVisibleHeaderSnapshot>,
+    alpha: Float,
+    scale: Float,
+    viewportBounds: Rect?,
+    modifier: Modifier = Modifier,
+) {
+    if (snapshots.isEmpty() || alpha <= 0f) return
+    val localDensity = LocalDensity.current
+    val viewportLeft = viewportBounds?.left ?: 0f
+    val viewportTop = viewportBounds?.top ?: 0f
+    Box(modifier = modifier.clipToBounds()) {
+        snapshots.forEach { snapshot ->
+            val widthDp = with(localDensity) { snapshot.bounds.width.toDp() }
+            val heightDp = with(localDensity) { snapshot.bounds.height.toDp() }
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = (snapshot.bounds.left - viewportLeft).roundToInt(),
+                            y = (snapshot.bounds.top - viewportTop).roundToInt(),
+                        )
+                    }
+                    .width(widthDp)
+                    .height(heightDp)
+                    .graphicsLayer {
+                        this.alpha = alpha
+                        scaleX = scale
+                        scaleY = scale
+                        transformOrigin = photoFeedDensityTransformOrigin(
+                            bounds = snapshot.bounds,
+                            viewportBounds = viewportBounds,
+                        )
+                    },
+            ) {
+                when (snapshot) {
+                    is PhotoFeedVisibleHeaderSnapshot.Section -> PhotoFeedSectionHeaderRow(
+                        header = snapshot.header,
+                        density = snapshot.density,
+                        presentation = snapshot.presentation,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.Day -> PhotoFeedDayHeaderRow(
+                        header = snapshot.header,
+                        density = snapshot.density,
+                        presentation = snapshot.presentation,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.TimeBucket -> PhotoFeedTimeBucketHeaderRow(
+                        header = snapshot.header,
+                        density = snapshot.density,
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.Collaborator -> PhotoFeedCollaboratorHeaderRow(
+                        identity = snapshot.identity,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.Divider -> PhotoFeedCollaboratorDividerRow(
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoFeedDensityHeaderMorphOverlay(
+    entries: List<PhotoFeedHeaderTransitionOverlayEntry>,
+    progress: Float,
+    alpha: Float,
+    scale: Float,
+    viewportBounds: Rect?,
+    modifier: Modifier = Modifier,
+) {
+    if (entries.isEmpty() || alpha <= 0f) return
+    val localDensity = LocalDensity.current
+    val viewportLeft = viewportBounds?.left ?: 0f
+    val viewportTop = viewportBounds?.top ?: 0f
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    Box(modifier = modifier.clipToBounds()) {
+        entries.forEach { entry ->
+            val currentBounds = if (entry.matchedFromSource) {
+                interpolatePhotoFeedRect(
+                    start = entry.startBounds,
+                    end = entry.endBounds,
+                    progress = clampedProgress,
+                )
+            } else {
+                entry.endBounds
+            }
+            val widthDp = with(localDensity) { currentBounds.width.toDp() }
+            val heightDp = with(localDensity) { currentBounds.height.toDp() }
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = (currentBounds.left - viewportLeft).roundToInt(),
+                            y = (currentBounds.top - viewportTop).roundToInt(),
+                        )
+                    }
+                    .width(widthDp)
+                    .height(heightDp)
+                    .graphicsLayer {
+                        this.alpha = if (entry.matchedFromSource) {
+                            (alpha * lerpPhotoFeedFloat(
+                                start = 0.62f,
+                                end = 1f,
+                                progress = photoFeedSmoothStep(clampedProgress),
+                            )).coerceIn(0f, 1f)
+                        } else {
+                            (alpha * photoFeedSmoothStep(((clampedProgress - 0.12f) / 0.88f).coerceIn(0f, 1f)))
+                                .coerceIn(0f, 1f)
+                        }
+                        scaleX = scale
+                        scaleY = scale
+                        transformOrigin = photoFeedDensityTransformOrigin(
+                            bounds = currentBounds,
+                            viewportBounds = viewportBounds,
+                        )
+                    },
+            ) {
+                when (val snapshot = entry.snapshot) {
+                    is PhotoFeedVisibleHeaderSnapshot.Section -> PhotoFeedSectionHeaderRow(
+                        header = snapshot.header,
+                        density = snapshot.density,
+                        presentation = snapshot.presentation,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.Day -> PhotoFeedDayHeaderRow(
+                        header = snapshot.header,
+                        density = snapshot.density,
+                        presentation = snapshot.presentation,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.TimeBucket -> PhotoFeedTimeBucketHeaderRow(
+                        header = snapshot.header,
+                        density = snapshot.density,
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.Collaborator -> PhotoFeedCollaboratorHeaderRow(
+                        identity = snapshot.identity,
+                        modifier = Modifier.matchParentSize(),
+                    )
+
+                    is PhotoFeedVisibleHeaderSnapshot.Divider -> PhotoFeedCollaboratorDividerRow(
+                        modifier = Modifier.matchParentSize(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun captureVisiblePhotoFeedHeaderSnapshots(
+    blocks: List<PhotoFeedBlock>,
+    listState: LazyListState,
+    viewportBounds: Rect,
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+    contentStartPx: Float,
+): List<PhotoFeedVisibleHeaderSnapshot> {
+    return listState.layoutInfo.visibleItemsInfo.mapNotNull { visibleItem ->
+        val bounds = Rect(
+            left = viewportBounds.left + contentStartPx,
+            top = viewportBounds.top + visibleItem.offset,
+            right = viewportBounds.right - contentStartPx,
+            bottom = viewportBounds.top + visibleItem.offset + visibleItem.size,
+        )
+        when (val block = blocks.getOrNull(visibleItem.index)) {
+            is PhotoFeedSectionHeader -> PhotoFeedVisibleHeaderSnapshot.Section(
+                header = block,
+                density = density,
+                presentation = presentation,
+                bounds = bounds,
+            )
+
+            is PhotoFeedDayHeader -> PhotoFeedVisibleHeaderSnapshot.Day(
+                header = block,
+                density = density,
+                presentation = presentation,
+                bounds = bounds,
+            )
+
+            is PhotoFeedTimeBucketHeader -> PhotoFeedVisibleHeaderSnapshot.TimeBucket(
+                header = block,
+                density = density,
+                bounds = bounds,
+            )
+
+            is PhotoFeedCollaboratorHeader -> PhotoFeedVisibleHeaderSnapshot.Collaborator(
+                identity = block.identity,
+                bounds = bounds,
+            )
+
+            is PhotoFeedCollaboratorDivider -> PhotoFeedVisibleHeaderSnapshot.Divider(
+                bounds = bounds,
+            )
+
+            else -> null
+        }
+    }
+}
+
+private fun buildPhotoFeedDensityPreviewOverlayEntries(
+    candidates: List<PhotoFeedDensityTransitionCandidate>,
+    targetLocalBoundsByMediaId: Map<String, Rect>,
+    anchorMediaId: String,
+): List<PhotoFeedDensityTransitionOverlayEntry> {
+    val targetBounds = buildPhotoFeedPredictedBoundsByMediaId(
+        candidates = candidates,
+        targetLocalBoundsByMediaId = targetLocalBoundsByMediaId,
+        anchorMediaId = anchorMediaId,
+    )
+    return candidates.mapNotNull { candidate ->
+        val endBounds = targetBounds[candidate.item.mediaId] ?: return@mapNotNull null
+        PhotoFeedDensityTransitionOverlayEntry(
+            item = candidate.item,
+            startBounds = candidate.startBounds,
+            endBounds = endBounds,
+        )
+    }
+}
+
+private fun buildPhotoFeedHeaderTransitionOverlayEntries(
+    sourceSnapshots: List<PhotoFeedVisibleHeaderSnapshot>,
+    targetSnapshots: List<PhotoFeedVisibleHeaderSnapshot>,
+): List<PhotoFeedHeaderTransitionOverlayEntry> {
+    if (targetSnapshots.isEmpty()) return emptyList()
+    val sourceByKey = sourceSnapshots.mapNotNull { snapshot ->
+        photoFeedHeaderTransitionKey(snapshot)?.let { key -> key to snapshot }
+    }.toMap()
+
+    return targetSnapshots.map { targetSnapshot ->
+        val transitionKey = photoFeedHeaderTransitionKey(targetSnapshot)
+        val matchedSource = transitionKey
+            ?.let(sourceByKey::get)
+        PhotoFeedHeaderTransitionOverlayEntry(
+            snapshot = targetSnapshot,
+            startBounds = matchedSource?.bounds ?: targetSnapshot.bounds,
+            endBounds = targetSnapshot.bounds,
+            matchedFromSource = matchedSource != null,
+        )
+    }
+}
+
+private fun photoFeedHeaderTransitionKey(
+    snapshot: PhotoFeedVisibleHeaderSnapshot,
+): String? {
+    return when (snapshot) {
+        is PhotoFeedVisibleHeaderSnapshot.Section -> buildString {
+            append("section:")
+            append(snapshot.header.granularity.name)
+            append(':')
+            append(snapshot.header.year ?: -1)
+            append(':')
+            append(snapshot.header.month ?: -1)
+            append(':')
+            append(snapshot.header.anchorTimeMillis ?: -1L)
+        }
+
+        is PhotoFeedVisibleHeaderSnapshot.Day -> "day:${snapshot.header.year}:${snapshot.header.month}:${snapshot.header.day}"
+        is PhotoFeedVisibleHeaderSnapshot.TimeBucket ->
+            "bucket:${snapshot.header.anchorTimeMillis}:${snapshot.header.bucketHours}"
+
+        is PhotoFeedVisibleHeaderSnapshot.Collaborator -> "collab:${snapshot.identity.userId}"
+        is PhotoFeedVisibleHeaderSnapshot.Divider -> null
+    }
+}
+
+private fun visiblePhotoFeedDensityTransitionCandidates(
+    blocks: List<PhotoFeedBlock>,
+    listState: LazyListState,
+    itemBoundsByMediaId: Map<String, Rect>,
+    viewportBounds: Rect?,
+    density: PhotoFeedDensity,
+    densityScope: androidx.compose.ui.unit.Density,
+): List<PhotoFeedDensityTransitionCandidate> {
+    val viewport = viewportBounds ?: return emptyList()
+    val viewportCenter = viewport.center
+    val spacingPx = with(densityScope) { rowSpacing(density).toPx() }
+    val edgePaddingPx = spacingPx
+    val contentWidth = (viewport.width - edgePaddingPx * 2f).coerceAtLeast(1f)
+    val cellSize = ((contentWidth - (density.columns - 1) * spacingPx) / density.columns)
+        .coerceAtLeast(1f)
+    return listState.layoutInfo.visibleItemsInfo
+        .mapNotNull { visibleItem ->
+            val row = blocks.getOrNull(visibleItem.index) as? PhotoFeedGridRow ?: return@mapNotNull null
+            visibleItem to row
+        }
+        .flatMap { (visibleItem, row) ->
+            row.items.mapIndexedNotNull { columnIndex, item ->
+                val bounds = itemBoundsByMediaId[item.mediaId] ?: Rect(
+                    left = viewport.left + edgePaddingPx + columnIndex * (cellSize + spacingPx),
+                    top = viewport.top + visibleItem.offset,
+                    right = viewport.left + edgePaddingPx + columnIndex * (cellSize + spacingPx) + cellSize,
+                    bottom = viewport.top + visibleItem.offset + cellSize,
+                )
+                val center = bounds.center
+                val score = abs(center.x - viewportCenter.x) + abs(center.y - viewportCenter.y)
+                PhotoFeedDensityTransitionCandidate(
+                    item = item,
+                    startBounds = bounds,
+                    distanceScore = score,
+                )
+            }
+        }
+        .sortedBy { it.distanceScore }
+}
+
+private suspend fun correctPhotoFeedDensityTransitionAnchorOffset(
+    anchorMediaId: String,
+    itemBoundsByMediaId: Map<String, Rect>,
+    viewportBounds: Rect,
+    listState: LazyListState,
+) {
+    val anchorBounds = itemBoundsByMediaId[anchorMediaId] ?: return
+    val deltaY = anchorBounds.center.y - viewportBounds.center.y
+    if (abs(deltaY) < 1f) return
+    listState.scrollBy(deltaY)
+}
+
+private fun buildPhotoFeedDensityCommitOverlayEntries(
+    candidates: List<PhotoFeedDensityTransitionCandidate>,
+    releasePreviewBoundsByMediaId: Map<String, Rect>,
+    itemBoundsByMediaId: Map<String, Rect>,
+): List<PhotoFeedDensityTransitionOverlayEntry> {
+    return candidates.mapNotNull { candidate ->
+        val startBounds = releasePreviewBoundsByMediaId[candidate.item.mediaId]
+            ?: return@mapNotNull null
+        val endBounds = itemBoundsByMediaId[candidate.item.mediaId] ?: return@mapNotNull null
+        PhotoFeedDensityTransitionOverlayEntry(
+            item = candidate.item,
+            startBounds = startBounds,
+            endBounds = endBounds,
+        )
+    }
+}
+
+// Mirror the real block stack so preview already reserves header slots before commit.
+private fun buildPhotoFeedPredictedLocalBoundsByMediaId(
+    blocks: List<PhotoFeedBlock>,
+    targetDensity: PhotoFeedDensity,
+    viewportBounds: Rect,
+    densityScope: androidx.compose.ui.unit.Density,
+    presentation: PhotoFeedPresentation,
+): Map<String, Rect> {
+    if (blocks.isEmpty()) return emptyMap()
+    val rowSpacingPx = with(densityScope) { rowSpacing(targetDensity).toPx() }
+    val sectionSpacingPx = with(densityScope) { sectionSpacing(targetDensity).toPx() }
+    val edgePaddingPx = rowSpacingPx
+    val columns = targetDensity.columns.coerceAtLeast(1)
+    val contentWidth = (viewportBounds.width - edgePaddingPx * 2f).coerceAtLeast(1f)
+    val cellSize = ((contentWidth - (columns - 1) * rowSpacingPx) / columns).coerceAtLeast(1f)
+    var currentTop = 0f
+    val boundsByMediaId = LinkedHashMap<String, Rect>()
+
+    blocks.forEachIndexed { index, block ->
+        when (block) {
+            is PhotoFeedGridRow -> {
+                block.items.forEachIndexed { columnIndex, item ->
+                    val left = viewportBounds.left +
+                        edgePaddingPx +
+                        columnIndex * (cellSize + rowSpacingPx)
+                    boundsByMediaId[item.mediaId] = Rect(
+                        left = left,
+                        top = currentTop,
+                        right = left + cellSize,
+                        bottom = currentTop + cellSize,
+                    )
+                }
+                currentTop += cellSize
+            }
+
+            else -> {
+                currentTop += photoFeedPredictedBlockHeightPx(
+                    block = block,
+                    density = targetDensity,
+                    presentation = presentation,
+                    densityScope = densityScope,
+                )
+            }
+        }
+
+        if (index != blocks.lastIndex) {
+            currentTop += sectionSpacingPx
+        }
+    }
+    return boundsByMediaId
+}
+
+private fun buildPhotoFeedPredictedHeaderSnapshots(
+    blocks: List<PhotoFeedBlock>,
+    targetDensity: PhotoFeedDensity,
+    viewportBounds: Rect,
+    densityScope: androidx.compose.ui.unit.Density,
+    presentation: PhotoFeedPresentation,
+    anchorMediaId: String,
+    anchorStartBounds: Rect,
+    targetLocalBoundsByMediaId: Map<String, Rect>,
+): List<PhotoFeedVisibleHeaderSnapshot> {
+    val anchorLocalBounds = targetLocalBoundsByMediaId[anchorMediaId] ?: return emptyList()
+    val deltaY = anchorStartBounds.center.y - anchorLocalBounds.center.y
+    val rowSpacingPx = with(densityScope) { rowSpacing(targetDensity).toPx() }
+    val sectionSpacingPx = with(densityScope) { sectionSpacing(targetDensity).toPx() }
+    val edgePaddingPx = rowSpacingPx
+    val columns = targetDensity.columns.coerceAtLeast(1)
+    val contentWidth = (viewportBounds.width - edgePaddingPx * 2f).coerceAtLeast(1f)
+    val cellSize = ((contentWidth - (columns - 1) * rowSpacingPx) / columns).coerceAtLeast(1f)
+    var currentTop = 0f
+    val snapshots = mutableListOf<PhotoFeedVisibleHeaderSnapshot>()
+
+    blocks.forEachIndexed { index, block ->
+        val localBounds = when (block) {
+            is PhotoFeedGridRow -> {
+                val rect = Rect(
+                    left = viewportBounds.left + edgePaddingPx,
+                    top = currentTop,
+                    right = viewportBounds.right - edgePaddingPx,
+                    bottom = currentTop + cellSize,
+                )
+                currentTop += cellSize
+                rect
+            }
+
+            else -> {
+                val blockHeight = photoFeedPredictedBlockHeightPx(
+                    block = block,
+                    density = targetDensity,
+                    presentation = presentation,
+                    densityScope = densityScope,
+                )
+                val rect = Rect(
+                    left = viewportBounds.left + edgePaddingPx,
+                    top = currentTop,
+                    right = viewportBounds.right - edgePaddingPx,
+                    bottom = currentTop + blockHeight,
+                )
+                currentTop += blockHeight
+                rect
+            }
+        }
+        val translatedBounds = localBounds.translateY(deltaY)
+        when (block) {
+            is PhotoFeedSectionHeader -> snapshots += PhotoFeedVisibleHeaderSnapshot.Section(
+                header = block,
+                density = targetDensity,
+                presentation = presentation,
+                bounds = translatedBounds,
+            )
+
+            is PhotoFeedDayHeader -> snapshots += PhotoFeedVisibleHeaderSnapshot.Day(
+                header = block,
+                density = targetDensity,
+                presentation = presentation,
+                bounds = translatedBounds,
+            )
+
+            is PhotoFeedTimeBucketHeader -> snapshots += PhotoFeedVisibleHeaderSnapshot.TimeBucket(
+                header = block,
+                density = targetDensity,
+                bounds = translatedBounds,
+            )
+
+            is PhotoFeedCollaboratorHeader -> snapshots += PhotoFeedVisibleHeaderSnapshot.Collaborator(
+                identity = block.identity,
+                bounds = translatedBounds,
+            )
+
+            is PhotoFeedCollaboratorDivider -> snapshots += PhotoFeedVisibleHeaderSnapshot.Divider(
+                bounds = translatedBounds,
+            )
+
+            is PhotoFeedGridRow -> Unit
+        }
+        if (index != blocks.lastIndex) {
+            currentTop += sectionSpacingPx
+        }
+    }
+    val viewportMargin = max(cellSize * 3f, viewportBounds.height * 0.36f)
+    return snapshots.filter { snapshot ->
+        snapshot.bounds.intersectsViewport(viewportBounds, margin = viewportMargin)
+    }
+}
+
+private fun buildPhotoFeedTargetScrubberSnapshot(
+    blocks: List<PhotoFeedBlock>,
+    density: PhotoFeedDensity,
+    fallbackItems: List<PhotoFeedItem>,
+    anchorMediaId: String,
+    currentProgress: Float,
+): PhotoFeedTimeScrubberSnapshot? {
+    val anchors = buildPhotoFeedScrubberAnchors(
+        blocks = blocks,
+        density = density,
+        leadingItemCount = PhotoFeedLeadingItemCount,
+    )
+    if (anchors.size <= 1) return null
+    val targetBlockIndex = findBlockIndexForMedia(blocks, anchorMediaId)
+        .takeIf { it >= 0 }
+        ?: 0
+    return PhotoFeedTimeScrubberSnapshot(
+        progress = currentProgress.coerceIn(0f, 1f),
+        label = resolveCurrentVisibleDateLabel(
+            itemIndex = targetBlockIndex,
+            blocks = blocks,
+            fallbackItems = fallbackItems,
+            density = density,
+        ),
+        showLabel = false,
+        yearMarkers = buildPhotoFeedScrubberYearMarkers(anchors),
+    )
+}
+
+private fun buildPhotoFeedPredictedBoundsByMediaId(
+    candidates: List<PhotoFeedDensityTransitionCandidate>,
+    targetLocalBoundsByMediaId: Map<String, Rect>,
+    anchorMediaId: String,
+): Map<String, Rect> {
+    val anchorStartBounds = candidates.firstOrNull { it.item.mediaId == anchorMediaId }?.startBounds
+        ?: return emptyMap()
+    val anchorLocalBounds = targetLocalBoundsByMediaId[anchorMediaId] ?: return emptyMap()
+    val deltaY = anchorStartBounds.center.y - anchorLocalBounds.center.y
+    return candidates.mapNotNull { candidate ->
+        val localBounds = targetLocalBoundsByMediaId[candidate.item.mediaId] ?: return@mapNotNull null
+        candidate.item.mediaId to localBounds.translateY(deltaY)
+    }.toMap()
+}
+
+private fun photoFeedPredictedBlockHeightPx(
+    block: PhotoFeedBlock,
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+    densityScope: androidx.compose.ui.unit.Density,
+): Float {
+    return when (block) {
+        is PhotoFeedSectionHeader -> photoFeedPredictedHeaderHeightPx(
+            granularity = block.granularity,
+            density = density,
+            presentation = presentation,
+            densityScope = densityScope,
+        )
+
+        is PhotoFeedDayHeader -> photoFeedPredictedHeaderHeightPx(
+            granularity = PhotoFeedTimeGranularity.DAY,
+            density = density,
+            presentation = presentation,
+            densityScope = densityScope,
+        )
+
+        is PhotoFeedTimeBucketHeader -> photoFeedPredictedTimeBucketHeaderHeightPx(
+            header = block,
+            density = density,
+            densityScope = densityScope,
+        )
+
+        is PhotoFeedCollaboratorHeader -> with(densityScope) { 42.dp.toPx() }
+        is PhotoFeedCollaboratorDivider -> with(densityScope) { 13.dp.toPx() }
+        is PhotoFeedGridRow -> 0f
+    }
+}
+
+private fun photoFeedPredictedHeaderHeightPx(
+    granularity: PhotoFeedTimeGranularity,
+    density: PhotoFeedDensity,
+    presentation: PhotoFeedPresentation,
+    densityScope: androidx.compose.ui.unit.Density,
+): Float = with(densityScope) {
+    val isMain = presentation == PhotoFeedPresentation.MAIN_STREAM
+    val lineHeight = when (granularity) {
+        PhotoFeedTimeGranularity.YEAR -> if (isMain) 44.sp else 36.sp
+        PhotoFeedTimeGranularity.MONTH -> if (isMain) 38.sp else 34.sp
+        PhotoFeedTimeGranularity.DAY -> if (isMain) 28.sp else 26.sp
+    }
+    val topPadding = when (granularity) {
+        PhotoFeedTimeGranularity.YEAR -> if (isMain) 18.dp else 12.dp
+        PhotoFeedTimeGranularity.MONTH -> if (isMain) 14.dp else 12.dp
+        PhotoFeedTimeGranularity.DAY -> if (isMain) 7.dp else 6.dp
+    }
+    val bottomPadding = when (granularity) {
+        PhotoFeedTimeGranularity.YEAR -> 8.dp
+        PhotoFeedTimeGranularity.MONTH -> if (density.columns >= 8) 8.dp else 6.dp
+        PhotoFeedTimeGranularity.DAY -> 5.dp
+    }
+    topPadding.toPx() + lineHeight.toPx() + bottomPadding.toPx()
+}
+
+private fun photoFeedPredictedTimeBucketHeaderHeightPx(
+    header: PhotoFeedTimeBucketHeader,
+    density: PhotoFeedDensity,
+    densityScope: androidx.compose.ui.unit.Density,
+): Float = with(densityScope) {
+    val topPadding = if (density.columns <= 4) 12.dp else 8.dp
+    val bottomPadding = 6.dp
+    val primaryRow = if (density.columns <= 4) 28.dp else 24.dp
+    val comparisonRow = if (
+        header.currentCount > 0 &&
+        header.partnerCount > 0 &&
+        density.columns <= 4
+    ) {
+        8.dp + 16.dp
+    } else {
+        0.dp
+    }
+    topPadding.toPx() + primaryRow.toPx() + comparisonRow.toPx() + bottomPadding.toPx()
+}
+
+private fun Rect.translateY(deltaY: Float): Rect {
+    return Rect(
+        left = left,
+        top = top + deltaY,
+        right = right,
+        bottom = bottom + deltaY,
+    )
+}
+
+private fun Rect.intersectsViewport(
+    viewportBounds: Rect,
+    margin: Float = 0f,
+): Boolean {
+    return right >= viewportBounds.left - margin &&
+        left <= viewportBounds.right + margin &&
+        bottom >= viewportBounds.top - margin &&
+        top <= viewportBounds.bottom + margin
+}
+
+private fun photoFeedDensitySourceSceneAlpha(progress: Float): Float {
+    return lerpPhotoFeedFloat(
+        start = 1f,
+        end = 0.40f,
+        progress = progress.coerceIn(0f, 1f),
+    )
+}
+
+private fun photoFeedDensitySourceMediaAlpha(progress: Float): Float {
+    return lerpPhotoFeedFloat(
+        start = 1f,
+        end = 0.86f,
+        progress = progress.coerceIn(0f, 1f),
+    )
+}
+
+private fun photoFeedDensitySourceSupplementaryAlpha(progress: Float): Float {
+    return lerpPhotoFeedFloat(
+        start = 1f,
+        end = 0.56f,
+        progress = progress.coerceIn(0f, 1f),
+    )
+}
+
+private fun photoFeedDensityTargetSceneAlpha(progress: Float): Float {
+    val t = progress.coerceIn(0f, 1f)
+    return photoFeedSmoothStep(((t - 0.02f) / 0.90f).coerceIn(0f, 1f))
+}
+
+private fun photoFeedDensityFallbackContentScale(
+    previewState: DiscreteZoomPreviewState<PhotoFeedDensity>?,
+    progress: Float,
+): Float {
+    val direction = previewState?.direction ?: return 1f
+    val targetScale = when (direction) {
+        DiscreteZoomDirection.TO_SPARSE -> 1.035f
+        DiscreteZoomDirection.TO_DENSE -> 0.965f
+    }
+    return lerpPhotoFeedFloat(
+        start = 1f,
+        end = targetScale,
+        progress = photoFeedSmoothStep(progress.coerceIn(0f, 1f)),
+    )
+}
+
+private fun photoFeedLiveHeaderAlpha(
+    stage: PhotoFeedDensityTransitionStage,
+    baseAlpha: Float,
+    matchedHeaderKeys: Set<String>,
+    snapshot: PhotoFeedVisibleHeaderSnapshot,
+): Float {
+    if (stage == PhotoFeedDensityTransitionStage.IDLE ||
+        stage == PhotoFeedDensityTransitionStage.SETTLING ||
+        stage == PhotoFeedDensityTransitionStage.COMMITTING
+    ) {
+        return baseAlpha
+    }
+    val key = photoFeedHeaderTransitionKey(snapshot) ?: return baseAlpha
+    val isMatched = key in matchedHeaderKeys
+    val multiplier = when (snapshot) {
+        is PhotoFeedVisibleHeaderSnapshot.Collaborator,
+        is PhotoFeedVisibleHeaderSnapshot.Divider,
+        -> if (isMatched) 0.64f else 0.78f
+
+        is PhotoFeedVisibleHeaderSnapshot.TimeBucket,
+        -> if (isMatched) 0.66f else 0.80f
+
+        is PhotoFeedVisibleHeaderSnapshot.Section,
+        is PhotoFeedVisibleHeaderSnapshot.Day,
+        -> if (isMatched) 0.70f else 0.84f
+    }
+    return (baseAlpha * multiplier).coerceIn(0f, 1f)
+}
+
+private fun photoFeedDensityCommitSourceOverlayAlpha(
+    releaseAlpha: Float,
+    progress: Float,
+): Float {
+    return lerpPhotoFeedFloat(
+        start = releaseAlpha.coerceIn(0f, 1f),
+        end = 0f,
+        progress = photoFeedSmoothStep(progress),
+    )
+}
+
+private fun photoFeedDensityCommitTargetOverlayAlpha(
+    releaseAlpha: Float,
+    progress: Float,
+): Float {
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    val growth = lerpPhotoFeedFloat(
+        start = releaseAlpha.coerceIn(0f, 1f),
+        end = 1f,
+        progress = (clampedProgress / 0.68f).coerceIn(0f, 1f),
+    )
+    val fadeProgress = ((clampedProgress - 0.58f) / 0.42f).coerceIn(0f, 1f)
+    return (growth * (1f - photoFeedSmoothStep(fadeProgress))).coerceIn(0f, 1f)
+}
+
+private fun photoFeedDensityCommitLiveTargetAlpha(progress: Float): Float {
+    val revealProgress = ((progress.coerceIn(0f, 1f) - 0.34f) / 0.66f).coerceIn(0f, 1f)
+    return photoFeedSmoothStep(revealProgress)
+}
+
+private fun photoFeedDensityCommitFallbackLiveTargetAlpha(
+    releaseAlpha: Float,
+    progress: Float,
+): Float {
+    return lerpPhotoFeedFloat(
+        start = releaseAlpha.coerceIn(0.34f, 1f),
+        end = 1f,
+        progress = photoFeedSmoothStep(progress.coerceIn(0f, 1f)),
+    )
+}
+
+private fun photoFeedSmoothStep(value: Float): Float {
+    val t = value.coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+private fun photoFeedDensityTransformOrigin(
+    bounds: Rect,
+    viewportBounds: Rect?,
+): TransformOrigin {
+    val viewport = viewportBounds ?: return TransformOrigin.Center
+    val width = bounds.width.coerceAtLeast(1f)
+    val height = bounds.height.coerceAtLeast(1f)
+    return TransformOrigin(
+        pivotFractionX = (viewport.center.x - bounds.left) / width,
+        pivotFractionY = (viewport.center.y - bounds.top) / height,
+    )
+}
+
+private fun interpolatePhotoFeedRect(
+    start: Rect,
+    end: Rect,
+    progress: Float,
+): Rect {
+    val t = progress.coerceIn(0f, 1f)
+    return Rect(
+        left = lerpPhotoFeedFloat(start.left, end.left, t),
+        top = lerpPhotoFeedFloat(start.top, end.top, t),
+        right = lerpPhotoFeedFloat(start.right, end.right, t),
+        bottom = lerpPhotoFeedFloat(start.bottom, end.bottom, t),
+    )
+}
+
+private fun lerpPhotoFeedFloat(
+    start: Float,
+    end: Float,
+    progress: Float,
+): Float {
+    return start + (end - start) * progress
+}
+
+private fun photoFeedMorphOverlayViewportAlpha(
+    bounds: Rect,
+    viewportBounds: Rect?,
+): Float {
+    val viewport = viewportBounds ?: return 1f
+    val viewportCenter = viewport.center
+    val distanceX = abs(bounds.center.x - viewportCenter.x)
+    val distanceY = abs(bounds.center.y - viewportCenter.y)
+    val maxDistanceX = (viewport.width * 0.62f).coerceAtLeast(1f)
+    val maxDistanceY = (viewport.height * 0.62f).coerceAtLeast(1f)
+    val normalizedX = (distanceX / maxDistanceX).coerceIn(0f, 1f)
+    val normalizedY = (distanceY / maxDistanceY).coerceIn(0f, 1f)
+    return 1f - (normalizedX * 0.28f + normalizedY * 0.24f)
+}
+
 internal fun resolveCurrentVisibleDateLabel(
     itemIndex: Int,
     blocks: List<PhotoFeedBlock>,
     fallbackItems: List<PhotoFeedItem>,
+    density: PhotoFeedDensity,
 ): String {
     if (blocks.isEmpty()) {
-        return fallbackItems.firstOrNull()?.toScrubberLabel().orEmpty()
+        return fallbackItems.firstOrNull()?.toScrubberLabel(density).orEmpty()
     }
 
     val safeIndex = itemIndex.coerceIn(0, blocks.lastIndex)
@@ -2133,9 +4707,9 @@ internal fun resolveCurrentVisibleDateLabel(
         .take(safeIndex + 1)
         .lastOrNull { it is PhotoFeedGridRow } as? PhotoFeedGridRow
 
-    return nextRow?.items?.firstOrNull()?.toScrubberLabel()
-        ?: previousRow?.items?.firstOrNull()?.toScrubberLabel()
-        ?: fallbackItems.firstOrNull()?.toScrubberLabel()
+    return nextRow?.items?.firstOrNull()?.toScrubberLabel(density)
+        ?: previousRow?.items?.firstOrNull()?.toScrubberLabel(density)
+        ?: fallbackItems.firstOrNull()?.toScrubberLabel(density)
         ?: ""
 }
 
@@ -2226,18 +4800,13 @@ private fun centeredPhotoFeedVideoId(
         ?.first
 }
 
-private fun PhotoFeedItem.toScrubberLabel(): String {
-    return "${displayYear}年${displayMonth}月${displayDay}日"
-}
-
-internal fun formatScrubberDateLabel(timeMillis: Long): String {
-    val calendar = Calendar.getInstance(Locale.CHINA).apply {
-        this.timeInMillis = timeMillis
-    }
-    val year = calendar.get(Calendar.YEAR)
-    val month = calendar.get(Calendar.MONTH) + 1
-    val day = calendar.get(Calendar.DAY_OF_MONTH)
-    return "${year}年${month}月${day}日"
+private fun PhotoFeedItem.toScrubberLabel(density: PhotoFeedDensity): String {
+    return formatScrubberLabel(
+        year = displayYear,
+        month = displayMonth,
+        day = displayDay,
+        density = density,
+    )
 }
 
 private fun sectionSpacing(density: PhotoFeedDensity): Dp {

@@ -1,7 +1,5 @@
 package com.example.yingshi.feature.photos
 
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,12 +29,18 @@ import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val PhotoFeedDeleteStatusAutoHideMillis = 3200L
 
 @Composable
 fun RealPhotoFeedPage(
     selectionState: PhotoFeedSelectionState,
     onSelectionStateChange: (PhotoFeedSelectionState) -> Unit,
+    onSelectionShellStateChange: (PhotosRootSelectionUiState) -> Unit = { },
+    selectionAction: PhotoSelectionShellAction? = null,
+    selectionActionNonce: Int = 0,
     onOpenViewer: (PhotoViewerRoute) -> Unit,
     onOpenCreatePost: (CreatePostRoute) -> Unit,
     onAddedMediaToPost: (PostDetailPlaceholderRoute) -> Unit,
@@ -64,10 +68,79 @@ fun RealPhotoFeedPage(
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
     val spacing = YingShiThemeTokens.spacing
+    val selectionShellState = if (selectionState.isInSelectionMode) {
+        PhotosRootSelectionUiState(
+            isActive = true,
+            selectedCount = selectionState.selectedCount,
+            writeEnabled = !uiState.isOfflineReadOnly,
+            isDeleting = uiState.isDeleting,
+        )
+    } else {
+        PhotosRootSelectionUiState()
+    }
 
     fun showNotice(message: String) {
         noticeNonce += 1
         notice = YingShiNotice(message = message, nonce = noticeNonce)
+    }
+    fun shareSelectedMedia() {
+        val selectedItems = uiState.feedItems.filter { item ->
+            selectionState.selectedMediaIds.contains(item.mediaId)
+        }
+        if (selectedItems.isEmpty()) {
+            showNotice("没有找到可分享的媒体。")
+            return
+        }
+        if (shareInFlight) {
+            showNotice("正在准备分享文件…")
+            return
+        }
+        scope.launch {
+            shareInFlight = true
+            showNotice("正在准备分享文件…")
+            try {
+                when (
+                    val result = MediaShareManager.shareMedia(
+                        context = context,
+                        items = selectedItems.map(PhotoFeedItem::toShareableMediaItem),
+                        packageBaseName = "映世-照片流-${selectedItems.size}项",
+                    )
+                ) {
+                    is MediaShareLaunchResult.Success -> {
+                        showNotice(result.toNoticeMessage())
+                    }
+
+                    is MediaShareLaunchResult.Error -> {
+                        showNotice(result.message)
+                    }
+                }
+            } finally {
+                shareInFlight = false
+            }
+        }
+    }
+    fun createPostFromSelection() {
+        val selectedIds = selectionState.selectedMediaIds.toList()
+        if (selectedIds.isEmpty()) return
+        val selectedItems = uiState.feedItems
+            .filter { item -> selectedIds.contains(item.mediaId) }
+            .map(PhotoFeedItem::toCreatePostAppMediaItem)
+        onOpenCreatePost(
+            CreatePostRoute(
+                source = "real-photo-feed-selection",
+                initialAppMediaIds = selectedIds,
+                initialAppMediaItems = selectedItems,
+            ),
+        )
+    }
+    fun addSelectionToPost() {
+        if (selectionState.selectedMediaIds.isEmpty()) return
+        addToPostError = null
+        showAddToPostDialog = true
+    }
+    fun requestDeleteSelection() {
+        if (selectionState.selectedMediaIds.isEmpty() || uiState.isDeleting) return
+        showDeleteConfirm = true
     }
     androidx.compose.runtime.LaunchedEffect(backendMutationEvent.version) {
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsPhotoFeed()) {
@@ -75,11 +148,6 @@ fun RealPhotoFeedPage(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(scrollTrigger) {
-        if (scrollTrigger > 0) {
-            viewModel.refresh()
-        }
-    }
     ReconnectRefreshEffect(
         shouldRefresh = uiState.isOfflineReadOnly ||
             uiState.errorMessage != null ||
@@ -88,21 +156,36 @@ fun RealPhotoFeedPage(
         onReconnect = viewModel::refresh,
         onDisconnect = viewModel::handleConnectivityLost,
     )
+    androidx.compose.runtime.LaunchedEffect(selectionShellState) {
+        onSelectionShellStateChange(selectionShellState)
+    }
+    androidx.compose.runtime.LaunchedEffect(selectionActionNonce) {
+        if (selectionActionNonce <= 0 || !selectionState.isInSelectionMode) {
+            return@LaunchedEffect
+        }
+        when (selectionAction) {
+            PhotoSelectionShellAction.SHARE -> shareSelectedMedia()
+            PhotoSelectionShellAction.CREATE -> createPostFromSelection()
+            PhotoSelectionShellAction.ADD -> addSelectionToPost()
+            PhotoSelectionShellAction.DELETE -> requestDeleteSelection()
+            null -> Unit
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(uiState.statusMessage) {
+        val message = uiState.statusMessage ?: return@LaunchedEffect
+        if (!message.startsWith("已删除")) return@LaunchedEffect
+        delay(PhotoFeedDeleteStatusAutoHideMillis)
+        viewModel.clearStatusMessage(message)
+    }
 
     if (showDeleteConfirm) {
         val selectedIds = selectionState.selectedMediaIds
-        val selectedCount = selectionState.selectedCount
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
             titleContentColor = YingShiThemeTokens.colors.titleAccent,
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             title = { Text("删除媒体到回收站？") },
-            text = {
-                Text(
-                    "将从照片流删除已选 $selectedCount 项媒体，并同步影响相关小相册里的引用。成功项会进入回收站，失败项会保留并显示原因。",
-                )
-            },
             confirmButton = {
                 TrashDialogActionButton(
                     text = "删除到回收站",
@@ -249,7 +332,6 @@ fun RealPhotoFeedPage(
                             feedItems = uiState.feedItems,
                             modifier = Modifier.fillMaxSize(),
                             selectionState = selectionState,
-                            bottomOverlayPadding = if (selectionState.isInSelectionMode) 88.dp else 0.dp,
                             isLoadingMore = uiState.isLoadingMore,
                             hasMore = uiState.hasMore,
                             loadMoreErrorMessage = uiState.loadMoreErrorMessage,
@@ -260,87 +342,8 @@ fun RealPhotoFeedPage(
                             onShowNotice = ::showNotice,
                             scrollTrigger = scrollTrigger,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                            presentation = PhotoFeedPresentation.MAIN_STREAM,
                         )
-
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = selectionState.isInSelectionMode,
-                            enter = fadeIn(),
-                            exit = fadeOut(),
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 0.dp),
-                        ) {
-                            RealFeedSelectionBarV2(
-                                selectedCount = selectionState.selectedCount,
-                                isDeleting = uiState.isDeleting,
-                                writeEnabled = !uiState.isOfflineReadOnly,
-                                onShare = {
-                                    val selectedItems = uiState.feedItems.filter { item ->
-                                        selectionState.selectedMediaIds.contains(item.mediaId)
-                                    }
-                                    if (selectedItems.isEmpty()) {
-                                        showNotice("没有找到可分享的媒体。")
-                                        return@RealFeedSelectionBarV2
-                                    }
-                                    if (shareInFlight) {
-                                        showNotice("正在准备分享文件…")
-                                        return@RealFeedSelectionBarV2
-                                    }
-                                    scope.launch {
-                                        shareInFlight = true
-                                        showNotice("正在准备分享文件…")
-                                        try {
-                                            when (
-                                                val result = MediaShareManager.shareMedia(
-                                                    context = context,
-                                                    items = selectedItems.map(PhotoFeedItem::toShareableMediaItem),
-                                                    packageBaseName = "映世-照片流-${selectedItems.size}项",
-                                                )
-                                            ) {
-                                                is MediaShareLaunchResult.Success -> {
-                                                    showNotice(result.toNoticeMessage())
-                                                }
-                                                is MediaShareLaunchResult.Error -> {
-                                                    showNotice(result.message)
-                                                }
-                                            }
-                                        } finally {
-                                            shareInFlight = false
-                                        }
-                                    }
-                                },
-                                onCreatePost = {
-                                    val selectedIds = selectionState.selectedMediaIds.toList()
-                                    if (selectedIds.isEmpty()) {
-                                        return@RealFeedSelectionBarV2
-                                    }
-                                    val selectedItems = uiState.feedItems
-                                        .filter { item -> selectedIds.contains(item.mediaId) }
-                                        .map(PhotoFeedItem::toCreatePostAppMediaItem)
-                                    onOpenCreatePost(
-                                        CreatePostRoute(
-                                            source = "real-photo-feed-selection",
-                                            initialAppMediaIds = selectedIds,
-                                            initialAppMediaItems = selectedItems,
-                                        ),
-                                    )
-                                },
-                                onAddToPost = {
-                                    if (selectionState.selectedMediaIds.isEmpty()) {
-                                        return@RealFeedSelectionBarV2
-                                    }
-                                    addToPostError = null
-                                    showAddToPostDialog = true
-                                },
-                                onDelete = {
-                                    if (selectionState.selectedMediaIds.isEmpty()) {
-                                        return@RealFeedSelectionBarV2
-                                    } else {
-                                        showDeleteConfirm = true
-                                    }
-                                },
-                            )
-                        }
                     }
                 }
             }
@@ -360,145 +363,3 @@ fun RealPhotoFeedPage(
     }
 }
 
-@Composable
-private fun RealFeedSelectionBarV2(
-    selectedCount: Int,
-    isDeleting: Boolean,
-    writeEnabled: Boolean,
-    onShare: () -> Unit,
-    onCreatePost: () -> Unit,
-    onAddToPost: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val chipShape = androidx.compose.foundation.shape.RoundedCornerShape(radius.capsule)
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-        shadowElevation = 2.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (selectedCount > 0) "已选中 $selectedCount 项" else "请选择媒体",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textPrimary,
-            )
-            RealFeedSelectionChip(
-                text = "分享",
-                enabled = !isDeleting,
-                onClick = onShare,
-                shape = chipShape,
-            )
-            RealFeedSelectionChip(
-                text = "新建",
-                enabled = writeEnabled && !isDeleting,
-                onClick = onCreatePost,
-                shape = chipShape,
-            )
-            RealFeedSelectionChip(
-                text = "加入",
-                enabled = writeEnabled && !isDeleting,
-                onClick = onAddToPost,
-                shape = chipShape,
-            )
-            RealFeedSelectionChip(
-                text = if (isDeleting) "删除中…" else "回收站",
-                enabled = writeEnabled && !isDeleting,
-                onClick = onDelete,
-                shape = chipShape,
-                destructive = true,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RealFeedSelectionChip(
-    text: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    shape: androidx.compose.ui.graphics.Shape,
-    destructive: Boolean = false,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier.yingShiClickable(
-            enabled = enabled,
-            shape = shape,
-            pressedScale = 0.96f,
-            onClick = onClick,
-        ),
-        shape = shape,
-        color = if (enabled) {
-            if (destructive) {
-                colors.memoryContainer.copy(alpha = 0.72f)
-            } else {
-                colors.primaryContainer.copy(alpha = 0.74f)
-            }
-        } else {
-            colors.sectionBackground.copy(alpha = 0.64f)
-        },
-        border = BorderStroke(
-            1.dp,
-            if (destructive) {
-                colors.memoryAccent.copy(alpha = 0.18f)
-            } else {
-                colors.glassStroke.copy(alpha = 0.70f)
-            },
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-            ),
-            color = if (destructive) MaterialTheme.colorScheme.error else colors.titleAccent,
-        )
-    }
-}
-
-@Composable
-private fun RealFeedSelectionBar(
-    selectedCount: Int,
-    isDeleting: Boolean,
-    onDelete: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.md),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (selectedCount > 0) "已选中 $selectedCount 项" else "请选择媒体",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary,
-            )
-            RealFeedSelectionChip(
-                text = if (isDeleting) "删除中…" else "回收站",
-                enabled = !isDeleting,
-                onClick = onDelete,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                destructive = true,
-            )
-        }
-    }
-}

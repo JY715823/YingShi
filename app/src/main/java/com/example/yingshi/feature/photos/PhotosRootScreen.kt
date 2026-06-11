@@ -1,14 +1,13 @@
 ﻿package com.example.yingshi.feature.photos
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,15 +27,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -48,8 +47,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.yingshi.data.model.CreateAlbumPayload
@@ -66,7 +74,8 @@ import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.navigation.PhotosTopDestination
-import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiAuroraBackdrop
+import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
@@ -75,7 +84,20 @@ import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
 
-private val PhotoSelectionActionBarPadding = 88.dp
+@Immutable
+data class PhotosRootSelectionUiState(
+    val isActive: Boolean = false,
+    val selectedCount: Int = 0,
+    val writeEnabled: Boolean = true,
+    val isDeleting: Boolean = false,
+)
+
+enum class PhotoSelectionShellAction {
+    SHARE,
+    CREATE,
+    ADD,
+    DELETE,
+}
 
 @Composable
 fun PhotosRootScreen(
@@ -100,6 +122,9 @@ fun PhotosRootScreen(
     onAddedMediaToPost: (PostDetailPlaceholderRoute) -> Unit = { },
     photoFeedScrollTrigger: Int = 0,
     photoSelectionClearTrigger: Int = 0,
+    onPhotoSelectionShellStateChange: (PhotosRootSelectionUiState) -> Unit = { },
+    photoSelectionAction: PhotoSelectionShellAction? = null,
+    photoSelectionActionNonce: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = true,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -160,6 +185,23 @@ fun PhotosRootScreen(
         selectedSection == PhotosTopDestination.PHOTOS && photoSelectionState.isInSelectionMode
     val isTrashSelectionMode =
         selectedSection == PhotosTopDestination.TRASH && trashSelectionMode
+    var realPhotoSelectionUiState by remember {
+        mutableStateOf(PhotosRootSelectionUiState())
+    }
+    val photoSelectionShellState = when {
+        !isPhotoSelectionMode -> PhotosRootSelectionUiState()
+        RepositoryProvider.currentMode == RepositoryMode.REAL -> {
+            realPhotoSelectionUiState.copy(
+                isActive = true,
+                selectedCount = photoSelectionState.selectedCount,
+            )
+        }
+
+        else -> PhotosRootSelectionUiState(
+            isActive = true,
+            selectedCount = photoSelectionState.selectedCount,
+        )
+    }
 
     fun showNotice(
         message: String,
@@ -167,6 +209,72 @@ fun PhotosRootScreen(
     ) {
         noticeNonce += 1
         notice = YingShiNotice(message = message, tone = tone, nonce = noticeNonce)
+    }
+
+    fun shareSelectedFakeMedia() {
+        val selectedItems = feedItems.filter { item ->
+            photoSelectionState.selectedMediaIds.contains(item.mediaId)
+        }
+        if (selectedItems.isEmpty()) {
+            showNotice("没有找到可分享的媒体。", YingShiNoticeTone.WARNING)
+            return
+        }
+        if (photoShareInFlight) {
+            showNotice("正在准备分享文件…")
+            return
+        }
+        coroutineScope.launch {
+            photoShareInFlight = true
+            showNotice("正在准备分享文件…")
+            try {
+                when (
+                    val result = MediaShareManager.shareMedia(
+                        context = context,
+                        items = selectedItems.map(PhotoFeedItem::toShareableMediaItem),
+                        packageBaseName = "映世-照片流-${selectedItems.size}项",
+                    )
+                ) {
+                    is MediaShareLaunchResult.Success -> {
+                        showNotice(
+                            result.toNoticeMessage(),
+                            YingShiNoticeTone.SUCCESS,
+                        )
+                    }
+
+                    is MediaShareLaunchResult.Error -> {
+                        showNotice(result.message, YingShiNoticeTone.WARNING)
+                    }
+                }
+            } finally {
+                photoShareInFlight = false
+            }
+        }
+    }
+
+    fun createPostFromFakeSelection() {
+        val selectedIds = photoSelectionState.selectedMediaIds.toList()
+        if (selectedIds.isEmpty()) return
+        val selectedItems = feedItems
+            .filter { item -> selectedIds.contains(item.mediaId) }
+            .map(PhotoFeedItem::toCreatePostAppMediaItem)
+        onOpenCreatePost(
+            CreatePostRoute(
+                source = "photo-feed-selection",
+                initialAppMediaIds = selectedIds,
+                initialAppMediaItems = selectedItems,
+            ),
+        )
+    }
+
+    fun addFakeSelectionToPost() {
+        if (photoSelectionState.selectedMediaIds.isEmpty()) return
+        addToPostDialogMessage = null
+        showAddToPostDialog = true
+    }
+
+    fun requestFakeSelectionDelete() {
+        if (photoSelectionState.selectedMediaIds.isEmpty()) return
+        showDeleteConfirm = true
     }
 
     LaunchedEffect(pagerState.currentPage) {
@@ -193,6 +301,35 @@ fun PhotosRootScreen(
         showAddToPostDialog = false
         addToPostDialogMessage = null
     }
+    LaunchedEffect(isPhotoSelectionMode) {
+        if (!isPhotoSelectionMode) {
+            realPhotoSelectionUiState = PhotosRootSelectionUiState()
+        }
+    }
+    LaunchedEffect(photoSelectionShellState) {
+        onPhotoSelectionShellStateChange(photoSelectionShellState)
+    }
+    LaunchedEffect(photoSelectionActionNonce, selectedSection, isPhotoSelectionMode) {
+        if (
+            photoSelectionActionNonce <= 0 ||
+            !isPhotoSelectionMode ||
+            RepositoryProvider.currentMode == RepositoryMode.REAL
+        ) {
+            return@LaunchedEffect
+        }
+        when (photoSelectionAction) {
+            PhotoSelectionShellAction.SHARE -> shareSelectedFakeMedia()
+            PhotoSelectionShellAction.CREATE -> createPostFromFakeSelection()
+            PhotoSelectionShellAction.ADD -> addFakeSelectionToPost()
+            PhotoSelectionShellAction.DELETE -> requestFakeSelectionDelete()
+            null -> Unit
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            onPhotoSelectionShellStateChange(PhotosRootSelectionUiState())
+        }
+    }
 
     if (showCreateAlbumDialog) {
         AlertDialog(
@@ -202,8 +339,15 @@ fun PhotosRootScreen(
                     createAlbumErrorMessage = null
                 }
             },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = Color.White.copy(alpha = 0.97f),
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
             title = {
-                Text(text = "新建大相册")
+                Text(
+                    text = "新建大相册",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                )
             },
             text = {
                 Column(
@@ -306,17 +450,15 @@ fun PhotosRootScreen(
             trashSelectionExitNonce += 1
         }
     }
-    YingShiMistBackground(
-        modifier = modifier
-            .fillMaxSize()
-            .background(YingShiThemeTokens.colors.appBackground),
-        showWaves = false,
+    YingShiAuroraBackdrop(
+        modifier = modifier.fillMaxSize(),
+        variant = YingShiBackdropVariant.PHOTOS,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(top = 16.dp, bottom = spacing.md),
+                .padding(top = 10.dp, bottom = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             if (showDeleteConfirm) {
@@ -324,12 +466,14 @@ fun PhotosRootScreen(
                 val selectedCount = photoSelectionState.selectedCount
                 AlertDialog(
                     onDismissRequest = { showDeleteConfirm = false },
+                    shape = RoundedCornerShape(28.dp),
+                    containerColor = Color.White.copy(alpha = 0.97f),
+                    titleContentColor = colors.titleAccent,
+                    textContentColor = colors.textSecondary,
                     title = {
-                        Text(text = "删除媒体到回收站？")
-                    },
-                    text = {
                         Text(
-                            text = "将从照片流删除已选 $selectedCount 项媒体，并同步影响相关小相册里的引用。媒体会进入映世回收站，可以在回收站中恢复。",
+                            text = "删除媒体到回收站？",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                         )
                     },
                     confirmButton = {
@@ -439,7 +583,7 @@ fun PhotosRootScreen(
             )
         }
 
-        Box(modifier = Modifier.padding(horizontal = 6.dp)) {
+        Box(modifier = Modifier.padding(horizontal = 10.dp)) {
             PhotoTopBar(
                 selectedSection = selectedSection,
                 hasTransferFailure = hasTransferFailure,
@@ -477,6 +621,9 @@ fun PhotosRootScreen(
                                     modifier = Modifier.fillMaxSize(),
                                     selectionState = photoSelectionState,
                                     onSelectionStateChange = { photoSelectionState = it },
+                                    onSelectionShellStateChange = { realPhotoSelectionUiState = it },
+                                    selectionAction = photoSelectionAction,
+                                    selectionActionNonce = photoSelectionActionNonce,
                                     onOpenViewer = onOpenViewer,
                                     onOpenCreatePost = onOpenCreatePost,
                                     onAddedMediaToPost = onAddedMediaToPost,
@@ -490,98 +637,13 @@ fun PhotosRootScreen(
                                         feedItems = feedItems,
                                         modifier = Modifier.fillMaxSize(),
                                         selectionState = photoSelectionState,
-                                        bottomOverlayPadding = if (isPhotoSelectionMode) {
-                                            PhotoSelectionActionBarPadding
-                                        } else {
-                                            0.dp
-                                        },
                                         onSelectionStateChange = { photoSelectionState = it },
                                         onOpenViewer = onOpenViewer,
                                         scrollTrigger = photoFeedScrollTrigger,
                                         inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                                         onShowNotice = { message -> showNotice(message) },
+                                        presentation = PhotoFeedPresentation.MAIN_STREAM,
                                     )
-
-                                    androidx.compose.animation.AnimatedVisibility(
-                                        visible = isPhotoSelectionMode,
-                                        enter = fadeIn(),
-                                        exit = fadeOut(),
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 0.dp),
-                                    ) {
-                                        PhotoSelectionActionBarV2(
-                                            selectedCount = photoSelectionState.selectedCount,
-                                            onShare = {
-                                                val selectedItems = feedItems.filter { item ->
-                                                    photoSelectionState.selectedMediaIds.contains(item.mediaId)
-                                                }
-                                                if (selectedItems.isEmpty()) {
-                                                    showNotice("没有找到可分享的媒体。", YingShiNoticeTone.WARNING)
-                                                    return@PhotoSelectionActionBarV2
-                                                }
-                                                if (photoShareInFlight) {
-                                                    showNotice("正在准备分享文件…")
-                                                    return@PhotoSelectionActionBarV2
-                                                }
-                                                coroutineScope.launch {
-                                                    photoShareInFlight = true
-                                                    showNotice("正在准备分享文件…")
-                                                    try {
-                                                        when (
-                                                            val result = MediaShareManager.shareMedia(
-                                                                context = context,
-                                                                items = selectedItems.map(PhotoFeedItem::toShareableMediaItem),
-                                                                packageBaseName = "映世-照片流-${selectedItems.size}项",
-                                                            )
-                                                        ) {
-                                                            is MediaShareLaunchResult.Success -> {
-                                                                showNotice(
-                                                                    result.toNoticeMessage(),
-                                                                    YingShiNoticeTone.SUCCESS,
-                                                                )
-                                                            }
-                                                            is MediaShareLaunchResult.Error -> {
-                                                                showNotice(result.message, YingShiNoticeTone.WARNING)
-                                                            }
-                                                        }
-                                                    } finally {
-                                                        photoShareInFlight = false
-                                                    }
-                                                }
-                                            },
-                                            onCreatePost = {
-                                                val selectedIds = photoSelectionState.selectedMediaIds.toList()
-                                                if (selectedIds.isEmpty()) {
-                                                    return@PhotoSelectionActionBarV2
-                                                }
-                                                val selectedItems = feedItems
-                                                    .filter { item -> selectedIds.contains(item.mediaId) }
-                                                    .map(PhotoFeedItem::toCreatePostAppMediaItem)
-                                                onOpenCreatePost(
-                                                    CreatePostRoute(
-                                                        source = "photo-feed-selection",
-                                                        initialAppMediaIds = selectedIds,
-                                                        initialAppMediaItems = selectedItems,
-                                                    ),
-                                                )
-                                            },
-                                            onAddToPost = {
-                                                if (photoSelectionState.selectedMediaIds.isEmpty()) {
-                                                    return@PhotoSelectionActionBarV2
-                                                }
-                                                addToPostDialogMessage = null
-                                                showAddToPostDialog = true
-                                            },
-                                            onDelete = {
-                                                if (photoSelectionState.selectedMediaIds.isEmpty()) {
-                                                    return@PhotoSelectionActionBarV2
-                                                } else {
-                                                    showDeleteConfirm = true
-                                                }
-                                            },
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -647,6 +709,35 @@ fun PhotosRootScreen(
 }
 }
 
+@Composable
+private fun PhotoTopGlassSurface(
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = RoundedCornerShape(24.dp),
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        shape = shape,
+        color = Color.White.copy(alpha = 0.62f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.70f)),
+        shadowElevation = 3.dp,
+    ) {
+        Box(
+            modifier = Modifier.background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.38f),
+                        colors.glowWash.copy(alpha = 0.24f),
+                        Color.Transparent,
+                    ),
+                ),
+            ),
+        ) {
+            content()
+        }
+    }
+}
 
 @Composable
 private fun PhotoTopBar(
@@ -665,21 +756,36 @@ private fun PhotoTopBar(
         selectedSection == PhotosTopDestination.PHOTOS && selectionState.isInSelectionMode
 
     if (isSelectionContext) {
-        Surface(
+        PhotoTopGlassSurface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = colors.sectionBackground.copy(alpha = 0.74f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
-            shadowElevation = 0.dp,
+            shape = RoundedCornerShape(20.dp),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.md, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SelectionActionChip(
+                Text(
                     text = "取消",
-                    emphasized = false,
-                    onClick = onCancelSelection,
+                    modifier = Modifier
+                        .width(58.dp)
+                        .yingShiClickable(
+                            shape = RoundedCornerShape(16.dp),
+                            pressedScale = 0.96f,
+                            onClick = onCancelSelection,
+                        )
+                        .padding(vertical = 8.dp),
+                    textAlign = TextAlign.Start,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        shadow = Shadow(
+                            color = Color.White.copy(alpha = 0.36f),
+                            offset = Offset(0f, -1f),
+                            blurRadius = 8f,
+                        ),
+                    ),
+                    color = colors.titleAccent.copy(alpha = 0.92f),
                 )
 
                 Text(
@@ -690,11 +796,18 @@ private fun PhotoTopBar(
                     },
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        shadow = Shadow(
+                            color = Color.White.copy(alpha = 0.40f),
+                            offset = Offset(0f, -1.2f),
+                            blurRadius = 12f,
+                        ),
+                    ),
                     color = colors.textPrimary,
                 )
 
-                Spacer(modifier = Modifier.width(68.dp))
+                Spacer(modifier = Modifier.width(58.dp))
             }
         }
 
@@ -703,7 +816,7 @@ private fun PhotoTopBar(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PhotoBrandTabs(
@@ -712,36 +825,40 @@ private fun PhotoTopBar(
             onSelected = onSelected,
         )
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PhotoCircleToolButton(
-                icon = Icons.Rounded.Image,
-                contentDescription = "系统媒体",
-                onClick = onOpenSystemMedia,
-            )
-            PhotoCircleToolButton(
-                icon = Icons.Rounded.Sync,
-                contentDescription = if (hasTransferFailure) {
-                    "传输中心，有失败待处理"
-                } else if (runningTransferCount > 0) {
-                    "传输中心，有进行中任务"
-                } else {
-                    "传输中心"
-                },
-                badgeText = if (hasTransferFailure) {
-                    "!"
-                } else if (runningTransferCount > 99) {
-                    "99+"
-                } else if (runningTransferCount > 0) {
-                    runningTransferCount.toString()
-                } else {
-                    null
-                },
-                badgeIsError = hasTransferFailure,
-                onClick = onOpenTransferCenter,
-            )
+        PhotoTopGlassSurface(shape = RoundedCornerShape(22.dp)) {
+            Row(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PhotoPillToolButton(
+                    icon = Icons.Rounded.Image,
+                    text = "系统",
+                    contentDescription = "系统媒体",
+                    onClick = onOpenSystemMedia,
+                )
+                PhotoCircleToolButton(
+                    icon = Icons.Rounded.Sync,
+                    contentDescription = if (hasTransferFailure) {
+                        "传输中心，有失败待处理"
+                    } else if (runningTransferCount > 0) {
+                        "传输中心，有进行中任务"
+                    } else {
+                        "传输中心"
+                    },
+                    badgeText = if (hasTransferFailure) {
+                        "!"
+                    } else if (runningTransferCount > 99) {
+                        "99+"
+                    } else if (runningTransferCount > 0) {
+                        runningTransferCount.toString()
+                    } else {
+                        null
+                    },
+                    badgeIsError = hasTransferFailure,
+                    onClick = onOpenTransferCenter,
+                )
+            }
         }
     }
 }
@@ -755,71 +872,143 @@ private fun PhotoBrandTabs(
     val colors = YingShiThemeTokens.colors
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        horizontalArrangement = Arrangement.spacedBy(1.dp, Alignment.Start),
         verticalAlignment = Alignment.Bottom,
     ) {
         PhotosTopDestination.entries.forEachIndexed { index, destination ->
             val selected = destination == selectedSection
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            val slotWidth = when (destination) {
+                PhotosTopDestination.TRASH -> if (selected) 92.dp else 64.dp
+                else -> if (selected) 78.dp else 56.dp
+            }
+            Box(
+                modifier = Modifier
+                    .width(slotWidth)
+                    .height(if (selected) 58.dp else 48.dp)
+                    .yingShiClickable(
+                        shape = RoundedCornerShape(24.dp),
+                        pressedScale = 0.97f,
+                        onClick = { onSelected(index) },
+                    ),
+                contentAlignment = Alignment.BottomStart,
             ) {
-                Surface(
-                    modifier = Modifier
-                        .offset(y = if (selected) (-2).dp else 0.dp)
-                        .yingShiClickable(
-                            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                            onClick = { onSelected(index) },
-                        ),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = if (selected) colors.primaryContainer.copy(alpha = 1f) else Color.Transparent,
-                    border = if (selected) {
-                        BorderStroke(1.6.dp, colors.titleAccent.copy(alpha = 0.24f))
-                    } else {
-                        null
-                    },
-                    tonalElevation = if (selected) 2.dp else 0.dp,
-                    shadowElevation = if (selected) 6.dp else 0.dp,
-                ) {
-                    Text(
-                        text = destination.label,
-                        modifier = Modifier.padding(
-                            horizontal = if (selected) 16.dp else 7.dp,
-                            vertical = if (selected) 10.dp else 8.dp,
-                        ),
-                        textAlign = TextAlign.Center,
-                        style = if (selected) {
-                            MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 24.sp,
-                                lineHeight = 28.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                            )
-                        } else {
-                            MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 18.sp,
-                                lineHeight = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        },
-                        color = if (selected) {
-                            colors.titleAccent
-                        } else {
-                            colors.textSecondary.copy(alpha = 0.86f)
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
                 if (selected) {
                     Box(
                         modifier = Modifier
-                            .offset(y = (-1).dp)
-                            .width(34.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(YingShiThemeTokens.radius.capsule))
-                            .background(colors.titleAccent.copy(alpha = 0.20f)),
-                    )
+                            .fillMaxSize()
+                            .clipToBounds()
+                            .offset(y = (-1).dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        PhotoSelectedTitleAura(modifier = Modifier.fillMaxSize())
+                        Box(
+                            modifier = Modifier.padding(start = 1.dp, end = 3.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                text = destination.label,
+                                modifier = Modifier
+                                    .offset(y = 3.dp)
+                                    .graphicsLayer(
+                                        scaleX = 1.14f,
+                                        scaleY = 1.14f,
+                                        transformOrigin = TransformOrigin(0.18f, 1f),
+                                    ),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 24.sp,
+                                    lineHeight = 26.sp,
+                                    fontWeight = FontWeight.Black,
+                                    shadow = Shadow(
+                                        color = Color(0xFF85DFFF).copy(alpha = 0.48f),
+                                        offset = Offset(0f, 3.8f),
+                                        blurRadius = 20f,
+                                    ),
+                                ),
+                                color = colors.titleAccent.copy(alpha = 0.18f),
+                            )
+                            Text(
+                                text = destination.label,
+                                modifier = Modifier
+                                    .offset(x = (-1).dp, y = (-1).dp)
+                                    .graphicsLayer(
+                                        scaleX = 1.14f,
+                                        scaleY = 1.14f,
+                                        transformOrigin = TransformOrigin(0.18f, 1f),
+                                    ),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 24.sp,
+                                    lineHeight = 26.sp,
+                                    fontWeight = FontWeight.Black,
+                                    shadow = Shadow(
+                                        color = Color(0xFFFFE8C6).copy(alpha = 0.82f),
+                                        offset = Offset(-1.6f, -1.6f),
+                                        blurRadius = 22f,
+                                    ),
+                                ),
+                                color = Color(0xFFFFF2DE).copy(alpha = 0.46f),
+                            )
+                            Text(
+                                text = destination.label,
+                                modifier = Modifier
+                                    .offset(x = 1.dp, y = (-1).dp)
+                                    .graphicsLayer(
+                                        scaleX = 1.14f,
+                                        scaleY = 1.14f,
+                                        transformOrigin = TransformOrigin(0.18f, 1f),
+                                    ),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 24.sp,
+                                    lineHeight = 26.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    shadow = Shadow(
+                                        color = Color(0xFFB4F5FF).copy(alpha = 0.84f),
+                                        offset = Offset(1.4f, -1.8f),
+                                        blurRadius = 24f,
+                                    ),
+                                ),
+                                color = Color(0xFFD7FBFF).copy(alpha = 0.54f),
+                            )
+                            Text(
+                                text = destination.label,
+                                modifier = Modifier.graphicsLayer(
+                                    scaleX = 1.14f,
+                                    scaleY = 1.14f,
+                                    transformOrigin = TransformOrigin(0.18f, 1f),
+                                ),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 24.sp,
+                                    lineHeight = 26.sp,
+                                    fontWeight = FontWeight.Black,
+                                    shadow = Shadow(
+                                        color = Color.White.copy(alpha = 0.90f),
+                                        offset = Offset(0f, -1.6f),
+                                        blurRadius = 24f,
+                                    ),
+                                ),
+                                color = colors.titleAccent,
+                            )
+                        }
+                    }
                 } else {
-                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = destination.label,
+                        modifier = Modifier
+                            .padding(start = 1.dp, end = 1.dp, top = 8.dp, bottom = 8.dp),
+                        textAlign = TextAlign.Start,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 19.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            shadow = Shadow(
+                                color = Color.White.copy(alpha = 0.42f),
+                                offset = Offset(0f, -1.1f),
+                                blurRadius = 9f,
+                            ),
+                        ),
+                        color = colors.titleAccent.copy(alpha = 0.74f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
@@ -827,63 +1016,298 @@ private fun PhotoBrandTabs(
 }
 
 @Composable
-private fun PhotoQuickAddEntry(
-    text: String,
-    onClick: () -> Unit,
+private fun PhotoSelectedTitleAura(
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PhotoTopToolButton(
-            text = text,
-            onClick = onClick,
+    Canvas(modifier = modifier) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.78f),
+                    Color(0xCBE7F8FF).copy(alpha = 0.60f),
+                    Color.Transparent,
+                ),
+                center = Offset(size.width * 0.44f, size.height * 0.42f),
+                radius = size.minDimension * 0.78f,
+            ),
+            radius = size.minDimension * 0.78f,
+            center = Offset(size.width * 0.44f, size.height * 0.42f),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xD0FFF4D9),
+                    Color.Transparent,
+                ),
+                center = Offset(size.width * 0.68f, size.height * 0.26f),
+                radius = size.minDimension * 0.48f,
+            ),
+            radius = size.minDimension * 0.48f,
+            center = Offset(size.width * 0.68f, size.height * 0.26f),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xC4AEEBFF),
+                    Color.Transparent,
+                ),
+                center = Offset(size.width * 0.22f, size.height * 0.34f),
+                radius = size.minDimension * 0.40f,
+            ),
+            radius = size.minDimension * 0.40f,
+            center = Offset(size.width * 0.22f, size.height * 0.34f),
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.62f),
+            radius = size.minDimension * 0.038f,
+            center = Offset(size.width * 0.18f, size.height * 0.20f),
+        )
+        drawCircle(
+            color = Color(0xFFFFE8C6).copy(alpha = 0.72f),
+            radius = size.minDimension * 0.028f,
+            center = Offset(size.width * 0.80f, size.height * 0.18f),
+        )
+        drawCircle(
+            color = Color(0xFFB4F5FF).copy(alpha = 0.60f),
+            radius = size.minDimension * 0.024f,
+            center = Offset(size.width * 0.74f, size.height * 0.62f),
+        )
+        drawRoundRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    Color.White.copy(alpha = 0.30f),
+                    Color(0x99CBEFFF).copy(alpha = 0.32f),
+                    Color(0x7CFFEAC2).copy(alpha = 0.22f),
+                    Color.Transparent,
+                ),
+            ),
+            topLeft = Offset(size.width * 0.06f, size.height * 0.74f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.80f, size.height * 0.10f),
+            cornerRadius = CornerRadius(size.height, size.height),
         )
     }
 }
 
 @Composable
-private fun PhotoTopToolButton(
+fun PhotoSelectionBottomBar(
+    selectedCount: Int,
+    writeEnabled: Boolean,
+    deleteInFlight: Boolean,
+    modifier: Modifier = Modifier,
+    onAction: (PhotoSelectionShellAction) -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val selectionReady = selectedCount > 0 && !deleteInFlight
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        colors.appBackground.copy(alpha = 0.90f),
+                        colors.appBackground,
+                    ),
+                ),
+            )
+            .navigationBarsPadding(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(82.dp),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(74.dp),
+                shape = RoundedCornerShape(0.dp),
+                color = colors.raisedSurface.copy(alpha = 0.95f),
+                tonalElevation = 0.dp,
+                shadowElevation = 2.dp,
+                border = BorderStroke(0.dp, Color.Transparent),
+            ) {}
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.glowWash.copy(alpha = 0.38f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 2.dp)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.dividerSoft.copy(alpha = 0.72f)),
+            )
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 9.dp)
+                    .height(66.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PhotoSelectionBottomBarAction(
+                    text = "分享",
+                    enabled = selectionReady,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(PhotoSelectionShellAction.SHARE) },
+                )
+                PhotoSelectionBottomBarAction(
+                    text = "新建",
+                    enabled = selectionReady && writeEnabled,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(PhotoSelectionShellAction.CREATE) },
+                )
+                PhotoSelectionBottomBarAction(
+                    text = "加入",
+                    enabled = selectionReady && writeEnabled,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(PhotoSelectionShellAction.ADD) },
+                )
+                PhotoSelectionBottomBarAction(
+                    text = if (deleteInFlight) "删除中" else "删除",
+                    enabled = selectionReady && writeEnabled,
+                    destructive = true,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onAction(PhotoSelectionShellAction.DELETE) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhotoSelectionBottomBarAction(
     text: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(16.dp)
+    Surface(
+        modifier = modifier
+            .height(56.dp)
+            .yingShiClickable(
+                enabled = enabled,
+                shape = shape,
+                pressedScale = 0.96f,
+                onClick = onClick,
+            ),
+        shape = shape,
+        color = when {
+            !enabled -> colors.sectionBackground.copy(alpha = 0.54f)
+            destructive -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.90f)
+            else -> colors.primaryContainer.copy(alpha = 0.78f)
+        },
+        border = BorderStroke(
+            1.dp,
+            when {
+                !enabled -> colors.dividerSoft.copy(alpha = 0.42f)
+                destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+                else -> colors.glassStroke.copy(alpha = 0.72f)
+            },
+        ),
+        shadowElevation = 0.dp,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = when {
+                    !enabled -> colors.textSecondary.copy(alpha = 0.58f)
+                    destructive -> MaterialTheme.colorScheme.error
+                    else -> colors.titleAccent
+                },
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhotoPillToolButton(
+    icon: ImageVector,
+    text: String,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(radius.capsule)
+    val shape = RoundedCornerShape(18.dp)
 
     Surface(
         modifier = Modifier
+            .semantics { this.contentDescription = contentDescription }
+            .clip(shape)
             .yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick),
         shape = shape,
-        color = colors.raisedSurface.copy(alpha = 0.96f),
+        color = Color.White.copy(alpha = 0.42f),
         border = BorderStroke(
             width = 1.dp,
             color = colors.dividerSoft.copy(alpha = 0.72f),
         ),
+        shadowElevation = 1.dp,
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-            color = colors.titleAccent,
-        )
+        Row(
+            modifier = Modifier
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.28f),
+                            colors.glowWash.copy(alpha = 0.18f),
+                            Color.Transparent,
+                        ),
+                    ),
+                )
+                .padding(horizontal = spacing.sm, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.titleAccent,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+        }
     }
 }
 
 @Composable
 private fun PhotoCircleToolButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     contentDescription: String,
-    unreadCount: Int = 0,
-    badgeText: String? = if (unreadCount > 0) {
-        if (unreadCount > 99) "99+" else unreadCount.toString()
-    } else null,
+    badgeText: String? = null,
     badgeIsError: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
+    val isActive = badgeIsError || !badgeText.isNullOrBlank()
     val badgeBackground = if (badgeIsError) {
         MaterialTheme.colorScheme.errorContainer
     } else {
@@ -899,34 +1323,72 @@ private fun PhotoCircleToolButton(
     } else {
         colors.memoryAccent.copy(alpha = 0.20f)
     }
+    val containerColor = when {
+        badgeIsError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.90f)
+        isActive -> colors.primaryContainer.copy(alpha = 0.82f)
+        else -> Color.White.copy(alpha = 0.42f)
+    }
+    val iconTint = if (badgeIsError) {
+        MaterialTheme.colorScheme.error
+    } else {
+        colors.titleAccent
+    }
 
     Box(
         modifier = Modifier
-            .size(54.dp)
+            .size(50.dp)
             .semantics { this.contentDescription = contentDescription },
     ) {
         Surface(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(44.dp)
+                .size(40.dp)
                 .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
             shape = CircleShape,
-            color = colors.sectionBackground.copy(alpha = 0.76f),
+            color = containerColor,
             border = BorderStroke(
                 width = 1.dp,
-                color = colors.dividerSoft.copy(alpha = 0.72f),
+                color = if (badgeIsError) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.26f)
+                } else if (isActive) {
+                    colors.glassStroke.copy(alpha = 0.88f)
+                } else {
+                    colors.dividerSoft.copy(alpha = 0.72f)
+                },
             ),
-            shadowElevation = 1.dp,
+            shadowElevation = if (isActive) 2.dp else 1.dp,
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = if (badgeIsError) {
+                                    listOf(
+                                        Color.White.copy(alpha = 0.18f),
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.12f),
+                                        Color.Transparent,
+                                    )
+                                } else {
+                                    listOf(
+                                        Color.White.copy(alpha = if (isActive) 0.28f else 0.16f),
+                                        colors.glowWash.copy(alpha = if (isActive) 0.18f else 0.10f),
+                                        Color.Transparent,
+                                    )
+                                },
+                                radius = 52f,
+                            ),
+                        ),
+                )
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = colors.titleAccent,
-                    modifier = Modifier.size(22.dp),
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -934,14 +1396,14 @@ private fun PhotoCircleToolButton(
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 2.dp, y = 0.dp),
+                    .offset(x = 1.dp, y = 0.dp),
                 shape = RoundedCornerShape(999.dp),
                 color = badgeBackground,
                 border = BorderStroke(1.dp, badgeBorder),
             ) {
                 Text(
                     text = badgeText,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = badgeForeground,
                     maxLines = 1,
@@ -974,7 +1436,7 @@ private fun PhotoBellButton(
         Box(modifier = Modifier.fillMaxSize()) {
             Canvas(
                 modifier = Modifier
-                    .matchParentSize()
+                    .fillMaxSize()
                     .padding(8.dp),
             ) {
                 val stroke = Stroke(width = 2.6f, cap = StrokeCap.Round)
@@ -1026,96 +1488,6 @@ private fun PhotoBellButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PhotoSelectionActionBarV2(
-    selectedCount: Int,
-    onShare: () -> Unit,
-    onCreatePost: () -> Unit,
-    onAddToPost: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val colors = YingShiThemeTokens.colors
-    var showActions by rememberSaveable { mutableStateOf(false) }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(26.dp),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-        shadowElevation = 2.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.md, vertical = spacing.sm),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = colors.textPrimary,
-            )
-
-            SelectionActionChip(text = "操作", onClick = { showActions = true })
-        }
-    }
-
-    if (showActions) {
-        ModalBottomSheet(
-            onDismissRequest = { showActions = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = colors.raisedSurface,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.lg, vertical = spacing.md),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Text(
-                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.textPrimary,
-                )
-                SelectionActionRow(
-                    text = "分享所选",
-                    onClick = {
-                        showActions = false
-                        onShare()
-                    },
-                )
-                SelectionActionRow(
-                    text = "新建小相册",
-                    onClick = {
-                        showActions = false
-                        onCreatePost()
-                    },
-                )
-                SelectionActionRow(
-                    text = "加入已有小相册",
-                    onClick = {
-                        showActions = false
-                        onAddToPost()
-                    },
-                )
-                SelectionActionRow(
-                    text = "移入回收站",
-                    destructive = true,
-                    onClick = {
-                        showActions = false
-                        onDelete()
-                    },
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun SelectionActionChip(
     text: String,
@@ -1141,15 +1513,15 @@ private fun SelectionActionChip(
         color = when {
             !enabled -> colors.sectionBackground.copy(alpha = 0.54f)
             destructive -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f)
-            emphasized -> colors.primaryContainer.copy(alpha = 0.76f)
-            else -> colors.raisedSurface.copy(alpha = 0.92f)
+            emphasized -> Color.White.copy(alpha = 0.74f)
+            else -> Color.White.copy(alpha = 0.60f)
         },
         border = BorderStroke(
             1.dp,
             when {
                 !enabled -> colors.dividerSoft.copy(alpha = 0.46f)
                 destructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
-                emphasized -> colors.glassStroke.copy(alpha = 0.72f)
+                emphasized -> colors.glassStroke.copy(alpha = 0.88f)
                 else -> colors.dividerSoft.copy(alpha = 0.66f)
             },
         ),
@@ -1163,40 +1535,6 @@ private fun SelectionActionChip(
                 destructive -> MaterialTheme.colorScheme.onErrorContainer
                 emphasized -> colors.titleAccent
                 else -> colors.textSecondary
-            },
-        )
-    }
-}
-
-@Composable
-private fun SelectionActionRow(
-    text: String,
-    destructive: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.lg)
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick),
-        shape = shape,
-        color = if (destructive) {
-            colors.goldAccent.copy(alpha = 0.18f)
-        } else {
-            colors.sectionBackground.copy(alpha = 0.62f)
-        },
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = if (destructive) {
-                MaterialTheme.colorScheme.error
-            } else {
-                colors.textPrimary
             },
         )
     }

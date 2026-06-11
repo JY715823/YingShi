@@ -24,7 +24,11 @@ import com.example.yingshi.feature.ledger.data.NoOpLedgerSyncBridge
 import com.example.yingshi.feature.ledger.formatMoney
 import com.example.yingshi.feature.photos.AppContentMediaSource
 import com.example.yingshi.feature.photos.AppMediaType
+import com.example.yingshi.feature.photos.CollaboratorIdentityUiModel
 import com.example.yingshi.feature.photos.PhotoThumbnailPalette
+import com.example.yingshi.feature.photos.collaboratorDirectorySnapshot
+import com.example.yingshi.feature.photos.isAllCollaboratorsSelected
+import com.example.yingshi.feature.photos.normalizedCollaboratorSelection
 import com.example.yingshi.feature.photos.resolveAppMediaType
 import com.example.yingshi.feature.photos.toAppContentMediaSource
 import java.time.Instant
@@ -35,19 +39,21 @@ import kotlinx.coroutines.flow.flowOf
 @Immutable
 data class HomeUiState(
     val currentUser: RemoteCurrentUser? = null,
-    val spaceLabel: String = "共同空间",
     val unreadNotificationCount: Int = 0,
+    val photoCollaborators: List<CollaboratorIdentityUiModel> = emptyList(),
+    val selectedPhotoOwnerIds: Set<String> = emptySet(),
     val recentPhotos: HomeRecentPhotosSummary = HomeRecentPhotosSummary(),
+    val ledgerBooks: List<LedgerBook> = emptyList(),
+    val defaultLedgerBookId: String? = null,
+    val selectedLedgerBookId: String? = null,
     val ledger: HomeLedgerSummary = HomeLedgerSummary(),
     val isReadOnly: Boolean = false,
-    val readOnlyMessage: String? = null,
 )
 
 @Immutable
 data class HomeRecentPhotosSummary(
     val totalCount: Int = 0,
     val latestPhotoAtMillis: Long? = null,
-    val cachedAtMillis: Long? = null,
     val tiles: List<HomePhotoTile> = emptyList(),
 ) {
     val hasPhotos: Boolean
@@ -74,7 +80,10 @@ data class HomeLedgerSummary(
 )
 
 @Composable
-fun rememberHomeUiState(): HomeUiState {
+fun rememberHomeUiState(
+    selectedPhotoOwnerIds: Set<String> = emptySet(),
+    requestedLedgerBookId: String? = null,
+): HomeUiState {
     val appContext = LocalContext.current.applicationContext
     val sessionVersion = AuthSessionManager.sessionVersion
     val cacheVersion = AppReadCacheStore.changeVersion
@@ -82,10 +91,37 @@ fun rememberHomeUiState(): HomeUiState {
     val currentUser = remember(sessionVersion, cacheVersion) {
         AuthSessionManager.getCurrentUserSnapshot() ?: AppReadCacheStore.readCurrentUser()?.payload
     }
-    val userId = currentUser?.userId
-    val readCacheSummary = remember(userId, cacheVersion, sessionVersion) {
-        buildHomeReadCacheSummary(currentUser)
+    val collaboratorSnapshot = remember(currentUser) {
+        collaboratorDirectorySnapshot(
+            currentUser = currentUser,
+            fallbackToFakeProfile = false,
+        )
     }
+    val photoCollaborators = remember(collaboratorSnapshot) {
+        collaboratorSnapshot.all.take(2)
+    }
+    val allPhotoOwnerIds = remember(photoCollaborators) {
+        photoCollaborators.mapTo(linkedSetOf()) { it.userId }
+    }
+    val effectiveSelectedPhotoOwnerIds = remember(allPhotoOwnerIds, selectedPhotoOwnerIds) {
+        normalizedCollaboratorSelection(
+            selectedUserIds = selectedPhotoOwnerIds,
+            allUserIds = allPhotoOwnerIds,
+        )
+    }
+    val readCacheSummary = remember(
+        currentUser?.userId,
+        cacheVersion,
+        effectiveSelectedPhotoOwnerIds,
+        allPhotoOwnerIds,
+    ) {
+        buildHomeReadCacheSummary(
+            currentUser = currentUser,
+            selectedPhotoOwnerIds = effectiveSelectedPhotoOwnerIds,
+            allPhotoOwnerIds = allPhotoOwnerIds,
+        )
+    }
+
     val ledgerRepository = remember(appContext) { createHomeLedgerRepository(appContext) }
     val ledgerPreferencesStore = remember(appContext) { LedgerPreferencesStore(appContext) }
 
@@ -94,23 +130,29 @@ fun rememberHomeUiState(): HomeUiState {
         ledgerRepository.backfillMissingBookCreatorUserIds()
     }
 
-    val books by ledgerRepository.observeBooks().collectAsState(initial = emptyList())
-    val defaultBookId = remember(books) {
+    val ledgerBooks by ledgerRepository.observeBooks().collectAsState(initial = emptyList())
+    val defaultLedgerBookId = remember(ledgerBooks) {
         LedgerPreferencesStore.resolveDefaultBookId(
             storedBookId = ledgerPreferencesStore.getDefaultBookId(),
-            visibleBookIds = books.map(LedgerBook::id),
+            visibleBookIds = ledgerBooks.map(LedgerBook::id),
         )
     }
-    val transactionsFlow = remember(defaultBookId, ledgerRepository) {
-        if (defaultBookId.isNullOrBlank()) {
+    val selectedLedgerBookId = remember(ledgerBooks, requestedLedgerBookId, defaultLedgerBookId) {
+        LedgerPreferencesStore.resolveDefaultBookId(
+            storedBookId = requestedLedgerBookId ?: defaultLedgerBookId,
+            visibleBookIds = ledgerBooks.map(LedgerBook::id),
+        )
+    }
+    val transactionsFlow = remember(selectedLedgerBookId, ledgerRepository) {
+        if (selectedLedgerBookId.isNullOrBlank()) {
             flowOf(emptyList())
         } else {
-            ledgerRepository.observeTransactions(defaultBookId)
+            ledgerRepository.observeTransactions(selectedLedgerBookId)
         }
     }
     val transactions by transactionsFlow.collectAsState(initial = emptyList())
-    val activeBook = remember(books, defaultBookId) {
-        books.firstOrNull { it.id == defaultBookId }
+    val activeBook = remember(ledgerBooks, selectedLedgerBookId) {
+        ledgerBooks.firstOrNull { it.id == selectedLedgerBookId }
     }
     val ledgerSummary = remember(activeBook, transactions) {
         buildHomeLedgerSummary(
@@ -122,17 +164,25 @@ fun rememberHomeUiState(): HomeUiState {
     return remember(
         currentUser,
         readCacheSummary,
+        photoCollaborators,
+        effectiveSelectedPhotoOwnerIds,
+        ledgerBooks,
+        defaultLedgerBookId,
+        selectedLedgerBookId,
         ledgerSummary,
         offlineState,
     ) {
         HomeUiState(
             currentUser = currentUser,
-            spaceLabel = resolveHomeSpaceLabel(currentUser),
             unreadNotificationCount = readCacheSummary.unreadNotificationCount,
+            photoCollaborators = photoCollaborators,
+            selectedPhotoOwnerIds = effectiveSelectedPhotoOwnerIds,
             recentPhotos = readCacheSummary.recentPhotos,
+            ledgerBooks = ledgerBooks,
+            defaultLedgerBookId = defaultLedgerBookId,
+            selectedLedgerBookId = selectedLedgerBookId,
             ledger = ledgerSummary,
             isReadOnly = offlineState.isReadOnly,
-            readOnlyMessage = offlineState.message,
         )
     }
 }
@@ -144,13 +194,21 @@ private data class HomeReadCacheSummary(
 
 private fun buildHomeReadCacheSummary(
     currentUser: RemoteCurrentUser?,
+    selectedPhotoOwnerIds: Set<String>,
+    allPhotoOwnerIds: Set<String>,
 ): HomeReadCacheSummary {
     val userId = currentUser?.userId ?: return HomeReadCacheSummary()
     val photoFeed = AppReadCacheStore.readPhotoFeed(userId)?.payload?.items.orEmpty()
         .sortedByDescending { it.displayTimeMillis }
+    val filteredPhotoFeed = when {
+        photoFeed.isEmpty() -> emptyList()
+        allPhotoOwnerIds.isEmpty() -> photoFeed
+        isAllCollaboratorsSelected(selectedPhotoOwnerIds, allPhotoOwnerIds) -> photoFeed
+        else -> photoFeed.filter { it.uploadedByUserId in selectedPhotoOwnerIds }
+    }
     val notifications = AppReadCacheStore.readNotifications(userId)?.payload?.items.orEmpty()
     return HomeReadCacheSummary(
-        recentPhotos = buildHomeRecentPhotosSummary(photoFeed),
+        recentPhotos = buildHomeRecentPhotosSummary(filteredPhotoFeed),
         unreadNotificationCount = notifications.count { !it.isRead },
     )
 }
@@ -162,7 +220,6 @@ private fun buildHomeRecentPhotosSummary(
     return HomeRecentPhotosSummary(
         totalCount = mediaItems.size,
         latestPhotoAtMillis = latestPhoto?.displayTimeMillis,
-        cachedAtMillis = mediaItems.maxOfOrNull { it.importedAtMillis ?: it.createdAtMillis ?: it.displayTimeMillis },
         tiles = mediaItems
             .take(5)
             .map { media ->
@@ -231,22 +288,6 @@ private fun RemoteMedia.toHomeMediaType(): AppMediaType {
     )
 }
 
-private fun resolveHomeSpaceLabel(
-    currentUser: RemoteCurrentUser?,
-): String {
-    if (currentUser == null) {
-        return "共同空间"
-    }
-    currentUser.libraryDisplayName?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
-    val currentName = currentUser.displayName.trim().ifBlank { "你" }
-    val partnerName = currentUser.partner?.displayName?.trim()?.takeIf { it.isNotBlank() }
-    return if (partnerName != null) {
-        "$currentName 和 $partnerName"
-    } else {
-        currentName
-    }
-}
-
 private fun homePaletteFor(key: String): PhotoThumbnailPalette {
     val palettes = listOf(
         PhotoThumbnailPalette(
@@ -292,7 +333,7 @@ fun formatHomeRelativeTime(
     millis: Long?,
     zoneId: ZoneId = ZoneId.systemDefault(),
 ): String {
-    millis ?: return "最近回忆"
+    millis ?: return "最近"
     val target = Instant.ofEpochMilli(millis).atZone(zoneId).toLocalDate()
     val today = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(zoneId).toLocalDate()
     return when (java.time.temporal.ChronoUnit.DAYS.between(target, today)) {

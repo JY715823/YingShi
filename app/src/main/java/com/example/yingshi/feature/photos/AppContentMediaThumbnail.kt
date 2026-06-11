@@ -52,11 +52,23 @@ fun AppContentMediaThumbnail(
 ) {
     val context = LocalContext.current
     val colors = YingShiThemeTokens.colors
-    val thumbnailUrl = remember(mediaSource, mediaType) {
-        mediaSource.thumbnailModelUrl(mediaType)
+    val posterImageUrl = remember(mediaSource, mediaType) {
+        mediaSource.videoPosterImageUrl(mediaType)
     }
-    val thumbnailCacheKey = remember(mediaSource, mediaType) {
-        mediaSource.thumbnailModelCacheKey(mediaType)
+    val posterImageCacheKey = remember(mediaSource, mediaType) {
+        mediaSource.videoPosterImageCacheKey(mediaType)
+    }
+    val thumbnailUrl = remember(mediaSource, mediaType, posterImageUrl) {
+        when (mediaType) {
+            AppMediaType.IMAGE -> mediaSource.thumbnailModelUrl(mediaType)
+            AppMediaType.VIDEO -> posterImageUrl ?: mediaSource.thumbnailModelUrl(mediaType)
+        }
+    }
+    val thumbnailCacheKey = remember(mediaSource, mediaType, posterImageCacheKey) {
+        when (mediaType) {
+            AppMediaType.IMAGE -> mediaSource.thumbnailModelCacheKey(mediaType)
+            AppMediaType.VIDEO -> posterImageCacheKey ?: mediaSource.thumbnailModelCacheKey(mediaType)
+        }
     }
     val originalImageUrl = remember(mediaSource, mediaType) {
         mediaSource.viewerOriginalImageUrl(mediaType)
@@ -71,8 +83,9 @@ fun AppContentMediaThumbnail(
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
-    val modelUrl = thumbnailUrl?.takeUnless {
-        mediaType == AppMediaType.VIDEO && looksLikeVideoSource(it, mediaSource?.mimeType)
+    val modelUrl = when (mediaType) {
+        AppMediaType.IMAGE -> thumbnailUrl
+        AppMediaType.VIDEO -> posterImageUrl
     }
     val previewRequest = remember(
         context,
@@ -121,24 +134,13 @@ fun AppContentMediaThumbnail(
     val originalPainter = rememberAsyncImagePainter(model = originalRequest)
     val previewState = previewPainter.state
     val originalState = originalPainter.state
-    val videoPosterUrl = if (mediaType == AppMediaType.VIDEO) {
-        listOfNotNull(
-            mediaSource?.coverUrl,
-            mediaSource?.thumbnailUrl?.takeUnless { looksLikeVideoSource(it, mediaSource?.mimeType) },
-            mediaSource?.mediaUrl?.takeUnless { looksLikeVideoSource(it, mediaSource?.mimeType) },
-            mediaSource.viewerVideoUrl(mediaType),
-            thumbnailUrl?.takeIf { looksLikeVideoSource(it, mediaSource?.mimeType) },
-        ).firstOrNull()
+    val videoPosterUrl = if (mediaType == AppMediaType.VIDEO && posterImageUrl.isNullOrBlank()) {
+        mediaSource.videoPosterVideoUrl(mediaType)
     } else {
         null
     }
     val videoPosterCacheKey = remember(mediaSource, mediaType) {
-        listOfNotNull(
-            mediaSource?.coverCacheKey,
-            mediaSource?.thumbnailCacheKey,
-            mediaSource?.mediaCacheKey,
-            mediaSource.viewerVideoCacheKey(mediaType),
-        ).firstOrNull()
+        mediaSource.videoPosterVideoCacheKey(mediaType)
     }
     val videoPosterState = if (mediaType == AppMediaType.VIDEO && !videoPosterUrl.isNullOrBlank()) {
         rememberVideoPosterState(
@@ -257,7 +259,7 @@ fun AppContentMediaThumbnail(
         if (showStatusBadge) {
             val statusLabel = when {
                 mediaType == AppMediaType.VIDEO && videoPosterState.hasError -> "视频封面缺失"
-                thumbnailUrl.isNullOrBlank() && mediaType == AppMediaType.VIDEO -> "视频封面缺失"
+                modelUrl.isNullOrBlank() && videoPosterUrl.isNullOrBlank() && mediaType == AppMediaType.VIDEO -> "视频封面缺失"
                 thumbnailUrl.isNullOrBlank() -> "暂无缩略图"
                 previewState is AsyncImagePainter.State.Error -> "加载失败"
                 else -> null

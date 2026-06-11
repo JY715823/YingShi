@@ -39,6 +39,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePartnerProfile
+import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.components.yingShiClickable
@@ -68,6 +69,7 @@ fun MyScreen(
     YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
         showWaves = false,
+        variant = YingShiBackdropVariant.ME,
     ) {
         Column(
             modifier = Modifier

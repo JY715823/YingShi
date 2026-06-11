@@ -1,18 +1,15 @@
 package com.example.yingshi.feature.home
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,27 +17,40 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.feature.ledger.LedgerBookPickerSheet
 import com.example.yingshi.feature.photos.AppContentMediaThumbnail
+import com.example.yingshi.feature.photos.AppMediaType
+import com.example.yingshi.feature.photos.CollaboratorIdentityUiModel
+import com.example.yingshi.feature.photos.toggleCollaboratorSelection
+import com.example.yingshi.ui.components.YingShiAuroraBackdrop
+import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.yingShiHapticClickable
-import com.example.yingshi.ui.components.yingShiMemoryGlow
 import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -54,10 +64,22 @@ fun HomeScreen(
 ) {
     val colors = YingShiThemeTokens.colors
     val spacing = YingShiThemeTokens.spacing
-    val uiState = rememberHomeUiState()
     val motionEnabled = rememberYingShiMotionEnabled()
+    var requestedPhotoOwnerIds by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var requestedLedgerBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showLedgerBookPicker by rememberSaveable { mutableStateOf(false) }
+    val uiState = rememberHomeUiState(
+        selectedPhotoOwnerIds = requestedPhotoOwnerIds.toSet(),
+        requestedLedgerBookId = requestedLedgerBookId,
+    )
+    val allPhotoOwnerIds = remember(uiState.photoCollaborators) {
+        uiState.photoCollaborators.mapTo(linkedSetOf()) { it.userId }
+    }
 
-    HomeBackdrop(modifier = modifier) {
+    YingShiAuroraBackdrop(
+        modifier = modifier.fillMaxSize(),
+        variant = YingShiBackdropVariant.HOME,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -91,210 +113,52 @@ fun HomeScreen(
                 )
             }
 
-            HomeFoyerCard(
-                uiState = uiState,
-                modifier = Modifier.yingShiSoftReveal(motionEnabled = motionEnabled),
-                onClick = onOpenPhotos,
-            )
-
-            HomeRecentPhotosCard(
+            HomePhotoCard(
                 summary = uiState.recentPhotos,
+                collaborators = uiState.photoCollaborators,
+                selectedOwnerIds = uiState.selectedPhotoOwnerIds,
                 modifier = Modifier.yingShiSoftReveal(motionEnabled = motionEnabled),
                 onClick = onOpenPhotos,
+                onToggleCollaborator = { userId ->
+                    val nextSelection = toggleCollaboratorSelection(
+                        currentSelection = uiState.selectedPhotoOwnerIds,
+                        toggledUserId = userId,
+                        allUserIds = allPhotoOwnerIds,
+                    )
+                    requestedPhotoOwnerIds = nextSelection.toList()
+                },
             )
 
             HomeLedgerCard(
-                summary = uiState.ledger,
+                uiState = uiState,
                 modifier = Modifier.yingShiSoftReveal(motionEnabled = motionEnabled),
                 onClick = onOpenLedger,
+                onOpenBookPicker = {
+                    if (uiState.ledgerBooks.isNotEmpty()) {
+                        showLedgerBookPicker = true
+                    }
+                },
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.size(4.dp))
         }
-    }
-}
 
-@Composable
-private fun HomeBackdrop(
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        colors.appBackground,
-                        colors.sectionBackground.copy(alpha = 0.94f),
-                        colors.glowWash.copy(alpha = 0.98f),
-                        colors.appBackground,
-                    ),
-                ),
-            ),
-    ) {
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val width = size.width
-            val height = size.height
-
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xD6FBFFFF), Color(0x36FBFFFF), Color.Transparent),
-                    center = Offset(width * 0.18f, height * 0.16f),
-                    radius = height * 0.34f,
-                ),
-                radius = height * 0.34f,
-                center = Offset(width * 0.18f, height * 0.16f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xB6FFE3C8), Color(0x2CFFE3C8), Color.Transparent),
-                    center = Offset(width * 0.86f, height * 0.18f),
-                    radius = height * 0.28f,
-                ),
-                radius = height * 0.28f,
-                center = Offset(width * 0.86f, height * 0.18f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xA2FFD4E4), Color(0x1FFFD4E4), Color.Transparent),
-                    center = Offset(width * 0.84f, height * 0.74f),
-                    radius = height * 0.30f,
-                ),
-                radius = height * 0.30f,
-                center = Offset(width * 0.84f, height * 0.74f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0x8FCBF5F1), Color(0x18CBF5F1), Color.Transparent),
-                    center = Offset(width * 0.14f, height * 0.78f),
-                    radius = height * 0.30f,
-                ),
-                radius = height * 0.30f,
-                center = Offset(width * 0.14f, height * 0.78f),
-            )
-
-            val upperAurora = Path().apply {
-                moveTo(-width * 0.10f, height * 0.10f)
-                cubicTo(
-                    width * 0.10f,
-                    height * 0.00f,
-                    width * 0.34f,
-                    height * 0.24f,
-                    width * 0.58f,
-                    height * 0.08f,
-                )
-                cubicTo(
-                    width * 0.82f,
-                    height * -0.02f,
-                    width * 0.98f,
-                    height * 0.20f,
-                    width * 1.08f,
-                    height * 0.02f,
-                )
-                lineTo(width * 1.08f, height * 0.18f)
-                cubicTo(
-                    width * 0.88f,
-                    height * 0.30f,
-                    width * 0.62f,
-                    height * 0.14f,
-                    width * 0.30f,
-                    height * 0.30f,
-                )
-                cubicTo(
-                    width * 0.12f,
-                    height * 0.38f,
-                    width * 0.00f,
-                    height * 0.24f,
-                    -width * 0.10f,
-                    height * 0.24f,
-                )
-                close()
-            }
-            drawPath(
-                path = upperAurora,
-                brush = Brush.linearGradient(
-                    colors = listOf(Color(0x08FFFFFF), Color(0x76FFF6E8), Color(0x2CBEEBFF), Color(0x10FFFFFF)),
-                    start = Offset(width * 0.06f, height * 0.04f),
-                    end = Offset(width * 0.94f, height * 0.26f),
-                ),
-            )
-
-            val lowerAurora = Path().apply {
-                moveTo(-width * 0.06f, height * 0.90f)
-                cubicTo(
-                    width * 0.14f,
-                    height * 0.70f,
-                    width * 0.38f,
-                    height * 0.98f,
-                    width * 0.64f,
-                    height * 0.78f,
-                )
-                cubicTo(
-                    width * 0.84f,
-                    height * 0.64f,
-                    width * 0.96f,
-                    height * 0.90f,
-                    width * 1.06f,
-                    height * 0.68f,
-                )
-                lineTo(width * 1.06f, height * 0.84f)
-                cubicTo(
-                    width * 0.86f,
-                    height * 1.00f,
-                    width * 0.58f,
-                    height * 0.86f,
-                    width * 0.24f,
-                    height * 1.02f,
-                )
-                cubicTo(
-                    width * 0.04f,
-                    height * 1.06f,
-                    -width * 0.02f,
-                    height * 0.94f,
-                    -width * 0.06f,
-                    height * 0.90f,
-                )
-                close()
-            }
-            drawPath(
-                path = lowerAurora,
-                brush = Brush.linearGradient(
-                    colors = listOf(Color(0x10FFFFFF), Color(0x58CBFFF7), Color(0x44FFDBC1), Color(0x10FFFFFF)),
-                    start = Offset(width * 0.08f, height * 0.72f),
-                    end = Offset(width * 0.92f, height * 0.96f),
-                ),
-            )
-
-            val glassSweep = Path().apply {
-                moveTo(width * 0.08f, height * 0.46f)
-                cubicTo(
-                    width * 0.28f,
-                    height * 0.30f,
-                    width * 0.48f,
-                    height * 0.62f,
-                    width * 0.68f,
-                    height * 0.42f,
-                )
-                cubicTo(
-                    width * 0.84f,
-                    height * 0.30f,
-                    width * 0.94f,
-                    height * 0.50f,
-                    width * 1.02f,
-                    height * 0.38f,
-                )
-            }
-            drawPath(
-                path = glassSweep,
-                brush = Brush.horizontalGradient(
-                    listOf(Color.Transparent, Color(0x9EFFFFFF), Color(0x44D9FFF8), Color.Transparent),
-                ),
-                style = Stroke(width = 24f, cap = StrokeCap.Round),
+        if (
+            showLedgerBookPicker &&
+            uiState.ledgerBooks.isNotEmpty() &&
+            !uiState.selectedLedgerBookId.isNullOrBlank()
+        ) {
+            LedgerBookPickerSheet(
+                books = uiState.ledgerBooks,
+                selectedBookId = uiState.selectedLedgerBookId,
+                defaultBookId = uiState.defaultLedgerBookId,
+                onDismiss = { showLedgerBookPicker = false },
+                onSelectBook = { bookId ->
+                    requestedLedgerBookId = bookId
+                    showLedgerBookPicker = false
+                },
             )
         }
-        content()
     }
 }
 
@@ -307,8 +171,8 @@ private fun HomeStatusPill(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
-        color = colors.raisedSurface.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
+        color = colors.raisedSurface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
     ) {
         Text(
             text = text,
@@ -320,36 +184,26 @@ private fun HomeStatusPill(
 }
 
 @Composable
-private fun HomeFoyerCard(
-    uiState: HomeUiState,
+private fun HomePhotoCard(
+    summary: HomeRecentPhotosSummary,
+    collaborators: List<CollaboratorIdentityUiModel>,
+    selectedOwnerIds: Set<String>,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    onToggleCollaborator: (String) -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
     val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val shape = RoundedCornerShape(radius.xl)
-    val hasPhotos = uiState.recentPhotos.hasPhotos
-    val headline = if (hasPhotos) {
-        "${formatHomeRelativeTime(uiState.recentPhotos.latestPhotoAtMillis)} · ${uiState.recentPhotos.totalCount} 张回忆"
-    } else {
-        "把新的回忆收进来"
-    }
-    val supporting = if (hasPhotos) {
-        "最近更新 ${formatHomeTimeStamp(uiState.recentPhotos.latestPhotoAtMillis)}"
-    } else {
-        "门厅会在有缓存后点亮最近照片"
-    }
-
+    val shape = RoundedCornerShape(32.dp)
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(0.94f)
-            .yingShiHapticClickable(shape = shape, pressedScale = 0.985f, onClick = onClick),
+            .aspectRatio(0.96f)
+            .yingShiHapticClickable(shape = shape, pressedScale = 0.986f, onClick = onClick),
         shape = shape,
-        color = colors.raisedSurface.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.48f)),
-        shadowElevation = 3.dp,
+        color = colors.raisedSurface.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.56f)),
+        shadowElevation = 4.dp,
     ) {
         Box(
             modifier = Modifier
@@ -357,15 +211,15 @@ private fun HomeFoyerCard(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            colors.raisedSurface.copy(alpha = 0.28f),
-                            colors.glowWash.copy(alpha = 0.22f),
+                            colors.raisedSurface.copy(alpha = 0.20f),
+                            colors.glowWash.copy(alpha = 0.18f),
                             colors.memoryWash.copy(alpha = 0.12f),
                         ),
                     ),
                 ),
         ) {
-            HomeFoyerCollage(
-                summary = uiState.recentPhotos,
+            HomePhotoCollage(
+                summary = summary,
                 modifier = Modifier.matchParentSize(),
             )
             Box(
@@ -374,9 +228,9 @@ private fun HomeFoyerCard(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.20f),
+                                Color.White.copy(alpha = 0.16f),
                                 Color.Transparent,
-                                colors.viewerBackground.copy(alpha = 0.14f),
+                                Color(0xCC5E708A).copy(alpha = 0.42f),
                             ),
                         ),
                     ),
@@ -387,27 +241,53 @@ private fun HomeFoyerCard(
                     .padding(horizontal = 18.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                HomeStatusPill(text = uiState.spaceLabel)
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
                         text = "最近照片",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.raisedSurface.copy(alpha = 0.96f),
-                    )
-                    Text(
-                        text = headline,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.raisedSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = supporting,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.raisedSurface.copy(alpha = 0.88f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (collaborators.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            collaborators.take(2).forEach { identity ->
+                                HomeCollaboratorDot(
+                                    label = if (identity.isCurrentUser) "我" else "TA",
+                                    selected = identity.userId in selectedOwnerIds,
+                                    onClick = { onToggleCollaborator(identity.userId) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                    if (summary.hasPhotos) {
+                        Text(
+                            text = formatHomeRelativeTime(summary.latestPhotoAtMillis),
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.raisedSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            HomeMetaPill(text = "${summary.totalCount} 张")
+                            HomeMetaPill(text = formatHomeTimeStamp(summary.latestPhotoAtMillis))
+                        }
+                    } else {
+                        Text(
+                            text = "0 张",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.raisedSurface,
+                        )
+                        HomeMetaPill(text = "未缓存")
+                    }
                 }
             }
         }
@@ -415,79 +295,64 @@ private fun HomeFoyerCard(
 }
 
 @Composable
-private fun HomeFoyerCollage(
+private fun HomePhotoCollage(
     summary: HomeRecentPhotosSummary,
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
     val tiles = summary.tiles
     Row(
-        modifier = modifier.padding(12.dp),
+        modifier = modifier.padding(14.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(
-            modifier = Modifier.weight(1.08f),
+            modifier = Modifier.weight(1.14f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             HomePhotoPane(
                 tile = tiles.getOrNull(0),
                 fallbackBrush = Brush.linearGradient(
                     listOf(
-                        colors.primaryContainer.copy(alpha = 0.72f),
-                        colors.glowWash.copy(alpha = 0.88f),
+                        Color(0xFFB9D6F5).copy(alpha = 0.92f),
+                        Color(0xFFEAF5FF).copy(alpha = 0.96f),
                     ),
                 ),
-                modifier = Modifier.weight(1.32f),
+                modifier = Modifier.weight(1.28f),
             )
-            Row(
-                modifier = Modifier.weight(0.88f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                HomePhotoPane(
-                    tile = tiles.getOrNull(3),
-                    fallbackBrush = Brush.linearGradient(
-                        listOf(
-                            colors.softGreenContainer.copy(alpha = 0.84f),
-                            colors.sectionBackground.copy(alpha = 0.90f),
-                        ),
-                    ),
-                    modifier = Modifier.weight(1f),
-                )
-                HomePhotoPane(
-                    tile = tiles.getOrNull(4),
-                    fallbackBrush = Brush.linearGradient(
-                        listOf(
-                            colors.memoryWash.copy(alpha = 0.86f),
-                            colors.raisedSurface.copy(alpha = 0.92f),
-                        ),
-                    ),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(0.92f),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
             HomePhotoPane(
                 tile = tiles.getOrNull(1),
                 fallbackBrush = Brush.linearGradient(
                     listOf(
+                        Color(0xFFFFE8D9).copy(alpha = 0.92f),
                         colors.raisedSurface.copy(alpha = 0.94f),
-                        colors.glowWash.copy(alpha = 0.72f),
                     ),
                 ),
-                modifier = Modifier.weight(0.92f),
+                modifier = Modifier.weight(0.82f),
             )
+        }
+        Column(
+            modifier = Modifier.weight(0.86f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             HomePhotoPane(
                 tile = tiles.getOrNull(2),
                 fallbackBrush = Brush.linearGradient(
                     listOf(
-                        colors.sectionBackground.copy(alpha = 0.90f),
-                        colors.memoryWash.copy(alpha = 0.56f),
+                        Color(0xFFE9F6D8).copy(alpha = 0.90f),
+                        colors.sectionBackground.copy(alpha = 0.94f),
                     ),
                 ),
-                modifier = Modifier.weight(1.12f),
+                modifier = Modifier.weight(0.78f),
+            )
+            HomePhotoPane(
+                tile = tiles.getOrNull(3),
+                fallbackBrush = Brush.linearGradient(
+                    listOf(
+                        Color(0xFFF1E4FF).copy(alpha = 0.88f),
+                        Color(0xFFD8E8FF).copy(alpha = 0.90f),
+                    ),
+                ),
+                modifier = Modifier.weight(1.22f),
             )
         }
     }
@@ -500,12 +365,11 @@ private fun HomePhotoPane(
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
-    val radius = RoundedCornerShape(24.dp)
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = radius,
+        shape = RoundedCornerShape(24.dp),
         color = Color.Transparent,
-        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.26f)),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.32f)),
     ) {
         if (tile == null) {
             Box(
@@ -515,11 +379,11 @@ private fun HomePhotoPane(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                colors.raisedSurface.copy(alpha = 0.24f),
+                                Color.White.copy(alpha = 0.24f),
                                 Color.Transparent,
                             ),
-                            center = Offset(0.22f, 0.18f),
-                            radius = 900f,
+                            center = Offset(120f, 120f),
+                            radius = 520f,
                         ),
                     ),
             )
@@ -533,208 +397,259 @@ private fun HomePhotoPane(
                 requestSize = 720,
                 showLoadingIndicator = false,
                 showStatusBadge = false,
-                showVideoPlayOverlay = tile.mediaType != com.example.yingshi.feature.photos.AppMediaType.IMAGE,
+                showVideoPlayOverlay = tile.mediaType != AppMediaType.IMAGE,
             )
         }
     }
 }
 
 @Composable
-private fun HomeRecentPhotosCard(
-    summary: HomeRecentPhotosSummary,
-    modifier: Modifier = Modifier,
+private fun HomeCollaboratorDot(
+    label: String,
+    selected: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    val spacing = YingShiThemeTokens.spacing
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.xl)
-    val headline = if (summary.hasPhotos) {
-        "${formatHomeRelativeTime(summary.latestPhotoAtMillis)} · ${summary.totalCount} 张"
-    } else {
-        "还没有照片缓存"
-    }
-    val supporting = if (summary.hasPhotos) {
-        "最近一组回忆 ${formatHomeTimeStamp(summary.latestPhotoAtMillis)}"
-    } else {
-        "进入照片页后，这里会带回最近回忆"
-    }
-
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .yingShiHapticClickable(shape = shape, pressedScale = 0.988f, onClick = onClick),
-        shape = shape,
-        color = colors.raisedSurface.copy(alpha = 0.84f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.76f)),
-        shadowElevation = 2.dp,
+        modifier = Modifier
+            .size(30.dp)
+            .yingShiClickable(shape = CircleShape, pressedScale = 0.95f, onClick = onClick),
+        shape = CircleShape,
+        color = if (selected) {
+            colors.primaryContainer.copy(alpha = 0.96f)
+        } else {
+            colors.raisedSurface.copy(alpha = 0.78f)
+        },
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.86f)),
+        shadowElevation = if (selected) 1.dp else 0.dp,
     ) {
-        Row(
-            modifier = Modifier
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            colors.raisedSurface.copy(alpha = 0.92f),
-                            colors.glowWash.copy(alpha = 0.34f),
-                            colors.memoryWash.copy(alpha = 0.22f),
-                        ),
-                    ),
-                )
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Text(
-                    text = "最近照片",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                Text(
-                    text = headline,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                Text(
-                    text = supporting,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
-            }
-            HomeMiniPhotoStrip(summary = summary)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = if (selected) colors.titleAccent else colors.textSecondary,
+            )
         }
     }
 }
 
 @Composable
-private fun HomeMiniPhotoStrip(
-    summary: HomeRecentPhotosSummary,
+private fun HomeMetaPill(
+    text: String,
     modifier: Modifier = Modifier,
 ) {
-    val colors = YingShiThemeTokens.colors
-    val tiles = summary.tiles.take(3)
-    Row(
+    Surface(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        shape = RoundedCornerShape(999.dp),
+        color = Color.White.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.24f)),
     ) {
-        if (tiles.isEmpty()) {
-            repeat(3) { index ->
-                Surface(
-                    modifier = Modifier.size(width = 36.dp, height = 52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (index == 1) {
-                        colors.glowWash.copy(alpha = 0.82f)
-                    } else {
-                        colors.sectionBackground.copy(alpha = 0.82f)
-                    },
-                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
-                ) {}
-            }
-        } else {
-            tiles.forEach { tile ->
-                Surface(
-                    modifier = Modifier.size(width = 36.dp, height = 52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.30f)),
-                ) {
-                    AppContentMediaThumbnail(
-                        mediaSource = tile.mediaSource,
-                        mediaType = tile.mediaType,
-                        palette = tile.palette,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                        requestSize = 256,
-                        showLoadingIndicator = false,
-                        showStatusBadge = false,
-                        showVideoPlayOverlay = false,
-                    )
-                }
-            }
-        }
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = Color.White,
+        )
     }
 }
 
 @Composable
 private fun HomeLedgerCard(
-    summary: HomeLedgerSummary,
+    uiState: HomeUiState,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    onOpenBookPicker: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
     val spacing = YingShiThemeTokens.spacing
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.xl)
+    val shape = RoundedCornerShape(30.dp)
+    val latestHeadline = uiState.ledger.latestTransactionLabel ?: "--"
+    val latestSupporting = uiState.ledger.latestTransactionAmountText ?: "--"
+    val latestTime = formatHomeTimeStamp(uiState.ledger.latestTransactionAtMillis)
+    val monthExpense = uiState.ledger.monthExpenseText ?: "¥0.00"
+    val bookLabel = uiState.ledger.bookName ?: "默认账本"
+    val selectedBook = remember(uiState.ledgerBooks, uiState.selectedLedgerBookId) {
+        uiState.ledgerBooks.firstOrNull { it.id == uiState.selectedLedgerBookId }
+    }
+    val accentColor = selectedBook?.let { Color(it.coverColor) } ?: colors.primaryContainer
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .yingShiHapticClickable(shape = shape, pressedScale = 0.988f, onClick = onClick),
         shape = shape,
         color = colors.raisedSurface.copy(alpha = 0.86f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.74f)),
+        shadowElevation = 3.dp,
     ) {
         Column(
             modifier = Modifier
                 .background(
                     Brush.linearGradient(
-                        listOf(
+                        colors = listOf(
                             colors.raisedSurface.copy(alpha = 0.96f),
-                            colors.softGreenContainer.copy(alpha = 0.28f),
-                            colors.memoryWash.copy(alpha = 0.16f),
+                            Color(0xFFEAF7F3).copy(alpha = 0.94f),
+                            Color(0xFFFFF2E8).copy(alpha = 0.88f),
                         ),
                     ),
                 )
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     text = "账本信号",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                HomeBookFilterChip(
+                    label = bookLabel,
+                    accentColor = accentColor,
+                    enabled = uiState.ledgerBooks.size > 1,
+                    onClick = onOpenBookPicker,
+                )
+            }
+
+            HomeLedgerHeroSignal(
+                amount = monthExpense,
+                bookLabel = bookLabel,
+                accentColor = accentColor,
+            )
+
+            HomeLedgerRecentSignal(
+                hasTransaction = uiState.ledger.hasTransaction,
+                hasBook = uiState.ledger.hasBook,
+                latestHeadline = latestHeadline,
+                latestSupporting = latestSupporting,
+                latestTime = latestTime,
+                accentColor = accentColor,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeBookFilterChip(
+    label: String,
+    accentColor: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(999.dp)
+    Surface(
+        modifier = Modifier.yingShiClickable(
+            enabled = enabled,
+            shape = shape,
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = shape,
+        color = colors.sectionBackground.copy(alpha = if (enabled) 0.90f else 0.70f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = CircleShape,
+                color = accentColor.copy(alpha = 0.88f),
+            ) {}
+            Text(
+                text = if (enabled) "$label ▾" else label,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = if (enabled) colors.titleAccent else colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeLedgerHeroSignal(
+    amount: String,
+    bookLabel: String,
+    accentColor: Color,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        shape = RoundedCornerShape(26.dp),
+        color = Color.White.copy(alpha = 0.60f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            accentColor.copy(alpha = 0.16f),
+                            Color.White.copy(alpha = 0.70f),
+                            Color(0xFFFFF5ED).copy(alpha = 0.64f),
+                        ),
+                    ),
+                )
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "本月支出",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.textSecondary,
+                        )
+                        Text(
+                            text = bookLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.size(38.dp),
+                        shape = CircleShape,
+                        color = accentColor.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.24f)),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.Wallet,
+                                contentDescription = null,
+                                tint = colors.titleAccent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = amount,
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.titleAccent,
                 )
                 Text(
-                    text = summary.bookName ?: "默认账本",
+                    text = "当前自然月",
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.textSecondary,
-                )
-            }
-            if (summary.hasTransaction) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.md),
-                ) {
-                    HomeLedgerMetric(
-                        title = "最近一笔",
-                        headline = buildString {
-                            append(summary.latestTransactionLabel ?: "--")
-                            val amount = summary.latestTransactionAmountText
-                            if (!amount.isNullOrBlank()) {
-                                append(" · ")
-                                append(amount)
-                            }
-                        },
-                        supporting = formatHomeTimeStamp(summary.latestTransactionAtMillis),
-                        modifier = Modifier.weight(1f),
-                    )
-                    HomeLedgerMetric(
-                        title = "本月支出",
-                        headline = summary.monthExpenseText ?: "¥0.00",
-                        supporting = "当前自然月",
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            } else {
-                Text(
-                    text = if (summary.hasBook) {
-                        "还没有账本记录，点这里直接去记一笔。"
-                    } else {
-                        "账本还没有准备好，点这里进入后会自动补齐。"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
+                    color = colors.textSecondary.copy(alpha = 0.84f),
                 )
             }
         }
@@ -742,42 +657,94 @@ private fun HomeLedgerCard(
 }
 
 @Composable
-private fun HomeLedgerMetric(
-    title: String,
-    headline: String,
-    supporting: String,
-    modifier: Modifier = Modifier,
+private fun HomeLedgerRecentSignal(
+    hasTransaction: Boolean,
+    hasBook: Boolean,
+    latestHeadline: String,
+    latestSupporting: String,
+    latestTime: String,
+    accentColor: Color,
 ) {
     val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = modifier,
         shape = RoundedCornerShape(22.dp),
-        color = colors.raisedSurface.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
+        color = colors.raisedSurface.copy(alpha = 0.70f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.textSecondary,
-            )
-            Text(
-                text = headline,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = supporting,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textSecondary,
-            )
+        if (hasTransaction) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = CircleShape,
+                    color = accentColor.copy(alpha = 0.14f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "近",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = "最近一笔",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.textSecondary,
+                    )
+                    Text(
+                        text = latestHeadline,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = latestTime,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary.copy(alpha = 0.82f),
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = accentColor.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.22f)),
+                ) {
+                    Text(
+                        text = latestSupporting,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "最近一笔",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.textSecondary,
+                )
+                Text(
+                    text = if (hasBook) "暂无记录" else "进入记账",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+            }
         }
     }
 }
@@ -788,63 +755,68 @@ private fun HomeNotificationBellButton(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    val iconColor = colors.titleAccent
+    val bellIcon = if (unreadCount > 0) {
+        Icons.Rounded.NotificationsActive
+    } else {
+        Icons.Rounded.Notifications
+    }
 
     Surface(
         modifier = Modifier
-            .size(46.dp)
-            .yingShiHapticClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick)
-            .yingShiMemoryGlow(visible = unreadCount > 0, warm = true),
+            .size(44.dp)
+            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
-        color = colors.raisedSurface.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        color = Color.White.copy(alpha = 0.68f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = colors.dividerSoft.copy(alpha = 0.72f),
+        ),
         shadowElevation = 2.dp,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Canvas(
+            Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .padding(8.dp),
+                    .background(
+                        Brush.radialGradient(
+                            colors = if (unreadCount > 0) {
+                                listOf(
+                                    colors.memoryWash.copy(alpha = 0.36f),
+                                    colors.glowWash.copy(alpha = 0.20f),
+                                    Color.Transparent,
+                                )
+                            } else {
+                                listOf(
+                                    Color.White.copy(alpha = 0.28f),
+                                    colors.glowWash.copy(alpha = 0.14f),
+                                    Color.Transparent,
+                                )
+                            },
+                            radius = 60f,
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                val stroke = Stroke(width = 2.6f, cap = StrokeCap.Round)
-                drawArc(
-                    color = iconColor,
-                    startAngle = 200f,
-                    sweepAngle = 140f,
-                    useCenter = false,
-                    style = stroke,
-                )
-                drawLine(
-                    color = iconColor,
-                    start = center.copy(x = size.width * 0.22f, y = size.height * 0.66f),
-                    end = center.copy(x = size.width * 0.78f, y = size.height * 0.66f),
-                    strokeWidth = 2.6f,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    color = iconColor,
-                    start = center.copy(x = size.width * 0.50f, y = size.height * 0.10f),
-                    end = center.copy(x = size.width * 0.50f, y = size.height * 0.20f),
-                    strokeWidth = 2.6f,
-                    cap = StrokeCap.Round,
-                )
-                drawCircle(
-                    color = iconColor,
-                    radius = 2.2f,
-                    center = center.copy(y = size.height * 0.82f),
+                Icon(
+                    imageVector = bellIcon,
+                    contentDescription = null,
+                    tint = colors.titleAccent,
+                    modifier = Modifier.size(22.dp),
                 )
             }
+
             if (unreadCount > 0) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 1.dp, end = 1.dp),
+                        .padding(top = 2.dp, end = 2.dp),
                     shape = RoundedCornerShape(999.dp),
                     color = colors.memoryAccent,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.72f)),
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.raisedSurface,
                     )
