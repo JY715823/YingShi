@@ -118,6 +118,10 @@ object FakeTrashRepository {
             )
 
         val restored = when (entry.type) {
+            TrashEntryType.LARGE_ALBUM_DELETED -> {
+                entry.albumSnapshot?.let(FakeAlbumRepository::restoreAlbum) == true
+            }
+
             TrashEntryType.SMALL_ALBUM_DELETED -> {
                 entry.postSnapshot?.let(FakeAlbumRepository::restorePost) == true
             }
@@ -158,6 +162,7 @@ object FakeTrashRepository {
             TrashMutationResult(
                 success = true,
                 message = when (entry.type) {
+                    TrashEntryType.LARGE_ALBUM_DELETED -> "已恢复大相册和本次一起删除的小相册。"
                     TrashEntryType.SMALL_ALBUM_DELETED -> "已恢复小相册删除。"
                     TrashEntryType.MEDIA_REMOVED -> "已恢复媒体与原帖关系。"
                     TrashEntryType.MEDIA_SYSTEM_DELETED -> "已恢复媒体本体和关联关系。"
@@ -189,6 +194,34 @@ object FakeTrashRepository {
                 relatedMediaIds = snapshot.mediaSnapshots.map { it.mediaId },
                 postSnapshot = snapshot,
                 palette = snapshot.post.coverPalette,
+            ),
+        )
+    }
+
+    fun recordDeletedAlbum(
+        snapshot: TrashAlbumSnapshot,
+        deletedAtMillis: Long = System.currentTimeMillis(),
+    ) {
+        removeDuplicateAlbumEntry(snapshot.album.id)
+        entries.add(
+            0,
+            TrashEntryUiModel(
+                id = "trash-album-${snapshot.album.id}-$deletedAtMillis",
+                type = TrashEntryType.LARGE_ALBUM_DELETED,
+                deletedAtMillis = deletedAtMillis,
+                title = snapshot.album.title.ifBlank { "未命名大相册" },
+                previewInfo = buildString {
+                    append("删除于 ${formatTrashTime(deletedAtMillis)}")
+                    append(" · ${snapshot.postSnapshots.size} 个小相册已一并移入回收站")
+                    append(" · 媒体本体保留")
+                },
+                actorUserId = currentActorUserId(),
+                relatedPostIds = snapshot.postSnapshots.map { it.post.id }.distinct(),
+                relatedMediaIds = snapshot.postSnapshots
+                    .flatMap { postSnapshot -> postSnapshot.mediaSnapshots.map { it.mediaId } }
+                    .distinct(),
+                albumSnapshot = snapshot,
+                palette = snapshot.album.accent,
             ),
         )
     }
@@ -270,6 +303,17 @@ object FakeTrashRepository {
         }
         pendingRemovals.removeAll { pending ->
             pending.entry.type == TrashEntryType.SMALL_ALBUM_DELETED && pending.entry.sourcePostId == postId
+        }
+    }
+
+    private fun removeDuplicateAlbumEntry(albumId: String) {
+        entries.removeAll { entry ->
+            entry.type == TrashEntryType.LARGE_ALBUM_DELETED &&
+                entry.albumSnapshot?.album?.id == albumId
+        }
+        pendingRemovals.removeAll { pending ->
+            pending.entry.type == TrashEntryType.LARGE_ALBUM_DELETED &&
+                pending.entry.albumSnapshot?.album?.id == albumId
         }
     }
 

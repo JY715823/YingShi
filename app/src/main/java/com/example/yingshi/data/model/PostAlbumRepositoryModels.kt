@@ -114,3 +114,8 @@ data class CreateAlbumPayload(
     val title: String,
     val subtitle: String = "",
 )
+
+data class UpdateAlbumPayload(
+    val title: String,
+    val subtitle: String = "",
+)

@@ -27,7 +27,8 @@ internal fun ReconnectRefreshEffect(
             }
             return@LaunchedEffect
         }
-        if (shouldRefresh) {
+        val justReconnected = !wasConnected && networkState.isConnected
+        if (justReconnected && shouldRefresh) {
             onReconnect()
         }
     }

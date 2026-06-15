@@ -25,6 +25,7 @@ import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import java.io.InputStream
@@ -62,6 +63,13 @@ interface AlbumRepository {
     suspend fun createAlbum(payload: CreateAlbumPayload): ApiResult<RemoteAlbum>
     suspend fun getAlbums(): ApiResult<List<RemoteAlbum>>
     suspend fun getAlbumPosts(albumId: String): ApiResult<List<RemotePostSummary>>
+    suspend fun updateAlbum(
+        albumId: String,
+        payload: UpdateAlbumPayload,
+    ): ApiResult<RemoteAlbum>
+    suspend fun deleteAlbum(
+        albumId: String,
+    ): ApiResult<RemoteTrashItem>
     suspend fun updatePostAlbums(
         postId: String,
         payload: UpdatePostAlbumsPayload,

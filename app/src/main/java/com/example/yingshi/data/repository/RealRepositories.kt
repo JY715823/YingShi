@@ -25,6 +25,7 @@ import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.api.AlbumApi
@@ -48,6 +49,7 @@ import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
 import com.example.yingshi.data.remote.dto.ResendLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
+import com.example.yingshi.data.remote.dto.UpdateAlbumRequestDto
 import com.example.yingshi.data.remote.dto.VerifyLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
@@ -385,6 +387,45 @@ class RealAlbumRepository(
         )
     }
 
+    override suspend fun updateAlbum(
+        albumId: String,
+        payload: UpdateAlbumPayload,
+    ): ApiResult<RemoteAlbum> {
+        return runCatching {
+            albumApi.updateAlbum(
+                albumId = albumId,
+                request = UpdateAlbumRequestDto(
+                    title = payload.title,
+                    subtitle = payload.subtitle,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "ALBUM_UPDATE_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "重命名大相册失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun deleteAlbum(albumId: String): ApiResult<RemoteTrashItem> {
+        return runCatching {
+            albumApi.deleteAlbum(albumId = albumId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "ALBUM_DELETE_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "删除大相册失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
     override suspend fun updatePostAlbums(
         postId: String,
         payload: UpdatePostAlbumsPayload,
@@ -597,13 +638,13 @@ class RealTrashRepository(
     private val trashApi: TrashApi,
 ) : TrashRepository {
     override suspend fun getTrashItems(type: String?): ApiResult<List<RemoteTrashItem>> {
-        return runCatching {
+        suspend fun fetchPagedItems(itemType: String?): List<RemoteTrashItem> {
             val aggregated = mutableListOf<RemoteTrashItem>()
             var page = 1
             var hasMore = true
             while (hasMore) {
                 val response = trashApi.getTrashItems(
-                    itemType = type,
+                    itemType = itemType,
                     page = page,
                     size = 100,
                 ).data
@@ -611,7 +652,32 @@ class RealTrashRepository(
                 hasMore = response.hasMore && response.items.isNotEmpty()
                 page += 1
             }
-            aggregated.distinctBy { it.trashItemId }
+            return aggregated.distinctBy { it.trashItemId }
+        }
+
+        return runCatching {
+            try {
+                fetchPagedItems(type)
+            } catch (throwable: Throwable) {
+                val backendCode = throwable.backendErrorCode()
+                val backendMessage = throwable.backendErrorMessage().orEmpty()
+                val unsupportedTypeMessage = backendMessage.contains("Unsupported trash item", ignoreCase = true) ||
+                    backendMessage.contains("Unsupported trash items", ignoreCase = true) ||
+                    backendMessage.contains("Unsupported trash item type", ignoreCase = true) ||
+                    backendMessage.contains("Unsupported trash item types", ignoreCase = true)
+                val shouldFallbackToUnfilteredList = type == "largeAlbumDeleted" &&
+                    (
+                        backendCode == "VALIDATION_ERROR" ||
+                            throwable is retrofit2.HttpException
+                        ) &&
+                    unsupportedTypeMessage
+                if (!shouldFallbackToUnfilteredList) {
+                    throw throwable
+                }
+                fetchPagedItems(itemType = null).filter { item ->
+                    item.itemType.equals(type, ignoreCase = true)
+                }
+            }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {

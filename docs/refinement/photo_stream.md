@@ -3,7 +3,7 @@
 > 照片流本轮按“招牌页收尾”精修，重点收口时间层级一致性、时间标题视觉质感，以及主照片流专属氛围，不扩到新的后端接口或业务结构。
 
 - Module key: `photo_stream`
-- Status: `implementing`
+- Status: `closed`
 - Last updated: `2026-06-11`
 - Primary surfaces: `android`
 - Linked server brief: `none`
@@ -495,12 +495,14 @@
   - 照片流时间层级已按密度统一收口：`2 / 3 / 4 列 -> 月 + 日`，`8 列 -> 月`，`16 列 -> 年`，普通流与协作流现在使用同一套语义。
   - 主照片流已接入更完整的时间标题质感与背景氛围，年 / 月 / 日标题层级拉开，`16 列` 年标题也补齐了独立特效，不再是弱化普通文本。
   - 右侧拖拽标尺和当前可见时间标签已改成密度感知输出，高密度下不再残留日级文案。
+  - 主照片流密度切换的转场状态机已进一步收口：标题、日期、协作头像和右侧时间标尺在 `preview / commit / settle` 全链路都有显示兜底；commit 结束也不再二次清空标题层。
   - 视频上传问题已完成深度纠错：服务端固定上传成功/失败都返回 JSON，视频媒体写入时补齐 `previewUrl` 占位，真实 Docker 运行环境也已替换到修复后的 `app.jar`。
   - 照片流额外收掉了一轮交互抖动：已有内容时改成静默刷新，删除媒体不再被本页自己的变更事件反向重刷，行内卡片也改成按 `mediaId` 稳定复用，降低新增/删除时“整屏闪一下”的体感。
   - 删除成功提示现在会在短暂反馈后自动消失，不再一直占在标题下方。
   - 照片流服务端聚合补上静默去重：同一文件被删进回收站、又重新上传、再恢复旧媒体时，照片流不会再露出两条相同媒体。
 - What was validated:
   - Android `:app:compileDebugKotlin` 通过。
+  - 最新一轮密度转场接棒修复后，`git diff --check` 与 Android `:app:compileDebugKotlin` 继续通过，说明状态机改动至少在本地构建层面已收稳。
   - 服务端 `localVideoUploadReturnsJsonEnvelope` 定向回归通过。
   - 运行中的 `yingshi-server` 容器已在 `2026-06-10 17:11:45 +08:00` 重启并加载修复包。
   - 针对真实 `http://127.0.0.1:8080` 的 `mp4` 上传 smoke 已成功返回 `mediaId`、`previewUrl`、`coverUrl`、`videoUrl`，数据库 `upload_tasks` 落为 `SUCCESS`。
@@ -515,6 +517,7 @@
 
 ## Carry-forward Notes
 - Fact future modules must remember: `PhotoFeedScreen` 仍是多处复用组件，后续再改标题、背景或时间结构时要继续区分 `MAIN_STREAM` 和嵌入式场景，避免把主场特效外溢到 picker / `post_detail`。
+- Fact future modules must remember: 主照片流密度切换现在依赖一套 source/target/live 三层接棒语义；后续如果再动标题、协作头像或右侧 scrubber，优先守住“任一阶段都不能让两套辅助层同时为 0”这个可见性不变量。
 - Fact future modules must remember: 视频上传这次不是时长限制问题，真实根因是运行中 Docker 服务落后于源码版本叠加 `media.preview_url` 空值约束；以后碰到“源码已修但线上还错”时要先核对容器内 `app.jar`。
 - Adjacent modules to revisit later: `photos_root`、`post_detail`、`picker`、`life_console`。
 - Future spot-checks when those modules are touched:

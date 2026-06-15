@@ -11,6 +11,7 @@ import com.example.yingshi.data.model.CommentListState
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePostSummary
+import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.toCommentListState
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
@@ -36,6 +37,8 @@ import java.io.IOException
 data class AlbumPageRealUiState(
     val isLoading: Boolean = false,
     val isPostsLoading: Boolean = false,
+    val isPostsRefreshing: Boolean = false,
+    val isAlbumMutating: Boolean = false,
     val isOfflineReadOnly: Boolean = false,
     val tokenMissing: Boolean = false,
     val errorMessage: String? = null,
@@ -77,8 +80,11 @@ class AlbumPageRealViewModel(
     private var refreshJob: Job? = null
     private var loadPostsJob: Job? = null
     private var loadCoverJob: Job? = null
+    private var cachedDirectorySnapshot: CachedAlbumDirectory? = null
     private var refreshVersion = 0
     private var postsLoadVersion = 0
+    private val albumPostCardCacheByAlbumId = mutableMapOf<String, List<AlbumPostCardUiModel>>()
+    private val pendingAlbumOverrides = mutableMapOf<String, PendingAlbumOverride>()
 
     init {
         refresh()
@@ -124,35 +130,48 @@ class AlbumPageRealViewModel(
                     tokenMissing = false,
                     errorMessage = null,
                     postsErrorMessage = null,
-                    statusMessage = null,
                 )
             }
             when (val result = albumRepository.getAlbums()) {
                 is ApiResult.Success -> {
                     if (requestVersion != refreshVersion) return@launch
                     val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
-                    val albums = result.data.map { album -> album.toAlbumSummaryUiModel() }
+                    val persistedAlbums = mergeRemoteAlbumsWithPendingOverrides(result.data)
+                    val albums = persistedAlbums.map { album -> album.toAlbumSummaryUiModel() }
                     val selectedAlbumId = _uiState.value.selectedAlbumId
                         ?.takeIf { currentId -> albums.any { it.id == currentId } }
                         ?: albums.firstOrNull()?.id
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isPostsLoading = false,
+                        isPostsRefreshing = false,
                         isOfflineReadOnly = false,
                         albums = albums,
                         selectedAlbumId = selectedAlbumId,
-                        posts = cachedPostsByAlbumId[selectedAlbumId]
-                            .orEmpty()
-                            .map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = selectedAlbumId.orEmpty()) },
+                        posts = selectedAlbumId?.let { resolvedAlbumId ->
+                            cachedAlbumPostCards(resolvedAlbumId)
+                                ?: cachedPostsByAlbumId[resolvedAlbumId]
+                                    .orEmpty()
+                                    .map { post ->
+                                        post.toAlbumPostCardUiModel(
+                                            selectedAlbumId = resolvedAlbumId,
+                                        )
+                                    }
+                        }.orEmpty(),
+                        statusMessage = _uiState.value.statusMessage.clearRecoveredNetworkStatus(),
                     )
                     withContext(Dispatchers.IO) {
                         persistAlbumDirectory(
-                            albums = result.data,
+                            albums = persistedAlbums,
                             postsByAlbumId = cachedPostsByAlbumId,
                         )
                     }
                     OfflineAccessManager.clear()
                     if (selectedAlbumId != null) {
-                        loadAlbumPosts(selectedAlbumId)
+                        loadAlbumPosts(
+                            albumId = selectedAlbumId,
+                            showBlockingIndicator = !cachedPostsByAlbumId.containsKey(selectedAlbumId),
+                        )
                     }
                 }
                 is ApiResult.Error -> {
@@ -199,9 +218,9 @@ class AlbumPageRealViewModel(
                     statusMessage = message,
                     isOfflineReadOnly = true,
                 )
-                return@launch
-            }
-            val hasVisibleContent = _uiState.value.albums.isNotEmpty() || _uiState.value.posts.isNotEmpty()
+                    return@launch
+                }
+                val hasVisibleContent = _uiState.value.albums.isNotEmpty() || _uiState.value.posts.isNotEmpty()
             if (hasVisibleContent) {
                 OfflineAccessManager.enterReadOnly(message)
             }
@@ -209,6 +228,7 @@ class AlbumPageRealViewModel(
                 it.copy(
                     isLoading = false,
                     isPostsLoading = false,
+                    isPostsRefreshing = false,
                     isOfflineReadOnly = hasVisibleContent,
                     tokenMissing = false,
                     errorMessage = if (hasVisibleContent) null else "当前无网络，恢复连接后会自动重试。",
@@ -220,76 +240,296 @@ class AlbumPageRealViewModel(
     }
 
     fun selectAlbum(albumId: String) {
-        if (_uiState.value.isOfflineReadOnly) {
-            viewModelScope.launch {
-                val cachedPosts = withContext(Dispatchers.IO) {
-                    readCachedDirectory()?.postsByAlbumId?.get(albumId).orEmpty()
-                }
+        viewModelScope.launch {
+            val cachedDirectory = cachedDirectorySnapshot ?: withContext(Dispatchers.IO) { readCachedDirectory() }
+            val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
+            val hasCachedPosts = cachedPostsByAlbumId.containsKey(albumId)
+            val cachedPosts = cachedPostsByAlbumId[albumId].orEmpty()
+
+            if (_uiState.value.isOfflineReadOnly) {
                 _uiState.update {
                     it.copy(
                         selectedAlbumId = albumId,
-                        posts = cachedPosts.map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = albumId) },
-                        postsErrorMessage = if (cachedPosts.isEmpty()) {
-                            "当前离线，只能查看已缓存的小相册。"
-                        } else {
-                            null
-                        },
-                    )
-                }
-            }
-            return
-        }
-        if (_uiState.value.selectedAlbumId == albumId) {
-            loadAlbumPosts(albumId)
-            return
-        }
-        _uiState.update {
-            it.copy(
-                selectedAlbumId = albumId,
-                posts = emptyList(),
-                postsErrorMessage = null,
-            )
-        }
-        loadAlbumPosts(albumId)
-    }
-
-    private fun loadAlbumPosts(albumId: String) {
-        loadPostsJob?.cancel()
-        loadCoverJob?.cancel()
-        val requestVersion = ++postsLoadVersion
-        loadPostsJob = viewModelScope.launch {
-            if (_uiState.value.isOfflineReadOnly) {
-                val cachedPosts = withContext(Dispatchers.IO) {
-                    readCachedDirectory()?.postsByAlbumId?.get(albumId).orEmpty()
-                }
-                _uiState.update {
-                    it.copy(
+                        posts = cachedAlbumPostCards(albumId)
+                            ?: cachedPosts.map { post ->
+                                post.toAlbumPostCardUiModel(
+                                    selectedAlbumId = albumId,
+                                )
+                            },
                         isPostsLoading = false,
-                        posts = cachedPosts.map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = albumId) },
-                        postsErrorMessage = if (cachedPosts.isEmpty()) "当前离线，只能查看已缓存的小相册。" else null,
+                        isPostsRefreshing = false,
+                        postsErrorMessage = if (hasCachedPosts) {
+                            null
+                        } else {
+                            "当前离线，只能查看已缓存的小相册。"
+                        },
                     )
                 }
                 return@launch
             }
             _uiState.update {
                 it.copy(
-                    isPostsLoading = true,
+                    selectedAlbumId = albumId,
+                    posts = cachedAlbumPostCards(albumId)
+                        ?: if (hasCachedPosts) {
+                            cachedPosts.map { post ->
+                                post.toAlbumPostCardUiModel(
+                                    selectedAlbumId = albumId,
+                                )
+                            }
+                        } else {
+                            emptyList()
+                        },
+                    isPostsLoading = false,
+                    isPostsRefreshing = false,
+                    postsErrorMessage = null,
+                )
+            }
+            loadAlbumPosts(
+                albumId = albumId,
+                showBlockingIndicator = !hasCachedPosts,
+            )
+        }
+    }
+
+    fun renameAlbum(
+        albumId: String,
+        payload: UpdateAlbumPayload,
+    ) {
+        val normalizedTitle = payload.title.trim()
+        val normalizedSubtitle = payload.subtitle.trim()
+        if (normalizedTitle.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "大相册名称不能为空。") }
+            return
+        }
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能重命名大相册。") }
+            return
+        }
+        val targetAlbum = _uiState.value.albums.firstOrNull { it.id == albumId }
+            ?: return
+        val titleChanged = normalizedTitle != targetAlbum.title.trim()
+        val descriptionChanged = normalizedSubtitle != targetAlbum.description.trim()
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isAlbumMutating = true,
+                    errorMessage = null,
+                    postsErrorMessage = null,
+                )
+            }
+            when (
+                val result = albumRepository.updateAlbum(
+                    albumId,
+                    UpdateAlbumPayload(
+                        title = normalizedTitle,
+                        subtitle = normalizedSubtitle,
+                    ),
+                )
+            ) {
+                is ApiResult.Success -> {
+                    pendingAlbumOverrides[albumId] = PendingAlbumOverride(
+                        title = normalizedTitle,
+                        description = normalizedSubtitle,
+                    )
+                    val serverAlbum = result.data.toAlbumSummaryUiModel()
+                    val updatedAlbum = serverAlbum.copy(
+                        title = normalizedTitle,
+                        description = normalizedSubtitle,
+                    )
+                    val nextAlbums = _uiState.value.albums.map { album ->
+                        if (album.id == albumId) updatedAlbum else album
+                    }
+                    val nextPostsByAlbumId = cachedDirectorySnapshot?.postsByAlbumId.orEmpty()
+                    val nextRemoteAlbums = cachedDirectorySnapshot?.albums
+                        ?.map { album ->
+                            if (album.albumId == albumId) {
+                                result.data.copy(
+                                    title = normalizedTitle,
+                                    subtitle = normalizedSubtitle,
+                                )
+                            } else {
+                                album
+                            }
+                        }
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: buildCachedAlbumsFromUi(nextAlbums, nextPostsByAlbumId)
+                    val successMessage = when {
+                        titleChanged && descriptionChanged -> "已更新这个大相册的信息。"
+                        titleChanged -> "已将大相册改名为「${updatedAlbum.title}」。"
+                        descriptionChanged -> "已更新这个大相册的简介。"
+                        else -> null
+                    }
+                    withContext(Dispatchers.IO) {
+                        persistAlbumDirectory(
+                            albums = nextRemoteAlbums,
+                            postsByAlbumId = nextPostsByAlbumId,
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isAlbumMutating = false,
+                            albums = nextAlbums,
+                            statusMessage = successMessage,
+                        )
+                    }
+                    notifyRealBackendAlbumsChanged()
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isAlbumMutating = false,
+                            errorMessage = result.toBackendUiMessage("重命名大相册失败。"),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    fun clearStatusMessage() {
+        _uiState.update { current ->
+            val currentMessage = current.statusMessage
+            if (currentMessage == null || !currentMessage.shouldAutoDismiss()) {
+                current
+            } else {
+                current.copy(statusMessage = null)
+            }
+        }
+    }
+
+    fun deleteAlbum(albumId: String) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除大相册。") }
+            return
+        }
+        pendingAlbumOverrides.remove(albumId)
+        val targetAlbum = _uiState.value.albums.firstOrNull { it.id == albumId }
+            ?: return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isAlbumMutating = true,
+                    errorMessage = null,
+                    postsErrorMessage = null,
+                )
+            }
+            when (val result = albumRepository.deleteAlbum(albumId)) {
+                is ApiResult.Success -> {
+                    val currentState = _uiState.value
+                    val nextAlbums = currentState.albums.filterNot { it.id == albumId }
+                    val nextSelectedAlbumId = currentState.selectedAlbumId
+                        ?.takeUnless { it == albumId }
+                        ?.takeIf { currentId -> nextAlbums.any { it.id == currentId } }
+                        ?: nextAlbums.firstOrNull()?.id
+                    val nextPostsByAlbumId = cachedDirectorySnapshot
+                        ?.postsByAlbumId
+                        .orEmpty()
+                        .filterKeys { key -> key != albumId }
+                    albumPostCardCacheByAlbumId.remove(albumId)
+                    val nextRemoteAlbums = cachedDirectorySnapshot?.albums
+                        ?.filterNot { album -> album.albumId == albumId }
+                        ?.takeIf { it.isNotEmpty() || nextAlbums.isEmpty() }
+                        ?: buildCachedAlbumsFromUi(nextAlbums, nextPostsByAlbumId)
+                    val nextPosts = nextSelectedAlbumId?.let { resolvedAlbumId ->
+                        cachedAlbumPostCards(resolvedAlbumId)
+                            ?: nextPostsByAlbumId[resolvedAlbumId]
+                                .orEmpty()
+                                .map { post ->
+                                    post.toAlbumPostCardUiModel(
+                                        selectedAlbumId = resolvedAlbumId,
+                                    )
+                                }
+                    }.orEmpty()
+                    withContext(Dispatchers.IO) {
+                        persistAlbumDirectory(
+                            albums = nextRemoteAlbums,
+                            postsByAlbumId = nextPostsByAlbumId,
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isAlbumMutating = false,
+                            albums = nextAlbums,
+                            selectedAlbumId = nextSelectedAlbumId,
+                            posts = nextPosts,
+                            isPostsLoading = false,
+                            isPostsRefreshing = false,
+                            statusMessage = "已将大相册移入回收站，可在回收站整组恢复。",
+                        )
+                    }
+                    notifyRealBackendContentChanged(postIds = result.data.relatedPostIds.toSet())
+                    if (nextSelectedAlbumId != null) {
+                        loadAlbumPosts(
+                            albumId = nextSelectedAlbumId,
+                            showBlockingIndicator = !nextPostsByAlbumId.containsKey(nextSelectedAlbumId),
+                        )
+                    }
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isAlbumMutating = false,
+                            errorMessage = result.toBackendUiMessage("删除大相册失败。"),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    private fun loadAlbumPosts(
+        albumId: String,
+        showBlockingIndicator: Boolean,
+    ) {
+        loadPostsJob?.cancel()
+        loadCoverJob?.cancel()
+        val requestVersion = ++postsLoadVersion
+        loadPostsJob = viewModelScope.launch {
+            val cachedPostsByAlbumId = cachedDirectorySnapshot?.postsByAlbumId.orEmpty()
+            val hasCachedPosts = cachedPostsByAlbumId.containsKey(albumId)
+            val cachedPosts = cachedPostsByAlbumId[albumId].orEmpty()
+            if (_uiState.value.isOfflineReadOnly) {
+                    _uiState.update {
+                        it.copy(
+                            isPostsLoading = false,
+                            isPostsRefreshing = false,
+                            posts = cachedAlbumPostCards(albumId)
+                                ?: cachedPosts.map { post ->
+                                    post.toAlbumPostCardUiModel(
+                                        selectedAlbumId = albumId,
+                                    )
+                                },
+                            postsErrorMessage = if (hasCachedPosts) null else "当前离线，只能查看已缓存的小相册。",
+                        )
+                    }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    isPostsLoading = showBlockingIndicator,
+                    isPostsRefreshing = !showBlockingIndicator,
                     postsErrorMessage = null,
                 )
             }
             when (val result = albumRepository.getAlbumPosts(albumId)) {
                 is ApiResult.Success -> {
                     if (requestVersion != postsLoadVersion) return@launch
-                    val posts = result.data.map { post ->
-                        post.toAlbumPostCardUiModel(selectedAlbumId = albumId)
-                    }
+                    val posts = mergeAlbumPostCards(
+                        albumId = albumId,
+                        summaries = result.data,
+                    )
                     val fallbackAlbums = _uiState.value.albums.map { album ->
                         RemoteAlbum(
                             albumId = album.id,
                             title = album.title,
-                            subtitle = album.subtitle,
+                            subtitle = album.description,
                             coverMediaId = null,
                             smallAlbumCount = 0,
+                            systemKey = album.systemKey,
+                            includeInPhotoFeed = album.includeInPhotoFeed,
                         )
                     }
                     withContext(Dispatchers.IO) {
@@ -298,11 +538,14 @@ class AlbumPageRealViewModel(
                             postsByAlbumId = readCachedDirectory()?.postsByAlbumId.orEmpty() + (albumId to result.data),
                         )
                     }
+                    rememberAlbumPostCards(albumId, posts)
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,
+                            isPostsRefreshing = false,
                             isOfflineReadOnly = false,
                             posts = posts,
+                            statusMessage = it.statusMessage.clearRecoveredNetworkStatus(),
                         )
                     }
                     prefetchAlbumPostCovers(
@@ -312,20 +555,21 @@ class AlbumPageRealViewModel(
                 }
                 is ApiResult.Error -> {
                     if (requestVersion != postsLoadVersion) return@launch
-                    val cachedPosts = withContext(Dispatchers.IO) {
-                        readCachedDirectory()?.postsByAlbumId?.get(albumId).orEmpty()
-                    }
-                    if (cachedPosts.isNotEmpty() && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
+                    if (hasCachedPosts && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
                         val message = result.offlineReadOnlyMessage()
                         OfflineAccessManager.enterReadOnly(message)
                         _uiState.update {
                             it.copy(
                                 isPostsLoading = false,
+                                isPostsRefreshing = false,
                                 isOfflineReadOnly = true,
                                 statusMessage = message,
-                                posts = cachedPosts.map { post ->
-                                    post.toAlbumPostCardUiModel(selectedAlbumId = albumId)
-                                },
+                                posts = cachedAlbumPostCards(albumId)
+                                    ?: cachedPosts.map { post ->
+                                        post.toAlbumPostCardUiModel(
+                                            selectedAlbumId = albumId,
+                                        )
+                                    },
                                 postsErrorMessage = null,
                             )
                         }
@@ -333,6 +577,7 @@ class AlbumPageRealViewModel(
                         _uiState.update {
                             it.copy(
                                 isPostsLoading = false,
+                                isPostsRefreshing = false,
                                 postsErrorMessage = result.toBackendUiMessage("读取大相册下的小相册失败。"),
                             )
                         }
@@ -381,18 +626,18 @@ class AlbumPageRealViewModel(
             if (_uiState.value.selectedAlbumId != albumId) return@launch
 
             _uiState.update { state ->
-                state.copy(
-                    posts = state.posts.map { post ->
-                        val previewMedia = previewMediaByPostId[post.id].orEmpty()
-                        val coverMedia = previewMedia.firstOrNull() ?: return@map post
-                        val sourcePost = targetSummaries.firstOrNull { it.postId == post.id } ?: return@map post
-                        sourcePost.toAlbumPostCardUiModel(
-                            selectedAlbumId = albumId,
-                            coverMedia = coverMedia,
-                            previewMedia = previewMedia,
-                        )
-                    },
-                )
+                val nextPosts = state.posts.map { post ->
+                    val previewMedia = previewMediaByPostId[post.id].orEmpty()
+                    val coverMedia = previewMedia.firstOrNull() ?: return@map post
+                    val sourcePost = targetSummaries.firstOrNull { it.postId == post.id } ?: return@map post
+                    sourcePost.toAlbumPostCardUiModel(
+                        selectedAlbumId = albumId,
+                        coverMedia = coverMedia,
+                        previewMedia = previewMedia,
+                    )
+                }
+                rememberAlbumPostCards(albumId, nextPosts)
+                state.copy(posts = nextPosts)
             }
         }
     }
@@ -400,6 +645,7 @@ class AlbumPageRealViewModel(
     private fun readCachedDirectory(): CachedAlbumDirectory? {
         val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return null
         return AppReadCacheStore.readAlbumDirectory(userId)?.payload
+            ?.also { cachedDirectorySnapshot = it }
     }
 
     private fun readCachedAlbums(): List<RemoteAlbum> {
@@ -411,12 +657,13 @@ class AlbumPageRealViewModel(
         postsByAlbumId: Map<String, List<RemotePostSummary>>,
     ) {
         val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return
+        cachedDirectorySnapshot = CachedAlbumDirectory(
+            albums = albums,
+            postsByAlbumId = postsByAlbumId,
+        )
         AppReadCacheStore.writeAlbumDirectory(
             userId = userId,
-            payload = CachedAlbumDirectory(
-                albums = albums,
-                postsByAlbumId = postsByAlbumId,
-            ),
+            payload = cachedDirectorySnapshot!!,
         )
     }
 
@@ -425,12 +672,14 @@ class AlbumPageRealViewModel(
         statusMessage: String? = null,
         isOfflineReadOnly: Boolean = false,
     ) {
+        cachedDirectorySnapshot = cachedDirectory
         val selectedAlbumId = _uiState.value.selectedAlbumId
             ?.takeIf { currentId -> cachedDirectory.albums.any { it.albumId == currentId } }
             ?: cachedDirectory.albums.firstOrNull()?.albumId
         _uiState.value = _uiState.value.copy(
             isLoading = false,
             isPostsLoading = false,
+            isPostsRefreshing = false,
             isOfflineReadOnly = isOfflineReadOnly,
             tokenMissing = false,
             errorMessage = null,
@@ -438,10 +687,78 @@ class AlbumPageRealViewModel(
             statusMessage = statusMessage,
             albums = cachedDirectory.albums.map(RemoteAlbum::toAlbumSummaryUiModel),
             selectedAlbumId = selectedAlbumId,
-            posts = cachedDirectory.postsByAlbumId[selectedAlbumId]
-                .orEmpty()
-                .map { post -> post.toAlbumPostCardUiModel(selectedAlbumId = selectedAlbumId.orEmpty()) },
+            posts = selectedAlbumId?.let { resolvedAlbumId ->
+                cachedAlbumPostCards(resolvedAlbumId)
+                    ?: cachedDirectory.postsByAlbumId[resolvedAlbumId]
+                        .orEmpty()
+                        .map { post ->
+                            post.toAlbumPostCardUiModel(
+                                selectedAlbumId = resolvedAlbumId,
+                            )
+                        }
+            }.orEmpty(),
         )
+    }
+
+    private fun cachedAlbumPostCards(albumId: String): List<AlbumPostCardUiModel>? {
+        if (albumId.isBlank()) return null
+        return albumPostCardCacheByAlbumId[albumId]
+    }
+
+    private fun rememberAlbumPostCards(
+        albumId: String,
+        posts: List<AlbumPostCardUiModel>,
+    ) {
+        if (albumId.isBlank()) return
+        albumPostCardCacheByAlbumId[albumId] = posts
+    }
+
+    private fun mergeAlbumPostCards(
+        albumId: String,
+        summaries: List<RemotePostSummary>,
+    ): List<AlbumPostCardUiModel> {
+        val cachedCardsByPostId = cachedAlbumPostCards(albumId)
+            .orEmpty()
+            .associateBy { it.id }
+        return summaries.map { summary ->
+            val baseCard = summary.toAlbumPostCardUiModel(
+                selectedAlbumId = albumId,
+            )
+            val cachedCard = cachedCardsByPostId[summary.postId] ?: return@map baseCard
+            baseCard.copy(
+                coverMediaType = cachedCard.coverMediaType,
+                coverAspectRatio = cachedCard.coverAspectRatio,
+                coverMediaSource = cachedCard.coverMediaSource,
+                previewMedia = cachedCard.previewMedia,
+                coverRefreshNonce = cachedCard.coverRefreshNonce,
+            )
+        }
+    }
+
+    private fun mergeRemoteAlbumsWithPendingOverrides(
+        remoteAlbums: List<RemoteAlbum>,
+    ): List<RemoteAlbum> {
+        if (pendingAlbumOverrides.isEmpty()) return remoteAlbums
+        val remainingAlbumIds = remoteAlbums.mapTo(mutableSetOf()) { it.albumId }
+        val mergedAlbums = remoteAlbums.map { remoteAlbum ->
+            val pendingOverride = pendingAlbumOverrides[remoteAlbum.albumId] ?: return@map remoteAlbum
+            val normalizedRemoteTitle = remoteAlbum.title.trim()
+            val normalizedRemoteSubtitle = remoteAlbum.subtitle.trim()
+            if (
+                normalizedRemoteTitle == pendingOverride.title &&
+                normalizedRemoteSubtitle == pendingOverride.description
+            ) {
+                pendingAlbumOverrides.remove(remoteAlbum.albumId)
+                remoteAlbum
+            } else {
+                remoteAlbum.copy(
+                    title = pendingOverride.title,
+                    subtitle = pendingOverride.description,
+                )
+            }
+        }
+        pendingAlbumOverrides.keys.retainAll(remainingAlbumIds)
+        return mergedAlbums
     }
 
     companion object {
@@ -453,6 +770,45 @@ class AlbumPageRealViewModel(
                 }
             }
         }
+    }
+}
+
+private data class PendingAlbumOverride(
+    val title: String,
+    val description: String,
+)
+
+private fun String.shouldAutoDismiss(): Boolean {
+    return startsWith("已将大相册改名为「") ||
+        this == "已更新这个大相册的简介。" ||
+        this == "已更新这个大相册的信息。" ||
+        this == "已将大相册移入回收站，可在回收站整组恢复。"
+}
+
+private fun buildCachedAlbumsFromUi(
+    albums: List<AlbumSummaryUiModel>,
+    postsByAlbumId: Map<String, List<RemotePostSummary>>,
+): List<RemoteAlbum> {
+    return albums.map { album ->
+        RemoteAlbum(
+            albumId = album.id,
+            title = album.title,
+            subtitle = album.description,
+            coverMediaId = null,
+            smallAlbumCount = postsByAlbumId[album.id]?.size ?: 0,
+            systemKey = album.systemKey,
+            includeInPhotoFeed = album.includeInPhotoFeed,
+        )
+    }
+}
+
+private fun String?.clearRecoveredNetworkStatus(): String? {
+    val normalized = this?.trim().orEmpty()
+    if (normalized.isBlank()) return null
+    return when {
+        normalized.startsWith("网络已断开") -> null
+        normalized.startsWith("网络已恢复") -> null
+        else -> this
     }
 }
 

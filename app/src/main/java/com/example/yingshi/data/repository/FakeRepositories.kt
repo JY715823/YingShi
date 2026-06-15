@@ -35,6 +35,7 @@ import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
+import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.RememberedLoginRequestDto
@@ -122,6 +123,8 @@ class FakeAlbumRepositoryShell : AlbumRepository {
                 subtitle = album.subtitle,
                 coverMediaId = null,
                 smallAlbumCount = 0,
+                systemKey = album.systemKey,
+                includeInPhotoFeed = album.includeInPhotoFeed,
             ),
         )
     }
@@ -135,6 +138,8 @@ class FakeAlbumRepositoryShell : AlbumRepository {
                     subtitle = album.subtitle,
                     coverMediaId = null,
                     smallAlbumCount = FakeAlbumRepository.getPosts().count { it.albumId == album.id },
+                    systemKey = album.systemKey,
+                    includeInPhotoFeed = album.includeInPhotoFeed,
                 )
             },
         )
@@ -146,6 +151,50 @@ class FakeAlbumRepositoryShell : AlbumRepository {
                 .filter { it.albumId == albumId }
                 .map { it.toRemotePostSummary() },
         )
+    }
+
+    override suspend fun updateAlbum(
+        albumId: String,
+        payload: UpdateAlbumPayload,
+    ): ApiResult<RemoteAlbum> {
+        val existing = FakeAlbumRepository.getAlbum(albumId)
+            ?: return ApiResult.Error(
+                code = "ALBUM_NOT_FOUND",
+                message = "Fake large album not found",
+            )
+        val updated = FakeAlbumRepository.renameAlbum(
+            albumId = albumId,
+            title = payload.title,
+            subtitle = payload.subtitle,
+        ) ?: return ApiResult.Error(
+            code = "ALBUM_NOT_FOUND",
+            message = "Fake large album not found",
+        )
+        return ApiResult.Success(
+            RemoteAlbum(
+                albumId = updated.id,
+                title = updated.title,
+                subtitle = updated.subtitle,
+                coverMediaId = null,
+                smallAlbumCount = FakeAlbumRepository.getPosts().count { it.albumId == updated.id },
+                systemKey = updated.systemKey,
+                includeInPhotoFeed = updated.includeInPhotoFeed,
+            ),
+        )
+    }
+
+    override suspend fun deleteAlbum(albumId: String): ApiResult<RemoteTrashItem> {
+        val existing = FakeAlbumRepository.getAlbum(albumId)
+            ?: return ApiResult.Error(code = "ALBUM_NOT_FOUND", message = "Fake large album not found")
+        val snapshot = FakeAlbumRepository.snapshotAlbum(albumId)
+            ?: return ApiResult.Error(code = "ALBUM_NOT_FOUND", message = "Fake large album not found")
+        FakeTrashRepository.recordDeletedAlbum(snapshot)
+        FakeAlbumRepository.deleteAlbumLocally(albumId)
+        return FakeTrashRepository.getEntries(TrashEntryType.LARGE_ALBUM_DELETED)
+            .firstOrNull { it.albumSnapshot?.album?.id == albumId }
+            ?.toRemoteTrashItem()
+            ?.let { ApiResult.Success(it) }
+            ?: ApiResult.Error(code = "ALBUM_DELETE_FAILED", message = "Fake large album delete failed")
     }
 
     override suspend fun updatePostAlbums(
@@ -1053,6 +1102,7 @@ private fun com.example.yingshi.feature.photos.TrashEntryUiModel.toRemoteTrashIt
     return RemoteTrashItem(
         trashItemId = id,
         itemType = when (type) {
+            TrashEntryType.LARGE_ALBUM_DELETED -> "largeAlbumDeleted"
             TrashEntryType.SMALL_ALBUM_DELETED -> "smallAlbumDeleted"
             TrashEntryType.MEDIA_REMOVED -> "mediaRemoved"
             TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"

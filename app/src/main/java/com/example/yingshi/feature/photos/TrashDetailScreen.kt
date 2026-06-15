@@ -160,6 +160,7 @@ fun TrashDetailScreen(
         TrashDetailStatusCard(entry = entry)
 
         when (entry.type) {
+            TrashEntryType.LARGE_ALBUM_DELETED -> TrashDeletedLargeAlbumContent(entry = entry)
             TrashEntryType.SMALL_ALBUM_DELETED -> TrashDeletedPostContent(entry = entry)
             TrashEntryType.MEDIA_REMOVED -> TrashDeletedMediaContent(
                 entry = entry,
@@ -1212,6 +1213,73 @@ private fun TrashDetailStatusCard(entry: TrashEntryUiModel) {
                 style = MaterialTheme.typography.labelMedium,
                 color = colors.textSecondary.copy(alpha = 0.84f),
             )
+        }
+    }
+}
+
+@Composable
+private fun TrashDeletedLargeAlbumContent(entry: TrashEntryUiModel) {
+    val colors = YingShiThemeTokens.colors
+    val snapshot = entry.albumSnapshot
+    if (snapshot == null) {
+        TrashDetailEmptyCard(text = "当前大相册快照不可用。")
+        return
+    }
+
+    val postCount = snapshot.postSnapshots.size
+    val mediaCount = snapshot.postSnapshots.sumOf { it.mediaSnapshots.size }
+    val previewTitles = snapshot.postSnapshots
+        .map { it.post.title.ifBlank { "未命名小相册" } }
+        .take(4)
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = colors.raisedSurface,
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(YingShiThemeTokens.spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+        ) {
+            Text(
+                text = "大相册内容",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+                color = colors.sectionBackground.copy(alpha = 0.58f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+                ) {
+                    Text(
+                        text = snapshot.album.title.ifBlank { "未命名大相册" },
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                    )
+                    Text(
+                        text = snapshot.album.subtitle.ifBlank {
+                            "恢复后会把这个大相册和本次一起删除的小相册整组带回。"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                    )
+                    Text(
+                        text = "包含 $postCount 个小相册 · $mediaCount 项媒体快照",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textSecondary,
+                    )
+                }
+            }
+            if (previewTitles.isEmpty()) {
+                TrashDetailEmptyCard(text = "这个大相册删除时没有可展示的小相册快照。")
+            } else {
+                TrashMetaChipRows(items = previewTitles)
+            }
         }
     }
 }

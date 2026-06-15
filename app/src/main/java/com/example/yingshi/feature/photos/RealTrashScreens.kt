@@ -525,7 +525,7 @@ fun RealTrashPageScreen(
                         RealTrashSectionCard(title = "读取中", body = "正在读取回收站列表…")
                     }
                 }
-                entries.isEmpty() -> {
+                entries.isEmpty() && uiState.errorMessage == null -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         RealTrashCenteredEmptyState(
                             text = if (selectedCollaboratorUserIds.isEmpty()) {
@@ -618,7 +618,7 @@ fun RealTrashPageScreen(
                         RealTrashSectionCard(title = "读取中", body = "正在读取回收站列表…")
                     }
                 }
-                entries.isEmpty() -> {
+                entries.isEmpty() && uiState.errorMessage == null -> {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         RealTrashCenteredEmptyState(
                             text = if (selectedCollaboratorUserIds.isEmpty()) {
@@ -703,7 +703,7 @@ fun RealTrashPageScreen(
                         )
                     }
                 }
-                entries.isEmpty() -> {
+                entries.isEmpty() && uiState.errorMessage == null -> {
                     item {
                         RealTrashCenteredEmptyState(
                             text = if (selectedCollaboratorUserIds.isEmpty()) {
@@ -1548,6 +1548,35 @@ private fun TrashEntryUiModel.toTrashPostDetailUiModel(mediaIds: List<String>): 
     )
 }
 
+private fun TrashEntryUiModel.toTrashPostDetailUiModelFromRemote(detail: RemoteTrashDetail): PostDetailUiModel {
+    val postId = sourcePostId?.takeIf { it.isNotBlank() } ?: id
+    val relatedMediaIds = detail.item.relatedMediaIds
+        .filter { it.isNotBlank() }
+        .ifEmpty { previewMediaIds() }
+    return PostDetailUiModel(
+        postId = postId,
+        title = title.ifBlank { "回收站小相册" },
+        summary = previewInfo.ifBlank { EmptyTrashPreviewMessage },
+        contributorLabel = "回收站小相册",
+        postDisplayTimeMillis = deletedAtMillis,
+        albumIds = detail.item.relatedPostIds.ifEmpty { listOf(postId) },
+        albumChips = listOf("已删除", "媒体 ${relatedMediaIds.size} 项"),
+        mediaItems = relatedMediaIds.map { mediaId ->
+            PostDetailMediaUiModel(
+                id = mediaId,
+                displayTimeMillis = deletedAtMillis,
+                commentCount = 0,
+                palette = realPaletteFor(mediaId),
+                mediaType = AppMediaType.IMAGE,
+                aspectRatio = 1f,
+                displayTimeSource = DisplayTimeSourceImported,
+                mediaSource = realTrashMediaSource(mediaId),
+            )
+        },
+        comments = emptyList(),
+    )
+}
+
 @Composable
 private fun RealTrashPostDetailTopBar(
     detail: RemoteTrashDetail,
@@ -1687,6 +1716,12 @@ private fun RealTrashPostTopIconButton(
 
 private fun realTrashEntrySourceLine(entry: TrashEntryUiModel): String {
     return when (entry.type) {
+        TrashEntryType.LARGE_ALBUM_DELETED -> {
+            val postCount = entry.albumSnapshot?.postSnapshots?.size ?: entry.relatedPostIds.size
+            val mediaCount = entry.albumSnapshot?.postSnapshots?.sumOf { it.mediaSnapshots.size }
+                ?: entry.relatedMediaIds.size
+            "整册删除 · 小相册 $postCount 个 · 媒体 $mediaCount 项"
+        }
         TrashEntryType.SMALL_ALBUM_DELETED -> {
             val mediaCount = entry.relatedMediaIds.size
             "小相册删除 · 媒体 $mediaCount 项"
@@ -2958,16 +2993,22 @@ private fun RealTrashPostViewerDetailContent(
     val postDetail = remember(entry, mediaIds) {
         entry.toTrashPostDetailUiModel(mediaIds)
     }
+    val remoteFallbackDetail = remember(detail.item.trashItemId, detail.item.relatedMediaIds) {
+        entry.toTrashPostDetailUiModelFromRemote(detail)
+    }
+    val effectivePostDetail = remember(postDetail, remoteFallbackDetail) {
+        if (postDetail.mediaItems.isNotEmpty()) postDetail else remoteFallbackDetail
+    }
     val mediaPagerState = rememberPagerState(
-        pageCount = { postDetail.mediaItems.size.coerceAtLeast(1) },
+        pageCount = { effectivePostDetail.mediaItems.size.coerceAtLeast(1) },
     )
     val currentMediaPage = mediaPagerState.currentPage.coerceIn(
         0,
-        (postDetail.mediaItems.size - 1).coerceAtLeast(0),
+        (effectivePostDetail.mediaItems.size - 1).coerceAtLeast(0),
     )
-    val currentMedia = postDetail.mediaItems[currentMediaPage]
-    val originalTargets = remember(postDetail.mediaItems) {
-        postDetail.mediaItems.map {
+    val currentMedia = effectivePostDetail.mediaItems.getOrNull(currentMediaPage)
+    val originalTargets = remember(effectivePostDetail.mediaItems) {
+        effectivePostDetail.mediaItems.map {
             RealOriginalMediaTarget(
                 mediaId = it.id,
                 mediaType = it.mediaType,
@@ -3015,17 +3056,21 @@ private fun RealTrashPostViewerDetailContent(
                 )
             },
             mediaArea = {
-                if (postDetail.mediaItems.isEmpty()) {
+                if (effectivePostDetail.mediaItems.isEmpty()) {
                     RealTrashSectionCard(
                         title = "小相册媒体不可用",
-                        body = "这个小相册的媒体已经无法预览。",
+                        body = if (effectivePostDetail.mediaItems.isEmpty()) {
+                            "这个小相册的媒体已经无法预览。"
+                        } else {
+                            "当前回收站详情为精简模式，已显示可恢复的媒体摘要。"
+                        },
                     )
                 } else {
                     PostMediaArea(
-                        detail = postDetail,
+                        detail = effectivePostDetail,
                         currentPage = currentMediaPage,
                         modifier = Modifier.fillMaxWidth(),
-                        onOpenMedia = { selectedMediaId = currentMedia.id },
+                        onOpenMedia = { currentMedia?.id?.let { selectedMediaId = it } },
                     ) {
                         HorizontalPager(
                             state = mediaPagerState,
@@ -3033,17 +3078,17 @@ private fun RealTrashPostViewerDetailContent(
                                 .fillMaxWidth()
                                 .height(372.dp),
                             beyondViewportPageCount = 1,
-                            key = { page -> postDetail.mediaItems[page].id },
+                            key = { page -> effectivePostDetail.mediaItems[page].id },
                         ) { page ->
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 PostMediaCard(
-                                    media = postDetail.mediaItems[page],
+                                    media = effectivePostDetail.mediaItems[page],
                                     originalLoadState = RealOriginalLoadRepository.getState(originalTargets[page]),
                                     modifier = Modifier.fillMaxWidth(),
-                                    onClick = { selectedMediaId = postDetail.mediaItems[page].id },
+                                    onClick = { selectedMediaId = effectivePostDetail.mediaItems[page].id },
                                 )
                             }
                         }
@@ -3051,7 +3096,7 @@ private fun RealTrashPostViewerDetailContent(
                 }
             },
             mediaInfo = {
-                if (postDetail.mediaItems.isNotEmpty()) {
+                if (effectivePostDetail.mediaItems.isNotEmpty() && currentMedia != null) {
                     val target = originalTargets[currentMediaPage]
                     PostMediaInfoRow(
                         media = currentMedia,
@@ -3068,7 +3113,7 @@ private fun RealTrashPostViewerDetailContent(
                     statusMessage?.let { RealTrashSectionCard(title = "操作结果", body = it, emphasized = true) }
                     errorMessage?.let { RealTrashSectionCard(title = "操作失败", body = it) }
                     PostInfoSection(
-                        detail = postDetail,
+                        detail = effectivePostDetail,
                         originalSummary = originalSummary,
                         onOpenComments = {},
                         onLoadAllOriginals = {
@@ -3595,11 +3640,19 @@ private fun RealTrashDeletedPreview(
         mediaIds.isNotEmpty() -> {
             RealTrashMediaStrip(
                 title = when (type) {
+                    TrashEntryType.LARGE_ALBUM_DELETED -> "整册内的媒体"
                     TrashEntryType.SMALL_ALBUM_DELETED -> "原小相册媒体"
                     TrashEntryType.MEDIA_REMOVED -> "被移除的媒体"
                     TrashEntryType.MEDIA_SYSTEM_DELETED -> "被删除的媒体"
                 },
                 mediaIds = mediaIds,
+            )
+        }
+
+        type == TrashEntryType.LARGE_ALBUM_DELETED -> {
+            RealTrashSectionCard(
+                title = "原大相册内容",
+                body = "这个大相册已进入回收站，恢复时会把同批小相册一起带回。",
             )
         }
 

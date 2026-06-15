@@ -53,9 +53,14 @@ data class RemoteAlbum(
     val subtitle: String,
     val coverMediaId: String?,
     val smallAlbumCount: Int,
+    val systemKey: String? = null,
+    val includeInPhotoFeed: Boolean = true,
 ) {
     val postCount: Int
         get() = smallAlbumCount
+
+    val isSystemManaged: Boolean
+        get() = !systemKey.isNullOrBlank()
 }
 
 data class RemoteComment(

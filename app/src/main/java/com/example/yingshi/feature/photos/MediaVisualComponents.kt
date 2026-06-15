@@ -202,5 +202,6 @@ internal fun PostDetailMediaUiModel.toAlbumPostPreviewMediaUiModel(): AlbumPostP
         mediaType = mediaType,
         aspectRatio = aspectRatio,
         mediaSource = mediaSource,
+        refreshKey = mediaSource?.thumbnailModelCacheKey(mediaType),
     )
 }

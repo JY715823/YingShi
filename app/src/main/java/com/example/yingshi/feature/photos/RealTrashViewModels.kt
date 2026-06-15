@@ -135,8 +135,8 @@ class RealTrashListViewModel(
 
             val itemsResult = itemsDeferred.await()
 
-            val itemError = (itemsResult as? ApiResult.Error)
-                ?.toBackendUiMessage("读取回收站列表失败。")
+            val rawError = itemsResult as? ApiResult.Error
+            val itemError = rawError?.toBackendUiMessage("读取回收站列表失败。")
             val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
             if (successItems.isNotEmpty()) {
                 withContext(Dispatchers.IO) {
@@ -144,9 +144,8 @@ class RealTrashListViewModel(
                 }
                 OfflineAccessManager.clear()
             }
-            if (itemError != null && _uiState.value.entries.isNotEmpty()) {
-                val rawError = itemsResult as? ApiResult.Error
-                if (cachedList != null && rawError != null && (OfflineAccessManager.state.isReadOnly || rawError.shouldFallbackToReadCache())) {
+            if (rawError != null) {
+                if (cachedList != null && (OfflineAccessManager.state.isReadOnly || rawError.shouldFallbackToReadCache())) {
                     val message = rawError.offlineReadOnlyMessage()
                     OfflineAccessManager.enterReadOnly(message)
                     _uiState.value = cachedList.toUiState(
@@ -154,12 +153,12 @@ class RealTrashListViewModel(
                         statusMessage = message,
                     )
                 } else {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = itemError,
-                        )
-                    }
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isOfflineReadOnly = false,
+                        tokenMissing = false,
+                        errorMessage = itemError,
+                    )
                 }
                 return@launch
             }
@@ -572,6 +571,7 @@ class RealTrashDetailViewModel(
 
 private fun TrashEntryType.toApiItemType(): String {
     return when (this) {
+        TrashEntryType.LARGE_ALBUM_DELETED -> "largeAlbumDeleted"
         TrashEntryType.SMALL_ALBUM_DELETED -> "smallAlbumDeleted"
         TrashEntryType.MEDIA_REMOVED -> "mediaRemoved"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "mediaSystemDeleted"

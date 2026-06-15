@@ -33,7 +33,13 @@ data class AppContentMediaSource(
     val mediaCacheKey: String? = null,
     val videoCacheKey: String? = null,
     val coverCacheKey: String? = null,
+    val refreshKey: String? = null,
 )
+
+internal fun AppContentMediaSource?.withRefreshKey(refreshKey: String?): AppContentMediaSource? {
+    val normalized = refreshKey?.trim()?.ifBlank { null }
+    return this?.copy(refreshKey = normalized)
+}
 
 fun RemoteMedia.toAppContentMediaSource(): AppContentMediaSource {
     val previewAccess = access.mediaAccess("preview")
@@ -93,6 +99,19 @@ internal fun RemotePostMedia.toAppContentMediaSource(): AppContentMediaSource {
         videoCacheKey = videoAccess.stableCacheKey(),
         coverCacheKey = coverAccess.stableCacheKey(),
     )
+}
+
+private fun String?.withRefreshKey(refreshKey: String?): String? {
+    val normalizedRefreshKey = refreshKey?.trim()?.ifBlank { null } ?: return this?.trim()?.ifBlank { null }
+    val normalizedBase = this?.trim()?.ifBlank { null }
+    return buildString {
+        if (!normalizedBase.isNullOrBlank()) {
+            append(normalizedBase)
+            append("|")
+        }
+        append("refresh:")
+        append(normalizedRefreshKey)
+    }
 }
 
 fun resolveAppMediaType(
@@ -161,8 +180,9 @@ internal fun AppContentMediaSource?.thumbnailModelCacheKey(
             mediaCacheKey,
             originalCacheKey,
             coverCacheKey,
-        )
-        AppMediaType.VIDEO -> videoPosterImageCacheKey(mediaType) ?: videoPosterVideoCacheKey(mediaType)
+        ).withRefreshKey(refreshKey)
+        AppMediaType.VIDEO -> (videoPosterImageCacheKey(mediaType) ?: videoPosterVideoCacheKey(mediaType))
+            .withRefreshKey(refreshKey)
     }
 }
 
@@ -184,10 +204,10 @@ internal fun AppContentMediaSource?.videoPosterImageCacheKey(
     if (mediaType != AppMediaType.VIDEO || this == null) return null
     val posterImageUrl = videoPosterImageUrl(mediaType) ?: return null
     return when (posterImageUrl) {
-        thumbnailUrl -> thumbnailCacheKey
-        coverUrl -> coverCacheKey
-        mediaUrl -> mediaCacheKey
-        originalUrl -> originalCacheKey
+        thumbnailUrl -> thumbnailCacheKey.withRefreshKey(refreshKey)
+        coverUrl -> coverCacheKey.withRefreshKey(refreshKey)
+        mediaUrl -> mediaCacheKey.withRefreshKey(refreshKey)
+        originalUrl -> originalCacheKey.withRefreshKey(refreshKey)
         else -> null
     }
 }
@@ -210,10 +230,10 @@ internal fun AppContentMediaSource?.videoPosterVideoCacheKey(
     if (mediaType != AppMediaType.VIDEO || this == null) return null
     val posterVideoUrl = videoPosterVideoUrl(mediaType) ?: return null
     return when (posterVideoUrl) {
-        videoUrl -> videoCacheKey
-        mediaUrl -> mediaCacheKey
-        originalUrl -> originalCacheKey
-        thumbnailUrl -> thumbnailCacheKey
+        videoUrl -> videoCacheKey.withRefreshKey(refreshKey)
+        mediaUrl -> mediaCacheKey.withRefreshKey(refreshKey)
+        originalUrl -> originalCacheKey.withRefreshKey(refreshKey)
+        thumbnailUrl -> thumbnailCacheKey.withRefreshKey(refreshKey)
         else -> null
     }
 }
@@ -235,7 +255,7 @@ internal fun AppContentMediaSource?.viewerPreviewImageCacheKey(
     return firstNotBlank(
         thumbnailCacheKey,
         mediaCacheKey,
-    )
+    ).withRefreshKey(refreshKey)
 }
 
 internal fun AppContentMediaSource?.viewerOriginalImageUrl(
@@ -257,7 +277,7 @@ internal fun AppContentMediaSource?.viewerOriginalImageCacheKey(
     return firstNotBlank(
         originalCacheKey,
         mediaCacheKey,
-    )
+    ).withRefreshKey(refreshKey)
 }
 
 internal fun AppContentMediaSource?.hasMeaningfulViewerOriginal(
@@ -285,7 +305,7 @@ internal fun AppContentMediaSource?.viewerVideoCacheKey(
         videoCacheKey,
         mediaCacheKey,
         originalCacheKey,
-    )
+    ).withRefreshKey(refreshKey)
 }
 
 internal fun SystemMediaItem.toAppContentMediaSource(): AppContentMediaSource {

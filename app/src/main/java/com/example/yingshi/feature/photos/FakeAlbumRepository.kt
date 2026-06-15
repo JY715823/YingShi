@@ -100,6 +100,10 @@ object FakeAlbumRepository {
 
     fun getAlbums(): List<AlbumSummaryUiModel> = albums
 
+    fun getAlbum(albumId: String): AlbumSummaryUiModel? {
+        return albums.firstOrNull { it.id == albumId }
+    }
+
     fun getPosts(): List<AlbumPostCardUiModel> = posts
 
     fun getPost(postId: String): AlbumPostCardUiModel? {
@@ -121,11 +125,60 @@ object FakeAlbumRepository {
         val album = AlbumSummaryUiModel(
             id = "album-local-${System.currentTimeMillis()}-${albums.size + 1}",
             title = trimmedTitle,
-            subtitle = trimmedSubtitle,
+            subtitle = "共 0 个小相册",
+            description = trimmedSubtitle,
             accent = realPaletteFor(trimmedTitle),
         )
         albums.add(0, album)
         return album
+    }
+
+    fun renameAlbum(
+        albumId: String,
+        title: String,
+        subtitle: String? = null,
+    ): AlbumSummaryUiModel? {
+        val index = albums.indexOfFirst { it.id == albumId }
+        if (index < 0) return null
+        val current = albums[index]
+        val updated = current.copy(
+            title = title.trim().ifBlank { current.title },
+            description = subtitle?.trim() ?: current.description,
+        )
+        albums[index] = updated
+        return updated
+    }
+
+    fun snapshotAlbum(albumId: String): TrashAlbumSnapshot? {
+        val album = getAlbum(albumId) ?: return null
+        val postSnapshots = posts
+            .filter { post -> post.albumIds.contains(albumId) || post.albumId == albumId }
+            .mapNotNull { post -> snapshotPost(post.id) }
+        return TrashAlbumSnapshot(
+            album = album,
+            postSnapshots = postSnapshots,
+        )
+    }
+
+    fun deleteAlbumLocally(albumId: String): Boolean {
+        val album = getAlbum(albumId) ?: return false
+        val removedAlbum = albums.remove(album)
+        val relatedPostIds = posts
+            .filter { post -> post.albumIds.contains(albumId) || post.albumId == albumId }
+            .map { it.id }
+        deletePostsLocally(relatedPostIds)
+        return removedAlbum
+    }
+
+    fun restoreAlbum(snapshot: TrashAlbumSnapshot): Boolean {
+        val existingIndex = albums.indexOfFirst { it.id == snapshot.album.id }
+        if (existingIndex >= 0) {
+            albums[existingIndex] = snapshot.album
+        } else {
+            albums.add(0, snapshot.album)
+        }
+        snapshot.postSnapshots.forEach(::restorePost)
+        return true
     }
 
     fun createPlaceholderPost(
@@ -741,27 +794,29 @@ object FakeAlbumRepository {
     }
 
     fun restorePost(snapshot: TrashPostSnapshot): Boolean {
-        val restoredMedia = snapshot.mediaSnapshots
-            .ifEmpty { return false }
-            .map { it.toManagedState() }
+        val restoredMedia = snapshot.mediaSnapshots.map { it.toManagedState() }
         val visibleMedia = restoredMedia.filterNot { media ->
             FakePhotoFeedRepository.isMediaHidden(media.id)
         }
         val coverMedia = visibleMedia.firstOrNull { it.isCover }
             ?: visibleMedia.firstOrNull()
             ?: restoredMedia.firstOrNull { it.isCover }
-            ?: restoredMedia.first()
+            ?: restoredMedia.firstOrNull()
 
-        postMediaByPostId[snapshot.post.id] = mutableStateListOf<ManagedPostMediaState>().apply {
-            addAll(restoredMedia)
+        if (restoredMedia.isEmpty()) {
+            postMediaByPostId.remove(snapshot.post.id)
+        } else {
+            postMediaByPostId[snapshot.post.id] = mutableStateListOf<ManagedPostMediaState>().apply {
+                addAll(restoredMedia)
+            }
         }
 
         val normalizedPost = snapshot.post.copy(
             mediaCount = visibleMedia.size.takeIf { it > 0 } ?: restoredMedia.size,
-            coverPalette = coverMedia.palette,
-            coverMediaType = coverMedia.mediaType,
-            coverAspectRatio = coverMedia.aspectRatio,
-            coverMediaSource = coverMedia.mediaSource,
+            coverPalette = coverMedia?.palette ?: snapshot.post.coverPalette,
+            coverMediaType = coverMedia?.mediaType ?: snapshot.post.coverMediaType,
+            coverAspectRatio = coverMedia?.aspectRatio ?: snapshot.post.coverAspectRatio,
+            coverMediaSource = coverMedia?.mediaSource ?: snapshot.post.coverMediaSource,
         )
         val existingIndex = posts.indexOfFirst { it.id == normalizedPost.id }
         if (existingIndex >= 0) {

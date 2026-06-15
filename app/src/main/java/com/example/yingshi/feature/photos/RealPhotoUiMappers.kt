@@ -12,11 +12,15 @@ import java.util.Calendar
 
 fun RemoteAlbum.toAlbumSummaryUiModel(): AlbumSummaryUiModel {
     val palette = realPaletteFor(albumId)
+    val normalizedDescription = subtitle.trim()
     return AlbumSummaryUiModel(
         id = albumId,
         title = title,
-        subtitle = subtitle.ifBlank { "共 $smallAlbumCount 个小相册" },
+        subtitle = "共 $smallAlbumCount 个小相册",
+        description = normalizedDescription,
         accent = palette,
+        systemKey = systemKey,
+        includeInPhotoFeed = includeInPhotoFeed,
     )
 }
 
@@ -24,6 +28,7 @@ fun RemotePostSummary.toAlbumPostCardUiModel(
     selectedAlbumId: String,
     coverMedia: RemotePostMedia? = null,
     previewMedia: List<RemotePostMedia> = coverMedia?.let(::listOf).orEmpty(),
+    coverRefreshNonce: Int = 0,
 ): AlbumPostCardUiModel {
     val palette = realPaletteFor(coverMediaId ?: postId)
     val resolvedCoverType = coverMedia?.toResolvedAppMediaType() ?: AppMediaType.IMAGE
@@ -45,6 +50,7 @@ fun RemotePostSummary.toAlbumPostCardUiModel(
             .distinctBy { it.mediaId }
             .take(2)
             .map { it.toAlbumPostPreviewMediaUiModel() },
+        coverRefreshNonce = coverRefreshNonce,
     )
 }
 
@@ -256,6 +262,7 @@ fun RemotePostMedia.toAlbumPostPreviewMediaUiModel(): AlbumPostPreviewMediaUiMod
         mediaType = resolvedType,
         aspectRatio = toResolvedAspectRatio(resolvedType),
         mediaSource = toAppContentMediaSource(),
+        refreshKey = toAppContentMediaSource().thumbnailModelCacheKey(resolvedType),
     )
 }
 
@@ -339,6 +346,7 @@ private fun RemotePostMedia.toResolvedAspectRatio(mediaType: AppMediaType): Floa
 
 private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {
     return when (itemType) {
+        "largeAlbumDeleted" -> TrashEntryType.LARGE_ALBUM_DELETED
         "smallAlbumDeleted", "postDeleted" -> TrashEntryType.SMALL_ALBUM_DELETED
         "mediaRemoved" -> TrashEntryType.MEDIA_REMOVED
         "mediaSystemDeleted" -> TrashEntryType.MEDIA_SYSTEM_DELETED
@@ -348,6 +356,7 @@ private fun RemoteTrashItem.toTrashEntryType(): TrashEntryType {
 
 private fun RemoteTrashItem.defaultTrashTitle(): String {
     return when (toTrashEntryType()) {
+        TrashEntryType.LARGE_ALBUM_DELETED -> "已删除大相册"
         TrashEntryType.SMALL_ALBUM_DELETED -> "已删除小相册"
         TrashEntryType.MEDIA_REMOVED -> "已移出媒体"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "已删除媒体"
@@ -356,6 +365,7 @@ private fun RemoteTrashItem.defaultTrashTitle(): String {
 
 private fun RemoteTrashItem.defaultTrashPreview(): String {
     return when (toTrashEntryType()) {
+        TrashEntryType.LARGE_ALBUM_DELETED -> "大相册和所含小相册已移入回收站"
         TrashEntryType.SMALL_ALBUM_DELETED -> "小相册已移入回收站"
         TrashEntryType.MEDIA_REMOVED -> "媒体已从小相册中移出"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从空间中删除"

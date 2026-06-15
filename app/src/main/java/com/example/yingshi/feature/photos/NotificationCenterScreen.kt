@@ -1459,9 +1459,18 @@ private suspend fun loadNotificationTrashVisual(trashItemId: String): Notificati
             palette = media.palette,
         )
     }
-    val smallAlbumVisual = if (entry.type == TrashEntryType.SMALL_ALBUM_DELETED) {
+    val smallAlbumVisual = if (
+        entry.type == TrashEntryType.SMALL_ALBUM_DELETED ||
+        entry.type == TrashEntryType.LARGE_ALBUM_DELETED
+    ) {
         NotificationVisual.SmallAlbum(
-            title = entry.title.ifBlank { "回收站小相册" },
+            title = entry.title.ifBlank {
+                if (entry.type == TrashEntryType.LARGE_ALBUM_DELETED) {
+                    "回收站大相册"
+                } else {
+                    "回收站小相册"
+                }
+            },
             metaLabel = "${formatNotificationTime(entry.deletedAtMillis)} · ${entry.relatedMediaIds.size.takeIf { it > 0 } ?: 0} 项",
             palette = entry.palette,
             previewMedia = emptyList(),

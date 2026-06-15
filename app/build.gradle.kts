@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val defaultDebugApiBaseUrl = providers.gradleProperty("YINGSHI_DEBUG_API_BASE_URL")
+    .orElse(providers.environmentVariable("YINGSHI_DEBUG_API_BASE_URL"))
+    .orNull
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "http://10.106.3.193:8080/"
+
 val configuredReleaseApiBaseUrl = providers.gradleProperty("YINGSHI_RELEASE_API_BASE_URL")
     .orElse(providers.environmentVariable("YINGSHI_RELEASE_API_BASE_URL"))
     .orNull
@@ -15,6 +22,14 @@ fun normalizeApiBaseUrl(rawUrl: String): String {
         "YINGSHI_RELEASE_API_BASE_URL must be an HTTPS URL."
     }
     return if (rawUrl.endsWith("/")) rawUrl else "$rawUrl/"
+}
+
+fun normalizeDebugApiBaseUrl(rawUrl: String): String {
+    val trimmed = rawUrl.trim()
+    require(trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        "YINGSHI_DEBUG_API_BASE_URL must be an HTTP or HTTPS URL."
+    }
+    return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
 }
 
 val releaseApiBaseUrl = configuredReleaseApiBaseUrl
@@ -65,7 +80,7 @@ android {
     }
     buildTypes {
         debug {
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"${normalizeDebugApiBaseUrl(defaultDebugApiBaseUrl)}\"")
         }
         create("profile") {
             initWith(getByName("release"))
@@ -73,7 +88,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"${normalizeDebugApiBaseUrl(defaultDebugApiBaseUrl)}\"")
         }
         create("optimizedDebug") {
             initWith(getByName("release"))
@@ -81,7 +96,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.106.3.193:8080/\"")
+            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"${normalizeDebugApiBaseUrl(defaultDebugApiBaseUrl)}\"")
         }
         release {
             isMinifyEnabled = false

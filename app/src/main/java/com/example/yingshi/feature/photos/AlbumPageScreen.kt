@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,7 +38,9 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -75,6 +79,8 @@ object AlbumPageStateStore {
     var pendingSelectedAlbumId by mutableStateOf<String?>(null)
     var pendingUpdatedPostId by mutableStateOf<String?>(null)
 }
+
+private const val AlbumStatusMessageDismissDelayMillis = 2800L
 
 @Composable
 fun AlbumPageScreen(
@@ -154,25 +160,29 @@ fun AlbumPageScreen(
             onSelectAlbum = { selectedAlbumId = it },
             onCreateLargeAlbum = onCreateLargeAlbum,
             onCreateSmallAlbum = { onCreateSmallAlbum(selectedAlbumId.ifBlank { null }) },
+            onRenameAlbum = { album, payload ->
+                FakeAlbumRepository.renameAlbum(
+                    albumId = album.id,
+                    title = payload.title,
+                    subtitle = payload.subtitle,
+                )
+            },
+            onDeleteAlbum = { album ->
+                FakeAlbumRepository.snapshotAlbum(album.id)?.let { snapshot ->
+                    FakeTrashRepository.recordDeletedAlbum(snapshot)
+                    FakeAlbumRepository.deleteAlbumLocally(album.id)
+                    if (selectedAlbumId == album.id) {
+                        selectedAlbumId = FakeAlbumRepository.getAlbums().firstOrNull()?.id.orEmpty()
+                    }
+                }
+            },
         )
 
         if (filteredPosts.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                color = colors.sectionBackground.copy(alpha = 0.58f),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = colors.dividerSoft.copy(alpha = 0.62f),
-                ),
-            ) {
-                Text(
-                    text = "这个大相册里还没有小相册。",
-                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.lg),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = YingShiThemeTokens.colors.textSecondary,
-                )
-            }
+            AlbumEmptyStateCard(
+                selectedAlbumTitle = albums.firstOrNull { it.id == selectedAlbumId }?.title,
+                onCreateSmallAlbum = { onCreateSmallAlbum(selectedAlbumId.ifBlank { null }) },
+            )
         } else {
             Box(
                 modifier = Modifier
@@ -246,7 +256,8 @@ private fun RealAlbumPageScreen(
             uiState.errorMessage != null ||
             uiState.postsErrorMessage != null ||
             uiState.isLoading ||
-            uiState.isPostsLoading,
+            uiState.isPostsLoading ||
+            uiState.isPostsRefreshing,
         onReconnect = viewModel::refresh,
         onDisconnect = viewModel::handleConnectivityLost,
     )
@@ -277,6 +288,13 @@ private fun RealAlbumPageScreen(
         delay(4500)
         if (recentlyUpdatedPostId == targetPostId) {
             recentlyUpdatedPostId = null
+        }
+    }
+    LaunchedEffect(uiState.statusMessage) {
+        val targetMessage = uiState.statusMessage ?: return@LaunchedEffect
+        delay(AlbumStatusMessageDismissDelayMillis)
+        if (uiState.statusMessage == targetMessage) {
+            viewModel.clearStatusMessage()
         }
     }
     Column(
@@ -311,8 +329,12 @@ private fun RealAlbumPageScreen(
             uiState.albums.isEmpty() -> {
                 AlbumPageNoticeCard(
                     text = "当前账号还没有可用相册。",
-                    actionLabel = "重试",
-                    onAction = viewModel::refresh,
+                    actionLabel = if (uiState.isOfflineReadOnly) "重试" else "新建大相册",
+                    onAction = if (uiState.isOfflineReadOnly) {
+                        viewModel::refresh
+                    } else {
+                        onCreateLargeAlbum
+                    },
                 )
             }
 
@@ -323,13 +345,27 @@ private fun RealAlbumPageScreen(
                         emphasized = true,
                     )
                 }
+                uiState.errorMessage?.let { errorMessage ->
+                    BackendInlineNotice(
+                        text = errorMessage,
+                        actionLabel = "重试",
+                        onAction = viewModel::refresh,
+                    )
+                }
                 AlbumSwitchSection(
                     albums = uiState.albums,
                     selectedAlbumId = uiState.selectedAlbumId.orEmpty(),
                     onSelectAlbum = viewModel::selectAlbum,
                     actionsEnabled = !uiState.isOfflineReadOnly,
+                    isMutating = uiState.isAlbumMutating,
                     onCreateLargeAlbum = onCreateLargeAlbum,
                     onCreateSmallAlbum = { onCreateSmallAlbum(uiState.selectedAlbumId) },
+                    onRenameAlbum = { album, payload ->
+                        viewModel.renameAlbum(album.id, payload)
+                    },
+                    onDeleteAlbum = { album ->
+                        viewModel.deleteAlbum(album.id)
+                    },
                 )
 
                 when {
@@ -352,17 +388,16 @@ private fun RealAlbumPageScreen(
                     }
 
                     uiState.posts.isEmpty() -> {
-                        AlbumPageNoticeCard(
-                            text = "这个大相册里还没有小相册。",
+                        AlbumEmptyStateCard(
+                            selectedAlbumTitle = uiState.albums
+                                .firstOrNull { album -> album.id == uiState.selectedAlbumId }
+                                ?.title,
+                            onCreateSmallAlbum = { onCreateSmallAlbum(uiState.selectedAlbumId) },
+                            actionsEnabled = !uiState.isOfflineReadOnly,
                         )
                     }
 
                     else -> {
-                        if (uiState.isPostsLoading) {
-                            BackendInlineNotice(
-                                text = "网络已恢复，正在刷新这个大相册里的小相册…",
-                            )
-                        }
                         uiState.postsErrorMessage?.let { postsErrorMessage ->
                             BackendInlineNotice(
                                 text = postsErrorMessage,
@@ -547,6 +582,7 @@ internal fun AlbumIconAction(
 private fun AlbumEmptyStateCard(
     selectedAlbumTitle: String?,
     onCreateSmallAlbum: () -> Unit,
+    actionsEnabled: Boolean = true,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
@@ -573,7 +609,11 @@ private fun AlbumEmptyStateCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.textSecondary,
             )
-            AlbumInlineActionButton(text = "新建小相册", onClick = onCreateSmallAlbum)
+            AlbumInlineActionButton(
+                text = "新建小相册",
+                enabled = actionsEnabled,
+                onClick = onCreateSmallAlbum,
+            )
         }
     }
 }
@@ -584,12 +624,18 @@ private fun AlbumSwitchSection(
     selectedAlbumId: String,
     onSelectAlbum: (String) -> Unit,
     actionsEnabled: Boolean = true,
+    isMutating: Boolean = false,
     onCreateLargeAlbum: () -> Unit,
     onCreateSmallAlbum: () -> Unit,
+    onRenameAlbum: ((AlbumSummaryUiModel, UpdateAlbumPayload) -> Unit)? = null,
+    onDeleteAlbum: ((AlbumSummaryUiModel) -> Unit)? = null,
 ) {
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     var showAlbumMenu by rememberSaveable { mutableStateOf(false) }
+    val selectedAlbum = remember(albums, selectedAlbumId) {
+        albums.firstOrNull { album -> album.id == selectedAlbumId }
+    }
     val visibleAlbums = remember(albums, selectedAlbumId) {
         preferredVisibleAlbums(albums, selectedAlbumId)
     }
@@ -605,7 +651,9 @@ private fun AlbumSwitchSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -614,13 +662,9 @@ private fun AlbumSwitchSection(
                         album = album,
                         selected = album.id == selectedAlbumId,
                         modifier = Modifier
-                            .weight(1f)
-                            .widthIn(min = 0.dp),
+                            .widthIn(min = 92.dp, max = 124.dp),
                         onClick = { onSelectAlbum(album.id) },
                     )
-                }
-                repeat((3 - visibleAlbums.size).coerceAtLeast(0)) {
-                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
             AlbumIconAction(
@@ -646,6 +690,8 @@ private fun AlbumSwitchSection(
             albums = albums,
             selectedAlbumId = selectedAlbumId,
             onDismiss = { showAlbumMenu = false },
+            actionsEnabled = actionsEnabled,
+            isMutating = isMutating,
             onCreateLargeAlbum = if (actionsEnabled) {
                 {
                     showAlbumMenu = false
@@ -658,6 +704,22 @@ private fun AlbumSwitchSection(
                 showAlbumMenu = false
                 onSelectAlbum(albumId)
             },
+            onRenameSelectedAlbum = if (selectedAlbum != null && onRenameAlbum != null) {
+                { payload ->
+                    showAlbumMenu = false
+                    onRenameAlbum(selectedAlbum, payload)
+                }
+            } else {
+                null
+            },
+            onDeleteSelectedAlbum = if (selectedAlbum != null && onDeleteAlbum != null) {
+                {
+                    showAlbumMenu = false
+                    onDeleteAlbum(selectedAlbum)
+                }
+            } else {
+                null
+            },
         )
     }
 }
@@ -667,30 +729,49 @@ internal fun AlbumDirectoryDialog(
     albums: List<AlbumSummaryUiModel>,
     selectedAlbumId: String,
     onDismiss: () -> Unit,
+    actionsEnabled: Boolean = true,
+    isMutating: Boolean = false,
     onCreateLargeAlbum: (() -> Unit)? = null,
     onSelectAlbum: (String) -> Unit,
+    onRenameSelectedAlbum: ((UpdateAlbumPayload) -> Unit)? = null,
+    onDeleteSelectedAlbum: (() -> Unit)? = null,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     var query by rememberSaveable { mutableStateOf("") }
+    var showRenameDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
     val filteredAlbums = remember(albums, query) {
         val keyword = query.trim()
         if (keyword.isBlank()) {
             albums
         } else {
             albums.filter { album ->
-                album.title.contains(keyword, ignoreCase = true) ||
-                    album.subtitle.contains(keyword, ignoreCase = true)
+                    album.title.contains(keyword, ignoreCase = true) ||
+                    album.subtitle.contains(keyword, ignoreCase = true) ||
+                    album.description.contains(keyword, ignoreCase = true)
             }
         }
     }
+    val selectedAlbum = remember(albums, selectedAlbumId) {
+        albums.firstOrNull { album -> album.id == selectedAlbumId }
+    }
+    var renameDraft by rememberSaveable(selectedAlbumId, selectedAlbum?.title) {
+        mutableStateOf(selectedAlbum?.title.orEmpty())
+    }
+    var descriptionDraft by rememberSaveable(selectedAlbumId, selectedAlbum?.description) {
+        mutableStateOf(selectedAlbum?.description.orEmpty())
+    }
+    val canManageSelectedAlbum = actionsEnabled &&
+        !isMutating &&
+        selectedAlbum != null
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 460.dp),
+                .heightIn(max = 520.dp),
             shape = RoundedCornerShape(radius.lg),
             color = colors.glowWash.copy(alpha = 0.98f),
             border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.74f)),
@@ -724,11 +805,32 @@ internal fun AlbumDirectoryDialog(
                         )
                     }
                 }
+                selectedAlbum?.let { album ->
+                    AlbumDirectoryManagementCard(
+                        album = album,
+                        actionsEnabled = actionsEnabled,
+                        isMutating = isMutating,
+                        onRename = if (onRenameSelectedAlbum != null && canManageSelectedAlbum) {
+                            {
+                                renameDraft = album.title
+                                descriptionDraft = album.description
+                                showRenameDialog = true
+                            }
+                        } else {
+                            null
+                        },
+                        onDelete = if (onDeleteSelectedAlbum != null && canManageSelectedAlbum) {
+                            { showDeleteDialog = true }
+                        } else {
+                            null
+                        },
+                    )
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 330.dp),
+                        .heightIn(max = 290.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 2.dp),
@@ -751,6 +853,159 @@ internal fun AlbumDirectoryDialog(
                         color = colors.textSecondary,
                     )
                 }
+            }
+        }
+    }
+
+    if (showRenameDialog && selectedAlbum != null && onRenameSelectedAlbum != null) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("重命名大相册") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "会修改当前大相册标题和简介，小相册和媒体内容不会变化。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                    )
+                    OutlinedTextField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it },
+                        singleLine = true,
+                        enabled = !isMutating,
+                        label = { Text("大相册标题") },
+                    )
+                    OutlinedTextField(
+                        value = descriptionDraft,
+                        onValueChange = { descriptionDraft = it },
+                        enabled = !isMutating,
+                        minLines = 2,
+                        maxLines = 4,
+                        label = { Text("大相册简介") },
+                    )
+                }
+            },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            confirmButton = {
+                AlbumDialogActionButton(
+                    text = if (isMutating) "保存中…" else "保存",
+                    enabled = renameDraft.trim().isNotEmpty() && !isMutating,
+                    onClick = {
+                        showRenameDialog = false
+                        onRenameSelectedAlbum(
+                            UpdateAlbumPayload(
+                                title = renameDraft.trim(),
+                                subtitle = descriptionDraft.trim(),
+                            ),
+                        )
+                    },
+                )
+            },
+            dismissButton = {
+                AlbumDialogActionButton(
+                    text = "取消",
+                    enabled = !isMutating,
+                    onClick = { showRenameDialog = false },
+                )
+            },
+        )
+    }
+
+    if (showDeleteDialog && selectedAlbum != null && onDeleteSelectedAlbum != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("删除这个大相册？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "会把「${selectedAlbum.title}」和里面的小相册一起移入回收站。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textPrimary,
+                    )
+                    Text(
+                        text = "媒体本体不会删除，可在回收站整册整组恢复。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textSecondary,
+                    )
+                }
+            },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            confirmButton = {
+                AlbumDialogActionButton(
+                    text = if (isMutating) "删除中…" else "删除",
+                    enabled = !isMutating,
+                    danger = true,
+                    onClick = {
+                        showDeleteDialog = false
+                        onDeleteSelectedAlbum()
+                    },
+                )
+            },
+            dismissButton = {
+                AlbumDialogActionButton(
+                    text = "取消",
+                    enabled = !isMutating,
+                    onClick = { showDeleteDialog = false },
+                )
+            },
+        )
+    }
+}
+
+@Composable
+private fun AlbumDirectoryManagementCard(
+    album: AlbumSummaryUiModel,
+    actionsEnabled: Boolean,
+    isMutating: Boolean,
+    onRename: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+        color = colors.sectionBackground.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Text(
+                text = album.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+            Text(
+                text = when {
+                    !actionsEnabled -> "当前在缓存只读模式，只能浏览已缓存目录。"
+                    album.description.isNotBlank() -> album.description
+                    else -> "这个大相册还没有补充说明。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AlbumInlineActionButton(
+                    text = if (isMutating) "处理中…" else "重命名",
+                    enabled = onRename != null,
+                    onClick = { onRename?.invoke() },
+                )
+                AlbumInlineActionButton(
+                    text = "删除",
+                    enabled = onDelete != null,
+                    danger = true,
+                    onClick = { onDelete?.invoke() },
+                )
             }
         }
     }
@@ -888,7 +1143,7 @@ private fun AlbumSwitchChip(
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(16.dp)
     val title = remember(album.title) {
-        album.title.trim().ifBlank { "未命名相册" }
+        formatAlbumChipTitle(album.title)
     }
 
     Surface(
@@ -919,7 +1174,6 @@ private fun AlbumSwitchChip(
             )
             Text(
                 text = title,
-                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall.copy(
                     fontSize = 14.sp,
                     lineHeight = 17.sp,
@@ -927,9 +1181,18 @@ private fun AlbumSwitchChip(
                 ),
                 color = if (selected) colors.titleAccent else colors.textPrimary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
             )
         }
+    }
+}
+
+private fun formatAlbumChipTitle(rawTitle: String): String {
+    val normalizedTitle = rawTitle.trim().ifBlank { "未命名相册" }
+    return if (normalizedTitle.length > 4) {
+        normalizedTitle.take(4) + "..."
+    } else {
+        normalizedTitle
     }
 }
 
@@ -937,6 +1200,7 @@ private fun AlbumSwitchChip(
 private fun AlbumInlineActionButton(
     text: String,
     enabled: Boolean = true,
+    danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -950,7 +1214,11 @@ private fun AlbumInlineActionButton(
         ),
         shape = shape,
         color = if (enabled) {
-            colors.softGreenContainer.copy(alpha = 0.92f)
+            if (danger) {
+                Color(0xFFF7D7D7)
+            } else {
+                colors.softGreenContainer.copy(alpha = 0.92f)
+            }
         } else {
             colors.sectionBackground.copy(alpha = 0.64f)
         },
@@ -961,9 +1229,32 @@ private fun AlbumInlineActionButton(
             text = text,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = if (enabled) colors.softGreenAction else colors.textSecondary.copy(alpha = 0.68f),
+            color = if (enabled) {
+                if (danger) {
+                    Color(0xFF9E2A2B)
+                } else {
+                    colors.softGreenAction
+                }
+            } else {
+                colors.textSecondary.copy(alpha = 0.68f)
+            },
         )
     }
+}
+
+@Composable
+private fun AlbumDialogActionButton(
+    text: String,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    AlbumInlineActionButton(
+        text = text,
+        enabled = enabled,
+        danger = danger,
+        onClick = onClick,
+    )
 }
 
 @Composable
@@ -1059,7 +1350,14 @@ private fun AlbumPostCard(
         AlbumGridDensity.COZY_3 -> 1.18f
         AlbumGridDensity.COZY_4 -> 1.08f
     }
-    val previewMedia = remember(post) {
+    val previewMedia = remember(
+        post.id,
+        post.coverRefreshNonce,
+        post.coverMediaType,
+        post.coverAspectRatio,
+        post.coverMediaSource,
+        post.previewMedia,
+    ) {
         val resolved = if (post.previewMedia.size >= 2 || RepositoryProvider.currentMode == RepositoryMode.REAL) {
             post.previewMedia
         } else {
@@ -1076,11 +1374,19 @@ private fun AlbumPostCard(
                         mediaType = post.coverMediaType,
                         aspectRatio = post.coverAspectRatio,
                         mediaSource = post.coverMediaSource,
+                        refreshKey = "album-cover:${post.id}:${post.coverRefreshNonce}:0",
                     ),
                 )
             }
             .distinctBy { it.id }
             .take(2)
+            .mapIndexed { index, media ->
+                val stableRefreshKey = media.refreshKey
+                    ?: media.mediaSource?.thumbnailModelCacheKey(media.mediaType)
+                    ?: media.mediaSource?.thumbnailModelUrl(media.mediaType)
+                    ?: "album-preview:${post.id}:$index"
+                media.copy(refreshKey = stableRefreshKey)
+            }
     }
 
     Surface(
@@ -1243,7 +1549,7 @@ private fun AlbumPostPreviewThumbnail(
     modifier: Modifier = Modifier,
 ) {
     AppContentMediaThumbnail(
-        mediaSource = media.mediaSource,
+        mediaSource = media.mediaSource.withRefreshKey(media.refreshKey),
         mediaType = media.mediaType,
         palette = media.palette,
         modifier = modifier,

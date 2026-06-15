@@ -43,4 +43,18 @@ class MediaCacheKeyTest {
         assertEquals("https://bucket.cos.ap-guangzhou.myqcloud.com/originals/2026/06/media_001.jpg", first)
         assertEquals(first, second)
     }
+
+    @Test
+    fun thumbnailCacheKeyIncludesRefreshKeyForWarmAlbumCoverRefresh() {
+        val mediaSource = AppContentMediaSource(
+            thumbnailUrl = "https://api.example.com/api/media/files/media_001?variant=preview",
+            thumbnailCacheKey = "media:media_001:preview",
+            refreshKey = "album-preview:post_001:0|nonce:3",
+        )
+
+        assertEquals(
+            "media:media_001:preview|refresh:album-preview:post_001:0|nonce:3",
+            mediaSource.thumbnailModelCacheKey(AppMediaType.IMAGE),
+        )
+    }
 }

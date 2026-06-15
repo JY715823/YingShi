@@ -17,3 +17,8 @@ data class CreateAlbumRequestDto(
     val title: String,
     val subtitle: String = "",
 )
+
+data class UpdateAlbumRequestDto(
+    val title: String,
+    val subtitle: String = "",
+)

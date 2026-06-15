@@ -7,7 +7,10 @@ data class LargeAlbumSummaryUiModel(
     val id: String,
     val title: String,
     val subtitle: String,
+    val description: String = "",
     val accent: PhotoThumbnailPalette,
+    val systemKey: String? = null,
+    val includeInPhotoFeed: Boolean = true,
 )
 
 @Immutable
@@ -17,6 +20,7 @@ data class AlbumPostPreviewMediaUiModel(
     val mediaType: AppMediaType = AppMediaType.IMAGE,
     val aspectRatio: Float = 1f,
     val mediaSource: AppContentMediaSource? = null,
+    val refreshKey: String? = null,
 )
 
 @Immutable
@@ -35,6 +39,7 @@ data class SmallAlbumCardUiModel(
     val coverAspectRatio: Float = 1f,
     val coverMediaSource: AppContentMediaSource? = null,
     val previewMedia: List<AlbumPostPreviewMediaUiModel> = emptyList(),
+    val coverRefreshNonce: Int = 0,
 ) {
     val smallAlbumId: String
         get() = id

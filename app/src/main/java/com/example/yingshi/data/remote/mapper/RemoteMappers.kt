@@ -170,6 +170,8 @@ fun AlbumDto.toRemoteModel(): RemoteAlbum {
         subtitle = subtitle,
         coverMediaId = coverMediaId,
         smallAlbumCount = smallAlbumCount,
+        systemKey = systemKey,
+        includeInPhotoFeed = includeInPhotoFeed,
     )
 }
 

@@ -6,6 +6,10 @@ enum class TrashEntryType(
     val label: String,
     val summary: String,
 ) {
+    LARGE_ALBUM_DELETED(
+        label = "大相册删除",
+        summary = "恢复大相册本体，以及本次一起删除的小相册。",
+    ),
     SMALL_ALBUM_DELETED(
         label = "小相册删除",
         summary = "恢复小相册本体、小相册评论和小相册与媒体关系。",
@@ -22,6 +26,7 @@ enum class TrashEntryType(
 
 val TrashCategoryMenuTypes: List<TrashEntryType> = listOf(
     TrashEntryType.MEDIA_SYSTEM_DELETED,
+    TrashEntryType.LARGE_ALBUM_DELETED,
     TrashEntryType.SMALL_ALBUM_DELETED,
     TrashEntryType.MEDIA_REMOVED,
 )
@@ -39,10 +44,17 @@ data class TrashEntryUiModel(
     val commentTargetMediaId: String? = null,
     val relatedPostIds: List<String> = emptyList(),
     val relatedMediaIds: List<String> = emptyList(),
+    val albumSnapshot: TrashAlbumSnapshot? = null,
     val postSnapshot: TrashPostSnapshot? = null,
     val mediaSnapshot: TrashMediaSnapshot? = null,
     val relationSnapshots: List<TrashPostRelationSnapshot> = emptyList(),
     val palette: PhotoThumbnailPalette,
+)
+
+@Immutable
+data class TrashAlbumSnapshot(
+    val album: AlbumSummaryUiModel,
+    val postSnapshots: List<TrashPostSnapshot>,
 )
 
 @Immutable
@@ -113,6 +125,10 @@ fun parseTrashEntryTypeOrNull(value: String?): TrashEntryType? {
     val normalized = value?.trim().orEmpty()
     if (normalized.isBlank()) return null
     return when {
+        normalized.equals("largeAlbumDeleted", ignoreCase = true) -> TrashEntryType.LARGE_ALBUM_DELETED
+        normalized.equals("smallAlbumDeleted", ignoreCase = true) -> TrashEntryType.SMALL_ALBUM_DELETED
+        normalized.equals("mediaRemoved", ignoreCase = true) -> TrashEntryType.MEDIA_REMOVED
+        normalized.equals("mediaSystemDeleted", ignoreCase = true) -> TrashEntryType.MEDIA_SYSTEM_DELETED
         normalized.equals("POST_DELETED", ignoreCase = true) -> TrashEntryType.SMALL_ALBUM_DELETED
         else -> TrashEntryType.entries.firstOrNull { it.name.equals(normalized, ignoreCase = true) }
     }

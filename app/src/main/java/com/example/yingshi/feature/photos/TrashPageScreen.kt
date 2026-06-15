@@ -1106,12 +1106,15 @@ private fun TrashEntryPreview(
 
 private fun TrashEntryUiModel.primaryPreviewMedia(): TrashMediaSnapshot? {
     return mediaSnapshot
+        ?: albumSnapshot?.postSnapshots?.firstOrNull()?.mediaSnapshots?.firstOrNull { it.isCover }
+        ?: albumSnapshot?.postSnapshots?.firstOrNull()?.mediaSnapshots?.firstOrNull()
         ?: postSnapshot?.mediaSnapshots?.firstOrNull { it.isCover }
         ?: postSnapshot?.mediaSnapshots?.firstOrNull()
 }
 
 private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
     return when (entry.type) {
+        TrashEntryType.LARGE_ALBUM_DELETED -> "大相册和所含小相册已一起进入回收站"
         TrashEntryType.SMALL_ALBUM_DELETED -> "小相册已进入回收站"
         TrashEntryType.MEDIA_REMOVED -> "只移除了当前小相册关联"
         TrashEntryType.MEDIA_SYSTEM_DELETED -> "媒体已从照片流和相关小相册删除"
@@ -1120,6 +1123,12 @@ private fun trashEntryTypeDescription(entry: TrashEntryUiModel): String {
 
 private fun trashEntrySourceLine(entry: TrashEntryUiModel): String {
     return when (entry.type) {
+        TrashEntryType.LARGE_ALBUM_DELETED -> {
+            val postCount = entry.albumSnapshot?.postSnapshots?.size ?: entry.relatedPostIds.size
+            val mediaCount = entry.albumSnapshot?.postSnapshots?.sumOf { it.mediaSnapshots.size }
+                ?: entry.relatedMediaIds.size
+            "整册删除 · 小相册 $postCount 个 · 媒体 $mediaCount 项"
+        }
         TrashEntryType.SMALL_ALBUM_DELETED -> {
             val albumCount = entry.postSnapshot?.post?.albumIds?.size?.coerceAtLeast(1) ?: 0
             val mediaCount = entry.postSnapshot?.mediaSnapshots?.size ?: entry.relatedMediaIds.size
