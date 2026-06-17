@@ -14,7 +14,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val ViewerCommentNoticeVisibleMillis = 1800L
 
 data class RealViewerCommentUiState(
     val currentUserId: String? = null,
@@ -68,7 +71,7 @@ class RealViewerCommentViewModel(
     }
 
     fun deleteMediaComment(mediaId: String, commentId: String) {
-        mutateMediaComments(mediaId, "评论已删除。") {
+        mutateMediaComments(mediaId, "评论已删除。", deletedCommentId = commentId) {
             commentRepository.deleteComment(commentId)
         }
     }
@@ -109,12 +112,14 @@ class RealViewerCommentViewModel(
                     ),
                 )
             }
+            clearMediaCommentStatusLater(mediaId, successMessage)
         }
     }
 
     private fun mutateMediaComments(
         mediaId: String,
         successMessage: String,
+        deletedCommentId: String? = null,
         onSuccess: (() -> Unit)? = null,
         block: suspend () -> ApiResult<*>,
     ) {
@@ -147,6 +152,20 @@ class RealViewerCommentViewModel(
                     notifyRealBackendCommentChanged(
                         mediaIds = setOf(mediaId),
                     )
+                    if (deletedCommentId != null) {
+                        _uiState.update { state ->
+                            state.copy(
+                                commentThreads = state.commentThreads + (
+                                    mediaId to state.commentThreads[mediaId].orEmpty().copy(
+                                        comments = state.commentThreads[mediaId].orEmpty().comments
+                                            .filterNot { comment -> comment.id == deletedCommentId },
+                                        isMutating = false,
+                                        statusMessage = successMessage,
+                                    )
+                                ),
+                            )
+                        }
+                    }
                     loadMediaComments(mediaId, successMessage)
                 }
                 is ApiResult.Error -> {
@@ -162,6 +181,21 @@ class RealViewerCommentViewModel(
                     }
                 }
                 ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    private fun clearMediaCommentStatusLater(mediaId: String, expectedMessage: String?) {
+        if (expectedMessage == null) return
+        viewModelScope.launch {
+            delay(ViewerCommentNoticeVisibleMillis)
+            _uiState.update { state ->
+                val current = state.commentThreads[mediaId] ?: return@update state
+                if (current.statusMessage == expectedMessage) {
+                    state.copy(commentThreads = state.commentThreads + (mediaId to current.copy(statusMessage = null)))
+                } else {
+                    state
+                }
             }
         }
     }
@@ -183,6 +217,7 @@ private fun CommentListState.toViewerThreadUiState(
     successMessage: String?,
 ): RealCommentThreadUiState {
     val mappedComments = comments
+        .filterNot { it.isDeleted }
         .map { it.toCommentUiModel(currentUserId) }
         .sortedByDescending { it.createdAtMillis }
     return RealCommentThreadUiState(

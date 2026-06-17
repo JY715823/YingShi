@@ -90,6 +90,29 @@ fun defaultSelectedCollaboratorUserIds(
     ).all.mapTo(linkedSetOf()) { it.userId }
 }
 
+fun defaultCurrentCollaboratorUserIds(
+    currentUser: RemoteCurrentUser? = CollaboratorDirectoryStore.currentUser,
+    fallbackToFakeProfile: Boolean = true,
+): Set<String> {
+    return collaboratorDirectorySnapshot(
+        currentUser = currentUser,
+        fallbackToFakeProfile = fallbackToFakeProfile,
+    ).currentUser?.userId?.let(::setOf).orEmpty()
+}
+
+fun normalizeOwnedCollaboratorSelection(
+    selectedUserIds: Set<String>,
+    allUserIds: Set<String>,
+    fallbackUserId: String? = null,
+): Set<String> {
+    if (allUserIds.isEmpty()) return emptySet()
+    val normalized = selectedUserIds.filterTo(linkedSetOf()) { it in allUserIds }
+    if (normalized.isNotEmpty()) return normalized
+    return fallbackUserId?.takeIf { it in allUserIds }?.let(::setOf)
+        ?: allUserIds.takeIf { it.isNotEmpty() }?.let { setOf(it.first()) }
+        ?: emptySet()
+}
+
 fun toggleCollaboratorSelection(
     currentSelection: Set<String>,
     toggledUserId: String,

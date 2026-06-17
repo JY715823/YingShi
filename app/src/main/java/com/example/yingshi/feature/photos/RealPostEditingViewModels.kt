@@ -29,6 +29,7 @@ data class RealGearEditUiState(
     val summary: String = "",
     val displayTimeMillis: Long = System.currentTimeMillis(),
     val selectedAlbumIds: List<String> = emptyList(),
+    val participantUserIds: List<String> = emptyList(),
     val mediaItems: List<ManagedPostMediaUiModel> = emptyList(),
     val coverMediaId: String? = null,
     val draftLoaded: Boolean = false,
@@ -111,6 +112,7 @@ class RealGearEditViewModel(
                         summary = draft.summary,
                         displayTimeMillis = draft.postDisplayTimeMillis,
                         selectedAlbumIds = draft.albumIds,
+                        participantUserIds = draft.participantUserIds,
                         mediaItems = mediaItems,
                         coverMediaId = coverMediaId,
                         draftLoaded = true,
@@ -157,6 +159,13 @@ class RealGearEditViewModel(
         }
     }
 
+    fun updateDisplayTime(timeMillis: Long) {
+        _uiState.update { state ->
+            state.copy(displayTimeMillis = timeMillis)
+                .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+        }
+    }
+
     fun toggleAlbum(albumId: String) {
         _uiState.update { state ->
             val updatedAlbumIds = if (state.selectedAlbumIds.contains(albumId)) {
@@ -166,6 +175,19 @@ class RealGearEditViewModel(
             }
             state.copy(selectedAlbumIds = updatedAlbumIds)
                 .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+        }
+    }
+
+    fun updateParticipantUserIds(userIds: List<String>) {
+        _uiState.update { state ->
+            state.copy(participantUserIds = userIds.distinct())
+                .recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+        }
+    }
+
+    fun clearStatusMessage() {
+        _uiState.update { state ->
+            if (state.statusMessage == null) state else state.copy(statusMessage = null)
         }
     }
 
@@ -182,6 +204,54 @@ class RealGearEditViewModel(
                 mediaItems = updatedItems.map { media -> media.copy(isCover = media.id == safeCoverId) },
                 coverMediaId = safeCoverId,
             ).recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+        }
+    }
+
+    fun syncExternalContent() {
+        val snapshot = _uiState.value
+        if (snapshot.isLoading || snapshot.tokenMissing || !snapshot.draftLoaded) return
+        viewModelScope.launch {
+            when (val result = postRepository.getPostDetail(route.postId)) {
+                is ApiResult.Success -> {
+                    val latestMediaItems = result.data.toManagedPostMediaUiModels()
+                    val latestCoverMediaId = latestMediaItems.firstOrNull { it.isCover }?.id
+                        ?: latestMediaItems.firstOrNull()?.id
+                    val previousBaselineIds = initialMediaIds
+                    val currentMediaIds = snapshot.mediaItems.map { it.id }
+                    val localMediaDirty = currentMediaIds != previousBaselineIds
+                    val localCoverDirty = snapshot.coverMediaId != initialCoverMediaId
+                    val mergedMediaItems = if (!localMediaDirty && !localCoverDirty) {
+                        latestMediaItems
+                    } else {
+                        mergeMediaDraftWithRemoteAdditions(
+                            currentItems = snapshot.mediaItems,
+                            latestItems = latestMediaItems,
+                            previousBaselineIds = previousBaselineIds,
+                        )
+                    }
+                    val nextCoverId = when {
+                        localMediaDirty || localCoverDirty ->
+                            snapshot.coverMediaId?.takeIf { id -> mergedMediaItems.any { it.id == id } }
+                                ?: latestCoverMediaId?.takeIf { id -> mergedMediaItems.any { it.id == id } }
+                                ?: mergedMediaItems.firstOrNull()?.id
+                        else ->
+                            latestCoverMediaId?.takeIf { id -> mergedMediaItems.any { it.id == id } }
+                                ?: mergedMediaItems.firstOrNull()?.id
+                    }
+                    initialMediaIds = latestMediaItems.map { it.id }
+                    initialCoverMediaId = latestCoverMediaId
+                    _uiState.update { state ->
+                        state.copy(
+                            mediaItems = mergedMediaItems.map { media ->
+                                media.copy(isCover = media.id == nextCoverId)
+                            },
+                            coverMediaId = nextCoverId,
+                        ).recalculate(initialDraft, initialMediaIds, initialCoverMediaId)
+                    }
+                }
+                is ApiResult.Error -> Unit
+                ApiResult.Loading -> Unit
+            }
         }
     }
 
@@ -224,6 +294,7 @@ class RealGearEditViewModel(
                     payload = UpdatePostBasicInfoPayload(
                         title = snapshot.title.trim(),
                         summary = snapshot.summary.trim(),
+                        participantUserIds = snapshot.participantUserIds,
                         displayTimeMillis = snapshot.displayTimeMillis,
                         albumId = snapshot.selectedAlbumIds.first(),
                     ),
@@ -236,6 +307,7 @@ class RealGearEditViewModel(
                         summary = snapshot.summary.trim(),
                         postDisplayTimeMillis = snapshot.displayTimeMillis,
                         albumIds = listOf(snapshot.selectedAlbumIds.first()),
+                        participantUserIds = snapshot.participantUserIds,
                     )
                     var committedMediaIds = initialMediaIds
                     var committedCoverMediaId = initialCoverMediaId
@@ -299,6 +371,10 @@ class RealGearEditViewModel(
                         return@launch
                     }
 
+                    val previousDraft = initialDraft
+                    val titleChanged = previousDraft?.title != snapshot.title.trim()
+                    val summaryChanged = previousDraft?.summary != snapshot.summary.trim()
+                    val ownershipChanged = previousDraft?.participantUserIds != snapshot.participantUserIds
                     initialDraft = savedDraft
                     initialMediaIds = committedMediaIds
                     initialCoverMediaId = committedCoverMediaId?.takeIf { committedMediaIds.contains(it) }
@@ -306,7 +382,12 @@ class RealGearEditViewModel(
                         it.copy(
                             isSaving = false,
                             hasChanges = false,
-                            statusMessage = null,
+                            statusMessage = when {
+                                titleChanged && !summaryChanged -> "已更新标题。"
+                                !titleChanged && summaryChanged -> "已更新简介。"
+                                ownershipChanged && !titleChanged && !summaryChanged -> "已更新所属。"
+                                else -> "小相册已保存。"
+                            },
                         )
                     }
                     notifyRealBackendPostChanged(
@@ -642,6 +723,7 @@ private fun RealGearEditUiState.recalculate(
         summary = summary,
         postDisplayTimeMillis = displayTimeMillis,
         albumIds = selectedAlbumIds,
+        participantUserIds = participantUserIds,
     )
     val currentMediaIds = mediaItems.map { it.id }
     return copy(
@@ -650,4 +732,26 @@ private fun RealGearEditUiState.recalculate(
                 currentMediaIds != initialMediaIds ||
                 coverMediaId != initialCoverMediaId),
     )
+}
+
+private fun mergeMediaDraftWithRemoteAdditions(
+    currentItems: List<ManagedPostMediaUiModel>,
+    latestItems: List<ManagedPostMediaUiModel>,
+    previousBaselineIds: Collection<String>,
+): List<ManagedPostMediaUiModel> {
+    val currentIds = currentItems.mapTo(linkedSetOf()) { it.id }
+    val latestById = latestItems.associateBy { it.id }
+    return buildList {
+        currentItems.forEach { item ->
+            add(
+                latestById[item.id]?.copy(isCover = false)
+                    ?: item.copy(isCover = false),
+            )
+        }
+        latestItems.forEach { media ->
+            if (media.id !in currentIds && media.id !in previousBaselineIds) {
+                add(media.copy(isCover = false))
+            }
+        }
+    }
 }

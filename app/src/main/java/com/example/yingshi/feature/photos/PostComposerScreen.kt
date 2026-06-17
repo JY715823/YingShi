@@ -4,11 +4,13 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -99,6 +101,11 @@ fun CreatePostScreen(
     var title by rememberSaveable(route.source, mediaKey) { mutableStateOf("") }
     var summary by rememberSaveable(route.source, mediaKey) { mutableStateOf("") }
     var selectedAlbumIds by rememberSaveable(route.source, mediaKey) { mutableStateOf(emptyList<String>()) }
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
+    val availableCollaboratorIds = remember(collaboratorDirectory) {
+        collaboratorDirectory.all.mapTo(linkedSetOf()) { it.userId }
+    }
+    var selectedParticipantUserIds by rememberSaveable(route.source, mediaKey) { mutableStateOf(emptySet<String>()) }
     var selectedCoverMediaId by rememberSaveable(route.source, mediaKey) {
         mutableStateOf(
             route.initialMediaItems.firstOrNull()?.id
@@ -116,7 +123,9 @@ fun CreatePostScreen(
     var showPostMediaList by remember(route.source, mediaKey) { mutableStateOf(false) }
     var showAlbumDirectory by remember(route.source, mediaKey) { mutableStateOf(false) }
     var showPhotoFeedPicker by remember(route.source, mediaKey) { mutableStateOf(false) }
+    var showTimeEditorSheet by remember(route.source, mediaKey) { mutableStateOf(false) }
     var showDiscardConfirm by rememberSaveable(route.source, mediaKey) { mutableStateOf(false) }
+    var showClearAllConfirm by rememberSaveable(route.source, mediaKey) { mutableStateOf(false) }
     var displayTimeMillis by rememberSaveable(route.source, mediaKey) { mutableStateOf(System.currentTimeMillis()) }
     var localMessage by rememberSaveable(route.source, mediaKey) { mutableStateOf<String?>(null) }
     val spacing = YingShiThemeTokens.spacing
@@ -131,6 +140,13 @@ fun CreatePostScreen(
     val selectedAppMediaIds = selectedAppMediaItems.map { it.mediaId }
     val selectedSystemMediaIds = selectedSystemMediaItems.map { it.id }
     val selectedMediaIds = selectedSystemMediaIds + selectedAppMediaIds
+    val normalizedSelectedParticipantUserIds = remember(selectedParticipantUserIds, availableCollaboratorIds) {
+        normalizeOwnedCollaboratorSelection(
+            selectedUserIds = selectedParticipantUserIds,
+            allUserIds = availableCollaboratorIds,
+            fallbackUserId = collaboratorDirectory.currentUser?.userId,
+        )
+    }
     val resolvedCoverMediaId = selectedCoverMediaId?.takeIf { selectedMediaIds.contains(it) }
         ?: selectedSystemMediaIds.firstOrNull()
         ?: selectedAppMediaIds.firstOrNull()
@@ -171,9 +187,9 @@ fun CreatePostScreen(
                 selectedSystemMediaItems = updatedIds.mapNotNull(systemById::get)
                 selectedAppMediaItems = updatedIds.mapNotNull(appById::get)
                 selectedCoverMediaId = updatedCoverId
-                showPostMediaList = false
             },
             modifier = modifier,
+            mode = PostMediaListMode.AUTO_APPLY,
         )
         return
     }
@@ -234,6 +250,18 @@ fun CreatePostScreen(
         hydratedInitialAppMediaIds = true
     }
 
+    LaunchedEffect(availableCollaboratorIds) {
+        if (availableCollaboratorIds.isEmpty()) {
+            selectedParticipantUserIds = emptySet()
+            return@LaunchedEffect
+        }
+        selectedParticipantUserIds = normalizeOwnedCollaboratorSelection(
+            selectedUserIds = selectedParticipantUserIds,
+            allUserIds = availableCollaboratorIds,
+            fallbackUserId = collaboratorDirectory.currentUser?.userId,
+        )
+    }
+
     LaunchedEffect(seedState) {
         if (initialized || seedState.isLoading) return@LaunchedEffect
         title = seedState.title
@@ -242,6 +270,11 @@ fun CreatePostScreen(
             route.initialAlbumId != null && seedState.albums.any { it.id == route.initialAlbumId } -> listOf(route.initialAlbumId)
             else -> seedState.selectedAlbumIds
         }
+        selectedParticipantUserIds = normalizeOwnedCollaboratorSelection(
+            selectedUserIds = seedState.participantUserIds.toSet(),
+            allUserIds = availableCollaboratorIds,
+            fallbackUserId = collaboratorDirectory.currentUser?.userId,
+        )
         if (selectedCoverMediaId == null) {
             selectedCoverMediaId = seedState.selectedCoverSourceMediaId
         }
@@ -273,6 +306,7 @@ fun CreatePostScreen(
             summary = summary.trim(),
             displayTimeMillis = displayTimeMillis,
             albumIds = selectedAlbumIds,
+        participantUserIds = normalizedSelectedParticipantUserIds.toList(),
             coverSourceMediaId = resolvedCoverMediaId,
         )
         if (selectedSystemMediaItems.isNotEmpty()) {
@@ -313,6 +347,7 @@ fun CreatePostScreen(
                         CreatePostPayload(
                             title = draft.title.ifBlank { "新小相册" },
                             summary = draft.summary,
+                            participantUserIds = draft.participantUserIds,
                             displayTimeMillis = draft.displayTimeMillis,
                             albumId = draft.requireAlbumId(),
                             initialMediaIds = selectedAppMediaIds,
@@ -364,6 +399,7 @@ fun CreatePostScreen(
                 CreatePostPayload(
                     title = draft.title.ifBlank { "新小相册" },
                     summary = draft.summary,
+                    participantUserIds = draft.participantUserIds,
                     displayTimeMillis = draft.displayTimeMillis,
                     albumId = draft.requireAlbumId(),
                     coverMediaId = null,
@@ -439,6 +475,13 @@ fun CreatePostScreen(
                         items = postMediaListItems,
                         coverMediaId = resolvedCoverMediaId,
                         onAddMedia = { showPhotoFeedPicker = true },
+                        onClearAll = {
+                            if (postMediaListItems.isEmpty()) {
+                                localMessage = "当前还没有可清空的媒体"
+                            } else {
+                                showClearAllConfirm = true
+                            }
+                        },
                         onRemoveMedia = { mediaId ->
                             selectedSystemMediaItems = selectedSystemMediaItems.filterNot { it.id == mediaId }
                             selectedAppMediaItems = selectedAppMediaItems.filterNot { it.mediaId == mediaId }
@@ -446,8 +489,13 @@ fun CreatePostScreen(
                             if (selectedCoverMediaId == mediaId) {
                                 selectedCoverMediaId = remainingIds.firstOrNull()
                             }
+                            localMessage = "已移出 1 项媒体"
                         },
                         onOpenAll = { showPostMediaList = true },
+                        ownershipLabel = describeSelectedCollaborators(
+                            directory = collaboratorDirectory,
+                            selectedUserIds = normalizedSelectedParticipantUserIds,
+                        ),
                     )
 
                     CreatePostSection(
@@ -471,6 +519,37 @@ fun CreatePostScreen(
                             enabled = !isSubmitting,
                             label = { Text("简介") },
                             placeholder = { Text("输入简介") },
+                        )
+                    }
+
+                    CreatePostSection(
+                        title = "所属",
+                        subtitle = "至少选择 1 位，可以同时勾选两位",
+                    ) {
+                        OwnershipSelectorRow(
+                            directory = collaboratorDirectory,
+                            selectedUserIds = normalizedSelectedParticipantUserIds,
+                            onToggleUserId = { userId ->
+                                val nextSelection = toggleCollaboratorSelectionKeepingEmpty(
+                                    currentSelection = normalizedSelectedParticipantUserIds,
+                                    toggledUserId = userId,
+                                    allUserIds = availableCollaboratorIds,
+                                )
+                                val nextOwnedSelection = normalizeOwnedCollaboratorSelection(
+                                    selectedUserIds = nextSelection,
+                                    allUserIds = availableCollaboratorIds,
+                                    fallbackUserId = collaboratorDirectory.currentUser?.userId,
+                                )
+                                if (nextOwnedSelection == normalizedSelectedParticipantUserIds &&
+                                    normalizedSelectedParticipantUserIds.size == 1 &&
+                                    userId in normalizedSelectedParticipantUserIds
+                                ) {
+                                    localMessage = "至少保留 1 位所属"
+                                } else {
+                                    selectedParticipantUserIds = nextOwnedSelection
+                                    localMessage = "已更新所属"
+                                }
+                            },
                         )
                     }
 
@@ -509,10 +588,11 @@ fun CreatePostScreen(
                         }
                     }
                     CreatePostSection(title = "时间") {
-                        Text(
-                            text = formatCreatePostTime(displayTimeMillis),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.titleAccent,
+                        SmallAlbumTimeEditRow(
+                            label = "小相册时间",
+                            value = formatCreatePostTime(displayTimeMillis),
+                            enabled = !isSubmitting,
+                            onClick = { showTimeEditorSheet = true },
                         )
                     }
 
@@ -571,6 +651,55 @@ fun CreatePostScreen(
                     emphasized = true,
                     onClick = { showDiscardConfirm = false },
                 )
+            },
+        )
+    }
+
+    if (showClearAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearAllConfirm = false },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            title = {
+                Text(
+                    text = "清空已选媒体",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                )
+            },
+            text = {
+                Text("确认后会移除当前已选的所有媒体，封面也会一起清空。")
+            },
+            confirmButton = {
+                TrashDialogActionButton(
+                    text = "确认清空",
+                    danger = true,
+                    onClick = {
+                        showClearAllConfirm = false
+                        selectedSystemMediaItems = emptyList()
+                        selectedAppMediaItems = emptyList()
+                        selectedCoverMediaId = null
+                        localMessage = "已清空待选媒体"
+                    },
+                )
+            },
+            dismissButton = {
+                TrashDialogActionButton(
+                    text = "取消",
+                    onClick = { showClearAllConfirm = false },
+                )
+            },
+        )
+    }
+
+    if (showTimeEditorSheet) {
+        ViewerTimeEditorSheet(
+            initialTimeMillis = displayTimeMillis,
+            onDismiss = { showTimeEditorSheet = false },
+            onConfirm = { nextTimeMillis ->
+                displayTimeMillis = nextTimeMillis
+                showTimeEditorSheet = false
+                localMessage = "已更新小相册时间"
             },
         )
     }
@@ -639,7 +768,7 @@ private fun CreatePostSection(
 }
 
 @Composable
-private fun SelectableAlbumChip(
+internal fun SelectableAlbumChip(
     title: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -673,12 +802,70 @@ private fun SelectableAlbumChip(
 }
 
 @Composable
+internal fun SelectableInfoChip(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = colors.raisedSurface.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = colors.textSecondary,
+        )
+    }
+}
+
+@Composable
+internal fun CreatePostArrangementHeader(
+    mediaCount: Int,
+    coverLabel: String,
+    ownershipLabel: String,
+) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = colors.softGreenContainer.copy(alpha = 0.64f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = "正在整理这条记忆",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SelectableInfoChip(text = if (mediaCount > 0) "媒体 $mediaCount 项" else "还没选媒体")
+                SelectableInfoChip(text = "封面：$coverLabel")
+            }
+            SelectableInfoChip(text = "所属：$ownershipLabel")
+        }
+    }
+}
+
+@Composable
 private fun CreatePostMediaPreviewSection(
     items: List<PostMediaListItem>,
     coverMediaId: String?,
     onAddMedia: () -> Unit,
+    onClearAll: () -> Unit,
     onRemoveMedia: (String) -> Unit,
     onOpenAll: () -> Unit,
+    ownershipLabel: String,
 ) {
     CreatePostSection(
         title = "媒体",
@@ -701,6 +888,12 @@ private fun CreatePostMediaPreviewSection(
                 containerColor = colors.softGreenContainer.copy(alpha = 0.92f),
                 contentColor = colors.softGreenAction,
                 onClick = onAddMedia,
+            )
+            CreatePostInlineAction(
+                text = "清空",
+                enabled = items.isNotEmpty(),
+                danger = true,
+                onClick = onClearAll,
             )
         }
         val previewItems = items.take(5)
@@ -805,6 +998,76 @@ private fun CreatePostMediaPreviewSection(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun OwnershipSelectorRow(
+    directory: CollaboratorDirectorySnapshot,
+    selectedUserIds: Set<String>,
+    onToggleUserId: (String) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    if (directory.all.isEmpty()) {
+        BackendInlineNotice(text = "当前没有可选所属账号。")
+        return
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        directory.all.forEach { identity ->
+            CollaboratorFilterChip(
+                identity = identity,
+                selected = identity.userId in selectedUserIds,
+                onClick = { onToggleUserId(identity.userId) },
+                labelText = if (identity.isCurrentUser) "我" else identity.displayName,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun CreatePostInlineAction(
+    text: String,
+    enabled: Boolean,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    Surface(
+        modifier = Modifier.clip(shape),
+        shape = shape,
+        color = if (danger) {
+            colors.raisedSurface.copy(alpha = if (enabled) 0.92f else 0.46f)
+        } else {
+            colors.sectionBackground.copy(alpha = if (enabled) 0.78f else 0.46f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (danger) colors.memoryAccent.copy(alpha = 0.24f) else colors.dividerSoft.copy(alpha = 0.68f),
+        ),
+        onClick = { if (enabled) onClick() },
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = if (danger) colors.memoryAccent else colors.textSecondary,
+        )
+    }
+}
+
+internal fun describeSelectedCollaborators(
+    directory: CollaboratorDirectorySnapshot,
+    selectedUserIds: Set<String>,
+): String {
+    val identities = directory.resolveOrdered(selectedUserIds)
+    if (identities.isEmpty()) return "未设置"
+    return identities.joinToString(" / ") { identity ->
+        if (identity.isCurrentUser) "我" else identity.displayName
+    }
+}
+
 @Composable
 private fun CreatePostActionButton(
     text: String,
@@ -867,6 +1130,7 @@ private suspend fun loadCreatePostUiState(
     val initialItems = route.initialMediaItems
     val defaultDisplayTime = initialItems.maxOfOrNull { it.displayTimeMillis } ?: System.currentTimeMillis()
     val defaultCoverId = initialItems.firstOrNull()?.id
+    val defaultParticipantUserIds = defaultCurrentCollaboratorUserIds().toList()
     if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
         val albums = FakeAlbumRepository.getAlbums()
         val defaultAlbumId = route.initialAlbumId?.takeIf { initialId -> albums.any { it.id == initialId } }
@@ -878,6 +1142,7 @@ private suspend fun loadCreatePostUiState(
             summary = "",
             displayTimeMillis = defaultDisplayTime,
             selectedAlbumIds = defaultAlbumId?.let(::listOf).orEmpty(),
+            participantUserIds = defaultParticipantUserIds,
             initialMediaItems = initialItems,
             selectedCoverSourceMediaId = defaultCoverId,
         )
@@ -889,6 +1154,7 @@ private suspend fun loadCreatePostUiState(
             tokenMissing = true,
             initialMediaItems = initialItems,
             displayTimeMillis = defaultDisplayTime,
+            participantUserIds = defaultParticipantUserIds,
             selectedCoverSourceMediaId = defaultCoverId,
         )
     }
@@ -903,6 +1169,7 @@ private suspend fun loadCreatePostUiState(
                 albums = albums,
                 displayTimeMillis = defaultDisplayTime,
                 selectedAlbumIds = defaultAlbumId?.let(::listOf).orEmpty(),
+                participantUserIds = defaultParticipantUserIds,
                 initialMediaItems = initialItems,
                 selectedCoverSourceMediaId = defaultCoverId,
             )
@@ -912,6 +1179,7 @@ private suspend fun loadCreatePostUiState(
                 isLoading = false,
                 errorMessage = result.toBackendUiMessage("读取大相册失败，当前无法创建小相册。"),
                 displayTimeMillis = defaultDisplayTime,
+                participantUserIds = defaultParticipantUserIds,
                 initialMediaItems = initialItems,
                 selectedCoverSourceMediaId = defaultCoverId,
             )
@@ -919,6 +1187,7 @@ private suspend fun loadCreatePostUiState(
         ApiResult.Loading -> CreatePostUiState(
             isLoading = true,
             displayTimeMillis = defaultDisplayTime,
+            participantUserIds = defaultParticipantUserIds,
             initialMediaItems = initialItems,
             selectedCoverSourceMediaId = defaultCoverId,
         )

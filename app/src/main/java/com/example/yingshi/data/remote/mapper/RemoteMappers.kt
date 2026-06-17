@@ -278,7 +278,9 @@ fun CommentDto.toRemoteModel(): RemoteComment {
 
 fun CommentListResponseDto.toRemotePage(): RemoteCommentPage {
     return RemoteCommentPage(
-        comments = comments.map(CommentDto::toRemoteModel),
+        comments = comments
+            .filterNot { it.isDeleted }
+            .map(CommentDto::toRemoteModel),
         page = page,
         size = size,
         hasMore = hasMore,

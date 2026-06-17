@@ -84,6 +84,11 @@ data class PostMediaListItem(
     val systemMediaItem: SystemMediaItem? = null,
 )
 
+internal enum class PostMediaListMode {
+    CONFIRM,
+    AUTO_APPLY,
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PostMediaListScreen(
@@ -93,15 +98,27 @@ internal fun PostMediaListScreen(
     onConfirm: (List<PostMediaListItem>, String?) -> Unit,
     modifier: Modifier = Modifier,
     allowEmpty: Boolean = true,
+    mode: PostMediaListMode = PostMediaListMode.CONFIRM,
+    confirmSingleDeleteInAutoApply: Boolean = false,
 ) {
     val context = LocalContext.current
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
-    val initialKey = remember(initialItems, initialCoverMediaId) {
+    val initialKey = remember {
         initialItems.joinToString("|") { it.id } + "::" + initialCoverMediaId.orEmpty()
     }
-    var draftItems by remember(initialKey) { mutableStateOf(initialItems.distinctBy { it.id }) }
+    var draftItems by remember(initialKey) {
+        mutableStateOf(
+            reorderPostMediaItemsForPreviewCoverIds(
+                items = initialItems.distinctBy { it.id },
+                previewCoverIds = postMediaPreviewCoverIds(
+                    items = initialItems,
+                    coverMediaId = initialCoverMediaId,
+                ),
+            ),
+        )
+    }
     var coverMediaId by remember(initialKey) {
         mutableStateOf(initialCoverMediaId?.takeIf { coverId -> initialItems.any { it.id == coverId } }
             ?: initialItems.firstOrNull()?.id)
@@ -110,7 +127,11 @@ internal fun PostMediaListScreen(
     var selectedIds by remember(initialKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingSingleDeleteId by remember { mutableStateOf<String?>(null) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+    var showClearAllConfirm by remember { mutableStateOf(false) }
     var showKeepOneMediaDialog by remember { mutableStateOf(false) }
+    var coverReplacementQueue by remember(initialKey) {
+        mutableStateOf(postMediaPreviewCoverIds(draftItems, coverMediaId))
+    }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var dragCenterInRoot by remember { mutableStateOf<Offset?>(null) }
     var draggedItemSize by remember { mutableStateOf(IntSize.Zero) }
@@ -150,26 +171,18 @@ internal fun PostMediaListScreen(
         )
     }
 
-    viewerIndex?.let { index ->
-        val safeIndex = index.coerceIn(0, draftItems.lastIndex)
-        val item = draftItems.getOrNull(safeIndex)
-        if (item != null) {
-            PostMediaViewerScreen(
-                item = item,
-                isCover = item.id == coverMediaId,
-                onBack = { viewerIndex = null },
-                onConfirmSetCover = { coverMediaId = item.id },
-                modifier = modifier,
-            )
-            return
-        } else {
-            viewerIndex = null
-        }
-    }
-
     fun normalizeCover() {
         if (coverMediaId != null && draftItems.none { it.id == coverMediaId }) {
             coverMediaId = draftItems.firstOrNull()?.id
+        }
+        val previewCoverIds = postMediaPreviewCoverIds(draftItems, coverMediaId)
+        coverReplacementQueue = normalizePostMediaCoverReplacementQueue(
+            queue = coverReplacementQueue,
+            previewCoverIds = previewCoverIds,
+        )
+        val normalizedItems = reorderPostMediaItemsForPreviewCoverIds(draftItems, previewCoverIds)
+        if (normalizedItems.map(PostMediaListItem::id) != draftItems.map(PostMediaListItem::id)) {
+            draftItems = normalizedItems
         }
     }
 
@@ -189,6 +202,66 @@ internal fun PostMediaListScreen(
         }
         selectedIds = selectedIds - ids
         normalizeCover()
+        if (mode == PostMediaListMode.AUTO_APPLY) {
+            onConfirm(draftItems, coverMediaId?.takeIf { id -> draftItems.any { it.id == id } })
+        }
+    }
+
+    fun applyCoverSelection(targetMediaId: String) {
+        if (draftItems.none { it.id == targetMediaId }) return
+        val currentPreviewIds = postMediaPreviewCoverIds(draftItems, coverMediaId)
+        val activeReplacementQueue = normalizePostMediaCoverReplacementQueue(
+            queue = coverReplacementQueue,
+            previewCoverIds = currentPreviewIds,
+        )
+        val nextPreviewIds = when {
+            currentPreviewIds.firstOrNull() == targetMediaId -> currentPreviewIds
+            currentPreviewIds.getOrNull(1) == targetMediaId -> listOfNotNull(
+                targetMediaId,
+                currentPreviewIds.firstOrNull(),
+            ).distinct()
+            currentPreviewIds.size >= 2 -> {
+                val oldestCoverId = activeReplacementQueue.firstOrNull()
+                val replacementIndex = currentPreviewIds.indexOf(oldestCoverId).takeIf { it >= 0 } ?: 0
+                val rotatedIds = currentPreviewIds.toMutableList()
+                rotatedIds[replacementIndex] = targetMediaId
+                rotatedIds.distinct()
+            }
+            currentPreviewIds.size == 1 -> listOf(targetMediaId, currentPreviewIds.first()).distinct()
+            else -> listOf(targetMediaId)
+        }
+        coverReplacementQueue = normalizePostMediaCoverReplacementQueue(
+            queue = (activeReplacementQueue - targetMediaId) + targetMediaId,
+            previewCoverIds = nextPreviewIds,
+        )
+        draftItems = reorderPostMediaItemsForPreviewCoverIds(
+            items = draftItems,
+            previewCoverIds = nextPreviewIds,
+        )
+        coverMediaId = nextPreviewIds.firstOrNull()
+        if (mode == PostMediaListMode.AUTO_APPLY) {
+            onConfirm(draftItems, coverMediaId?.takeIf { id -> draftItems.any { it.id == id } })
+        }
+    }
+
+    viewerIndex?.let { index ->
+        val safeIndex = index.coerceIn(0, draftItems.lastIndex)
+        val item = draftItems.getOrNull(safeIndex)
+        if (item != null) {
+            val previewCoverIds = postMediaPreviewCoverIds(draftItems, coverMediaId)
+            PostMediaViewerScreen(
+                item = item,
+                coverRank = previewCoverIds.indexOf(item.id).takeIf { it >= 0 }?.plus(1),
+                onBack = { viewerIndex = null },
+                onConfirmSetCover = {
+                    applyCoverSelection(item.id)
+                },
+                modifier = modifier,
+            )
+            return
+        } else {
+            viewerIndex = null
+        }
     }
 
     fun moveItem(fromIndex: Int, toIndex: Int) {
@@ -197,6 +270,9 @@ internal fun PostMediaListScreen(
         val item = next.removeAt(fromIndex)
         next.add(toIndex, item)
         draftItems = next
+        if (mode == PostMediaListMode.AUTO_APPLY) {
+            onConfirm(draftItems, coverMediaId?.takeIf { id -> draftItems.any { it.id == id } })
+        }
     }
 
     fun reorderTargetIndexAtRoot(draggedMediaId: String, center: Offset): Int? {
@@ -294,8 +370,10 @@ internal fun PostMediaListScreen(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         PostMediaListTopBar(
+            mode = mode,
             batchDeleteMode = batchDeleteMode,
             selectedCount = selectedIds.size,
+            canClearAll = draftItems.isNotEmpty(),
             onCancel = {
                 if (batchDeleteMode) {
                     batchDeleteMode = false
@@ -310,6 +388,11 @@ internal fun PostMediaListScreen(
             onBatchDelete = {
                 if (selectedIds.isNotEmpty()) {
                     showBatchDeleteConfirm = true
+                }
+            },
+            onClearAll = {
+                if (draftItems.isNotEmpty()) {
+                    showClearAllConfirm = true
                 }
             },
         )
@@ -352,9 +435,10 @@ internal fun PostMediaListScreen(
                         contentType = { _, _ -> "post-media-list-item" },
                     ) { index, item ->
                         val isDragging = draggedId == item.id
+                        val previewCoverIds = postMediaPreviewCoverIds(draftItems, coverMediaId)
                         PostMediaListCard(
                             item = item,
-                            isCover = item.id == coverMediaId,
+                            coverRank = previewCoverIds.indexOf(item.id).takeIf { it >= 0 }?.plus(1),
                             batchDeleteMode = batchDeleteMode,
                             selected = selectedIds.contains(item.id),
                             modifier = Modifier
@@ -374,7 +458,13 @@ internal fun PostMediaListScreen(
                             onToggleSelected = {
                                 selectedIds = if (selectedIds.contains(item.id)) selectedIds - item.id else selectedIds + item.id
                             },
-                            onDeleteClick = { pendingSingleDeleteId = item.id },
+                            onDeleteClick = {
+                                if (mode == PostMediaListMode.AUTO_APPLY && !confirmSingleDeleteInAutoApply) {
+                                    removeIds(setOf(item.id))
+                                } else {
+                                    pendingSingleDeleteId = item.id
+                                }
+                            },
                             onDeleteLongClick = {
                                 batchDeleteMode = true
                                 selectedIds = setOf(item.id)
@@ -415,9 +505,10 @@ internal fun PostMediaListScreen(
                 val center = dragCenterInRoot
                 val bounds = gridBounds
                 if (overlayItem != null && center != null && bounds != null && draggedItemSize.width > 0 && draggedItemSize.height > 0) {
+                    val previewCoverIds = postMediaPreviewCoverIds(draftItems, coverMediaId)
                     PostMediaDragOverlay(
                         item = overlayItem,
-                        isCover = overlayItem.id == coverMediaId,
+                        coverRank = previewCoverIds.indexOf(overlayItem.id).takeIf { it >= 0 }?.plus(1),
                         widthPx = draggedItemSize.width,
                         heightPx = draggedItemSize.height,
                         offsetPx = Offset(
@@ -451,6 +542,35 @@ internal fun PostMediaListScreen(
             },
             dismissButton = {
                 TrashDialogActionButton(text = "取消", onClick = { pendingSingleDeleteId = null })
+            },
+        )
+    }
+
+    if (showClearAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearAllConfirm = false },
+            containerColor = colors.raisedSurface,
+            titleContentColor = colors.titleAccent,
+            textContentColor = colors.textSecondary,
+            title = { Text("清空媒体？") },
+            text = { Text("确认把当前小相册媒体列表里的项目全部移除。") },
+            confirmButton = {
+                TrashDialogActionButton(
+                    text = "确认清空",
+                    danger = true,
+                    onClick = {
+                        val deleteIds = draftItems.mapTo(linkedSetOf()) { it.id }
+                        showClearAllConfirm = false
+                        removeIds(deleteIds)
+                        if (canRemove(deleteIds)) {
+                            batchDeleteMode = false
+                            selectedIds = emptySet()
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                TrashDialogActionButton(text = "取消", onClick = { showClearAllConfirm = false })
             },
         )
     }
@@ -502,11 +622,14 @@ internal fun PostMediaListScreen(
 
 @Composable
 private fun PostMediaListTopBar(
+    mode: PostMediaListMode,
     batchDeleteMode: Boolean,
     selectedCount: Int,
+    canClearAll: Boolean,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     onBatchDelete: () -> Unit,
+    onClearAll: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
     val spacing = YingShiThemeTokens.spacing
@@ -527,6 +650,13 @@ private fun PostMediaListTopBar(
                 enabled = selectedCount > 0,
                 onClick = onBatchDelete,
             )
+        } else if (mode == PostMediaListMode.AUTO_APPLY) {
+            PostMediaTopActionButton(
+                text = "清空",
+                emphasized = false,
+                enabled = canClearAll,
+                onClick = onClearAll,
+            )
         } else {
             PostMediaTopActionButton(text = "保存", emphasized = true, onClick = onConfirm)
         }
@@ -537,21 +667,23 @@ private fun PostMediaListTopBar(
 private fun PostMediaTopActionButton(
     text: String,
     emphasized: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
         modifier = Modifier.yingShiClickable(
+            enabled = enabled,
             shape = shape,
             pressedScale = 0.96f,
             onClick = onClick,
         ),
         shape = shape,
         color = if (emphasized) {
-            colors.primaryContainer.copy(alpha = 0.86f)
+            colors.primaryContainer.copy(alpha = if (enabled) 0.86f else 0.42f)
         } else {
-            colors.softGreenContainer.copy(alpha = 0.66f)
+            colors.softGreenContainer.copy(alpha = if (enabled) 0.66f else 0.36f)
         },
         border = BorderStroke(
             1.dp,
@@ -562,7 +694,7 @@ private fun PostMediaTopActionButton(
             text = text,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
+            color = colors.titleAccent.copy(alpha = if (enabled) 1f else 0.48f),
         )
     }
 }
@@ -618,7 +750,7 @@ private fun Modifier.postMediaViewerZoomGesture(
 @Composable
 private fun PostMediaViewerScreen(
     item: PostMediaListItem,
-    isCover: Boolean,
+    coverRank: Int?,
     onBack: () -> Unit,
     onConfirmSetCover: () -> Unit,
     modifier: Modifier = Modifier,
@@ -679,8 +811,12 @@ private fun PostMediaViewerScreen(
             PostMediaViewerActionButton(text = "返回", onClick = onBack)
             Box(modifier = Modifier.weight(1f))
             PostMediaViewerActionButton(
-                text = if (isCover) "当前封面" else "设为封面",
-                enabled = !isCover,
+                text = when (coverRank) {
+                    1 -> "当前封面1"
+                    2 -> "当前封面2"
+                    else -> "设为封面"
+                },
+                enabled = coverRank != 1,
                 onClick = { showSetCoverConfirm = true },
             )
         }
@@ -744,7 +880,7 @@ private fun PostMediaViewerActionButton(
 @Composable
 private fun PostMediaListCard(
     item: PostMediaListItem,
-    isCover: Boolean,
+    coverRank: Int?,
     batchDeleteMode: Boolean,
     selected: Boolean,
     modifier: Modifier,
@@ -798,7 +934,7 @@ private fun PostMediaListCard(
                     requestSize = 448,
                 )
 
-                if (isCover) {
+                if (coverRank != null) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -808,7 +944,7 @@ private fun PostMediaListCard(
                         border = BorderStroke(1.dp, YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.74f)),
                     ) {
                         Text(
-                            text = "封面",
+                            text = "封面$coverRank",
                             modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                             color = YingShiThemeTokens.colors.titleAccent,
@@ -865,7 +1001,7 @@ private fun PostMediaListCard(
 @Composable
 private fun PostMediaDragOverlay(
     item: PostMediaListItem,
-    isCover: Boolean,
+    coverRank: Int?,
     widthPx: Int,
     heightPx: Int,
     offsetPx: Offset,
@@ -897,7 +1033,7 @@ private fun PostMediaDragOverlay(
                 modifier = Modifier.fillMaxSize(),
                 requestSize = 448,
             )
-            if (isCover) {
+            if (coverRank != null) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -907,7 +1043,7 @@ private fun PostMediaDragOverlay(
                     border = BorderStroke(1.dp, YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.74f)),
                 ) {
                     Text(
-                        text = "封面",
+                        text = "封面$coverRank",
                         modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = YingShiThemeTokens.colors.titleAccent,
@@ -1011,6 +1147,45 @@ private fun PostMediaDeleteButton(
             )
         }
     }
+}
+
+private fun postMediaPreviewCoverIds(
+    items: List<PostMediaListItem>,
+    coverMediaId: String?,
+): List<String> {
+    if (items.isEmpty()) return emptyList()
+    val resolvedIds = buildList {
+        coverMediaId
+            ?.takeIf { coverId -> items.any { it.id == coverId } }
+            ?.let(::add)
+        items.forEach { item ->
+            if (size >= 2) return@forEach
+            if (item.id !in this) add(item.id)
+        }
+    }
+    return resolvedIds.take(2)
+}
+
+private fun reorderPostMediaItemsForPreviewCoverIds(
+    items: List<PostMediaListItem>,
+    previewCoverIds: List<String>,
+): List<PostMediaListItem> {
+    if (items.isEmpty() || previewCoverIds.isEmpty()) return items
+    val byId = items.associateBy { it.id }
+    val orderedPreview = previewCoverIds.mapNotNull(byId::get)
+    if (orderedPreview.isEmpty()) return items
+    return orderedPreview + items.filterNot { it.id in previewCoverIds.toSet() }
+}
+
+private fun normalizePostMediaCoverReplacementQueue(
+    queue: List<String>,
+    previewCoverIds: List<String>,
+): List<String> {
+    if (previewCoverIds.isEmpty()) return emptyList()
+    val previewIdSet = previewCoverIds.toSet()
+    return (queue.filter { it in previewIdSet } + previewCoverIds.filterNot { it in queue })
+        .distinct()
+        .take(previewCoverIds.size)
 }
 
 @Composable

@@ -3021,6 +3021,7 @@ private fun RealTrashPostViewerDetailContent(
         val postId = entry.sourcePostId?.takeIf { it.isNotBlank() } ?: return@produceState
         value = when (val result = CommentGateway.repository.getPostComments(postId)) {
             is ApiResult.Success -> result.data.comments
+                .filterNot { it.isDeleted }
                 .map { it.toCommentUiModel() }
                 .sortedByDescending { it.createdAtMillis }
             else -> emptyList()

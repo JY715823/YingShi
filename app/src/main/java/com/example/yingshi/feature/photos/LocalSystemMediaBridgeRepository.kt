@@ -1439,6 +1439,7 @@ object LocalSystemMediaBridgeRepository {
                 CreatePostPayload(
                     title = draft.title.ifBlank { buildRealPostTitle(sourceItems) },
                     summary = draft.summary.ifBlank { buildRealPostSummary(sourceItems) },
+                    participantUserIds = draft.participantUserIds,
                     displayTimeMillis = draft.displayTimeMillis,
                     albumId = finalAlbumIds.first(),
                     initialMediaIds = finalMediaIds,

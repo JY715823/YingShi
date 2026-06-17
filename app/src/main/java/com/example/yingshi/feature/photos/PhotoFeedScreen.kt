@@ -493,6 +493,7 @@ fun PhotoFeedScreen(
                 val mediaSource = item.mediaSource
                 val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
                 val posterImageCacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType)
+                val posterImageDiskCacheKey = mediaSource.videoPosterImageDiskCacheKey(item.mediaType)
                 if (!posterImageUrl.isNullOrBlank()) {
                     backendMediaImageRequest(
                         context = context,
@@ -504,7 +505,7 @@ fun PhotoFeedScreen(
                             requestSize = transitionThumbnailRequestSize,
                         ),
                         placeholderMemoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
-                        diskCacheKey = posterImageCacheKey,
+                        diskCacheKey = posterImageDiskCacheKey,
                         size = transitionThumbnailRequestSize,
                     )?.let(imageLoader::enqueue)
                     return@forEach
@@ -515,6 +516,7 @@ fun PhotoFeedScreen(
                     url = posterVideoUrl,
                     accessToken = accessToken,
                     cacheKey = mediaSource.videoPosterVideoCacheKey(item.mediaType),
+                    diskCacheKey = mediaSource.videoPosterVideoDiskCacheKey(item.mediaType),
                 )
             }
         }
@@ -2062,6 +2064,7 @@ private fun PrefetchPhotoFeedThumbnails(
                         PrefetchTarget(
                             url = url,
                             cacheKey = mediaSource.thumbnailModelCacheKey(item.mediaType),
+                            diskCacheKey = mediaSource.thumbnailModelDiskCacheKey(item.mediaType),
                             mediaType = item.mediaType,
                             mimeType = mediaSource?.mimeType,
                         )
@@ -2074,6 +2077,7 @@ private fun PrefetchPhotoFeedThumbnails(
                             !posterImageUrl.isNullOrBlank() -> PrefetchTarget(
                                 url = posterImageUrl,
                                 cacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType),
+                                diskCacheKey = mediaSource.videoPosterImageDiskCacheKey(item.mediaType),
                                 mediaType = item.mediaType,
                                 mimeType = mediaSource?.mimeType,
                                 extractVideoPoster = false,
@@ -2082,6 +2086,7 @@ private fun PrefetchPhotoFeedThumbnails(
                             !posterVideoUrl.isNullOrBlank() -> PrefetchTarget(
                                 url = posterVideoUrl,
                                 cacheKey = mediaSource.videoPosterVideoCacheKey(item.mediaType),
+                                diskCacheKey = mediaSource.videoPosterVideoDiskCacheKey(item.mediaType),
                                 mediaType = item.mediaType,
                                 mimeType = mediaSource?.mimeType,
                                 extractVideoPoster = true,
@@ -2104,6 +2109,7 @@ private fun PrefetchPhotoFeedThumbnails(
                     url = target.url,
                     accessToken = accessToken,
                     cacheKey = target.cacheKey,
+                    diskCacheKey = target.diskCacheKey,
                 )
                 return@forEach
             }
@@ -2117,7 +2123,7 @@ private fun PrefetchPhotoFeedThumbnails(
                     requestSize = requestSize,
                 ),
                 placeholderMemoryCacheKey = target.cacheKey ?: sharedPreviewMemoryCacheKey(target.url),
-                diskCacheKey = target.cacheKey,
+                diskCacheKey = target.diskCacheKey,
                 size = requestSize,
             )?.let(imageLoader::enqueue)
         }
@@ -2127,6 +2133,7 @@ private fun PrefetchPhotoFeedThumbnails(
 private data class PrefetchTarget(
     val url: String,
     val cacheKey: String?,
+    val diskCacheKey: String? = cacheKey,
     val mediaType: AppMediaType,
     val mimeType: String?,
     val extractVideoPoster: Boolean = false,

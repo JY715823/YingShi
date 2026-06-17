@@ -186,11 +186,16 @@ object FakeAlbumRepository {
         summary: String,
         postDisplayTimeMillis: Long,
         albumIds: List<String>,
+        participantUserIds: List<String> = emptyList(),
     ): AlbumPostCardUiModel {
         val normalizedAlbumIds = albumIds.distinct().ifEmpty { listOf(albums.first().id) }
         val primaryAlbum = albums.firstOrNull { it.id == normalizedAlbumIds.first() } ?: albums.first()
         val postId = "post-local-${postDisplayTimeMillis}-${posts.size + 1}"
         val creatorUserId = fakeCurrentCollaboratorUserId()
+        val normalizedParticipants = normalizeParticipantSelection(
+            participantUserIds = participantUserIds,
+            fallbackUserId = creatorUserId,
+        )
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -198,7 +203,7 @@ object FakeAlbumRepository {
             title = title.ifBlank { "新的小相册" },
             summary = summary.ifBlank { "从本地创建的小相册" },
             creatorUserId = creatorUserId,
-            participantUserIds = listOfNotNull(creatorUserId),
+            participantUserIds = normalizedParticipants,
             postDisplayTimeMillis = postDisplayTimeMillis,
             mediaCount = 1,
             coverPalette = primaryAlbum.accent,
@@ -280,7 +285,6 @@ object FakeAlbumRepository {
             coverAspectRatio = coverMedia.aspectRatio,
             coverMediaSource = coverMedia.mediaSource,
         )
-        mergePostParticipant(postId, fakeCurrentCollaboratorUserId())
         return appendedMedia.size
     }
 
@@ -302,6 +306,10 @@ object FakeAlbumRepository {
         val postTime = draft.displayTimeMillis
         val postId = "post-system-import-$postTime-${posts.size + 1}"
         val creatorUserId = fakeCurrentCollaboratorUserId()
+        val normalizedParticipants = normalizeParticipantSelection(
+            participantUserIds = draft.participantUserIds,
+            fallbackUserId = creatorUserId,
+        )
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -314,7 +322,7 @@ object FakeAlbumRepository {
             },
             summary = draft.summary.ifBlank { "从系统媒体工具区加入的本地小相册" },
             creatorUserId = creatorUserId,
-            participantUserIds = listOfNotNull(creatorUserId),
+            participantUserIds = normalizedParticipants,
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -350,6 +358,10 @@ object FakeAlbumRepository {
         val postTime = draft.displayTimeMillis
         val postId = "post-feed-selection-$postTime-${posts.size + 1}"
         val creatorUserId = fakeCurrentCollaboratorUserId()
+        val normalizedParticipants = normalizeParticipantSelection(
+            participantUserIds = draft.participantUserIds,
+            fallbackUserId = creatorUserId,
+        )
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -362,7 +374,7 @@ object FakeAlbumRepository {
             },
             summary = draft.summary.ifBlank { "从照片流选择媒体创建的本地小相册" },
             creatorUserId = creatorUserId,
-            participantUserIds = listOfNotNull(creatorUserId),
+            participantUserIds = normalizedParticipants,
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -410,6 +422,10 @@ object FakeAlbumRepository {
         val postTime = draft.displayTimeMillis
         val postId = "post-mixed-create-$postTime-${posts.size + 1}"
         val creatorUserId = fakeCurrentCollaboratorUserId()
+        val normalizedParticipants = normalizeParticipantSelection(
+            participantUserIds = draft.participantUserIds,
+            fallbackUserId = creatorUserId,
+        )
         val post = AlbumPostCardUiModel(
             id = postId,
             albumId = primaryAlbum.id,
@@ -422,7 +438,7 @@ object FakeAlbumRepository {
             },
             summary = draft.summary.ifBlank { "从系统媒体和照片流共同选择媒体创建的本地小相册" },
             creatorUserId = creatorUserId,
-            participantUserIds = listOfNotNull(creatorUserId),
+            participantUserIds = normalizedParticipants,
             postDisplayTimeMillis = postTime,
             mediaCount = finalMedia.size,
             coverPalette = coverMedia.palette,
@@ -466,7 +482,6 @@ object FakeAlbumRepository {
             coverAspectRatio = coverMedia.aspectRatio,
             coverMediaSource = coverMedia.mediaSource,
         )
-        mergePostParticipant(postId, fakeCurrentCollaboratorUserId())
         FakePhotoFeedRepository.importSystemMediaToFeed(
             mediaItems = mediaItems.map { it.toSyntheticSystemMediaItem() },
             postId = postId,
@@ -482,6 +497,7 @@ object FakeAlbumRepository {
             summary = post.summary,
             postDisplayTimeMillis = post.postDisplayTimeMillis,
             albumIds = post.albumIds,
+            participantUserIds = post.participantUserIds,
         )
     }
 
@@ -557,7 +573,7 @@ object FakeAlbumRepository {
             postId = route.postId,
             title = title,
             summary = summary,
-            contributorLabel = if (route.postId.length % 2 == 0) "我整理" else "你补充",
+            contributorLabel = "",
             creatorUserId = post?.creatorUserId,
             participantUserIds = post?.participantUserIds.orEmpty(),
             postDisplayTimeMillis = postDisplayTimeMillis,
@@ -590,6 +606,7 @@ object FakeAlbumRepository {
         summary: String,
         postDisplayTimeMillis: Long,
         albumIds: List<String>,
+        participantUserIds: List<String>,
     ) {
         val index = posts.indexOfFirst { it.id == postId }
         if (index < 0) return
@@ -602,6 +619,10 @@ object FakeAlbumRepository {
             albumIds = nextAlbumIds,
             title = title,
             summary = summary,
+            participantUserIds = normalizeParticipantSelection(
+                participantUserIds = participantUserIds,
+                fallbackUserId = current.creatorUserId,
+            ),
             postDisplayTimeMillis = postDisplayTimeMillis,
         )
         posts.sortByDescending { it.postDisplayTimeMillis }
@@ -1314,18 +1335,18 @@ object FakeAlbumRepository {
         return participants.toList()
     }
 
-    private fun mergePostParticipant(
-        postId: String,
-        userId: String?,
-    ) {
-        val normalizedUserId = userId?.takeIf { it.isNotBlank() } ?: return
-        val index = posts.indexOfFirst { it.id == postId }
-        if (index < 0) return
-        val post = posts[index]
-        if (normalizedUserId in post.participantUserIds) return
-        posts[index] = post.copy(
-            participantUserIds = (post.participantUserIds + normalizedUserId).distinct(),
-        )
+    private fun normalizeParticipantSelection(
+        participantUserIds: List<String>,
+        fallbackUserId: String?,
+    ): List<String> {
+        val normalized = participantUserIds
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+        if (normalized.isNotEmpty()) {
+            return normalized
+        }
+        return listOfNotNull(fallbackUserId?.takeIf { it.isNotBlank() })
     }
 
     private fun seedPosts(): List<AlbumPostCardUiModel> {

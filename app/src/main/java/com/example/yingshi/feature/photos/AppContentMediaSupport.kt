@@ -186,6 +186,22 @@ internal fun AppContentMediaSource?.thumbnailModelCacheKey(
     }
 }
 
+internal fun AppContentMediaSource?.thumbnailModelDiskCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (this == null) return null
+    return when (mediaType) {
+        AppMediaType.IMAGE -> firstNotBlank(
+            thumbnailCacheKey,
+            mediaCacheKey,
+            originalCacheKey,
+            coverCacheKey,
+        )
+        AppMediaType.VIDEO -> videoPosterImageDiskCacheKey(mediaType)
+            ?: videoPosterVideoDiskCacheKey(mediaType)
+    }
+}
+
 internal fun AppContentMediaSource?.videoPosterImageUrl(
     mediaType: AppMediaType,
 ): String? {
@@ -212,6 +228,20 @@ internal fun AppContentMediaSource?.videoPosterImageCacheKey(
     }
 }
 
+internal fun AppContentMediaSource?.videoPosterImageDiskCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    val posterImageUrl = videoPosterImageUrl(mediaType) ?: return null
+    return when (posterImageUrl) {
+        thumbnailUrl -> thumbnailCacheKey
+        coverUrl -> coverCacheKey
+        mediaUrl -> mediaCacheKey
+        originalUrl -> originalCacheKey
+        else -> null
+    }
+}
+
 internal fun AppContentMediaSource?.videoPosterVideoUrl(
     mediaType: AppMediaType,
 ): String? {
@@ -234,6 +264,20 @@ internal fun AppContentMediaSource?.videoPosterVideoCacheKey(
         mediaUrl -> mediaCacheKey.withRefreshKey(refreshKey)
         originalUrl -> originalCacheKey.withRefreshKey(refreshKey)
         thumbnailUrl -> thumbnailCacheKey.withRefreshKey(refreshKey)
+        else -> null
+    }
+}
+
+internal fun AppContentMediaSource?.videoPosterVideoDiskCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    val posterVideoUrl = videoPosterVideoUrl(mediaType) ?: return null
+    return when (posterVideoUrl) {
+        videoUrl -> videoCacheKey
+        mediaUrl -> mediaCacheKey
+        originalUrl -> originalCacheKey
+        thumbnailUrl -> thumbnailCacheKey
         else -> null
     }
 }
@@ -280,6 +324,16 @@ internal fun AppContentMediaSource?.viewerOriginalImageCacheKey(
     ).withRefreshKey(refreshKey)
 }
 
+internal fun AppContentMediaSource?.viewerOriginalImageDiskCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.IMAGE || this == null) return null
+    return firstNotBlank(
+        originalCacheKey,
+        mediaCacheKey,
+    )
+}
+
 internal fun AppContentMediaSource?.hasMeaningfulViewerOriginal(
     mediaType: AppMediaType,
 ): Boolean {
@@ -306,6 +360,17 @@ internal fun AppContentMediaSource?.viewerVideoCacheKey(
         mediaCacheKey,
         originalCacheKey,
     ).withRefreshKey(refreshKey)
+}
+
+internal fun AppContentMediaSource?.viewerVideoDiskCacheKey(
+    mediaType: AppMediaType,
+): String? {
+    if (mediaType != AppMediaType.VIDEO || this == null) return null
+    return firstNotBlank(
+        videoCacheKey,
+        mediaCacheKey,
+        originalCacheKey,
+    )
 }
 
 internal fun SystemMediaItem.toAppContentMediaSource(): AppContentMediaSource {

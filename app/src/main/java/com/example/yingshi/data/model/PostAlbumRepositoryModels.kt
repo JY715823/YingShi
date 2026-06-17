@@ -78,6 +78,7 @@ data class RemotePostDetail(
 data class CreatePostPayload(
     val title: String,
     val summary: String,
+    val participantUserIds: List<String> = emptyList(),
     val displayTimeMillis: Long,
     val eventStartedAtMillis: Long? = displayTimeMillis,
     val eventEndedAtMillis: Long? = null,
@@ -93,6 +94,7 @@ data class CreatePostPayload(
 data class UpdatePostBasicInfoPayload(
     val title: String,
     val summary: String,
+    val participantUserIds: List<String> = emptyList(),
     val displayTimeMillis: Long,
     val eventStartedAtMillis: Long? = displayTimeMillis,
     val eventEndedAtMillis: Long? = null,

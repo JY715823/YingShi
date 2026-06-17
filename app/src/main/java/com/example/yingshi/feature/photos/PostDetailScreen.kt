@@ -15,13 +15,17 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -57,6 +61,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,13 +71,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
@@ -87,6 +97,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -480,6 +491,10 @@ private fun RealSmallAlbumDetailContent(
         mutableStateOf(false)
     }
     var shareAllInFlight by remember { mutableStateOf(false) }
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
+    val ownershipAvatars = remember(detail.participantUserIds, collaboratorDirectory) {
+        collaboratorDirectory.resolveOrdered(detail.participantUserIds)
+    }
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
         AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
@@ -568,6 +583,8 @@ private fun RealSmallAlbumDetailContent(
         modifier = modifier,
         topBar = {
             SmallAlbumDetailTopBar(
+                title = detail.title.ifBlank { "小相册" },
+                ownershipAvatars = ownershipAvatars,
                 onBack = onBack,
                 onShareAll = {
                     val shareItems = detail.mediaItems.map(PostDetailMediaUiModel::toShareableMediaItem)
@@ -770,15 +787,22 @@ private fun RealCommentThreadContent(
     onCreateComment: (String) -> Unit,
     onUpdateComment: (String, String) -> Unit,
     onDeleteComment: (String) -> Unit,
+    showInput: Boolean = true,
+    inputPlaceholder: String = "写一条评论",
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
     val copyComment = rememberCommentCopyHandler()
     var expanded by rememberSaveable(stateKeyPrefix) { mutableStateOf(false) }
     var actionCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
     var editingCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
-    var editingDraft by rememberSaveable(stateKeyPrefix) { mutableStateOf("") }
+    var editingDraft by rememberSaveable(stateKeyPrefix, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     var selectedCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
+    var pendingDeleteCommentId by rememberSaveable(stateKeyPrefix) { mutableStateOf<String?>(null) }
     var selectedCommentValue by rememberSaveable(stateKeyPrefix, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
@@ -845,7 +869,8 @@ private fun RealCommentThreadContent(
                         selectedCommentId = null
                         selectedCommentValue = TextFieldValue("")
                         editingCommentId = null
-                        editingDraft = ""
+                        editingDraft = TextFieldValue("")
+                        pendingDeleteCommentId = null
                         actionCommentId = comment.id
                     },
                     onClick = {
@@ -853,6 +878,7 @@ private fun RealCommentThreadContent(
                             selectedCommentId = null
                             selectedCommentValue = TextFieldValue("")
                         }
+                        pendingDeleteCommentId = null
                         actionCommentId = null
                     },
                     showInlineActionMenu = actionCommentId == comment.id &&
@@ -866,40 +892,50 @@ private fun RealCommentThreadContent(
                         selectedCommentId = comment.id
                         selectedCommentValue = fullCommentSelectionValue(comment.content)
                         editingCommentId = null
-                        editingDraft = ""
+                        editingDraft = TextFieldValue("")
+                        pendingDeleteCommentId = null
                         actionCommentId = null
                     },
                     onEdit = {
                         editingCommentId = comment.id
-                        editingDraft = comment.content
+                        editingDraft = endOfCommentEditValue(comment.content)
                         selectedCommentId = null
                         selectedCommentValue = TextFieldValue("")
+                        pendingDeleteCommentId = null
                         actionCommentId = null
                     },
                     onDelete = {
-                        onDeleteComment(comment.id)
-                        if (selectedCommentId == comment.id) {
-                            selectedCommentId = null
-                            selectedCommentValue = TextFieldValue("")
+                        if (pendingDeleteCommentId == comment.id) {
+                            onDeleteComment(comment.id)
+                            if (selectedCommentId == comment.id) {
+                                selectedCommentId = null
+                                selectedCommentValue = TextFieldValue("")
+                            }
+                            if (editingCommentId == comment.id) {
+                                editingCommentId = null
+                                editingDraft = TextFieldValue("")
+                            }
+                            pendingDeleteCommentId = null
+                            actionCommentId = null
+                        } else {
+                            pendingDeleteCommentId = comment.id
+                            actionCommentId = comment.id
                         }
-                        if (editingCommentId == comment.id) {
-                            editingCommentId = null
-                            editingDraft = ""
-                        }
-                        actionCommentId = null
                     },
+                    confirmingDelete = pendingDeleteCommentId == comment.id,
                     isEditing = editingCommentId == comment.id,
-                    editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
+                    editingValue = if (editingCommentId == comment.id) editingDraft else endOfCommentEditValue(comment.content),
                     onEditingValueChange = { editingDraft = it },
                     onSaveEdit = {
-                        onUpdateComment(comment.id, editingDraft)
+                        onUpdateComment(comment.id, editingDraft.text)
                         editingCommentId = null
-                        editingDraft = ""
+                        editingDraft = TextFieldValue("")
+                        pendingDeleteCommentId = null
                         actionCommentId = null
                     },
                     onCancelEdit = {
                         editingCommentId = null
-                        editingDraft = ""
+                        editingDraft = TextFieldValue("")
                     },
                     selectionMode = selectedCommentId == comment.id,
                     selectionFieldValue = if (selectedCommentId == comment.id) {
@@ -935,11 +971,14 @@ private fun RealCommentThreadContent(
             color = colors.textSecondary,
         )
     }
-    CommentInputBar(
-        stateKey = "$stateKeyPrefix-input",
-        placeholder = "写一条评论",
-        onSend = onCreateComment,
-    )
+    if (showInput) {
+        CommentInputBar(
+            stateKey = "$stateKeyPrefix-input",
+            placeholder = inputPlaceholder,
+            elevated = true,
+            onSend = onCreateComment,
+        )
+    }
 }
 
 @Composable
@@ -977,6 +1016,7 @@ private fun PostDetailInfoState(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         SmallAlbumDetailTopBar(
+            title = title,
             onBack = onBack,
             onShareAll = {},
             onEdit = {},
@@ -1087,6 +1127,7 @@ private fun PostDetailMissingState(
         verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
     ) {
         SmallAlbumDetailTopBar(
+            title = "小相册",
             onBack = onBack,
             onShareAll = {},
             onEdit = {},
@@ -1120,8 +1161,12 @@ private fun SmallAlbumDetailContent(
         mutableStateOf(false)
     }
     var shareAllInFlight by remember { mutableStateOf(false) }
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
     LaunchedEffect(detail) {
         displayDetail = detail
+    }
+    val ownershipAvatars = remember(displayDetail.participantUserIds, collaboratorDirectory) {
+        collaboratorDirectory.resolveOrdered(displayDetail.participantUserIds)
     }
     val postMediaIds = remember(displayDetail.mediaItems) {
         displayDetail.mediaItems.map { it.id }
@@ -1195,6 +1240,8 @@ private fun SmallAlbumDetailContent(
         modifier = modifier,
         topBar = {
             SmallAlbumDetailTopBar(
+                title = displayDetail.title.ifBlank { "小相册" },
+                ownershipAvatars = ownershipAvatars,
                 onBack = onBack,
                 onShareAll = {
                     val shareItems = displayDetail.mediaItems.map(PostDetailMediaUiModel::toShareableMediaItem)
@@ -1283,44 +1330,213 @@ fun SmallAlbumDetailBodyLayout(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-    Column(
+    Box(
         modifier = modifier
+            .background(colors.appBackground)
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
+                        colors.glowWash.copy(alpha = 0.58f),
+                        colors.sectionBackground.copy(alpha = 0.82f),
                         colors.appBackground,
-                        colors.sectionBackground.copy(alpha = 0.54f),
-                        colors.appBackground,
+                        colors.memoryWash.copy(alpha = 0.44f),
                     ),
                 ),
             )
-            .statusBarsPadding()
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.xxs, bottom = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        colors.glowWash.copy(alpha = 0.42f),
+                        colors.sectionBackground.copy(alpha = 0.18f),
+                        Color.Transparent,
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(0f, 80f),
+                    radius = 820f,
+                ),
+            )
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        colors.memoryContainer.copy(alpha = 0.36f),
+                        colors.memoryWash.copy(alpha = 0.16f),
+                        Color.Transparent,
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(980f, 280f),
+                    radius = 700f,
+                ),
+            )
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        colors.softGreenContainer.copy(alpha = 0.24f),
+                        colors.glowWash.copy(alpha = 0.10f),
+                        Color.Transparent,
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(320f, 900f),
+                    radius = 780f,
+                ),
+            ),
     ) {
-        YingShiToolSurface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-            contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
+        SmallAlbumAtmosphereBackdrop(modifier = Modifier.matchParentSize())
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 8.dp)
+                .padding(top = spacing.xxs, bottom = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
-            Column(
+            SmallAlbumInfoSurface(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+                contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
             ) {
-                topBar()
-                infoSection()
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                ) {
+                    topBar()
+                    infoSection()
+                }
+            }
+            notice()
+            commentSummary()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                SmallAlbumMediaAtmospherePanel(modifier = Modifier.matchParentSize())
+                mediaSection()
             }
         }
-        notice()
-        commentSummary()
+    }
+}
+
+@Composable
+private fun SmallAlbumAtmosphereBackdrop(
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
+    val atmosphereAlpha = motion.feedAtmosphereAlpha * 1.16f
+    Box(modifier = modifier) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            mediaSection()
-        }
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            colors.glowWash.copy(alpha = 0.30f * atmosphereAlpha),
+                            colors.sectionBackground.copy(alpha = 0.16f * atmosphereAlpha),
+                            Color.Transparent,
+                        ),
+                        center = androidx.compose.ui.geometry.Offset(0f, 0f),
+                        radius = 820f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            colors.memoryContainer.copy(alpha = 0.20f * atmosphereAlpha),
+                            Color.Transparent,
+                        ),
+                        center = androidx.compose.ui.geometry.Offset(980f, 180f),
+                        radius = 640f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            colors.glowWash.copy(alpha = 0.12f * atmosphereAlpha),
+                            Color.Transparent,
+                            colors.sectionBackground.copy(alpha = 0.10f * atmosphereAlpha),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
+@Composable
+private fun SmallAlbumMediaAtmospherePanel(
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
+    val atmosphereAlpha = motion.feedAtmosphereAlpha
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(26.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        colors.glowWash.copy(alpha = 0.16f * atmosphereAlpha),
+                        Color.Transparent,
+                        colors.sectionBackground.copy(alpha = 0.12f * atmosphereAlpha),
+                    ),
+                ),
+            )
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        colors.glowWash.copy(alpha = 0.26f * atmosphereAlpha),
+                        Color.Transparent,
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    radius = 720f,
+                ),
+            )
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        colors.memoryContainer.copy(alpha = 0.18f * atmosphereAlpha),
+                        Color.Transparent,
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(980f, 180f),
+                    radius = 620f,
+                ),
+            ),
+    )
+}
+
+@Composable
+private fun SmallAlbumInfoSurface(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape,
+    contentPadding: PaddingValues,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier,
+        shape = shape,
+        color = colors.raisedSurface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.78f)),
+        shadowElevation = 1.dp,
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            colors.glowWash.copy(alpha = 0.28f),
+                            colors.memoryWash.copy(alpha = 0.16f),
+                            Color.Transparent,
+                        ),
+                    ),
+                )
+                .padding(contentPadding),
+            content = content,
+        )
     }
 }
 
@@ -1356,6 +1572,8 @@ fun PostDetailBodyLayout(
 
 @Composable
 private fun SmallAlbumDetailTopBar(
+    title: String,
+    ownershipAvatars: List<CollaboratorIdentityUiModel> = emptyList(),
     onBack: () -> Unit,
     onShareAll: () -> Unit,
     onEdit: () -> Unit,
@@ -1374,13 +1592,26 @@ private fun SmallAlbumDetailTopBar(
             buttonSize = 44.dp,
             iconSize = 22.dp,
         )
-        Text(
-            text = "小相册详情",
+        Row(
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
-            maxLines = 1,
-        )
+            horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (ownershipAvatars.isNotEmpty()) {
+                CollaboratorAvatarStack(
+                    identities = ownershipAvatars,
+                    avatarSize = 24.dp,
+                )
+            }
+        }
         PostIconButton(icon = Icons.Default.IosShare, contentDescription = "分享整个小相册", onClick = onShareAll)
         PostIconButton(icon = Icons.Rounded.Edit, contentDescription = "整理", onClick = onEdit)
     }
@@ -1565,34 +1796,23 @@ fun SmallAlbumInfoSection(
     val colors = YingShiThemeTokens.colors
     var summaryExpanded by rememberSaveable(detail.postId, detail.summary) { mutableStateOf(false) }
     val summary = detail.summary.meaningfulPostSummaryOrNull()
-    val albumTitle = detail.albumChips.firstOrNull().orEmpty()
     val albumPalette = remember(detail.albumIds) {
         resolveLargeAlbumPalette(detail.albumIds.firstOrNull().orEmpty())
-    }
-    val metaLabel = buildString {
-        append(formatPostTime(detail.postDisplayTimeMillis))
-        append(" · ")
-        append(detail.mediaItems.size)
-        append(" 张")
     }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
-        Text(
-            text = detail.title,
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 24.sp,
-                lineHeight = 28.sp,
-            ),
-            color = colors.titleAccent,
+        SmallAlbumPrimaryMetaRow(
+            timeLabel = formatPostTime(detail.postDisplayTimeMillis),
+            mediaCountLabel = "${detail.mediaItems.size} 张",
         )
         if (summary != null) {
             SmallAlbumSummaryText(
                 summary = summary,
                 expanded = summaryExpanded,
                 onToggleExpanded = { summaryExpanded = !summaryExpanded },
+                modifier = Modifier.padding(horizontal = spacing.xs, vertical = 2.dp),
             )
         }
         Row(
@@ -1600,15 +1820,11 @@ fun SmallAlbumInfoSection(
             horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (albumTitle.isNotBlank()) {
-                Box(modifier = Modifier.weight(1f)) {
-                    SmallAlbumBelongChip(
-                        text = albumTitle,
-                        palette = albumPalette,
-                    )
-                }
-            } else {
-                Box(modifier = Modifier.weight(1f))
+            Box(modifier = Modifier.weight(1f)) {
+                SmallAlbumBelongChip(
+                    text = detail.albumChips.firstOrNull().orEmpty(),
+                    palette = albumPalette,
+                )
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -1628,12 +1844,22 @@ fun SmallAlbumInfoSection(
                 )
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-        ) {
-            YingShiStatusPill(text = metaLabel)
-        }
+    }
+}
+
+@Composable
+private fun SmallAlbumPrimaryMetaRow(
+    timeLabel: String,
+    mediaCountLabel: String,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        YingShiStatusPill(text = timeLabel)
+        YingShiStatusPill(text = mediaCountLabel)
     }
 }
 
@@ -1743,6 +1969,7 @@ private fun SmallAlbumBelongChip(
     text: String,
     palette: PhotoThumbnailPalette?,
 ) {
+    if (text.isBlank()) return
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
@@ -1881,8 +2108,11 @@ private fun FakeSmallAlbumCommentSheet(
     var expanded by rememberSaveable(postId) { mutableStateOf(false) }
     var actionCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
     var editingCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
-    var editingDraft by rememberSaveable(postId) { mutableStateOf("") }
+    var editingDraft by rememberSaveable(postId, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     var selectedCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
+    var pendingDeleteCommentId by rememberSaveable(postId) { mutableStateOf<String?>(null) }
     var selectedCommentValue by rememberSaveable(postId, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
@@ -1897,37 +2127,74 @@ private fun FakeSmallAlbumCommentSheet(
     }
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.64f)
+            .navigationBarsPadding(),
         shape = RoundedCornerShape(radius.xl),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        color = colors.raisedSurface.copy(alpha = 0.98f),
+        border = BorderStroke(1.dp, colors.goldAccent.copy(alpha = 0.22f)),
         shadowElevation = 8.dp,
     ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            colors.memoryWash.copy(alpha = 0.72f),
+                            colors.raisedSurface.copy(alpha = 0.98f),
+                            colors.glowWash.copy(alpha = 0.36f),
+                        ),
+                    ),
+                ),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
-                Text(
-                    text = "小相册评论",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                PostActionChip(text = "关闭", onClick = onClose)
-            }
-            if (visibleComments.isEmpty()) {
-                Text(
-                    text = "暂无评论",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
-            } else {
-                visibleComments.forEach { comment ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 6.dp, height = 24.dp)
+                            .clip(RoundedCornerShape(radius.capsule))
+                            .background(colors.goldAccent.copy(alpha = 0.78f)),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "小相册评论",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                        Text(
+                            text = if (comments.isEmpty()) "给这段记忆留一句" else "${comments.size} 条留言",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textSecondary,
+                        )
+                    }
+                    PostActionChip(text = "关闭", onClick = onClose)
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    if (visibleComments.isEmpty()) {
+                        Text(
+                            text = "还没有留言，给这段记忆留一句。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                        )
+                    } else {
+                        visibleComments.forEach { comment ->
                     CommentListItem(
                         comment = comment,
                         timeLabel = formatPostTime(comment.createdAtMillis),
@@ -1935,7 +2202,8 @@ private fun FakeSmallAlbumCommentSheet(
                             selectedCommentId = null
                             selectedCommentValue = TextFieldValue("")
                             editingCommentId = null
-                            editingDraft = ""
+                            editingDraft = TextFieldValue("")
+                            pendingDeleteCommentId = null
                             actionCommentId = comment.id
                         },
                         onClick = {
@@ -1943,6 +2211,7 @@ private fun FakeSmallAlbumCommentSheet(
                                 selectedCommentId = null
                                 selectedCommentValue = TextFieldValue("")
                             }
+                            pendingDeleteCommentId = null
                             actionCommentId = null
                         },
                         showInlineActionMenu = actionCommentId == comment.id &&
@@ -1956,46 +2225,56 @@ private fun FakeSmallAlbumCommentSheet(
                             selectedCommentId = comment.id
                             selectedCommentValue = fullCommentSelectionValue(comment.content)
                             editingCommentId = null
-                            editingDraft = ""
+                            editingDraft = TextFieldValue("")
+                            pendingDeleteCommentId = null
                             actionCommentId = null
                         },
                         onEdit = {
                             editingCommentId = comment.id
-                            editingDraft = comment.content
+                            editingDraft = endOfCommentEditValue(comment.content)
                             selectedCommentId = null
                             selectedCommentValue = TextFieldValue("")
+                            pendingDeleteCommentId = null
                             actionCommentId = null
                         },
                         onDelete = {
-                            CommentGateway.deletePostComment(postId, comment.id)
-                            if (selectedCommentId == comment.id) {
-                                selectedCommentId = null
-                                selectedCommentValue = TextFieldValue("")
+                            if (pendingDeleteCommentId == comment.id) {
+                                CommentGateway.deletePostComment(postId, comment.id)
+                                if (selectedCommentId == comment.id) {
+                                    selectedCommentId = null
+                                    selectedCommentValue = TextFieldValue("")
+                                }
+                                if (editingCommentId == comment.id) {
+                                    editingCommentId = null
+                                    editingDraft = TextFieldValue("")
+                                }
+                                pendingDeleteCommentId = null
+                                actionCommentId = null
+                                onShowNotice("评论已删除")
+                            } else {
+                                pendingDeleteCommentId = comment.id
+                                actionCommentId = comment.id
                             }
-                            if (editingCommentId == comment.id) {
-                                editingCommentId = null
-                                editingDraft = ""
-                            }
-                            actionCommentId = null
-                            onShowNotice("评论已删除")
                         },
+                        confirmingDelete = pendingDeleteCommentId == comment.id,
                         isEditing = editingCommentId == comment.id,
-                        editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
+                        editingValue = if (editingCommentId == comment.id) editingDraft else endOfCommentEditValue(comment.content),
                         onEditingValueChange = { editingDraft = it },
                         onSaveEdit = {
                             CommentGateway.updatePostComment(
                                 postId = postId,
                                 commentId = comment.id,
-                                content = editingDraft,
+                                content = editingDraft.text,
                             )
                             editingCommentId = null
-                            editingDraft = ""
+                            editingDraft = TextFieldValue("")
+                            pendingDeleteCommentId = null
                             actionCommentId = null
                             onShowNotice("评论已更新")
                         },
                         onCancelEdit = {
                             editingCommentId = null
-                            editingDraft = ""
+                            editingDraft = TextFieldValue("")
                         },
                         selectionMode = selectedCommentId == comment.id,
                         selectionFieldValue = if (selectedCommentId == comment.id) {
@@ -2013,23 +2292,27 @@ private fun FakeSmallAlbumCommentSheet(
                         } else {
                             null
                         },
-                    )
+                        )
+                    }
+                }
+                if (comments.hasHiddenComments(expanded)) {
+                    PostActionChip(text = "展开更多评论", onClick = { expanded = true })
+                }
+                if (comments.canCollapseComments(expanded)) {
+                    PostActionChip(text = "收起到最新 10 条", onClick = { expanded = false })
                 }
             }
-            if (comments.hasHiddenComments(expanded)) {
-                PostActionChip(text = "展开更多评论", onClick = { expanded = true })
+                CommentInputBar(
+                    stateKey = "post-comment-input-$postId",
+                    placeholder = "写一条小相册评论",
+                    modifier = Modifier.imePadding(),
+                    elevated = true,
+                    onSend = { content ->
+                        CommentGateway.addPostComment(postId, content)
+                        expanded = false
+                    },
+                )
             }
-            if (comments.canCollapseComments(expanded)) {
-                PostActionChip(text = "收起到最新 10 条", onClick = { expanded = false })
-            }
-            CommentInputBar(
-                stateKey = "post-comment-input-$postId",
-                placeholder = "写一条小相册评论",
-                onSend = { content ->
-                    CommentGateway.addPostComment(postId, content)
-                    expanded = false
-                },
-            )
         }
     }
 }
@@ -2050,39 +2333,86 @@ private fun RealSmallAlbumCommentSheet(
     val colors = YingShiThemeTokens.colors
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.64f)
+            .navigationBarsPadding(),
         shape = RoundedCornerShape(radius.xl),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        color = colors.raisedSurface.copy(alpha = 0.98f),
+        border = BorderStroke(1.dp, colors.goldAccent.copy(alpha = 0.22f)),
         shadowElevation = 8.dp,
     ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            colors.memoryWash.copy(alpha = 0.72f),
+                            colors.raisedSurface.copy(alpha = 0.98f),
+                            colors.glowWash.copy(alpha = 0.36f),
+                        ),
+                    ),
+                ),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
-                Text(
-                    text = "小相册评论",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                )
-                PostActionChip(text = "关闭", onClick = onClose)
-            }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 6.dp, height = 24.dp)
+                            .clip(RoundedCornerShape(radius.capsule))
+                            .background(colors.goldAccent.copy(alpha = 0.78f)),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "小相册评论",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.titleAccent,
+                        )
+                        Text(
+                            text = if (state.comments.isEmpty()) "给这段记忆留一句" else "${state.comments.size} 条留言",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textSecondary,
+                        )
+                    }
+                    PostActionChip(text = "关闭", onClick = onClose)
+                }
 
-            RealCommentThreadContent(
-                state = state,
-                stateKeyPrefix = "real-small-album-comment-$smallAlbumId",
-                emptyText = "暂无评论",
-                onRetry = onRetry,
-                onCreateComment = onCreateComment,
-                onUpdateComment = onUpdateComment,
-                onDeleteComment = onDeleteComment,
-            )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    RealCommentThreadContent(
+                        state = state,
+                        stateKeyPrefix = "real-small-album-comment-$smallAlbumId",
+                        emptyText = "还没有留言，给这段记忆留一句。",
+                        onRetry = onRetry,
+                        onCreateComment = onCreateComment,
+                        onUpdateComment = onUpdateComment,
+                        onDeleteComment = onDeleteComment,
+                        showInput = false,
+                    )
+                }
+                CommentInputBar(
+                    stateKey = "real-small-album-comment-$smallAlbumId-input",
+                    placeholder = "写一条小相册评论",
+                    modifier = Modifier.imePadding(),
+                    elevated = true,
+                    onSend = onCreateComment,
+                )
+            }
         }
     }
 }
@@ -2287,6 +2617,28 @@ private fun PostDetailMediaUiModel.displayAspectRatio(): Float {
     return aspectRatio.coerceIn(0.05f, 20f)
 }
 
+private const val SmallAlbumDensityMorphVisibleLimit = 28
+private const val SmallAlbumDensityTransitionThumbnailMax = 256
+
+private enum class SmallAlbumDensityTransitionStage {
+    IDLE,
+    PREVIEWING,
+    REBOUNDING,
+    COMMITTING,
+}
+
+private data class SmallAlbumDensityTransitionCandidate(
+    val item: PhotoFeedItem,
+    val startBounds: Rect,
+    val distanceScore: Float,
+)
+
+private data class SmallAlbumDensityTransitionOverlayEntry(
+    val item: PhotoFeedItem,
+    val startBounds: Rect,
+    val endBounds: Rect,
+)
+
 @Composable
 private fun SmallAlbumMediaGridSection(
     postId: String,
@@ -2303,6 +2655,8 @@ private fun SmallAlbumMediaGridSection(
     val scope = rememberCoroutineScope()
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
     var densityName by rememberSaveable(postId) { mutableStateOf(PhotoFeedDensity.COMFORT_3.name) }
     var selectionMode by rememberSaveable(postId) { mutableStateOf(false) }
     var selectedIds by rememberSaveable(postId) { mutableStateOf(emptySet<String>()) }
@@ -2323,6 +2677,74 @@ private fun SmallAlbumMediaGridSection(
     val listState = rememberLazyListState()
     val densityScope = LocalDensity.current
     val gridSpacing = smallAlbumRowSpacing(density)
+    val gridEdgePadding = gridSpacing
+    val spacingPx = with(densityScope) { gridSpacing.toPx() }
+    val edgePaddingPx = with(densityScope) { gridSpacing.toPx() }
+    var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
+    var pausedInlineVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var inlineVideoProgressById by remember { mutableStateOf<Map<String, InlineVideoPlaybackProgress>>(emptyMap()) }
+    val visibleInlineVideoIds by remember(listState, blocks) {
+        derivedStateOf {
+            visibleSmallAlbumVideoIds(
+                listState = listState,
+                blocks = blocks,
+            )
+        }
+    }
+    val centeredInlineVideoId by remember(listState, blocks, density, spacingPx, edgePaddingPx) {
+        derivedStateOf {
+            centeredSmallAlbumVideoId(
+                listState = listState,
+                blocks = blocks,
+                density = density,
+                colSpacingPx = spacingPx,
+                edgePaddingPx = edgePaddingPx,
+            )
+        }
+    }
+    val inlineVideoAutoPlayAllowed = !selectionMode && density.columns <= 4
+    LaunchedEffect(inlineVideoAutoPlayAllowed) {
+        if (!inlineVideoAutoPlayAllowed) {
+            manualInlineVideoId = null
+        }
+    }
+    LaunchedEffect(visibleInlineVideoIds) {
+        val manualId = manualInlineVideoId
+        if (manualId != null && manualId !in visibleInlineVideoIds) {
+            manualInlineVideoId = null
+        }
+    }
+    val activeInlineVideoId = if (inlineVideoAutoPlayAllowed) {
+        manualInlineVideoId?.takeIf { it in visibleInlineVideoIds } ?: centeredInlineVideoId
+    } else {
+        null
+    }
+    val playingInlineVideoId = activeInlineVideoId?.takeUnless { it in pausedInlineVideoIds }
+    val onToggleInlineVideo = remember(inlineVideoAutoPlayAllowed, activeInlineVideoId, pausedInlineVideoIds) {
+        toggle@{ item: PhotoFeedItem ->
+            if (!inlineVideoAutoPlayAllowed || item.mediaType != AppMediaType.VIDEO) {
+                return@toggle
+            }
+            if (activeInlineVideoId == item.mediaId) {
+                pausedInlineVideoIds = if (item.mediaId in pausedInlineVideoIds) {
+                    pausedInlineVideoIds - item.mediaId
+                } else {
+                    pausedInlineVideoIds + item.mediaId
+                }
+            } else {
+                manualInlineVideoId = item.mediaId
+                pausedInlineVideoIds = pausedInlineVideoIds - item.mediaId
+            }
+        }
+    }
+    var viewportBounds by remember { mutableStateOf<Rect?>(null) }
+    val itemBoundsByMediaId = remember { mutableStateMapOf<String, Rect>() }
+    var densityTransitionStage by remember { mutableStateOf(SmallAlbumDensityTransitionStage.IDLE) }
+    var densityPreviewState by remember { mutableStateOf<DiscreteZoomPreviewState<PhotoFeedDensity>?>(null) }
+    var densityTransitionOverlayEntries by remember {
+        mutableStateOf<List<SmallAlbumDensityTransitionOverlayEntry>>(emptyList())
+    }
+    val densityMorphProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     val rowKeyToMediaIds = remember(blocks) {
         buildMap {
             blocks.filterIsInstance<PhotoFeedGridRow>().forEach { row ->
@@ -2346,8 +2768,10 @@ private fun SmallAlbumMediaGridSection(
     val rowKeyToIndex = remember(rowKeys) {
         rowKeys.mapIndexed { index, rowKey -> rowKey to index }.toMap()
     }
-    val spacingPx = with(densityScope) { gridSpacing.toPx() }
-    val edgePaddingPx = with(densityScope) { gridSpacing.toPx() }
+    val transitionThumbnailRequestSize = minOf(
+        smallAlbumThumbnailRequestSize(density),
+        SmallAlbumDensityTransitionThumbnailMax,
+    )
     val hitTestAdapter = remember(
         listState,
         blocks,
@@ -2358,20 +2782,28 @@ private fun SmallAlbumMediaGridSection(
         spacingPx,
         edgePaddingPx,
     ) {
+        val colSpacingPx = spacingPx
+        val horizontalEdgePaddingPx = edgePaddingPx
         MultiSelectHitTestAdapter(
             hitTest = { touchPos ->
                 val layout = listState.layoutInfo
                 val ty = touchPos.y.toInt()
-                val tx = (touchPos.x - edgePaddingPx).toInt()
+                val tx = (touchPos.x - horizontalEdgePaddingPx).toInt()
                 val viewportW = layout.viewportSize.width.coerceAtLeast(1)
-                val contentW = (viewportW - edgePaddingPx * 2f).coerceAtLeast(1f)
-                val totalSpacing = (density.columns - 1) * spacingPx
+                val contentW = (viewportW - horizontalEdgePaddingPx * 2f).coerceAtLeast(1f)
+                val totalSpacing = (density.columns - 1) * colSpacingPx
                 val cellWidth = ((contentW - totalSpacing) / density.columns).coerceAtLeast(1f)
-                val segmentWidth = cellWidth + spacingPx
+                val segmentWidth = cellWidth + colSpacingPx
                 for (item in layout.visibleItemsInfo) {
                     val itemEndY = item.offset + item.size
                     if (ty !in item.offset until itemEndY) continue
-                    val block = blocks.getOrNull(item.index) as? PhotoFeedGridRow ?: return@MultiSelectHitTestAdapter null
+                    val block = blocks.getOrNull(item.index)
+                    if (block == null) {
+                        return@MultiSelectHitTestAdapter null
+                    }
+                    if (block !is PhotoFeedGridRow) {
+                        return@MultiSelectHitTestAdapter null
+                    }
                     val colIndex = (tx / segmentWidth).toInt().coerceIn(0, density.columns - 1)
                     val mediaItem = block.items.getOrNull(colIndex) ?: return@MultiSelectHitTestAdapter null
                     return@MultiSelectHitTestAdapter MultiSelectHitResult(
@@ -2433,6 +2865,148 @@ private fun SmallAlbumMediaGridSection(
         scrubberDragLabel.ifBlank { currentVisibleDateLabel }
     } else {
         currentVisibleDateLabel
+    }
+
+    fun resetDensityTransitionState() {
+        densityPreviewState = null
+        densityTransitionOverlayEntries = emptyList()
+        densityTransitionStage = SmallAlbumDensityTransitionStage.IDLE
+    }
+
+    fun startDensityPreviewFallback(previewState: DiscreteZoomPreviewState<PhotoFeedDensity>) {
+        densityPreviewState = previewState
+        densityTransitionOverlayEntries = emptyList()
+        densityTransitionStage = SmallAlbumDensityTransitionStage.PREVIEWING
+    }
+
+    fun syncDensityPreview(previewState: DiscreteZoomPreviewState<PhotoFeedDensity>) {
+        val viewport = viewportBounds ?: run {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        val candidates = visibleSmallAlbumDensityTransitionCandidates(
+            blocks = blocks,
+            listState = listState,
+            itemBoundsByMediaId = itemBoundsByMediaId,
+            viewportBounds = viewport,
+            density = density,
+            densityScope = densityScope,
+        ).take(SmallAlbumDensityMorphVisibleLimit)
+        if (candidates.isEmpty()) {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        val anchorMediaId = candidates.first().item.mediaId
+        val targetLocalBoundsByMediaId = buildSmallAlbumPredictedLocalBoundsByMediaId(
+            blocks = buildPhotoFeedBlocks(items = feedItems, density = previewState.targetLevel),
+            targetDensity = previewState.targetLevel,
+            viewportBounds = viewport,
+            densityScope = densityScope,
+        )
+        val targetBounds = buildSmallAlbumPredictedBoundsByMediaId(
+            candidates = candidates,
+            targetLocalBoundsByMediaId = targetLocalBoundsByMediaId,
+            anchorMediaId = anchorMediaId,
+        )
+        val overlayEntries = candidates.mapNotNull { candidate ->
+            val endBounds = targetBounds[candidate.item.mediaId] ?: return@mapNotNull null
+            SmallAlbumDensityTransitionOverlayEntry(
+                item = candidate.item,
+                startBounds = candidate.startBounds,
+                endBounds = endBounds,
+            )
+        }
+        if (overlayEntries.isEmpty()) {
+            startDensityPreviewFallback(previewState)
+            return
+        }
+        densityPreviewState = previewState
+        densityTransitionOverlayEntries = overlayEntries
+        densityTransitionStage = SmallAlbumDensityTransitionStage.PREVIEWING
+    }
+
+    fun reboundDensityPreview(finalPreviewState: DiscreteZoomPreviewState<PhotoFeedDensity>?) {
+        val previewState = finalPreviewState ?: densityPreviewState ?: run {
+            resetDensityTransitionState()
+            return
+        }
+        densityPreviewState = previewState
+        densityTransitionStage = SmallAlbumDensityTransitionStage.REBOUNDING
+        scope.launch {
+            densityMorphProgress.snapTo(previewState.renderProgress)
+            densityMorphProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = if (motionEnabled) motion.densityPreviewMillis else 0,
+                    easing = motion.easing,
+                ),
+            )
+            resetDensityTransitionState()
+        }
+    }
+
+    fun beginDensityTransition(
+        toDensity: PhotoFeedDensity,
+        finalPreviewState: DiscreteZoomPreviewState<PhotoFeedDensity>?,
+    ) {
+        val previewState = finalPreviewState ?: run {
+            densityName = toDensity.name
+            resetDensityTransitionState()
+            return
+        }
+        densityPreviewState = previewState
+        densityTransitionStage = SmallAlbumDensityTransitionStage.COMMITTING
+        scope.launch {
+            densityMorphProgress.snapTo(previewState.renderProgress)
+            densityName = toDensity.name
+            densityMorphProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = if (motionEnabled) motion.densityPreviewMillis else 0,
+                    easing = motion.easing,
+                ),
+            )
+            resetDensityTransitionState()
+        }
+    }
+
+    val densityTransitionContentScale = when (densityTransitionStage) {
+        SmallAlbumDensityTransitionStage.PREVIEWING ->
+            smallAlbumDensityFallbackContentScale(
+                previewState = densityPreviewState,
+                progress = densityPreviewState?.renderProgress ?: 0f,
+            )
+        SmallAlbumDensityTransitionStage.REBOUNDING ->
+            smallAlbumDensityFallbackContentScale(
+                previewState = densityPreviewState,
+                progress = densityMorphProgress.value,
+            )
+        else -> 1f
+    }
+    val densityTransitionLiveMediaAlpha = when (densityTransitionStage) {
+        SmallAlbumDensityTransitionStage.PREVIEWING ->
+            smallAlbumSourceMediaAlpha(densityPreviewState?.renderProgress ?: 0f)
+        SmallAlbumDensityTransitionStage.REBOUNDING ->
+            smallAlbumSourceMediaAlpha(densityMorphProgress.value)
+        else -> 1f
+    }
+    val densityTransitionOverlayProgress = when (densityTransitionStage) {
+        SmallAlbumDensityTransitionStage.PREVIEWING -> densityPreviewState?.renderProgress ?: 0f
+        SmallAlbumDensityTransitionStage.REBOUNDING -> densityMorphProgress.value
+        SmallAlbumDensityTransitionStage.COMMITTING -> densityMorphProgress.value
+        SmallAlbumDensityTransitionStage.IDLE -> 0f
+    }
+    val densityTransitionOverlayAlpha = when (densityTransitionStage) {
+        SmallAlbumDensityTransitionStage.PREVIEWING ->
+            smallAlbumTargetSceneAlpha(densityPreviewState?.renderProgress ?: 0f)
+        SmallAlbumDensityTransitionStage.REBOUNDING ->
+            smallAlbumTargetSceneAlpha(densityMorphProgress.value)
+        SmallAlbumDensityTransitionStage.COMMITTING ->
+            smallAlbumCommitTargetOverlayAlpha(
+                releaseAlpha = smallAlbumTargetSceneAlpha(densityPreviewState?.renderProgress ?: 0f),
+                progress = densityMorphProgress.value,
+            )
+        SmallAlbumDensityTransitionStage.IDLE -> 0f
     }
 
     fun deleteSelectedMedia() {
@@ -2557,11 +3131,39 @@ private fun SmallAlbumMediaGridSection(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    viewportBounds = coordinates.boundsInRoot()
+                }
+                .clipToBounds()
                 .discreteZoomLevelGesture(
                     enabled = !selectionMode,
                     levels = PhotoFeedDensity.entries.toList(),
                     currentLevel = density,
                     onLevelChange = { densityName = it.name },
+                    commitOnGestureEnd = true,
+                    onPreviewStateChange = { previewState ->
+                        if (previewState != null) {
+                            syncDensityPreview(previewState)
+                        }
+                    },
+                    onGestureFinished = { committed, finalPreviewState, committedTargetLevel ->
+                        val nextDensity = committedTargetLevel as? PhotoFeedDensity
+                        when {
+                            !committed || nextDensity == null || nextDensity == density -> {
+                                if (densityTransitionStage == SmallAlbumDensityTransitionStage.PREVIEWING &&
+                                    finalPreviewState != null
+                                ) {
+                                    reboundDensityPreview(finalPreviewState)
+                                } else {
+                                    resetDensityTransitionState()
+                                }
+                            }
+                            else -> beginDensityTransition(
+                                toDensity = nextDensity,
+                                finalPreviewState = finalPreviewState,
+                            )
+                        }
+                    },
                 )
                 .multiSelectSwipeGesture(
                     enabled = selectionMode,
@@ -2579,12 +3181,19 @@ private fun SmallAlbumMediaGridSection(
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = densityTransitionLiveMediaAlpha
+                            scaleX = densityTransitionContentScale
+                            scaleY = densityTransitionContentScale
+                            transformOrigin = TransformOrigin.Center
+                        },
                     verticalArrangement = Arrangement.spacedBy(smallAlbumSectionSpacing(density)),
                     contentPadding = PaddingValues(
                         top = if (selectionMode) 58.dp else 0.dp,
-                        start = gridSpacing,
-                        end = gridSpacing,
+                        start = gridEdgePadding,
+                        end = gridEdgePadding,
                         bottom = if (selectionMode) 92.dp else 24.dp,
                     ),
                 ) {
@@ -2607,12 +3216,25 @@ private fun SmallAlbumMediaGridSection(
                                         val media = mediaById[item.mediaId] ?: return@forEach
                                         val mediaIndex = mediaPositionLookup[item.mediaId] ?: 0
                                         SmallAlbumGridMediaTile(
+                                            item = item,
                                             media = media,
                                             highlighted = item.mediaId in highlightMediaIds,
                                             selected = item.mediaId in selectedIds,
                                             selectionMode = selectionMode,
                                             density = density,
+                                            inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
+                                            isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
+                                            isInlineVideoActive = activeInlineVideoId == item.mediaId,
+                                            isInlineVideoPaused = item.mediaId in pausedInlineVideoIds,
+                                            inlineVideoProgress = inlineVideoProgressById[item.mediaId],
                                             modifier = Modifier.weight(1f),
+                                            onBoundsChange = { bounds ->
+                                                if (bounds == null) {
+                                                    itemBoundsByMediaId.remove(item.mediaId)
+                                                } else {
+                                                    itemBoundsByMediaId[item.mediaId] = bounds
+                                                }
+                                            },
                                             onClick = {
                                                 if (selectionMode) {
                                                     selectedIds = if (selectedIds.contains(item.mediaId)) {
@@ -2633,6 +3255,12 @@ private fun SmallAlbumMediaGridSection(
                                                 selectionMode = true
                                                 selectedIds = setOf(item.mediaId)
                                             },
+                                            onToggleInlineVideo = { onToggleInlineVideo(item) },
+                                            onInlineVideoProgressChange = { progress ->
+                                                inlineVideoProgressById = inlineVideoProgressById.toMutableMap().apply {
+                                                    put(item.mediaId, progress)
+                                                }
+                                            },
                                         )
                                     }
                                     repeat(density.columns - block.items.size) {
@@ -2646,6 +3274,16 @@ private fun SmallAlbumMediaGridSection(
                             }
                         }
                     }
+                }
+                if (densityTransitionOverlayEntries.isNotEmpty()) {
+                    SmallAlbumDensityMorphOverlay(
+                        entries = densityTransitionOverlayEntries,
+                        viewportBounds = viewportBounds,
+                        progress = densityTransitionOverlayProgress,
+                        thumbnailRequestSize = transitionThumbnailRequestSize,
+                        alpha = densityTransitionOverlayAlpha,
+                        modifier = Modifier.matchParentSize(),
+                    )
                 }
             }
             if (selectionMode) {
@@ -2756,7 +3394,7 @@ private fun SmallAlbumMediaGridSection(
                     iconSize = 26.dp,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = gridSpacing, bottom = 18.dp),
+                        .padding(end = gridEdgePadding, bottom = 18.dp),
                 )
             }
         }
@@ -2856,17 +3494,17 @@ private fun SmallAlbumEmptyState(
                 verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 Text(
-                    text = "还没有媒体",
+                    text = "这段记忆还没放进照片",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.titleAccent,
                 )
                 Text(
-                    text = "从照片流挑几张加入这里，这个小相册就会有自己的记忆封面。",
+                    text = "从照片流挑几张加入这里，封面、时间线和详情氛围就会马上完整起来。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.textSecondary,
                 )
                 PostActionChip(
-                    text = "添加媒体",
+                    text = "去挑照片",
                     onClick = onAddMedia,
                     containerColor = colors.primaryContainer.copy(alpha = 0.78f),
                 )
@@ -2878,20 +3516,36 @@ private fun SmallAlbumEmptyState(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SmallAlbumGridMediaTile(
+    item: PhotoFeedItem,
     media: PostDetailMediaUiModel,
     highlighted: Boolean,
     selected: Boolean,
     selectionMode: Boolean,
     density: PhotoFeedDensity,
+    inlineVideoAutoPlayEnabled: Boolean,
+    isInlineVideoPlaying: Boolean,
+    isInlineVideoActive: Boolean,
+    isInlineVideoPaused: Boolean,
+    inlineVideoProgress: InlineVideoPlaybackProgress?,
     modifier: Modifier = Modifier,
+    onBoundsChange: (Rect?) -> Unit = {},
     onClick: () -> Unit,
     onOpenMedia: () -> Unit,
     onLongClick: () -> Unit,
+    onToggleInlineVideo: () -> Unit,
+    onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
 ) {
     val selectionHotspotOnly = selectionMode && density.columns in 2..4
     val colors = YingShiThemeTokens.colors
     val motion = YingShiThemeTokens.motion
     val motionEnabled = rememberYingShiMotionEnabled()
+    val supportsInlineVideo = inlineVideoAutoPlayEnabled &&
+        !selectionMode &&
+        media.mediaType == AppMediaType.VIDEO &&
+        density.columns <= 4
+    val showSelectionVideoMarker = selectionMode &&
+        media.mediaType == AppMediaType.VIDEO &&
+        density.columns <= 4
     val itemScale by animateFloatAsState(
         targetValue = if (selected) motion.selectedMediaScale else 1f,
         animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
@@ -2900,9 +3554,13 @@ private fun SmallAlbumGridMediaTile(
     Box(
         modifier = modifier
             .aspectRatio(1f)
+            .clipToBounds()
             .graphicsLayer {
                 scaleX = itemScale
                 scaleY = itemScale
+            }
+            .onGloballyPositioned { coordinates ->
+                onBoundsChange(coordinates.boundsInRoot())
             }
             .background(Color.Transparent)
             .combinedClickable(
@@ -2914,19 +3572,56 @@ private fun SmallAlbumGridMediaTile(
             mediaSource = media.mediaSource,
             mediaType = media.mediaType,
             palette = media.palette,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.matchParentSize(),
             contentDescription = postDetailMediaContentDescription(media.mediaType),
             requestSize = smallAlbumThumbnailRequestSize(density),
             contentScale = ContentScale.Crop,
             showLoadingIndicator = false,
+            showVideoPlayOverlay = !(supportsInlineVideo || showSelectionVideoMarker),
         )
+        if (supportsInlineVideo && isInlineVideoPlaying) {
+            AppContentInlineVideoPlayer(
+                mediaSource = media.mediaSource,
+                mediaType = media.mediaType,
+                playWhenReady = true,
+                modifier = Modifier.matchParentSize(),
+                onPlaybackProgressChange = onInlineVideoProgressChange,
+            )
+        }
         YingShiMediaFrame(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.matchParentSize(),
             selected = selected,
             memoryActive = highlighted,
             topScrimAlpha = if (media.mediaType == AppMediaType.VIDEO) 0.22f else 0.14f,
             bottomGlowAlpha = if (selected) 0.24f else 0.16f,
         )
+        if (supportsInlineVideo) {
+            InlineVideoPlaybackButton(
+                isPlaying = isInlineVideoActive && !isInlineVideoPaused,
+                onClick = onToggleInlineVideo,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+        if (showSelectionVideoMarker) {
+            InlineVideoPlaybackButton(
+                isPlaying = false,
+                onClick = {},
+                enabled = false,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 6.dp, bottom = 6.dp),
+            )
+        }
+        if (media.mediaType == AppMediaType.VIDEO) {
+            VideoDurationBadge(
+                durationMillis = item.smallAlbumGridVideoBadgeDurationMillis(inlineVideoProgress),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 6.dp),
+            )
+        }
         if (highlighted) {
             YingShiMemoryBadge(
                 text = "新加入",
@@ -2972,6 +3667,344 @@ private fun postDetailMediaContentDescription(mediaType: AppMediaType): String {
         AppMediaType.VIDEO -> "小相册视频"
         AppMediaType.IMAGE -> "小相册照片"
     }
+}
+
+private fun visibleSmallAlbumVideoIds(
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    blocks: List<PhotoFeedBlock>,
+): Set<String> {
+    return listState.layoutInfo.visibleItemsInfo
+        .mapNotNull { visibleItem ->
+            blocks.getOrNull(visibleItem.index) as? PhotoFeedGridRow
+        }
+        .flatMap { row -> row.items }
+        .filter { item -> item.mediaType == AppMediaType.VIDEO }
+        .map { item -> item.mediaId }
+        .toSet()
+}
+
+private fun centeredSmallAlbumVideoId(
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    blocks: List<PhotoFeedBlock>,
+    density: PhotoFeedDensity,
+    colSpacingPx: Float,
+    edgePaddingPx: Float,
+): String? {
+    val layoutInfo = listState.layoutInfo
+    if (layoutInfo.visibleItemsInfo.isEmpty()) return null
+    val viewportWidth = layoutInfo.viewportSize.width.coerceAtLeast(1)
+    val viewportCenterX = viewportWidth / 2f
+    val viewportCenterY = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+    val contentWidth = (viewportWidth - edgePaddingPx * 2f).coerceAtLeast(1f)
+    val totalSpacing = (density.columns - 1) * colSpacingPx
+    val cellWidth = ((contentWidth - totalSpacing) / density.columns).coerceAtLeast(1f)
+    val segmentWidth = cellWidth + colSpacingPx
+
+    return layoutInfo.visibleItemsInfo
+        .flatMap { visibleItem ->
+            val row = blocks.getOrNull(visibleItem.index) as? PhotoFeedGridRow
+            if (row == null) {
+                emptyList()
+            } else {
+                row.items.mapIndexedNotNull { colIndex, rowItem ->
+                    if (rowItem.mediaType != AppMediaType.VIDEO) return@mapIndexedNotNull null
+                    val centerX = edgePaddingPx + colIndex * segmentWidth + cellWidth / 2f
+                    val centerY = visibleItem.offset + visibleItem.size / 2f
+                    val score = kotlin.math.abs(centerX - viewportCenterX) + kotlin.math.abs(centerY - viewportCenterY)
+                    rowItem.mediaId to score
+                }
+            }
+        }
+        .minByOrNull { it.second }
+        ?.first
+}
+
+private fun PhotoFeedItem.smallAlbumGridVideoBadgeDurationMillis(
+    progress: InlineVideoPlaybackProgress?,
+): Long? {
+    val totalMillis = progress?.durationMillis
+        ?: videoDurationMillis
+        ?: mediaSource?.durationMillis
+    if (totalMillis == null || totalMillis <= 0L) return null
+    val positionMillis = progress?.positionMillis ?: 0L
+    return (totalMillis - positionMillis).coerceIn(0L, totalMillis)
+}
+
+@Composable
+private fun SmallAlbumDensityMorphOverlay(
+    entries: List<SmallAlbumDensityTransitionOverlayEntry>,
+    viewportBounds: Rect?,
+    progress: Float,
+    thumbnailRequestSize: Int,
+    alpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    val clampedAlpha = alpha.coerceIn(0f, 1f)
+    if (entries.isEmpty() || clampedAlpha <= 0f) return
+    val localDensity = LocalDensity.current
+    val viewportLeft = viewportBounds?.left ?: 0f
+    val viewportTop = viewportBounds?.top ?: 0f
+    Box(modifier = modifier.clip(RectangleShape)) {
+        entries.forEach { entry ->
+            key(entry.item.mediaId) {
+                val currentBounds = smallAlbumInterpolateRect(
+                    start = entry.startBounds,
+                    end = entry.endBounds,
+                    progress = progress.coerceIn(0f, 1f),
+                )
+                val startBounds = entry.startBounds
+                val widthDp = with(localDensity) { startBounds.width.toDp() }
+                val heightDp = with(localDensity) { startBounds.height.toDp() }
+                val translateX = currentBounds.left - startBounds.left
+                val translateY = currentBounds.top - startBounds.top
+                val scaleX = (currentBounds.width / startBounds.width.coerceAtLeast(1f)).coerceAtLeast(0.01f)
+                val scaleY = (currentBounds.height / startBounds.height.coerceAtLeast(1f)).coerceAtLeast(0.01f)
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                x = (startBounds.left - viewportLeft).roundToInt(),
+                                y = (startBounds.top - viewportTop).roundToInt(),
+                            )
+                        }
+                        .width(widthDp)
+                        .height(heightDp)
+                        .graphicsLayer {
+                            this.alpha = clampedAlpha *
+                                smallAlbumMorphOverlayViewportAlpha(currentBounds, viewportBounds)
+                            translationX = translateX
+                            translationY = translateY
+                            this.scaleX = scaleX
+                            this.scaleY = scaleY
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        },
+                ) {
+                    AppContentMediaThumbnail(
+                        mediaSource = entry.item.mediaSource,
+                        mediaType = entry.item.mediaType,
+                        palette = entry.item.palette,
+                        modifier = Modifier.matchParentSize(),
+                        contentDescription = entry.item.mediaId,
+                        requestSize = thumbnailRequestSize,
+                        showLoadingIndicator = false,
+                        showVideoPlayOverlay = true,
+                    )
+                    YingShiMediaFrame(
+                        modifier = Modifier.matchParentSize(),
+                        selected = false,
+                        memoryActive = false,
+                        topScrimAlpha = if (entry.item.mediaType == AppMediaType.VIDEO) 0.20f else 0.12f,
+                        bottomGlowAlpha = 0.12f,
+                    )
+                    if (entry.item.mediaType == AppMediaType.VIDEO && entry.item.videoDurationMillis != null) {
+                        VideoDurationBadge(
+                            durationMillis = entry.item.videoDurationMillis,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun visibleSmallAlbumDensityTransitionCandidates(
+    blocks: List<PhotoFeedBlock>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    itemBoundsByMediaId: Map<String, Rect>,
+    viewportBounds: Rect?,
+    density: PhotoFeedDensity,
+    densityScope: androidx.compose.ui.unit.Density,
+): List<SmallAlbumDensityTransitionCandidate> {
+    val viewport = viewportBounds ?: return emptyList()
+    val viewportCenter = viewport.center
+    val spacingPx = with(densityScope) { rowSpacing(density).toPx() }
+    val edgePaddingPx = spacingPx
+    val contentWidth = (viewport.width - edgePaddingPx * 2f).coerceAtLeast(1f)
+    val cellSize = ((contentWidth - (density.columns - 1) * spacingPx) / density.columns)
+        .coerceAtLeast(1f)
+    return listState.layoutInfo.visibleItemsInfo
+        .mapNotNull { visibleItem ->
+            val row = blocks.getOrNull(visibleItem.index) as? PhotoFeedGridRow ?: return@mapNotNull null
+            visibleItem to row
+        }
+        .flatMap { (visibleItem, row) ->
+            row.items.mapIndexedNotNull { columnIndex, item ->
+                val bounds = itemBoundsByMediaId[item.mediaId] ?: Rect(
+                    left = viewport.left + edgePaddingPx + columnIndex * (cellSize + spacingPx),
+                    top = viewport.top + visibleItem.offset,
+                    right = viewport.left + edgePaddingPx + columnIndex * (cellSize + spacingPx) + cellSize,
+                    bottom = viewport.top + visibleItem.offset + cellSize,
+                )
+                val center = bounds.center
+                val score = kotlin.math.abs(center.x - viewportCenter.x) + kotlin.math.abs(center.y - viewportCenter.y)
+                SmallAlbumDensityTransitionCandidate(
+                    item = item,
+                    startBounds = bounds,
+                    distanceScore = score,
+                )
+            }
+        }
+        .sortedBy { it.distanceScore }
+}
+
+private fun smallAlbumDensityFallbackContentScale(
+    previewState: DiscreteZoomPreviewState<PhotoFeedDensity>?,
+    progress: Float,
+): Float {
+    val direction = previewState?.direction ?: return 1f
+    val targetScale = when (direction) {
+        DiscreteZoomDirection.TO_SPARSE -> 1.035f
+        DiscreteZoomDirection.TO_DENSE -> 0.965f
+    }
+    return smallAlbumLerpFloat(
+        start = 1f,
+        end = targetScale,
+        progress = smallAlbumSmoothStep(progress.coerceIn(0f, 1f)),
+    )
+}
+
+private fun smallAlbumSourceMediaAlpha(progress: Float): Float {
+    return smallAlbumLerpFloat(
+        start = 1f,
+        end = 0.86f,
+        progress = progress.coerceIn(0f, 1f),
+    )
+}
+
+private fun smallAlbumTargetSceneAlpha(progress: Float): Float {
+    val t = progress.coerceIn(0f, 1f)
+    return smallAlbumSmoothStep(((t - 0.02f) / 0.90f).coerceIn(0f, 1f))
+}
+
+private fun smallAlbumCommitTargetOverlayAlpha(
+    releaseAlpha: Float,
+    progress: Float,
+): Float {
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    val growth = smallAlbumLerpFloat(
+        start = releaseAlpha.coerceIn(0f, 1f),
+        end = 1f,
+        progress = (clampedProgress / 0.68f).coerceIn(0f, 1f),
+    )
+    val fadeProgress = ((clampedProgress - 0.58f) / 0.42f).coerceIn(0f, 1f)
+    return (growth * (1f - smallAlbumSmoothStep(fadeProgress))).coerceIn(0f, 1f)
+}
+
+private fun smallAlbumSmoothStep(value: Float): Float {
+    val t = value.coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+private fun smallAlbumLerpFloat(
+    start: Float,
+    end: Float,
+    progress: Float,
+): Float {
+    return start + (end - start) * progress
+}
+
+private fun smallAlbumInterpolateRect(
+    start: Rect,
+    end: Rect,
+    progress: Float,
+): Rect {
+    val t = progress.coerceIn(0f, 1f)
+    return Rect(
+        left = smallAlbumLerpFloat(start.left, end.left, t),
+        top = smallAlbumLerpFloat(start.top, end.top, t),
+        right = smallAlbumLerpFloat(start.right, end.right, t),
+        bottom = smallAlbumLerpFloat(start.bottom, end.bottom, t),
+    )
+}
+
+private fun smallAlbumMorphOverlayViewportAlpha(
+    bounds: Rect,
+    viewportBounds: Rect?,
+): Float {
+    val viewport = viewportBounds ?: return 1f
+    val viewportCenter = viewport.center
+    val distanceX = kotlin.math.abs(bounds.center.x - viewportCenter.x)
+    val distanceY = kotlin.math.abs(bounds.center.y - viewportCenter.y)
+    val maxDistanceX = (viewport.width * 0.62f).coerceAtLeast(1f)
+    val maxDistanceY = (viewport.height * 0.62f).coerceAtLeast(1f)
+    val normalizedX = (distanceX / maxDistanceX).coerceIn(0f, 1f)
+    val normalizedY = (distanceY / maxDistanceY).coerceIn(0f, 1f)
+    return 1f - (normalizedX * 0.28f + normalizedY * 0.24f)
+}
+
+private fun buildSmallAlbumPredictedLocalBoundsByMediaId(
+    blocks: List<PhotoFeedBlock>,
+    targetDensity: PhotoFeedDensity,
+    viewportBounds: Rect,
+    densityScope: androidx.compose.ui.unit.Density,
+): Map<String, Rect> {
+    if (blocks.isEmpty()) return emptyMap()
+    val rowSpacingPx = with(densityScope) { rowSpacing(targetDensity).toPx() }
+    val sectionSpacingPx = rowSpacingPx
+    val edgePaddingPx = rowSpacingPx
+    val columns = targetDensity.columns.coerceAtLeast(1)
+    val contentWidth = (viewportBounds.width - edgePaddingPx * 2f).coerceAtLeast(1f)
+    val cellSize = ((contentWidth - (columns - 1) * rowSpacingPx) / columns).coerceAtLeast(1f)
+    var currentTop = 0f
+    val boundsByMediaId = LinkedHashMap<String, Rect>()
+    blocks.forEachIndexed { index, block ->
+        when (block) {
+            is PhotoFeedGridRow -> {
+                block.items.forEachIndexed { columnIndex, item ->
+                    val left = viewportBounds.left +
+                        edgePaddingPx +
+                        columnIndex * (cellSize + rowSpacingPx)
+                    boundsByMediaId[item.mediaId] = Rect(
+                        left = left,
+                        top = currentTop,
+                        right = left + cellSize,
+                        bottom = currentTop + cellSize,
+                    )
+                }
+                currentTop += cellSize
+            }
+
+            is PhotoFeedSectionHeader -> {
+                currentTop += with(densityScope) {
+                    when (block.granularity) {
+                        PhotoFeedTimeGranularity.YEAR -> 56.dp.toPx()
+                        PhotoFeedTimeGranularity.MONTH -> 52.dp.toPx()
+                        PhotoFeedTimeGranularity.DAY -> 37.dp.toPx()
+                    }
+                }
+            }
+
+            is PhotoFeedDayHeader -> currentTop += with(densityScope) { 37.dp.toPx() }
+            else -> Unit
+        }
+        if (index != blocks.lastIndex) {
+            currentTop += sectionSpacingPx
+        }
+    }
+    return boundsByMediaId
+}
+
+private fun buildSmallAlbumPredictedBoundsByMediaId(
+    candidates: List<SmallAlbumDensityTransitionCandidate>,
+    targetLocalBoundsByMediaId: Map<String, Rect>,
+    anchorMediaId: String,
+): Map<String, Rect> {
+    val anchorStartBounds = candidates.firstOrNull { it.item.mediaId == anchorMediaId }?.startBounds
+        ?: return emptyMap()
+    val anchorLocalBounds = targetLocalBoundsByMediaId[anchorMediaId] ?: return emptyMap()
+    val deltaY = anchorStartBounds.center.y - anchorLocalBounds.center.y
+    return candidates.mapNotNull { candidate ->
+        val localBounds = targetLocalBoundsByMediaId[candidate.item.mediaId] ?: return@mapNotNull null
+        candidate.item.mediaId to Rect(
+            left = localBounds.left,
+            top = localBounds.top + deltaY,
+            right = localBounds.right,
+            bottom = localBounds.bottom + deltaY,
+        )
+    }.toMap()
 }
 
 @Composable
@@ -3032,7 +4065,10 @@ private fun SmallAlbumSummaryText(
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
-    val textStyle = MaterialTheme.typography.bodyMedium
+    val textStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontWeight = FontWeight.SemiBold,
+        lineHeight = 24.sp,
+    )
     val textMeasurer = rememberTextMeasurer()
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val maxWidthPx = with(LocalDensity.current) { maxWidth.roundToPx() }
@@ -3059,7 +4095,7 @@ private fun SmallAlbumSummaryText(
             text = annotatedText,
             modifier = if (canExpand) Modifier.clickable(onClick = onToggleExpanded) else Modifier,
             style = textStyle,
-            color = colors.textSecondary,
+            color = colors.titleAccent.copy(alpha = 0.94f),
             maxLines = if (expanded) Int.MAX_VALUE else 2,
             overflow = TextOverflow.Clip,
         )

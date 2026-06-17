@@ -26,10 +26,17 @@ internal fun rememberVideoPosterState(
     url: String?,
     accessToken: String?,
     cacheKey: String? = null,
+    diskCacheKey: String? = null,
 ): State<VideoPosterState> {
     val context = LocalContext.current
-    val resolvedCacheKey = videoPosterCacheKey(url, cacheKey)
-    val cachedPoster = rememberCachedVideoPosterModel(context, url, resolvedCacheKey)
+    val resolvedMemoryCacheKey = videoPosterCacheKey(url, cacheKey)
+    val resolvedDiskCacheKey = videoPosterCacheKey(url, diskCacheKey) ?: resolvedMemoryCacheKey
+    val cachedPoster = rememberCachedVideoPosterModel(
+        context = context,
+        url = url,
+        diskCacheKey = resolvedDiskCacheKey,
+        memoryCacheKey = resolvedMemoryCacheKey,
+    )
     return produceState(
         initialValue = VideoPosterState(
             model = cachedPoster,
@@ -37,14 +44,19 @@ internal fun rememberVideoPosterState(
         ),
         key1 = context,
         key2 = url,
-        key3 = VideoPosterRequestKey(accessToken, resolvedCacheKey),
+        key3 = VideoPosterRequestKey(accessToken, resolvedDiskCacheKey),
     ) {
         if (url.isNullOrBlank()) {
             value = VideoPosterState()
             return@produceState
         }
 
-        rememberCachedVideoPosterModel(context, url, resolvedCacheKey)?.let { cachedPosterModel ->
+        rememberCachedVideoPosterModel(
+            context = context,
+            url = url,
+            diskCacheKey = resolvedDiskCacheKey,
+            memoryCacheKey = resolvedMemoryCacheKey,
+        )?.let { cachedPosterModel ->
             value = VideoPosterState(model = cachedPosterModel)
             return@produceState
         }
@@ -53,10 +65,17 @@ internal fun rememberVideoPosterState(
             context = context,
             url = url,
             accessToken = accessToken,
-            cacheKey = resolvedCacheKey,
+            cacheKey = resolvedDiskCacheKey,
         )
         value = if (posterFile != null) {
-            VideoPosterState(model = rememberCachedVideoPosterModel(context, url, resolvedCacheKey) ?: posterFile)
+            VideoPosterState(
+                model = rememberCachedVideoPosterModel(
+                    context = context,
+                    url = url,
+                    diskCacheKey = resolvedDiskCacheKey,
+                    memoryCacheKey = resolvedMemoryCacheKey,
+                ) ?: posterFile,
+            )
         } else {
             VideoPosterState(hasError = true)
         }
@@ -66,15 +85,21 @@ internal fun rememberVideoPosterState(
 private fun rememberCachedVideoPosterModel(
     context: Context,
     url: String?,
-    cacheKey: String?,
+    diskCacheKey: String?,
+    memoryCacheKey: String? = null,
 ): Any? {
     if (url.isNullOrBlank()) return null
-    val resolvedCacheKey = videoPosterCacheKey(url, cacheKey) ?: return null
-    videoPosterMemoryCache[resolvedCacheKey]?.let { return it }
-    val file = videoPosterFile(context, resolvedCacheKey).takeIf { it.exists() && it.length() > 0L } ?: return null
+    val resolvedMemoryCacheKey = videoPosterCacheKey(url, memoryCacheKey)
+    resolvedMemoryCacheKey?.let { cachedKey ->
+        videoPosterMemoryCache[cachedKey]?.let { return it }
+    }
+    val resolvedDiskCacheKey = videoPosterCacheKey(url, diskCacheKey) ?: resolvedMemoryCacheKey ?: return null
+    val file = videoPosterFile(context, resolvedDiskCacheKey).takeIf { it.exists() && it.length() > 0L } ?: return null
     val bitmap = runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
     if (bitmap != null) {
-        videoPosterMemoryCache[resolvedCacheKey] = bitmap
+        if (resolvedMemoryCacheKey != null) {
+            videoPosterMemoryCache[resolvedMemoryCacheKey] = bitmap
+        }
         return bitmap
     }
     return file
@@ -85,12 +110,13 @@ internal suspend fun prefetchVideoPoster(
     url: String,
     accessToken: String?,
     cacheKey: String? = null,
+    diskCacheKey: String? = null,
 ) {
     ensureVideoPosterFile(
         context = context,
         url = url,
         accessToken = accessToken,
-        cacheKey = videoPosterCacheKey(url, cacheKey),
+        cacheKey = videoPosterCacheKey(url, diskCacheKey) ?: videoPosterCacheKey(url, cacheKey),
     )
 }
 

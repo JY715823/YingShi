@@ -22,7 +22,7 @@ data class CommentListState(
 fun ApiResult<RemoteCommentPage>.toCommentListState(): CommentListState {
     return when (this) {
         is ApiResult.Loading -> CommentListState(isLoading = true)
-        is ApiResult.Success -> CommentListState(comments = data.comments)
+        is ApiResult.Success -> CommentListState(comments = data.comments.filterNot { it.isDeleted })
         is ApiResult.Error -> CommentListState(
             errorCode = code,
             errorMessage = message,

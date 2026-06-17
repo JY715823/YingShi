@@ -8,6 +8,7 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteNotification
+import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
@@ -39,6 +40,7 @@ data class CachedPhotoFeed(
 data class CachedAlbumDirectory(
     val albums: List<RemoteAlbum>,
     val postsByAlbumId: Map<String, List<RemotePostSummary>>,
+    val previewMediaByPostId: Map<String, List<RemotePostMedia>>? = null,
 )
 
 data class CachedNotifications(

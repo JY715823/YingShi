@@ -147,6 +147,7 @@ data class EditableSmallAlbumDraft(
     val summary: String,
     val postDisplayTimeMillis: Long,
     val albumIds: List<String>,
+    val participantUserIds: List<String> = emptyList(),
 ) {
     val smallAlbumId: String
         get() = postId

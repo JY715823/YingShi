@@ -26,6 +26,7 @@ data class CreateSmallAlbumDraft(
     val summary: String,
     val displayTimeMillis: Long,
     val albumIds: List<String>,
+    val participantUserIds: List<String> = emptyList(),
     val coverSourceMediaId: String? = null,
 ) {
     val albumId: String
@@ -44,6 +45,7 @@ data class CreateSmallAlbumUiState(
     val summary: String = "",
     val displayTimeMillis: Long = System.currentTimeMillis(),
     val selectedAlbumIds: List<String> = emptyList(),
+    val participantUserIds: List<String> = emptyList(),
     val initialMediaItems: List<SystemMediaItem> = emptyList(),
     val selectedCoverSourceMediaId: String? = null,
 ) {
@@ -73,6 +75,7 @@ internal fun CreateSmallAlbumUiState.toDraft(): CreateSmallAlbumDraft? {
         summary = summary.trim(),
         displayTimeMillis = displayTimeMillis,
         albumIds = listOf(resolvedAlbumId),
+        participantUserIds = participantUserIds,
         coverSourceMediaId = selectedCoverSourceMediaId,
     )
 }

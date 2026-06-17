@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -31,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,6 +58,7 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 @Composable
 fun GearEditScreen(
@@ -83,12 +86,8 @@ fun GearEditScreen(
     val initialDraft = remember(route.postId) {
         FakeAlbumRepository.getEditablePostDraft(route.postId)
     }
-    val initialMediaItems = remember(route.postId) {
-        FakeAlbumRepository.getManagedPostMedia(route.postId).orEmpty()
-    }
-    val initialCoverId = remember(route.postId, initialMediaItems) {
-        initialMediaItems.firstOrNull { it.isCover }?.id ?: initialMediaItems.firstOrNull()?.id
-    }
+    val repoMediaItems = FakeAlbumRepository.getManagedPostMedia(route.postId).orEmpty()
+    val repoCoverId = repoMediaItems.firstOrNull { it.isCover }?.id ?: repoMediaItems.firstOrNull()?.id
     val systemDeleteImpact = remember(route.postId) {
         FakeAlbumRepository.getPostSystemDeleteImpact(route.postId)
     }
@@ -109,6 +108,21 @@ fun GearEditScreen(
             addAll(initialDraft.albumIds)
         }
     }
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
+    val availableCollaboratorIds = remember(collaboratorDirectory) {
+        collaboratorDirectory.all.mapTo(linkedSetOf()) { it.userId }
+    }
+    var selectedParticipantUserIds by remember(route.postId) {
+        mutableStateOf(
+            normalizeOwnedCollaboratorSelection(
+                selectedUserIds = initialDraft.participantUserIds.toSet(),
+                allUserIds = availableCollaboratorIds,
+                fallbackUserId = collaboratorDirectory.currentUser?.userId,
+            ),
+        )
+    }
+    var initialMediaItems by remember(route.postId) { mutableStateOf(repoMediaItems) }
+    var initialCoverId by remember(route.postId) { mutableStateOf(repoCoverId) }
     var mediaItems by remember(route.postId) {
         mutableStateOf(initialMediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem))
     }
@@ -119,12 +133,51 @@ fun GearEditScreen(
     val albums = remember { FakeAlbumRepository.getAlbums() }
     var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
     var showAlbumDirectory by rememberSaveable(route.postId) { mutableStateOf(false) }
+    var showTimeEditorSheet by rememberSaveable(route.postId) { mutableStateOf(false) }
+
+    LaunchedEffect(route.postId, repoMediaItems, repoCoverId) {
+        val previousBaselineIds = initialMediaItems.map { it.id }
+        val currentIds = mediaItems.map { it.id }
+        val localMediaDirty = currentIds != previousBaselineIds
+        val localCoverDirty = coverMediaId != initialCoverId
+        val nextItems = if (!localMediaDirty && !localCoverDirty) {
+            repoMediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
+        } else {
+            mergeDraftPostMediaWithRepoAdditions(
+                currentItems = mediaItems,
+                latestItems = repoMediaItems,
+                previousBaselineIds = previousBaselineIds,
+            )
+        }
+        val nextCoverId = when {
+            localMediaDirty || localCoverDirty ->
+                coverMediaId?.takeIf { id -> nextItems.any { it.id == id } }
+                    ?: repoCoverId?.takeIf { id -> nextItems.any { it.id == id } }
+                    ?: nextItems.firstOrNull()?.id
+            else ->
+                repoCoverId?.takeIf { id -> nextItems.any { it.id == id } }
+                    ?: nextItems.firstOrNull()?.id
+        }
+        initialMediaItems = repoMediaItems
+        initialCoverId = repoCoverId
+        mediaItems = nextItems
+        coverMediaId = nextCoverId
+    }
+
+    LaunchedEffect(localMessage) {
+        if (localMessage != null) {
+            delay(2600L)
+            localMessage = null
+        }
+    }
+
     val safeCoverMediaId = coverMediaId?.takeIf { id -> mediaItems.any { it.id == id } }
         ?: mediaItems.firstOrNull()?.id
     val hasChanges = title != initialDraft.title ||
         summary != initialDraft.summary ||
         displayTimeMillis != initialDraft.postDisplayTimeMillis ||
         selectedAlbumIds.toList() != initialDraft.albumIds ||
+        selectedParticipantUserIds != initialDraft.participantUserIds.toSet() ||
         mediaItems.map { it.id } != initialMediaItems.map { it.id } ||
         safeCoverMediaId != initialCoverId
 
@@ -148,9 +201,10 @@ fun GearEditScreen(
                 coverMediaId = updatedCoverId?.takeIf { id -> updatedItems.any { it.id == id } }
                     ?: updatedItems.firstOrNull()?.id
                 localMessage = null
-                showPostMediaList = false
             },
             modifier = modifier,
+            mode = PostMediaListMode.AUTO_APPLY,
+            confirmSingleDeleteInAutoApply = true,
         )
         return
     }
@@ -172,6 +226,7 @@ fun GearEditScreen(
             summary = summary.trim(),
             postDisplayTimeMillis = displayTimeMillis,
             albumIds = selectedAlbumIds.toList(),
+            participantUserIds = selectedParticipantUserIds.toList(),
         )
         val finalIds = mediaItems.map { it.id }
         val originalIds = initialMediaItems.map { it.id }
@@ -227,6 +282,12 @@ fun GearEditScreen(
             BackendInlineNotice(text = message, emphasized = true)
         }
 
+        GearEditMediaPreviewSection(
+            items = mediaItems,
+            coverMediaId = safeCoverMediaId,
+            onOpenAll = { showPostMediaList = true },
+        )
+
         GearEditTextSection(
             title = title,
             summary = summary,
@@ -234,6 +295,46 @@ fun GearEditScreen(
             onTitleChange = { title = it },
             onSummaryChange = { summary = it },
         )
+
+        GearEditSection(title = "时间") {
+            SmallAlbumTimeEditRow(
+                label = "小相册时间",
+                value = formatGearEditTime(displayTimeMillis),
+                enabled = !isSaving,
+                onClick = { showTimeEditorSheet = true },
+            )
+        }
+
+        GearEditSection(
+            title = "所属",
+            subtitle = "至少保留 1 位所属，详情页会直接展示这里的头像",
+        ) {
+            OwnershipSelectorRow(
+                directory = collaboratorDirectory,
+                selectedUserIds = selectedParticipantUserIds,
+                onToggleUserId = { userId ->
+                    val nextSelection = toggleCollaboratorSelectionKeepingEmpty(
+                        currentSelection = selectedParticipantUserIds,
+                        toggledUserId = userId,
+                        allUserIds = availableCollaboratorIds,
+                    )
+                    val nextOwnedSelection = normalizeOwnedCollaboratorSelection(
+                        selectedUserIds = nextSelection,
+                        allUserIds = availableCollaboratorIds,
+                        fallbackUserId = collaboratorDirectory.currentUser?.userId,
+                    )
+                    if (nextOwnedSelection == selectedParticipantUserIds &&
+                        selectedParticipantUserIds.size == 1 &&
+                        userId in selectedParticipantUserIds
+                    ) {
+                        localMessage = "至少保留 1 位所属"
+                    } else {
+                        selectedParticipantUserIds = nextOwnedSelection
+                        localMessage = "已更新所属"
+                    }
+                },
+            )
+        }
 
         GearEditSection(
             title = "选择所属大相册",
@@ -265,21 +366,25 @@ fun GearEditScreen(
                 },
             )
         }
-        GearEditActionButton(
-            text = if (isSaving) "保存中…" else "保存",
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving,
-            emphasized = true,
-            onClick = ::saveDraft,
-        )
-        Spacer(modifier = Modifier.weight(1f, fill = false))
-        GearEditActionButton(
-            text = "删除整个小相册",
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isSaving,
-            danger = true,
-            onClick = { showDeletePostDialog = true },
-        )
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            GearEditActionButton(
+                text = if (isSaving) "保存中…" else "保存",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSaving,
+                emphasized = true,
+                onClick = ::saveDraft,
+            )
+            GearEditActionButton(
+                text = "删除整个小相册",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSaving,
+                danger = true,
+                onClick = { showDeletePostDialog = true },
+            )
+        }
     }
 
     if (showAlbumDirectory) {
@@ -293,6 +398,18 @@ fun GearEditScreen(
                     selectedAlbumIds.clear()
                     selectedAlbumIds.add(albumId)
                 }
+            },
+        )
+    }
+
+    if (showTimeEditorSheet) {
+        ViewerTimeEditorSheet(
+            initialTimeMillis = displayTimeMillis,
+            onDismiss = { showTimeEditorSheet = false },
+            onConfirm = { nextTimeMillis ->
+                displayTimeMillis = nextTimeMillis
+                showTimeEditorSheet = false
+                localMessage = "已更新小相册时间"
             },
         )
     }
@@ -366,12 +483,22 @@ private fun RealGearEditScreen(
         factory = RealGearEditViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     var showDeletePostDialog by rememberSaveable(route.postId) { mutableStateOf(false) }
     var showPostMediaList by remember(route.postId) { mutableStateOf(false) }
     var showAlbumDirectory by rememberSaveable(route.postId) { mutableStateOf(false) }
+    var showTimeEditorSheet by rememberSaveable(route.postId) { mutableStateOf(false) }
     val mediaItems = uiState.mediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
     val safeCoverMediaId = uiState.coverMediaId?.takeIf { id -> mediaItems.any { it.id == id } }
         ?: mediaItems.firstOrNull()?.id
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
+
+    LaunchedEffect(uiState.statusMessage) {
+        if (uiState.statusMessage != null) {
+            delay(2600L)
+            viewModel.clearStatusMessage()
+        }
+    }
 
     val handleClose = {
         if (uiState.hasChanges) {
@@ -382,6 +509,14 @@ private fun RealGearEditScreen(
 
     BackHandler(onBack = handleClose)
 
+    LaunchedEffect(backendMutationEvent.version, uiState.mediaItems) {
+        if (backendMutationEvent.version > 0 &&
+            backendMutationEvent.affectsMediaManagement(route.postId, uiState.mediaItems.map { it.id })
+        ) {
+            viewModel.syncExternalContent()
+        }
+    }
+
     if (showPostMediaList) {
         PostMediaListScreen(
             initialItems = mediaItems,
@@ -390,9 +525,10 @@ private fun RealGearEditScreen(
             onCancel = { showPostMediaList = false },
             onConfirm = { updatedItems, updatedCoverId ->
                 viewModel.updateMediaDraft(updatedItems, updatedCoverId)
-                showPostMediaList = false
             },
             modifier = modifier,
+            mode = PostMediaListMode.AUTO_APPLY,
+            confirmSingleDeleteInAutoApply = true,
         )
         return
     }
@@ -450,9 +586,19 @@ private fun RealGearEditScreen(
             saveEnabled = !uiState.isSaving,
         )
 
+        uiState.statusMessage?.let { message ->
+            BackendInlineNotice(text = message)
+        }
+
         uiState.errorMessage?.let { errorMessage ->
             BackendInlineNotice(text = errorMessage, emphasized = true)
         }
+
+        GearEditMediaPreviewSection(
+            items = mediaItems,
+            coverMediaId = safeCoverMediaId,
+            onOpenAll = { showPostMediaList = true },
+        )
 
         GearEditTextSection(
             title = uiState.title,
@@ -461,6 +607,45 @@ private fun RealGearEditScreen(
             onTitleChange = viewModel::updateTitle,
             onSummaryChange = viewModel::updateSummary,
         )
+
+        GearEditSection(title = "时间") {
+            SmallAlbumTimeEditRow(
+                label = "小相册时间",
+                value = formatGearEditTime(uiState.displayTimeMillis),
+                enabled = !uiState.isSaving,
+                onClick = { showTimeEditorSheet = true },
+            )
+        }
+
+        GearEditSection(
+            title = "所属",
+            subtitle = "至少保留 1 位所属，详情页会直接展示这里的头像",
+        ) {
+            OwnershipSelectorRow(
+                directory = collaboratorDirectory,
+                selectedUserIds = uiState.participantUserIds.toSet(),
+                onToggleUserId = { userId ->
+                    val nextSelection = toggleCollaboratorSelectionKeepingEmpty(
+                        currentSelection = uiState.participantUserIds.toSet(),
+                        toggledUserId = userId,
+                        allUserIds = collaboratorDirectory.all.mapTo(linkedSetOf()) { it.userId },
+                    )
+                    val nextOwnedSelection = normalizeOwnedCollaboratorSelection(
+                        selectedUserIds = nextSelection,
+                        allUserIds = collaboratorDirectory.all.mapTo(linkedSetOf()) { it.userId },
+                        fallbackUserId = collaboratorDirectory.currentUser?.userId,
+                    )
+                    if (nextOwnedSelection == uiState.participantUserIds.toSet() &&
+                        uiState.participantUserIds.size == 1 &&
+                        userId in uiState.participantUserIds
+                    ) {
+                        viewModel.updateParticipantUserIds(uiState.participantUserIds)
+                    } else {
+                        viewModel.updateParticipantUserIds(nextOwnedSelection.toList())
+                    }
+                },
+            )
+        }
 
         GearEditSection(
             title = "选择所属大相册",
@@ -487,28 +672,32 @@ private fun RealGearEditScreen(
                 },
             )
         }
-        GearEditActionButton(
-            text = if (uiState.isSaving) "保存中…" else "保存",
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isSaving,
-            emphasized = true,
-            onClick = {
-                viewModel.save(
-                    onSuccess = {
-                        onPostUpdated(route.postId, uiState.selectedAlbumIds.firstOrNull())
-                        onBack()
-                    },
-                )
-            },
-        )
-        Spacer(modifier = Modifier.weight(1f, fill = false))
-        GearEditActionButton(
-            text = "删除整个小相册",
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isSaving && !uiState.isDeleting,
-            danger = true,
-            onClick = { showDeletePostDialog = true },
-        )
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            GearEditActionButton(
+                text = if (uiState.isSaving) "保存中…" else "保存",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isSaving,
+                emphasized = true,
+                onClick = {
+                    viewModel.save(
+                        onSuccess = {
+                            onPostUpdated(route.postId, uiState.selectedAlbumIds.firstOrNull())
+                            onBack()
+                        },
+                    )
+                },
+            )
+            GearEditActionButton(
+                text = "删除整个小相册",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isSaving && !uiState.isDeleting,
+                danger = true,
+                onClick = { showDeletePostDialog = true },
+            )
+        }
     }
 
     if (showAlbumDirectory) {
@@ -521,6 +710,17 @@ private fun RealGearEditScreen(
                 if (uiState.selectedAlbumIds.firstOrNull() != albumId) {
                     viewModel.toggleAlbum(albumId)
                 }
+            },
+        )
+    }
+
+    if (showTimeEditorSheet) {
+        ViewerTimeEditorSheet(
+            initialTimeMillis = uiState.displayTimeMillis,
+            onDismiss = { showTimeEditorSheet = false },
+            onConfirm = { nextTimeMillis ->
+                viewModel.updateDisplayTime(nextTimeMillis)
+                showTimeEditorSheet = false
             },
         )
     }
@@ -590,6 +790,8 @@ private fun GearEditMemoryHeader(
     mediaCount: Int,
     albumTitles: List<String>,
     coverLabel: String,
+    ownershipLabel: String,
+    ownershipAvatars: List<CollaboratorIdentityUiModel>,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
@@ -604,18 +806,25 @@ private fun GearEditMemoryHeader(
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
-                text = "编辑这条记忆",
+                text = "整理这条记忆",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
             )
+            if (ownershipAvatars.isNotEmpty()) {
+                CollaboratorAvatarStack(
+                    identities = ownershipAvatars,
+                    avatarSize = 26.dp,
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                GearEditInfoChip(text = "媒体 $mediaCount 项")
-                GearEditInfoChip(text = "封面：$coverLabel")
+                SelectableInfoChip(text = "媒体 $mediaCount 项")
+                SelectableInfoChip(text = "封面：$coverLabel")
             }
-            GearEditInfoChip(
+            SelectableInfoChip(text = "所属：$ownershipLabel")
+            SelectableInfoChip(
                 text = if (albumTitles.isEmpty()) {
                     "未选择相册"
                 } else {
@@ -659,6 +868,27 @@ private fun GearEditTextSection(
     }
 }
 
+private fun mergeDraftPostMediaWithRepoAdditions(
+    currentItems: List<PostMediaListItem>,
+    latestItems: List<ManagedPostMediaUiModel>,
+    previousBaselineIds: Collection<String>,
+): List<PostMediaListItem> {
+    val currentIds = currentItems.mapTo(linkedSetOf()) { it.id }
+    val latestById = latestItems.associateBy { it.id }
+    return buildList {
+        currentItems.forEach { item ->
+            add(
+                latestById[item.id]?.toPostMediaListItem() ?: item,
+            )
+        }
+        latestItems.forEach { media ->
+            if (media.id !in currentIds && media.id !in previousBaselineIds) {
+                add(media.toPostMediaListItem())
+            }
+        }
+    }
+}
+
 @Composable
 private fun GearEditMediaPreviewSection(
     items: List<PostMediaListItem>,
@@ -691,6 +921,9 @@ private fun GearEditMediaPreviewSection(
             GearEditActionButton(text = "全部", onClick = onOpenAll)
         }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val previewCoverIds = remember(items, coverMediaId) {
+                gearEditPreviewCoverIds(items, coverMediaId)
+            }
             items.take(4).chunked(2).forEach { rowItems ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -709,7 +942,8 @@ private fun GearEditMediaPreviewSection(
                                 modifier = Modifier.fillMaxSize(),
                                 requestSize = 640,
                             )
-                            if (item.id == coverMediaId) {
+                            val coverRank = previewCoverIds.indexOf(item.id).takeIf { it >= 0 }?.plus(1)
+                            if (coverRank != null) {
                                 Surface(
                                     modifier = Modifier
                                         .align(Alignment.TopStart)
@@ -718,7 +952,7 @@ private fun GearEditMediaPreviewSection(
                                     color = colors.primaryAction.copy(alpha = 0.88f),
                                 ) {
                                     Text(
-                                        text = "封面",
+                                        text = "封面$coverRank",
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                         color = Color.White,
@@ -794,23 +1028,6 @@ private fun GearEditSaveRow(
 }
 
 @Composable
-private fun GearEditInfoChip(text: String) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = colors.raisedSurface.copy(alpha = 0.74f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = colors.textSecondary,
-        )
-    }
-}
-
-@Composable
 private fun GearEditSummaryRow(
     label: String,
     value: String,
@@ -841,12 +1058,32 @@ private fun gearEditCoverLabel(
     coverMediaId: String?,
 ): String {
     if (items.isEmpty()) return "无媒体"
-    val index = items.indexOfFirst { it.id == coverMediaId }
-    return if (index >= 0) {
-        "第 ${index + 1} 项"
-    } else {
-        "未设置，保存时使用第 1 项"
+    val previewIds = gearEditPreviewCoverIds(items, coverMediaId)
+    return when (previewIds.size) {
+        0 -> "未设置，默认使用前 2 项"
+        1 -> "封面1：第 ${items.indexOfFirst { it.id == previewIds[0] } + 1} 项"
+        else -> {
+            val firstIndex = items.indexOfFirst { it.id == previewIds[0] } + 1
+            val secondIndex = items.indexOfFirst { it.id == previewIds[1] } + 1
+            "封面1/2：第 $firstIndex、$secondIndex 项"
+        }
     }
+}
+
+private fun gearEditPreviewCoverIds(
+    items: List<PostMediaListItem>,
+    coverMediaId: String?,
+): List<String> {
+    if (items.isEmpty()) return emptyList()
+    val ids = mutableListOf<String>()
+    coverMediaId
+        ?.takeIf { id -> items.any { it.id == id } }
+        ?.let(ids::add)
+    items.forEach { item ->
+        if (ids.size >= 2) return@forEach
+        if (item.id !in ids) ids += item.id
+    }
+    return ids.take(2)
 }
 
 @Composable
@@ -905,8 +1142,8 @@ private fun AlbumSelectionFlow(
             verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
         ) {
             albums.forEach { album ->
-                SelectableGearEditChip(
-                    text = album.title,
+                SelectableAlbumChip(
+                    title = album.title,
                     selected = selectedAlbumIds.contains(album.id),
                     onClick = { onToggleAlbum(album.id) },
                 )
@@ -938,50 +1175,6 @@ private fun GearEditChip(
             ),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
             color = colors.titleAccent,
-        )
-    }
-}
-
-@Composable
-private fun SelectableGearEditChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier
-            .defaultMinSize(minHeight = 44.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (selected) {
-            colors.primaryContainer.copy(alpha = 0.72f)
-        } else {
-            colors.sectionBackground.copy(alpha = 0.72f)
-        },
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) {
-                colors.glassStroke.copy(alpha = 0.82f)
-            } else {
-                colors.dividerSoft.copy(alpha = 0.68f)
-            },
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(
-                horizontal = YingShiThemeTokens.spacing.sm,
-                vertical = YingShiThemeTokens.spacing.xs,
-            ),
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            ),
-            color = if (selected) {
-                colors.titleAccent
-            } else {
-                colors.textSecondary
-            },
         )
     }
 }

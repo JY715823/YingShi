@@ -209,6 +209,7 @@ class FakeAlbumRepositoryShell : AlbumRepository {
             summary = draft.summary,
             postDisplayTimeMillis = draft.postDisplayTimeMillis,
             albumIds = listOf(payload.albumId),
+            participantUserIds = draft.participantUserIds,
         )
         return FakeAlbumRepository.getPost(postId)
             ?.toRemotePostSummary()
@@ -240,6 +241,7 @@ class FakePostRepositoryShell : PostRepository {
             summary = payload.summary,
             postDisplayTimeMillis = payload.displayTimeMillis,
             albumIds = listOf(payload.albumId),
+            participantUserIds = payload.participantUserIds,
         )
         return ApiResult.Success(post.toRemotePostSummary())
     }
@@ -265,6 +267,7 @@ class FakePostRepositoryShell : PostRepository {
             summary = payload.summary,
             postDisplayTimeMillis = payload.displayTimeMillis,
             albumIds = listOf(payload.albumId),
+            participantUserIds = payload.participantUserIds,
         )
         return FakeAlbumRepository.getPost(postId)
             ?.toRemotePostSummary()

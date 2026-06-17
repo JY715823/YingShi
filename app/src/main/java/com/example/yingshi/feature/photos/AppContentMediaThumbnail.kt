@@ -105,7 +105,7 @@ fun AppContentMediaThumbnail(
                 requestSize = requestSize,
             ),
             placeholderMemoryCacheKey = thumbnailCacheKey ?: modelUrl?.let(::sharedPreviewMemoryCacheKey),
-            diskCacheKey = thumbnailCacheKey,
+            diskCacheKey = mediaSource.thumbnailModelDiskCacheKey(mediaType),
             size = requestSize,
         )
     }
@@ -122,7 +122,7 @@ fun AppContentMediaThumbnail(
                 url = originalImageUrl,
                 accessToken = accessToken,
                 memoryCacheKey = originalImageCacheKey ?: originalImageUrl?.let(::sharedOriginalMemoryCacheKey),
-                diskCacheKey = originalImageCacheKey,
+                diskCacheKey = mediaSource.viewerOriginalImageDiskCacheKey(mediaType),
             )
         } else {
             null
@@ -147,6 +147,7 @@ fun AppContentMediaThumbnail(
             url = videoPosterUrl,
             accessToken = accessToken,
             cacheKey = videoPosterCacheKey,
+            diskCacheKey = mediaSource.videoPosterVideoDiskCacheKey(mediaType),
         ).value
     } else {
         VideoPosterState()

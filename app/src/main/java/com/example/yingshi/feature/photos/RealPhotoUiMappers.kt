@@ -37,7 +37,7 @@ fun RemotePostSummary.toAlbumPostCardUiModel(
         albumId = selectedAlbumId,
         albumIds = albumIds.ifEmpty { listOf(selectedAlbumId) },
         title = title,
-        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "还没有简介" } },
+        summary = summary.ifBlank { "还没有简介" },
         creatorUserId = creatorUserId,
         participantUserIds = participantUserIds,
         postDisplayTimeMillis = displayTimeMillis,
@@ -63,7 +63,7 @@ fun RemotePostSummary.toPostDetailPlaceholderRoute(
         albumId = selectedAlbumId,
         albumIds = albumIds.ifEmpty { listOf(selectedAlbumId) },
         title = title,
-        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "还没有简介" } },
+        summary = summary.ifBlank { "还没有简介" },
         postDisplayTimeMillis = displayTimeMillis,
         mediaCount = mediaCount,
         coverPalette = palette,
@@ -85,7 +85,7 @@ fun RemotePostDetail.toPostDetailPlaceholderRoute(
         albumId = fallbackAlbumId,
         albumIds = albumIds.ifEmpty { listOf(fallbackAlbumId) },
         title = title,
-        summary = summary.ifBlank { contributorLabel.orEmpty().ifBlank { "还没有简介" } },
+        summary = summary.ifBlank { "还没有简介" },
         postDisplayTimeMillis = displayTimeMillis,
         mediaCount = mediaItems.size,
         coverPalette = realPaletteFor(coverMediaId ?: coverMedia?.mediaId ?: postId),
@@ -101,7 +101,7 @@ fun RemotePostDetail.toPostDetailUiModel(
         postId = postId,
         title = title,
         summary = summary.ifBlank { "还没有简介" },
-        contributorLabel = contributorLabel.orEmpty().ifBlank { "共享记录" },
+        contributorLabel = contributorLabel.orEmpty(),
         creatorUserId = creatorUserId,
         participantUserIds = participantUserIds,
         postDisplayTimeMillis = displayTimeMillis,
@@ -119,6 +119,7 @@ fun RemotePostDetail.toEditablePostDraft(): EditablePostDraft {
         summary = summary,
         postDisplayTimeMillis = displayTimeMillis,
         albumIds = albumIds,
+        participantUserIds = participantUserIds,
     )
 }
 

@@ -10,6 +10,7 @@ import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.CommentListState
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.toCommentListState
@@ -24,6 +25,7 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.IOException
+
+private const val CommentNoticeVisibleMillis = 1800L
 
 data class AlbumPageRealUiState(
     val isLoading: Boolean = false,
@@ -136,6 +140,7 @@ class AlbumPageRealViewModel(
                 is ApiResult.Success -> {
                     if (requestVersion != refreshVersion) return@launch
                     val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
+                    val cachedPreviewMediaByPostId = cachedDirectory.cachedPreviewMediaByPostId()
                     val persistedAlbums = mergeRemoteAlbumsWithPendingOverrides(result.data)
                     val albums = persistedAlbums.map { album -> album.toAlbumSummaryUiModel() }
                     val selectedAlbumId = _uiState.value.selectedAlbumId
@@ -153,8 +158,9 @@ class AlbumPageRealViewModel(
                                 ?: cachedPostsByAlbumId[resolvedAlbumId]
                                     .orEmpty()
                                     .map { post ->
-                                        post.toAlbumPostCardUiModel(
+                                        post.toAlbumPostCardUiModelWithPreviewCache(
                                             selectedAlbumId = resolvedAlbumId,
+                                            previewMediaByPostId = cachedPreviewMediaByPostId,
                                         )
                                     }
                         }.orEmpty(),
@@ -243,6 +249,7 @@ class AlbumPageRealViewModel(
         viewModelScope.launch {
             val cachedDirectory = cachedDirectorySnapshot ?: withContext(Dispatchers.IO) { readCachedDirectory() }
             val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
+            val cachedPreviewMediaByPostId = cachedDirectory.cachedPreviewMediaByPostId()
             val hasCachedPosts = cachedPostsByAlbumId.containsKey(albumId)
             val cachedPosts = cachedPostsByAlbumId[albumId].orEmpty()
 
@@ -252,8 +259,9 @@ class AlbumPageRealViewModel(
                         selectedAlbumId = albumId,
                         posts = cachedAlbumPostCards(albumId)
                             ?: cachedPosts.map { post ->
-                                post.toAlbumPostCardUiModel(
+                                post.toAlbumPostCardUiModelWithPreviewCache(
                                     selectedAlbumId = albumId,
+                                    previewMediaByPostId = cachedPreviewMediaByPostId,
                                 )
                             },
                         isPostsLoading = false,
@@ -273,8 +281,9 @@ class AlbumPageRealViewModel(
                     posts = cachedAlbumPostCards(albumId)
                         ?: if (hasCachedPosts) {
                             cachedPosts.map { post ->
-                                post.toAlbumPostCardUiModel(
+                                post.toAlbumPostCardUiModelWithPreviewCache(
                                     selectedAlbumId = albumId,
+                                    previewMediaByPostId = cachedPreviewMediaByPostId,
                                 )
                             }
                         } else {
@@ -427,6 +436,10 @@ class AlbumPageRealViewModel(
                         ?.postsByAlbumId
                         .orEmpty()
                         .filterKeys { key -> key != albumId }
+                    val nextPreviewMediaByPostId = cachedDirectorySnapshot.cachedPreviewMediaByPostId()
+                        .filterKeys { postId ->
+                            nextPostsByAlbumId.values.any { posts -> posts.any { it.postId == postId } }
+                        }
                     albumPostCardCacheByAlbumId.remove(albumId)
                     val nextRemoteAlbums = cachedDirectorySnapshot?.albums
                         ?.filterNot { album -> album.albumId == albumId }
@@ -437,8 +450,9 @@ class AlbumPageRealViewModel(
                             ?: nextPostsByAlbumId[resolvedAlbumId]
                                 .orEmpty()
                                 .map { post ->
-                                    post.toAlbumPostCardUiModel(
+                                    post.toAlbumPostCardUiModelWithPreviewCache(
                                         selectedAlbumId = resolvedAlbumId,
+                                        previewMediaByPostId = nextPreviewMediaByPostId,
                                     )
                                 }
                     }.orEmpty()
@@ -446,6 +460,7 @@ class AlbumPageRealViewModel(
                         persistAlbumDirectory(
                             albums = nextRemoteAlbums,
                             postsByAlbumId = nextPostsByAlbumId,
+                            previewMediaByPostId = nextPreviewMediaByPostId,
                         )
                     }
                     _uiState.update {
@@ -489,6 +504,7 @@ class AlbumPageRealViewModel(
         val requestVersion = ++postsLoadVersion
         loadPostsJob = viewModelScope.launch {
             val cachedPostsByAlbumId = cachedDirectorySnapshot?.postsByAlbumId.orEmpty()
+            val cachedPreviewMediaByPostId = cachedDirectorySnapshot.cachedPreviewMediaByPostId()
             val hasCachedPosts = cachedPostsByAlbumId.containsKey(albumId)
             val cachedPosts = cachedPostsByAlbumId[albumId].orEmpty()
             if (_uiState.value.isOfflineReadOnly) {
@@ -498,8 +514,9 @@ class AlbumPageRealViewModel(
                             isPostsRefreshing = false,
                             posts = cachedAlbumPostCards(albumId)
                                 ?: cachedPosts.map { post ->
-                                    post.toAlbumPostCardUiModel(
+                                    post.toAlbumPostCardUiModelWithPreviewCache(
                                         selectedAlbumId = albumId,
+                                        previewMediaByPostId = cachedPreviewMediaByPostId,
                                     )
                                 },
                             postsErrorMessage = if (hasCachedPosts) null else "当前离线，只能查看已缓存的小相册。",
@@ -566,8 +583,9 @@ class AlbumPageRealViewModel(
                                 statusMessage = message,
                                 posts = cachedAlbumPostCards(albumId)
                                     ?: cachedPosts.map { post ->
-                                        post.toAlbumPostCardUiModel(
+                                        post.toAlbumPostCardUiModelWithPreviewCache(
                                             selectedAlbumId = albumId,
+                                            previewMediaByPostId = cachedPreviewMediaByPostId,
                                         )
                                     },
                                 postsErrorMessage = null,
@@ -597,7 +615,7 @@ class AlbumPageRealViewModel(
     ) {
         val targetSummaries = summaries
             .asSequence()
-            .filter { it.coverMediaId != null }
+            .filter { it.mediaCount > 0 }
             .take(6)
             .toList()
         if (targetSummaries.isEmpty()) return
@@ -624,6 +642,18 @@ class AlbumPageRealViewModel(
             }
 
             if (_uiState.value.selectedAlbumId != albumId) return@launch
+            val nonEmptyPreviewMediaByPostId = previewMediaByPostId
+                .filterValues { it.isNotEmpty() }
+            if (nonEmptyPreviewMediaByPostId.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    persistAlbumDirectory(
+                        albums = readCachedAlbums(),
+                        postsByAlbumId = cachedDirectorySnapshot?.postsByAlbumId.orEmpty(),
+                        previewMediaByPostId = cachedDirectorySnapshot.cachedPreviewMediaByPostId() +
+                            nonEmptyPreviewMediaByPostId,
+                    )
+                }
+            }
 
             _uiState.update { state ->
                 val nextPosts = state.posts.map { post ->
@@ -655,11 +685,13 @@ class AlbumPageRealViewModel(
     private fun persistAlbumDirectory(
         albums: List<RemoteAlbum>,
         postsByAlbumId: Map<String, List<RemotePostSummary>>,
+        previewMediaByPostId: Map<String, List<RemotePostMedia>> = cachedDirectorySnapshot.cachedPreviewMediaByPostId(),
     ) {
         val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return
         cachedDirectorySnapshot = CachedAlbumDirectory(
             albums = albums,
             postsByAlbumId = postsByAlbumId,
+            previewMediaByPostId = previewMediaByPostId.takeIf { it.isNotEmpty() },
         )
         AppReadCacheStore.writeAlbumDirectory(
             userId = userId,
@@ -688,12 +720,14 @@ class AlbumPageRealViewModel(
             albums = cachedDirectory.albums.map(RemoteAlbum::toAlbumSummaryUiModel),
             selectedAlbumId = selectedAlbumId,
             posts = selectedAlbumId?.let { resolvedAlbumId ->
+                val cachedPreviewMediaByPostId = cachedDirectory.cachedPreviewMediaByPostId()
                 cachedAlbumPostCards(resolvedAlbumId)
                     ?: cachedDirectory.postsByAlbumId[resolvedAlbumId]
                         .orEmpty()
                         .map { post ->
-                            post.toAlbumPostCardUiModel(
+                            post.toAlbumPostCardUiModelWithPreviewCache(
                                 selectedAlbumId = resolvedAlbumId,
+                                previewMediaByPostId = cachedPreviewMediaByPostId,
                             )
                         }
             }.orEmpty(),
@@ -720,9 +754,11 @@ class AlbumPageRealViewModel(
         val cachedCardsByPostId = cachedAlbumPostCards(albumId)
             .orEmpty()
             .associateBy { it.id }
+        val cachedPreviewMediaByPostId = cachedDirectorySnapshot.cachedPreviewMediaByPostId()
         return summaries.map { summary ->
-            val baseCard = summary.toAlbumPostCardUiModel(
+            val baseCard = summary.toAlbumPostCardUiModelWithPreviewCache(
                 selectedAlbumId = albumId,
+                previewMediaByPostId = cachedPreviewMediaByPostId,
             )
             val cachedCard = cachedCardsByPostId[summary.postId] ?: return@map baseCard
             baseCard.copy(
@@ -777,6 +813,27 @@ private data class PendingAlbumOverride(
     val title: String,
     val description: String,
 )
+
+private fun CachedAlbumDirectory?.cachedPreviewMediaByPostId(): Map<String, List<RemotePostMedia>> {
+    return this?.previewMediaByPostId.orEmpty()
+}
+
+private fun RemotePostSummary.toAlbumPostCardUiModelWithPreviewCache(
+    selectedAlbumId: String,
+    previewMediaByPostId: Map<String, List<RemotePostMedia>>,
+): AlbumPostCardUiModel {
+    val previewMedia = previewMediaByPostId[postId]
+        .orEmpty()
+        .distinctBy { it.mediaId }
+        .take(2)
+    val coverMedia = previewMedia.firstOrNull { it.mediaId == coverMediaId }
+        ?: previewMedia.firstOrNull()
+    return toAlbumPostCardUiModel(
+        selectedAlbumId = selectedAlbumId,
+        coverMedia = coverMedia,
+        previewMedia = previewMedia,
+    )
+}
 
 private fun String.shouldAutoDismiss(): Boolean {
     return startsWith("已将大相册改名为「") ||
@@ -969,13 +1026,13 @@ class PostDetailRealViewModel(
     }
 
     fun deletePostComment(commentId: String) {
-        mutatePostComments("评论已删除。") {
+        mutatePostComments("评论已删除。", deletedCommentId = commentId) {
             commentRepository.deleteComment(commentId)
         }
     }
 
     fun deleteMediaComment(mediaId: String, commentId: String) {
-        mutateMediaComments(mediaId, "评论已删除。") {
+        mutateMediaComments(mediaId, "评论已删除。", deletedCommentId = commentId) {
             commentRepository.deleteComment(commentId)
         }
     }
@@ -1001,6 +1058,7 @@ class PostDetailRealViewModel(
                     ),
                 )
             }
+            clearPostCommentStatusLater(successMessage)
         }
     }
 
@@ -1032,11 +1090,13 @@ class PostDetailRealViewModel(
                     ),
                 )
             }
+            clearMediaCommentStatusLater(mediaId, successMessage)
         }
     }
 
     private fun mutatePostComments(
         successMessage: String,
+        deletedCommentId: String? = null,
         onSuccess: (() -> Unit)? = null,
         block: suspend () -> ApiResult<*>,
     ) {
@@ -1057,6 +1117,17 @@ class PostDetailRealViewModel(
             when (val result = block()) {
                 is ApiResult.Success -> {
                     onSuccess?.invoke()
+                    if (deletedCommentId != null) {
+                        _uiState.update {
+                            it.copy(
+                                postComments = it.postComments.copy(
+                                    comments = it.postComments.comments.filterNot { comment -> comment.id == deletedCommentId },
+                                    isMutating = false,
+                                    statusMessage = successMessage,
+                                ),
+                            )
+                        }
+                    }
                     loadPostComments(successMessage)
                 }
                 is ApiResult.Error -> {
@@ -1077,6 +1148,7 @@ class PostDetailRealViewModel(
     private fun mutateMediaComments(
         mediaId: String,
         successMessage: String,
+        deletedCommentId: String? = null,
         onSuccess: (() -> Unit)? = null,
         block: suspend () -> ApiResult<*>,
     ) {
@@ -1110,6 +1182,20 @@ class PostDetailRealViewModel(
                         postIds = setOf(route.postId),
                         mediaIds = setOf(mediaId),
                     )
+                    if (deletedCommentId != null) {
+                        _uiState.update { state ->
+                            state.copy(
+                                mediaComments = state.mediaComments + (
+                                    mediaId to state.mediaComments[mediaId].orEmpty().copy(
+                                        comments = state.mediaComments[mediaId].orEmpty().comments
+                                            .filterNot { comment -> comment.id == deletedCommentId },
+                                        isMutating = false,
+                                        statusMessage = successMessage,
+                                    )
+                                ),
+                            )
+                        }
+                    }
                     loadMediaComments(mediaId, successMessage)
                 }
                 is ApiResult.Error -> {
@@ -1125,6 +1211,35 @@ class PostDetailRealViewModel(
                     }
                 }
                 ApiResult.Loading -> Unit
+            }
+        }
+    }
+
+    private fun clearPostCommentStatusLater(expectedMessage: String?) {
+        if (expectedMessage == null) return
+        viewModelScope.launch {
+            delay(CommentNoticeVisibleMillis)
+            _uiState.update {
+                if (it.postComments.statusMessage == expectedMessage) {
+                    it.copy(postComments = it.postComments.copy(statusMessage = null))
+                } else {
+                    it
+                }
+            }
+        }
+    }
+
+    private fun clearMediaCommentStatusLater(mediaId: String, expectedMessage: String?) {
+        if (expectedMessage == null) return
+        viewModelScope.launch {
+            delay(CommentNoticeVisibleMillis)
+            _uiState.update { state ->
+                val current = state.mediaComments[mediaId] ?: return@update state
+                if (current.statusMessage == expectedMessage) {
+                    state.copy(mediaComments = state.mediaComments + (mediaId to current.copy(statusMessage = null)))
+                } else {
+                    state
+                }
             }
         }
     }
@@ -1165,7 +1280,7 @@ private fun CommentListState.toThreadUiState(
 ): RealCommentThreadUiState {
     return if (errorMessage != null) {
         RealCommentThreadUiState(
-            comments = comments.map { it.toCommentUiModel(currentUserId) }.sortedByDescending { it.createdAtMillis },
+            comments = comments.filterNot { it.isDeleted }.map { it.toCommentUiModel(currentUserId) }.sortedByDescending { it.createdAtMillis },
             isLoading = false,
             isMutating = false,
             errorMessage = errorMessage,
@@ -1173,7 +1288,7 @@ private fun CommentListState.toThreadUiState(
         )
     } else {
         RealCommentThreadUiState(
-            comments = comments.map { it.toCommentUiModel(currentUserId) }.sortedByDescending { it.createdAtMillis },
+            comments = comments.filterNot { it.isDeleted }.map { it.toCommentUiModel(currentUserId) }.sortedByDescending { it.createdAtMillis },
             isLoading = isLoading,
             isMutating = false,
             errorMessage = null,

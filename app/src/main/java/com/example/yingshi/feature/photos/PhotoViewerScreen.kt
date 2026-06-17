@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -171,7 +172,7 @@ private object ViewerLayoutTuning {
     val photoFlowEdgeActionsBottomPadding = 0.dp
     val inPostEdgeActionsBottomPadding = 2.dp
     val postSegmentBottomOffset = 2.dp
-    const val commentSheetHeightFraction = 0.68f
+    const val commentSheetHeightFraction = 0.66f
     const val relatedPostsSheetHeightFraction = 0.42f
     const val zoomedOverlayAlpha = 0.42f
     const val previewCommentsMaxCount = 10
@@ -1308,13 +1309,14 @@ private fun PrefetchViewerMediaAssets(
                 val posterImageUrl = item.mediaSource
                     ?.thumbnailModelUrl(item.mediaType)
                     ?.takeUnless { looksLikeVideoSource(it, item.mediaSource?.mimeType) }
+                val posterImageDiskCacheKey = item.mediaSource?.thumbnailModelDiskCacheKey(item.mediaType)
                 if (posterImageUrl != null) {
                     backendMediaImageRequest(
                         context = context,
                         url = posterImageUrl,
                         accessToken = accessToken,
                         memoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
-                        diskCacheKey = posterImageCacheKey,
+                        diskCacheKey = posterImageDiskCacheKey,
                         size = 1280,
                     )?.let(imageLoader::enqueue)
                     return@forEach
@@ -1325,6 +1327,7 @@ private fun PrefetchViewerMediaAssets(
                         url = videoUrl,
                         accessToken = accessToken,
                         cacheKey = item.mediaSource.viewerVideoCacheKey(item.mediaType),
+                        diskCacheKey = item.mediaSource.viewerVideoDiskCacheKey(item.mediaType),
                     )
                 }
             } else {
@@ -2201,6 +2204,7 @@ internal fun ViewerVideoCanvas(
         url = fallbackPosterVideoUrl,
         accessToken = accessToken,
         cacheKey = videoCacheKey,
+        diskCacheKey = media.mediaSource.viewerVideoDiskCacheKey(media.mediaType),
     ).value
     val extractedPosterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
     val requestHeaders = remember(videoUrl, accessToken) {
@@ -2982,12 +2986,28 @@ private fun PhotoViewerCommentSheet(
     var expanded by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf(false) }
     var actionCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
     var editingCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
-    var editingDraft by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf("") }
+    var editingDraft by androidx.compose.runtime.saveable.rememberSaveable(mediaId, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     var selectedForCopyCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
+    var pendingDeleteCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
     var selectedCommentValue by androidx.compose.runtime.saveable.rememberSaveable(mediaId, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
+    var showSelectedCommentNotice by rememberSaveable(mediaId, selectedCommentId) {
+        mutableStateOf(selectedCommentId != null)
+    }
     val visibleComments = comments.visibleComments(expanded)
+
+    LaunchedEffect(mediaId, selectedCommentId) {
+        if (selectedCommentId == null) {
+            showSelectedCommentNotice = false
+        } else {
+            showSelectedCommentNotice = true
+            kotlinx.coroutines.delay(2400L)
+            showSelectedCommentNotice = false
+        }
+    }
 
     BackHandler(enabled = selectedForCopyCommentId != null) {
         selectedForCopyCommentId = null
@@ -3007,158 +3027,201 @@ private fun PhotoViewerCommentSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(ViewerLayoutTuning.commentSheetHeightFraction)
-                .verticalScroll(rememberScrollState())
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            ViewerNightTop.copy(alpha = 0.98f),
+                            ViewerNightTop.copy(alpha = 0.94f),
+                            ViewerNightBottom.copy(alpha = 0.98f),
+                        ),
+                    ),
+                )
+                .imePadding()
+                .navigationBarsPadding()
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            Text(
-                text = "媒体评论",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = ViewerSurface.copy(alpha = 0.94f),
-            )
-            if (statusMessage != null) {
-                Text(
-                    text = statusMessage,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ViewerSurface.copy(alpha = 0.88f),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 6.dp, height = 24.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(ViewerAccent.copy(alpha = 0.82f)),
                 )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "媒体评论",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = ViewerSurface.copy(alpha = 0.96f),
+                    )
+                    Text(
+                        text = if (comments.isEmpty()) "给这一帧留一句" else "${comments.size} 条留言",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ViewerSurface.copy(alpha = 0.58f),
+                    )
+                }
             }
-            if (selectedCommentId != null) {
+            if (showSelectedCommentNotice) {
                 Text(
                     text = "已定位到这条评论",
                     style = MaterialTheme.typography.labelMedium,
-                    color = ViewerSurface.copy(alpha = 0.58f),
+                    color = ViewerAccent.copy(alpha = 0.82f),
                 )
             }
-            if (errorMessage != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ViewerSurface.copy(alpha = 0.82f),
-                    )
-                    if (onRetry != null) {
-                        ViewerSheetActionButton(text = "重试", emphasized = true, onClick = onRetry)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
+                if (errorMessage != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ViewerSurface.copy(alpha = 0.82f),
+                        )
+                        if (onRetry != null) {
+                            ViewerSheetActionButton(text = "重试", emphasized = true, onClick = onRetry)
+                        }
                     }
                 }
-            }
-            if (isLoading) {
-                Text(
-                    text = "正在读取媒体评论…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ViewerSurface.copy(alpha = 0.68f),
-                )
-            } else if (visibleComments.isEmpty()) {
-                Text(
-                    text = "当前媒体还没有评论，先写下第一条本地媒体评论。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = ViewerSurface.copy(alpha = 0.68f),
-                )
-            } else {
-                visibleComments.forEach { comment ->
-                    CommentListItem(
-                        comment = comment,
-                        timeLabel = formatViewerTime(comment.createdAtMillis),
-                        onLongPress = {
-                            selectedForCopyCommentId = null
-                            selectedCommentValue = TextFieldValue("")
-                            editingCommentId = null
-                            editingDraft = ""
-                            actionCommentId = comment.id
-                        },
-                        onClick = {
-                            if (selectedForCopyCommentId != null) {
+                if (isLoading) {
+                    Text(
+                        text = "正在读取媒体评论…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ViewerSurface.copy(alpha = 0.68f),
+                    )
+                } else if (visibleComments.isEmpty()) {
+                    Text(
+                        text = "还没有留言，给这段记忆留一句。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ViewerSurface.copy(alpha = 0.76f),
+                    )
+                } else {
+                    visibleComments.forEach { comment ->
+                        CommentListItem(
+                            comment = comment,
+                            timeLabel = formatViewerTime(comment.createdAtMillis),
+                            onLongPress = {
                                 selectedForCopyCommentId = null
                                 selectedCommentValue = TextFieldValue("")
-                            }
-                            actionCommentId = null
-                        },
-                        darkMode = true,
-                        highlighted = comment.id == selectedCommentId,
-                        showInlineActionMenu = actionCommentId == comment.id &&
-                            selectedForCopyCommentId != comment.id &&
-                            editingCommentId != comment.id,
-                        onCopyFull = {
-                            copyComment(comment.content)
-                            actionCommentId = null
-                        },
-                        onSelectText = {
-                            selectedForCopyCommentId = comment.id
-                            selectedCommentValue = fullCommentSelectionValue(comment.content)
-                            editingCommentId = null
-                            editingDraft = ""
-                            actionCommentId = null
-                        },
-                        onEdit = {
-                            editingCommentId = comment.id
-                            editingDraft = comment.content
-                            selectedForCopyCommentId = null
-                            selectedCommentValue = TextFieldValue("")
-                            actionCommentId = null
-                        },
-                        onDelete = {
-                            onDeleteComment(comment.id)
-                            if (selectedForCopyCommentId == comment.id) {
-                                selectedForCopyCommentId = null
-                                selectedCommentValue = TextFieldValue("")
-                            }
-                            if (editingCommentId == comment.id) {
                                 editingCommentId = null
-                                editingDraft = ""
-                            }
-                            actionCommentId = null
-                            onShowNotice("评论操作已提交", true)
-                        },
-                        isEditing = editingCommentId == comment.id,
-                        editingValue = if (editingCommentId == comment.id) editingDraft else comment.content,
-                        onEditingValueChange = { editingDraft = it },
-                        onSaveEdit = {
-                            onUpdateComment(comment.id, editingDraft)
-                            editingCommentId = null
-                            editingDraft = ""
-                            actionCommentId = null
-                            onShowNotice("评论操作已提交", true)
-                        },
-                        onCancelEdit = {
-                            editingCommentId = null
-                            editingDraft = ""
-                        },
-                        selectionMode = selectedForCopyCommentId == comment.id,
-                        selectionFieldValue = if (selectedForCopyCommentId == comment.id) {
-                            selectedCommentValue
-                        } else {
-                            TextFieldValue(comment.content)
-                        },
-                        onSelectionFieldValueChange = { selectedCommentValue = it },
-                        onCopySelection = if (selectedForCopyCommentId == comment.id) {
-                            {
-                                selectedCommentValue.selectedTextOrNull()?.let(copyComment)
+                                editingDraft = TextFieldValue("")
+                                pendingDeleteCommentId = null
+                                actionCommentId = comment.id
+                            },
+                            onClick = {
+                                if (selectedForCopyCommentId != null) {
+                                    selectedForCopyCommentId = null
+                                    selectedCommentValue = TextFieldValue("")
+                                }
+                                pendingDeleteCommentId = null
+                                actionCommentId = null
+                            },
+                            darkMode = true,
+                            highlighted = comment.id == selectedCommentId,
+                            showInlineActionMenu = actionCommentId == comment.id &&
+                                selectedForCopyCommentId != comment.id &&
+                                editingCommentId != comment.id,
+                            onCopyFull = {
+                                copyComment(comment.content)
+                                actionCommentId = null
+                            },
+                            onSelectText = {
+                                selectedForCopyCommentId = comment.id
+                                selectedCommentValue = fullCommentSelectionValue(comment.content)
+                                editingCommentId = null
+                                editingDraft = TextFieldValue("")
+                                pendingDeleteCommentId = null
+                                actionCommentId = null
+                            },
+                            onEdit = {
+                                editingCommentId = comment.id
+                                editingDraft = endOfCommentEditValue(comment.content)
                                 selectedForCopyCommentId = null
                                 selectedCommentValue = TextFieldValue("")
-                            }
-                        } else {
-                            null
-                        },
+                                pendingDeleteCommentId = null
+                                actionCommentId = null
+                            },
+                            onDelete = {
+                                if (pendingDeleteCommentId == comment.id) {
+                                    onDeleteComment(comment.id)
+                                    if (selectedForCopyCommentId == comment.id) {
+                                        selectedForCopyCommentId = null
+                                        selectedCommentValue = TextFieldValue("")
+                                    }
+                                    if (editingCommentId == comment.id) {
+                                        editingCommentId = null
+                                        editingDraft = TextFieldValue("")
+                                    }
+                                    pendingDeleteCommentId = null
+                                    actionCommentId = null
+                                    onShowNotice("评论已删除", true)
+                                } else {
+                                    pendingDeleteCommentId = comment.id
+                                    actionCommentId = comment.id
+                                }
+                            },
+                            confirmingDelete = pendingDeleteCommentId == comment.id,
+                            isEditing = editingCommentId == comment.id,
+                            editingValue = if (editingCommentId == comment.id) editingDraft else endOfCommentEditValue(comment.content),
+                            onEditingValueChange = { editingDraft = it },
+                            onSaveEdit = {
+                                onUpdateComment(comment.id, editingDraft.text)
+                                editingCommentId = null
+                                editingDraft = TextFieldValue("")
+                                pendingDeleteCommentId = null
+                                actionCommentId = null
+                                onShowNotice("评论已更新", true)
+                            },
+                            onCancelEdit = {
+                                editingCommentId = null
+                                editingDraft = TextFieldValue("")
+                            },
+                            selectionMode = selectedForCopyCommentId == comment.id,
+                            selectionFieldValue = if (selectedForCopyCommentId == comment.id) {
+                                selectedCommentValue
+                            } else {
+                                TextFieldValue(comment.content)
+                            },
+                            onSelectionFieldValueChange = { selectedCommentValue = it },
+                            onCopySelection = if (selectedForCopyCommentId == comment.id) {
+                                {
+                                    selectedCommentValue.selectedTextOrNull()?.let(copyComment)
+                                    selectedForCopyCommentId = null
+                                    selectedCommentValue = TextFieldValue("")
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+                if (comments.hasHiddenComments(expanded)) {
+                    ViewerSheetActionButton(text = "展开更多评论", onClick = { expanded = true })
+                }
+                if (comments.canCollapseComments(expanded)) {
+                    ViewerSheetActionButton(text = "收起到最新 10 条", onClick = { expanded = false })
+                }
+                if (isMutating) {
+                    Text(
+                        text = "正在提交评论操作…",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = ViewerSurface.copy(alpha = 0.72f),
                     )
                 }
-            }
-            if (comments.hasHiddenComments(expanded)) {
-                ViewerSheetActionButton(text = "展开更多评论", onClick = { expanded = true })
-            }
-            if (comments.canCollapseComments(expanded)) {
-                ViewerSheetActionButton(text = "收起到最新 10 条", onClick = { expanded = false })
-            }
-            if (isMutating) {
-                Text(
-                    text = "正在提交评论操作…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ViewerSurface.copy(alpha = 0.72f),
-                )
             }
             CommentInputBar(
                 stateKey = "media-comment-input-$mediaId",
                 placeholder = "写一条媒体评论",
                 darkMode = true,
+                elevated = true,
                 requestFocusOnShow = autoFocusInput,
                 onSend = { content ->
                     onCreateComment(content)

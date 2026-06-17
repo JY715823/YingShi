@@ -19,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,16 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalTextToolbar
-import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +45,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.window.Popup
@@ -68,16 +64,18 @@ fun CommentInputBar(
     modifier: Modifier = Modifier,
     darkMode: Boolean = false,
     requestFocusOnShow: Boolean = false,
+    elevated: Boolean = false,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     var value by rememberSaveable(stateKey) { mutableStateOf("") }
     val sendEnabled = value.trim().isNotEmpty()
-    val containerColor = if (darkMode) {
-        colors.viewerSurface.copy(alpha = 0.72f)
-    } else {
-        colors.sectionBackground.copy(alpha = 0.62f)
+    val containerColor = when {
+        darkMode && elevated -> colors.viewerSurface.copy(alpha = 0.92f)
+        darkMode -> colors.viewerSurface.copy(alpha = 0.72f)
+        elevated -> colors.raisedSurface.copy(alpha = 0.94f)
+        else -> colors.sectionBackground.copy(alpha = 0.62f)
     }
     val textColor = if (darkMode) {
         colors.viewerText.copy(alpha = 0.88f)
@@ -108,6 +106,16 @@ fun CommentInputBar(
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(radius.lg),
             color = containerColor,
+            border = BorderStroke(
+                1.dp,
+                when {
+                    darkMode && elevated -> colors.viewerAccent.copy(alpha = 0.28f)
+                    darkMode -> colors.viewerAccent.copy(alpha = 0.14f)
+                    elevated -> colors.goldAccent.copy(alpha = 0.20f)
+                    else -> colors.dividerSoft.copy(alpha = 0.68f)
+                },
+            ),
+            shadowElevation = if (elevated) 2.dp else 0.dp,
         ) {
             BasicTextField(
                 value = value,
@@ -116,7 +124,10 @@ fun CommentInputBar(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .padding(horizontal = spacing.md, vertical = spacing.sm),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = textColor,
+                    lineHeight = 20.sp,
+                ),
                 cursorBrush = SolidColor(textColor),
                 decorationBox = { innerTextField ->
                     Box(
@@ -148,6 +159,7 @@ fun CommentInputBar(
             },
             darkMode = darkMode,
             emphasized = true,
+            elevated = elevated,
         )
     }
 }
@@ -167,9 +179,10 @@ fun CommentListItem(
     onSelectText: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    confirmingDelete: Boolean = false,
     isEditing: Boolean = false,
-    editingValue: String = "",
-    onEditingValueChange: (String) -> Unit = {},
+    editingValue: TextFieldValue = TextFieldValue(comment.content),
+    onEditingValueChange: (TextFieldValue) -> Unit = {},
     onSaveEdit: () -> Unit = {},
     onCancelEdit: () -> Unit = {},
     selectionMode: Boolean = false,
@@ -181,10 +194,10 @@ fun CommentListItem(
     val radius = YingShiThemeTokens.radius
     val density = LocalDensity.current
     val colors = YingShiThemeTokens.colors
-    val textColor = if (darkMode) colors.viewerText.copy(alpha = 0.86f) else colors.textPrimary
+    val textColor = if (darkMode) colors.viewerText.copy(alpha = 0.90f) else colors.textPrimary
     val metaColor = if (darkMode) colors.viewerTextSecondary.copy(alpha = 0.90f) else colors.textSecondary
     val authorColor = if (darkMode) {
-        colors.viewerText.copy(alpha = 0.94f)
+        colors.viewerAccent.copy(alpha = 0.96f)
     } else {
         colors.goldAccent.copy(alpha = 0.96f)
     }
@@ -193,8 +206,10 @@ fun CommentListItem(
     val activeBackground = when {
         selectionMode && darkMode -> colors.viewerAccent.copy(alpha = 0.14f)
         selectionMode -> colors.primaryContainer.copy(alpha = 0.42f)
-        highlighted && darkMode -> colors.viewerText.copy(alpha = 0.08f)
-        highlighted -> colors.memoryWash.copy(alpha = 0.92f)
+        confirmingDelete && darkMode -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.22f)
+        confirmingDelete -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.40f)
+        highlighted && darkMode -> colors.viewerAccent.copy(alpha = 0.12f)
+        highlighted -> colors.memoryWash.copy(alpha = 0.96f)
         else -> Color.Transparent
     }
     var itemBounds by remember(comment.id) { mutableStateOf<IntRect?>(null) }
@@ -279,7 +294,10 @@ fun CommentListItem(
                                 .fillMaxWidth()
                                 .focusRequester(editFocusRequester)
                                 .padding(horizontal = spacing.md, vertical = spacing.sm),
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = textColor,
+                                lineHeight = 20.sp,
+                            ),
                             cursorBrush = SolidColor(textColor),
                         )
                     }
@@ -294,7 +312,7 @@ fun CommentListItem(
                         )
                         CommentActionButton(
                             text = "保存",
-                            enabled = editingValue.trim().isNotEmpty(),
+                            enabled = editingValue.text.trim().isNotEmpty(),
                             onClick = onSaveEdit,
                             darkMode = darkMode,
                             emphasized = true,
@@ -314,7 +332,10 @@ fun CommentListItem(
                 else -> {
                     Text(
                         text = comment.content,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 20.sp,
+                        ),
                         color = textColor,
                     )
                 }
@@ -337,6 +358,7 @@ fun CommentListItem(
                     onSelect = onSelectText,
                     onEdit = onEdit,
                     onDelete = onDelete,
+                    confirmingDelete = confirmingDelete,
                 )
             }
         }
@@ -350,6 +372,7 @@ private fun CommentInlineActionMenu(
     onSelect: (() -> Unit)?,
     onEdit: (() -> Unit)?,
     onDelete: (() -> Unit)?,
+    confirmingDelete: Boolean,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
@@ -378,7 +401,12 @@ private fun CommentInlineActionMenu(
             InlineActionMenuItem(label = "复制", darkMode = darkMode, onClick = onCopy)
             InlineActionMenuItem(label = "选择", darkMode = darkMode, onClick = onSelect)
             InlineActionMenuItem(label = "编辑", darkMode = darkMode, onClick = onEdit)
-            InlineActionMenuItem(label = "删除", darkMode = darkMode, danger = true, onClick = onDelete)
+            InlineActionMenuItem(
+                label = if (confirmingDelete) "确认删除" else "删除",
+                darkMode = darkMode,
+                danger = true,
+                onClick = onDelete,
+            )
         }
     }
 }
@@ -422,33 +450,30 @@ private fun CommentSelectableText(
 ) {
     val colors = YingShiThemeTokens.colors
     val textColor = if (darkMode) colors.viewerText.copy(alpha = 0.88f) else colors.textPrimary
-    val focusRequester = FocusRequester()
+    val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val selectedText = value.selectedTextOrNull()
 
     LaunchedEffect(value.text) {
-        keyboardController?.hide()
         focusRequester.requestFocus()
         keyboardController?.hide()
     }
 
-    CompositionLocalProvider(LocalTextToolbar provides DisabledTextToolbar) {
-        BasicTextField(
-            value = value,
-            onValueChange = { nextValue ->
-                if (nextValue.text == value.text) {
-                    onValueChange(nextValue)
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester),
-            readOnly = true,
-            keyboardOptions = KeyboardOptions(showKeyboardOnFocus = false),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
-            cursorBrush = SolidColor(textColor),
-        )
-    }
+    BasicTextField(
+        value = value,
+        onValueChange = { nextValue ->
+            if (nextValue.text == value.text) {
+                onValueChange(nextValue)
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        readOnly = true,
+        keyboardOptions = KeyboardOptions(showKeyboardOnFocus = false),
+        textStyle = MaterialTheme.typography.bodyMedium.copy(color = textColor),
+        cursorBrush = SolidColor(textColor),
+    )
 
     if (selectedText != null && onCopySelection != null) {
         Row(
@@ -471,11 +496,13 @@ private fun CommentActionButton(
     enabled: Boolean = true,
     darkMode: Boolean = false,
     emphasized: Boolean = false,
+    elevated: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     val containerColor = when {
+        darkMode && emphasized && elevated -> colors.viewerAccent.copy(alpha = 0.34f)
         darkMode && emphasized -> colors.viewerAccent.copy(alpha = 0.24f)
         darkMode -> colors.viewerSurface.copy(alpha = 0.72f)
         !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
@@ -498,7 +525,7 @@ private fun CommentActionButton(
             1.dp,
             if (darkMode) colors.viewerAccent.copy(alpha = 0.14f) else colors.dividerSoft.copy(alpha = 0.68f),
         ),
-        shadowElevation = 0.dp,
+        shadowElevation = if (elevated && emphasized && enabled) 2.dp else 0.dp,
     ) {
         Text(
             text = text,
@@ -560,6 +587,10 @@ fun fullCommentSelectionValue(text: String): TextFieldValue {
     return TextFieldValue(text = text, selection = TextRange(0, text.length))
 }
 
+fun endOfCommentEditValue(text: String): TextFieldValue {
+    return TextFieldValue(text = text, selection = TextRange(text.length))
+}
+
 fun TextFieldValue.selectedTextOrNull(): String? {
     val start = selection.start.coerceIn(0, text.length)
     val end = selection.end.coerceIn(0, text.length)
@@ -583,16 +614,3 @@ fun List<CommentUiModel>.canCollapseComments(expanded: Boolean): Boolean {
     return expanded && size > DefaultVisibleCommentCount
 }
 
-private object DisabledTextToolbar : TextToolbar {
-    override val status: TextToolbarStatus = TextToolbarStatus.Hidden
-
-    override fun hide() = Unit
-
-    override fun showMenu(
-        rect: Rect,
-        onCopyRequested: (() -> Unit)?,
-        onPasteRequested: (() -> Unit)?,
-        onCutRequested: (() -> Unit)?,
-        onSelectAllRequested: (() -> Unit)?,
-    ) = Unit
-}
