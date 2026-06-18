@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
@@ -34,6 +35,8 @@ import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.roundToInt
 
 object LocalSystemMediaBridgeRepository {
@@ -41,6 +44,8 @@ object LocalSystemMediaBridgeRepository {
     private const val ReadLocalMediaTimeoutMillis = 180_000L
     private const val CreateUploadTokenTimeoutMillis = 15_000L
     private const val UploadFileTimeoutMillis = 10 * 60_000L
+    private const val ImportOverlayPreferencesName = "system_media_import_overlay"
+    private const val ImportOverlayItemsKey = "items_json"
 
     enum class MutationKind {
         OVERLAY_ONLY,
@@ -156,6 +161,8 @@ object LocalSystemMediaBridgeRepository {
     private val operationRequestsById = linkedMapOf<String, PendingOperationRequest>()
     private val uploadJobsByTaskId = linkedMapOf<String, Job>()
     private val publishedFirstSuccessOperationIds = linkedSetOf<String>()
+    private var overlayPreferences: SharedPreferences? = null
+    private var persistentOverlayLoaded = false
 
     val uploadTasks: List<SystemMediaUploadTaskUiModel>
         get() = uploadTasksState
@@ -175,10 +182,58 @@ object LocalSystemMediaBridgeRepository {
         return items
             .filterNot { hiddenMediaIds.contains(it.id) }
             .map { item ->
+                val importedMediaId = knownAppMediaIdForSource(item) ?: item.importedAppMediaId
+                val linkedPostIds = linkedPostIdsByMediaId[item.id]
+                    ?: importedMediaId?.let { linkedPostIdsByMediaId[it] }
                 item.copy(
-                    linkedPostIds = linkedPostIdsByMediaId[item.id]?.toList().orEmpty(),
+                    importedAppMediaId = importedMediaId,
+                    linkedSmallAlbumIds = linkedPostIds?.toList() ?: item.linkedSmallAlbumIds,
+                    linkedPostIds = linkedPostIds?.toList() ?: item.linkedPostIds,
                 )
             }
+    }
+
+    fun warmPersistentImportOverlay(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(
+            ImportOverlayPreferencesName,
+            Context.MODE_PRIVATE,
+        )
+        overlayPreferences = prefs
+        if (persistentOverlayLoaded) return
+        persistentOverlayLoaded = true
+        val raw = prefs.getString(ImportOverlayItemsKey, null)?.takeIf { it.isNotBlank() }
+            ?: return
+        runCatching {
+            val array = JSONArray(raw)
+            for (index in 0 until array.length()) {
+                val entry = array.optJSONObject(index) ?: continue
+                val sourceKey = entry.optString("sourceKey").takeIf { it.isNotBlank() } ?: continue
+                val appMediaId = entry.optString("appMediaId").takeIf { it.isNotBlank() } ?: continue
+                val smallAlbumIds = entry.optJSONArray("smallAlbumIds").toStringSet()
+                appMediaIdBySystemSourceKey[sourceKey] = appMediaId
+                if (smallAlbumIds.isNotEmpty()) {
+                    linkedPostIdsByMediaId[appMediaId] = linkedSetOf<String>().apply {
+                        addAll(smallAlbumIds)
+                    }
+                }
+            }
+        }
+    }
+
+    fun rememberImportStatus(
+        item: SystemMediaItem,
+        appMediaId: String,
+        smallAlbumIds: List<String>,
+    ) {
+        rememberAppMediaIdForSource(item, appMediaId)
+        linkedPostIdsByMediaId[item.id] = linkedSetOf<String>().apply {
+            addAll(smallAlbumIds.filter { it.isNotBlank() })
+        }
+        linkedPostIdsByMediaId[appMediaId] = linkedSetOf<String>().apply {
+            addAll(smallAlbumIds.filter { it.isNotBlank() })
+        }
+        persistImportOverlay()
+        publishMutation(MutationKind.OVERLAY_ONLY, setOf(item.id))
     }
 
     fun createPostFromSystemMedia(
@@ -241,6 +296,7 @@ object LocalSystemMediaBridgeRepository {
         additionalAppMediaIds: List<String> = emptyList(),
         additionalAppCoverMediaId: String? = null,
     ): Int {
+        warmPersistentImportOverlay(context)
         val normalizedItems = normalizeSystemMedia(mediaItems)
         publishDuplicateNoticeIfNeeded(
             operationType = OperationType.CREATE_POST,
@@ -293,6 +349,7 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaItems: List<SystemMediaItem>,
     ): Int {
+        warmPersistentImportOverlay(context)
         val dedupedItems = deduplicateImportCandidates(mediaItems)
         publishDuplicateNoticeIfNeeded(
             operationType = OperationType.IMPORT_TO_APP,
@@ -316,6 +373,7 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaUris: List<Uri>,
     ): Int {
+        warmPersistentImportOverlay(context)
         val items = mediaUris.toPickedSystemMediaItems(context)
         if (items.isEmpty()) return 0
         return enqueueImportToAppUpload(
@@ -328,6 +386,7 @@ object LocalSystemMediaBridgeRepository {
         context: Context,
         mediaUris: List<Uri>,
     ): SystemMediaImportPreview {
+        warmPersistentImportOverlay(context)
         return buildImportToAppPreview(
             mediaItems = mediaUris.toPickedSystemMediaItems(context),
         )
@@ -338,7 +397,7 @@ object LocalSystemMediaBridgeRepository {
         mediaItems: List<SystemMediaItem>,
     ): Int {
         val normalizedItems = normalizeSystemMedia(mediaItems)
-            .filterNot { it.linkedPostIds.contains(postId) }
+            .filterNot { it.linkedSmallAlbumIds.contains(postId) || it.linkedPostIds.contains(postId) }
         val addedCount = FakeAlbumRepository.appendSystemMediaToPost(
             postId = postId,
             mediaItems = normalizedItems,
@@ -365,8 +424,9 @@ object LocalSystemMediaBridgeRepository {
         mediaItems: List<SystemMediaItem>,
         postTitle: String = "",
     ): Int {
+        warmPersistentImportOverlay(context)
         val normalizedItems = normalizeSystemMedia(mediaItems)
-            .filterNot { it.linkedPostIds.contains(postId) }
+            .filterNot { it.linkedSmallAlbumIds.contains(postId) || it.linkedPostIds.contains(postId) }
         publishDuplicateNoticeIfNeeded(
             operationType = OperationType.ADD_TO_EXISTING_POST,
             skippedCount = mediaItems.size - normalizeSystemMedia(mediaItems).size,
@@ -2141,6 +2201,7 @@ object LocalSystemMediaBridgeRepository {
     private fun knownAppMediaIdForSource(
         item: SystemMediaItem,
     ): String? {
+        item.importedAppMediaId?.takeIf { it.isNotBlank() }?.let { return it }
         val sourceKey = item.stableImportSourceKey()
         appMediaIdBySystemSourceKey[sourceKey]?.let { return it }
         if (RepositoryProvider.currentMode != RepositoryMode.REAL) {
@@ -2158,6 +2219,38 @@ object LocalSystemMediaBridgeRepository {
     ) {
         if (appMediaId.isBlank()) return
         appMediaIdBySystemSourceKey[item.stableImportSourceKey()] = appMediaId
+        persistImportOverlay()
+    }
+
+    private fun persistImportOverlay() {
+        val prefs = overlayPreferences ?: return
+        val sourceKeyByAppMediaId = appMediaIdBySystemSourceKey.entries
+            .groupBy({ it.value }, { it.key })
+        val array = JSONArray()
+        appMediaIdBySystemSourceKey.forEach { (sourceKey, appMediaId) ->
+            val smallAlbumIds = linkedPostIdsByMediaId[appMediaId]
+                ?: sourceKeyByAppMediaId[appMediaId]
+                    ?.asSequence()
+                    ?.mapNotNull { linkedPostIdsByMediaId[it] }
+                    ?.firstOrNull()
+                ?: emptySet()
+            array.put(
+                JSONObject()
+                    .put("sourceKey", sourceKey)
+                    .put("appMediaId", appMediaId)
+                    .put("smallAlbumIds", JSONArray(smallAlbumIds.toList())),
+            )
+        }
+        prefs.edit().putString(ImportOverlayItemsKey, array.toString()).apply()
+    }
+
+    private fun JSONArray?.toStringSet(): LinkedHashSet<String> {
+        val values = linkedSetOf<String>()
+        if (this == null) return values
+        for (index in 0 until length()) {
+            optString(index).takeIf { it.isNotBlank() }?.let(values::add)
+        }
+        return values
     }
 
     private fun PhotoFeedItem.toCreatePostSystemMediaItem(): SystemMediaItem {

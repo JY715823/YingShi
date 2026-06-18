@@ -23,6 +23,7 @@ import com.example.yingshi.data.model.RemoteLoginChallenge
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
+import com.example.yingshi.data.model.RemoteMediaImportStatus
 import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
@@ -89,6 +90,12 @@ class FakeMediaRepositoryShell : MediaRepository {
             is ApiResult.Error -> result
             ApiResult.Loading -> ApiResult.Loading
         }
+    }
+
+    override suspend fun getImportStatus(
+        sourceFingerprints: List<String>,
+    ): ApiResult<List<RemoteMediaImportStatus>> {
+        return ApiResult.Success(emptyList())
     }
 
     override suspend fun deleteMediaFromPost(

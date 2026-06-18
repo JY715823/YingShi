@@ -2,14 +2,21 @@ package com.example.yingshi.feature.photos
 
 import android.content.ContentUris
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
+import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryMode
+import com.example.yingshi.data.repository.RepositoryProvider
 import java.util.Calendar
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 interface SystemMediaRepository {
     fun peekCachedMedia(): List<SystemMediaItem>?
@@ -25,30 +32,196 @@ class LocalSystemMediaRepository(
 ) : SystemMediaRepository {
 
     override fun peekCachedMedia(): List<SystemMediaItem>? {
-        return LocalSystemMediaQueryCache.items
+        LocalSystemMediaBridgeRepository.warmPersistentImportOverlay(appContext)
+        return LocalSystemMediaQueryCache.peek(appContext)
     }
 
     override suspend fun loadMedia(forceRefresh: Boolean): List<SystemMediaItem> {
+        LocalSystemMediaBridgeRepository.warmPersistentImportOverlay(appContext)
         if (!hasSystemMediaReadAccess(appContext)) {
             throw SecurityException("Missing system media permission.")
         }
         if (!forceRefresh) {
-            LocalSystemMediaQueryCache.items?.let { return it }
+            LocalSystemMediaQueryCache.peek(appContext)?.let { return it }
         }
         return dataSource.queryMedia()
             .sortedByDescending { it.displayTimeMillis }
+            .withAppImportStatus()
             .also { items ->
-                LocalSystemMediaQueryCache.items = items
+                LocalSystemMediaQueryCache.store(appContext, items)
             }
     }
+
+    private suspend fun List<SystemMediaItem>.withAppImportStatus(): List<SystemMediaItem> {
+        if (isEmpty() || RepositoryProvider.currentMode != RepositoryMode.REAL || !AuthSessionManager.isLoggedIn) {
+            return this
+        }
+        val itemsByFingerprint = associateBy { it.stableImportSourceFingerprint() }
+        val statuses = mutableMapOf<String, Pair<String, List<String>>>()
+        itemsByFingerprint.keys.chunked(SystemMediaImportStatusBatchSize).forEach { fingerprints ->
+            when (val result = RepositoryProvider.mediaRepository.getImportStatus(fingerprints)) {
+                is ApiResult.Success -> {
+                    result.data.forEach { status ->
+                        statuses[status.sourceFingerprint] = status.mediaId to status.smallAlbumIds
+                    }
+                }
+                is ApiResult.Error,
+                ApiResult.Loading,
+                -> return@forEach
+            }
+        }
+        if (statuses.isEmpty()) {
+            return this
+        }
+        return map { item ->
+            val status = statuses[item.stableImportSourceFingerprint()] ?: return@map item
+            LocalSystemMediaBridgeRepository.rememberImportStatus(
+                item = item,
+                appMediaId = status.first,
+                smallAlbumIds = status.second,
+            )
+            item.copy(
+                importedAppMediaId = status.first,
+                linkedSmallAlbumIds = status.second,
+                linkedPostIds = status.second,
+            )
+        }
+    }
 }
+
+private const val SystemMediaImportStatusBatchSize = 500
 
 interface SystemMediaDataSource {
     suspend fun queryMedia(): List<SystemMediaItem>
 }
 
 private object LocalSystemMediaQueryCache {
-    var items: List<SystemMediaItem>? = null
+    private const val PreferencesName = "system_media_metadata_cache"
+    private const val ItemsKey = "items_json"
+    private const val MaxCachedItems = 2000
+
+    private var memoryItems: List<SystemMediaItem>? = null
+
+    fun peek(context: Context): List<SystemMediaItem>? {
+        memoryItems?.let { return it }
+        val restoredItems = readFromDisk(context)
+        memoryItems = restoredItems
+        return restoredItems
+    }
+
+    fun store(context: Context, items: List<SystemMediaItem>) {
+        val normalizedItems = items.take(MaxCachedItems)
+        memoryItems = normalizedItems
+        writeToDisk(context, normalizedItems)
+    }
+
+    private fun preferences(context: Context): SharedPreferences {
+        return context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+    }
+
+    private fun readFromDisk(context: Context): List<SystemMediaItem>? {
+        val raw = preferences(context).getString(ItemsKey, null)?.takeIf { it.isNotBlank() }
+            ?: return null
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    array.optJSONObject(index)?.toSystemMediaItemOrNull()?.let(::add)
+                }
+            }.takeIf { it.isNotEmpty() }
+        }.getOrNull()
+    }
+
+    private fun writeToDisk(
+        context: Context,
+        items: List<SystemMediaItem>,
+    ) {
+        val array = JSONArray()
+        items.forEach { item -> array.put(item.toCacheJson()) }
+        preferences(context).edit().putString(ItemsKey, array.toString()).apply()
+    }
+
+    private fun SystemMediaItem.toCacheJson(): JSONObject {
+        return JSONObject()
+            .put("id", id)
+            .put("mediaStoreId", mediaStoreId)
+            .put("uri", uri.toString())
+            .put("type", type.name)
+            .put("mimeType", mimeType)
+            .put("displayName", displayName)
+            .put("bucketName", bucketName)
+            .put("displayTimeMillis", displayTimeMillis)
+            .put("capturedAtMillis", capturedAtMillis)
+            .put("fileModifiedAtMillis", fileModifiedAtMillis)
+            .put("displayTimeSource", displayTimeSource)
+            .put("displayYear", displayYear)
+            .put("displayMonth", displayMonth)
+            .put("displayDay", displayDay)
+            .put("width", width)
+            .put("height", height)
+            .put("aspectRatio", aspectRatio.toDouble())
+            .put("importedAppMediaId", importedAppMediaId)
+            .put("linkedSmallAlbumIds", JSONArray(linkedSmallAlbumIds))
+            .put("videoDurationMillis", videoDurationMillis)
+            .put("uploadedByUserId", uploadedByUserId)
+            .put("sizeBytes", sizeBytes)
+    }
+
+    private fun JSONObject.toSystemMediaItemOrNull(): SystemMediaItem? {
+        val type = runCatching { SystemMediaType.valueOf(optString("type")) }.getOrNull()
+            ?: return null
+        val mediaStoreId = optLong("mediaStoreId", -1L).takeIf { it >= 0L } ?: return null
+        val linkedSmallAlbumIds = optJSONArray("linkedSmallAlbumIds")
+            ?.let { array ->
+                buildList {
+                    for (index in 0 until array.length()) {
+                        array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+            .orEmpty()
+        return SystemMediaItem(
+            id = optString("id").takeIf { it.isNotBlank() } ?: "${type.name.lowercase(Locale.ROOT)}-$mediaStoreId",
+            mediaStoreId = mediaStoreId,
+            uri = Uri.parse(optString("uri")),
+            type = type,
+            mimeType = optString("mimeType"),
+            displayName = optString("displayName").ifBlank { "未命名媒体" },
+            bucketName = optNullableString("bucketName"),
+            displayTimeMillis = optLong("displayTimeMillis", 0L).takeIf { it > 0L } ?: System.currentTimeMillis(),
+            capturedAtMillis = optNullableLong("capturedAtMillis"),
+            fileModifiedAtMillis = optNullableLong("fileModifiedAtMillis"),
+            displayTimeSource = optString("displayTimeSource").ifBlank { DisplayTimeSourceImported },
+            displayYear = optInt("displayYear", 1970),
+            displayMonth = optInt("displayMonth", 1),
+            displayDay = optInt("displayDay", 1),
+            width = optNullableInt("width"),
+            height = optNullableInt("height"),
+            aspectRatio = optDouble("aspectRatio", 1.0).toFloat().coerceIn(0.56f, 1.8f),
+            palette = paletteForSystemMediaId(mediaStoreId),
+            importedAppMediaId = optNullableString("importedAppMediaId"),
+            linkedSmallAlbumIds = linkedSmallAlbumIds,
+            linkedPostIds = linkedSmallAlbumIds,
+            videoDurationMillis = optNullableLong("videoDurationMillis"),
+            uploadedByUserId = optNullableString("uploadedByUserId"),
+            sizeBytes = optNullableLong("sizeBytes"),
+        )
+    }
+
+    private fun JSONObject.optNullableString(name: String): String? {
+        if (!has(name) || isNull(name)) return null
+        return optString(name).takeIf { it.isNotBlank() }
+    }
+
+    private fun JSONObject.optNullableLong(name: String): Long? {
+        if (!has(name) || isNull(name)) return null
+        return optLong(name).takeIf { it > 0L }
+    }
+
+    private fun JSONObject.optNullableInt(name: String): Int? {
+        if (!has(name) || isNull(name)) return null
+        return optInt(name).takeIf { it > 0 }
+    }
 }
 
 class MediaStoreSystemMediaDataSource(
@@ -162,7 +335,7 @@ class MediaStoreSystemMediaDataSource(
                     width = width,
                     height = height,
                     aspectRatio = resolveAspectRatio(width, height),
-                    palette = paletteFor(mediaStoreId),
+                    palette = paletteForSystemMediaId(mediaStoreId),
                     linkedPostIds = emptyList(),
                     videoDurationMillis = durationMillis,
                     sizeBytes = sizeBytes,
@@ -196,41 +369,42 @@ class MediaStoreSystemMediaDataSource(
         return (width.toFloat() / height.toFloat()).coerceIn(0.56f, 1.8f)
     }
 
-    private fun paletteFor(mediaStoreId: Long): PhotoThumbnailPalette {
-        val palettes = listOf(
-            PhotoThumbnailPalette(
-                start = Color(0xFFB8D8F8),
-                end = Color(0xFF7EA6DF),
-                accent = Color(0xFFE8F2FF),
-            ),
-            PhotoThumbnailPalette(
-                start = Color(0xFFF5D2C3),
-                end = Color(0xFFE7A08D),
-                accent = Color(0xFFFFF0E8),
-            ),
-            PhotoThumbnailPalette(
-                start = Color(0xFFCFE5B9),
-                end = Color(0xFF84B38A),
-                accent = Color(0xFFEFF8E1),
-            ),
-            PhotoThumbnailPalette(
-                start = Color(0xFFD8D0F2),
-                end = Color(0xFF8FA0D8),
-                accent = Color(0xFFF0EDFF),
-            ),
-            PhotoThumbnailPalette(
-                start = Color(0xFFE7CFB4),
-                end = Color(0xFFB98B63),
-                accent = Color(0xFFF7E8D4),
-            ),
-            PhotoThumbnailPalette(
-                start = Color(0xFFC5D1DA),
-                end = Color(0xFF8095A7),
-                accent = Color(0xFFE7F0F6),
-            ),
-        )
-        return palettes[(mediaStoreId % palettes.size).toInt()]
-    }
+}
+
+private fun paletteForSystemMediaId(mediaStoreId: Long): PhotoThumbnailPalette {
+    val palettes = listOf(
+        PhotoThumbnailPalette(
+            start = Color(0xFFB8D8F8),
+            end = Color(0xFF7EA6DF),
+            accent = Color(0xFFE8F2FF),
+        ),
+        PhotoThumbnailPalette(
+            start = Color(0xFFF5D2C3),
+            end = Color(0xFFE7A08D),
+            accent = Color(0xFFFFF0E8),
+        ),
+        PhotoThumbnailPalette(
+            start = Color(0xFFCFE5B9),
+            end = Color(0xFF84B38A),
+            accent = Color(0xFFEFF8E1),
+        ),
+        PhotoThumbnailPalette(
+            start = Color(0xFFD8D0F2),
+            end = Color(0xFF8FA0D8),
+            accent = Color(0xFFF0EDFF),
+        ),
+        PhotoThumbnailPalette(
+            start = Color(0xFFE7CFB4),
+            end = Color(0xFFB98B63),
+            accent = Color(0xFFF7E8D4),
+        ),
+        PhotoThumbnailPalette(
+            start = Color(0xFFC5D1DA),
+            end = Color(0xFF8095A7),
+            accent = Color(0xFFE7F0F6),
+        ),
+    )
+    return palettes[(mediaStoreId % palettes.size).toInt()]
 }
 
 private data class SystemMediaDateParts(

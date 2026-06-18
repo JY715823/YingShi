@@ -17,6 +17,7 @@ import com.example.yingshi.data.model.RemoteLoginChallenge
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
+import com.example.yingshi.data.model.RemoteMediaImportStatus
 import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
@@ -44,6 +45,7 @@ import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
 import com.example.yingshi.data.remote.dto.LifeConsoleMediaRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
+import com.example.yingshi.data.remote.dto.MediaImportStatusRequestDto
 import com.example.yingshi.data.remote.dto.RememberedLoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
@@ -115,6 +117,38 @@ class RealMediaRepository(
                 ApiResult.Error(
                     code = "MEDIA_FEED_PAGE_REQUEST_FAILED",
                     message = backendRequestErrorMessage(it, "读取照片流失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getImportStatus(
+        sourceFingerprints: List<String>,
+    ): ApiResult<List<RemoteMediaImportStatus>> {
+        val normalizedFingerprints = sourceFingerprints
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        if (normalizedFingerprints.isEmpty()) {
+            return ApiResult.Success(emptyList())
+        }
+        return runCatching {
+            mediaApi.getImportStatus(
+                MediaImportStatusRequestDto(sourceFingerprints = normalizedFingerprints),
+            ).data.map { dto ->
+                RemoteMediaImportStatus(
+                    sourceFingerprint = dto.sourceFingerprint,
+                    mediaId = dto.mediaId,
+                    smallAlbumIds = dto.smallAlbumIds.orEmpty(),
+                )
+            }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "MEDIA_IMPORT_STATUS_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "同步系统媒体导入状态失败。"),
                     throwable = it,
                 )
             },

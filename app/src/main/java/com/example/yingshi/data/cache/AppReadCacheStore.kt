@@ -8,6 +8,7 @@ import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteNotification
+import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemoteTrashDetail
@@ -66,6 +67,7 @@ object AppReadCacheStore {
     private const val CURRENT_USER_SCOPE = "current-user"
     private const val PHOTO_FEED_SCOPE = "photo-feed"
     private const val ALBUM_DIRECTORY_SCOPE = "album-directory"
+    private const val POST_DETAIL_SCOPE = "post-detail"
     private const val NOTIFICATION_LIST_SCOPE = "notification-list"
     private const val NOTIFICATION_DETAIL_SCOPE = "notification-detail"
     private const val TRASH_LIST_SCOPE = "trash-list"
@@ -154,6 +156,30 @@ object AppReadCacheStore {
             userId = userId,
             payload = payload,
             payloadType = CachedAlbumDirectory::class.java,
+        )
+    }
+
+    fun readPostDetail(
+        userId: String,
+        postId: String,
+    ): CachedPayload<RemotePostDetail>? {
+        return read(
+            scope = "$POST_DETAIL_SCOPE-$postId",
+            userId = userId,
+            payloadType = RemotePostDetail::class.java,
+        )
+    }
+
+    fun writePostDetail(
+        userId: String,
+        postId: String,
+        detail: RemotePostDetail,
+    ) {
+        write(
+            scope = "$POST_DETAIL_SCOPE-$postId",
+            userId = userId,
+            payload = detail,
+            payloadType = RemotePostDetail::class.java,
         )
     }
 

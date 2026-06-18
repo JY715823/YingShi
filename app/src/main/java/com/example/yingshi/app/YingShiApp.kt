@@ -174,6 +174,9 @@ fun YingShiApp() {
     var photoViewerRoute by remember {
         mutableStateOf<PhotoViewerRoute?>(null)
     }
+    var latestPhotoViewerRoute by remember {
+        mutableStateOf<PhotoViewerRoute?>(null)
+    }
     var photoFeedScrollTrigger by remember { mutableIntStateOf(0) }
     var photoSelectionClearTrigger by remember { mutableIntStateOf(0) }
     var photoSelectionShellState by remember {
@@ -1365,7 +1368,12 @@ fun YingShiApp() {
                         onTrashSelectionModeChange = { trashSelectionModeState = it },
                         trashSelectedEntryIds = trashSelectedEntryIdsState,
                         onTrashSelectedEntryIdsChange = { trashSelectedEntryIdsState = it },
-                        onOpenViewer = { if (!photosOverlayActive) photoViewerRoute = it },
+                        onOpenViewer = {
+                            if (!photosOverlayActive) {
+                                photoViewerRoute = it
+                                latestPhotoViewerRoute = it
+                            }
+                        },
                         onOpenPostDetail = { if (!photosOverlayActive) postDetailRoute = it },
                         onOpenTrashDetail = { if (!photosOverlayActive) trashDetailRoute = it },
                         onTrashRestoreTargetMediaIds = { mediaIds ->
@@ -1616,19 +1624,37 @@ fun YingShiApp() {
 	                    PhotoViewerScreen(
                         route = route,
                         onBack = {
+                            val snapshot = latestPhotoViewerRoute ?: route
+                            val targetItem = if (snapshot.mediaItems.isNotEmpty()) {
+                                snapshot.mediaItems.getOrNull(
+                                    snapshot.initialIndex.coerceIn(0, snapshot.mediaItems.lastIndex),
+                                )
+                            } else {
+                                null
+                            }
+                            if (targetItem != null && !snapshot.showPostSegments) {
+                                GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId = targetItem.mediaId
+                                GlobalPhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+                                GlobalPhotoFeedPageStateStore.pendingHighlightNonce += 1
+                                GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage = null
+                                GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = null
+                            }
                             photoViewerRoute = null
+                            latestPhotoViewerRoute = null
                             photoFeedScrollTrigger++
                         },
                         onOpenPostDetail = {
-                            postDetailReturnViewerRoute = route
+                            postDetailReturnViewerRoute = latestPhotoViewerRoute ?: route
                             photoViewerRoute = null
                             postDetailRoute = it
                         },
                         onOpenCreatePost = { route ->
                             photoViewerRoute = null
+                            latestPhotoViewerRoute = null
                             createPostRoute = route
                         },
                         onOpenCacheManagement = { cacheManagementRoute = it },
+                        onRouteSnapshotChange = { latestPhotoViewerRoute = it },
 	                    )
 	                }
                 YingShiNoticeHost(

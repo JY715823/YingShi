@@ -17,6 +17,7 @@ import com.example.yingshi.data.model.RemoteLifeConsoleHistory
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteMediaFeedPage
+import com.example.yingshi.data.model.RemoteMediaImportStatus
 import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
@@ -47,6 +48,10 @@ interface MediaRepository {
         cursor: String? = null,
         pageSize: Int = 60,
     ): ApiResult<RemoteMediaFeedPage>
+
+    suspend fun getImportStatus(
+        sourceFingerprints: List<String>,
+    ): ApiResult<List<RemoteMediaImportStatus>>
 
     suspend fun deleteMediaFromPost(
         smallAlbumId: String,

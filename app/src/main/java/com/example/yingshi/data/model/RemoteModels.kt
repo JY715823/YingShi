@@ -47,6 +47,12 @@ data class RemoteMediaFeedPage(
     val hasMore: Boolean,
 )
 
+data class RemoteMediaImportStatus(
+    val sourceFingerprint: String,
+    val mediaId: String,
+    val smallAlbumIds: List<String>,
+)
+
 data class RemoteAlbum(
     val albumId: String,
     val title: String,

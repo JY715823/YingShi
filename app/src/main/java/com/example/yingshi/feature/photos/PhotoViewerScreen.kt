@@ -3,6 +3,7 @@
 import android.app.Activity
 import android.content.ContextWrapper
 import android.os.Build
+import android.os.SystemClock
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimationControlListener
 import android.view.WindowInsetsAnimationController
@@ -41,6 +42,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -93,6 +95,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
@@ -122,6 +125,7 @@ import androidx.media3.ui.PlayerView
 import coil.imageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import com.example.yingshi.data.cache.AppReadCacheStore
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
@@ -142,6 +146,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.min
 
 private val ViewerNightTop = YingShiViewerSurface
 private val ViewerNightBottom = YingShiViewerBackground
@@ -149,10 +155,13 @@ private val ViewerNightMiddle = YingShiViewerSurface.copy(alpha = 0.92f)
 private val ViewerSurface = YingShiViewerText
 private val ViewerAccent = YingShiViewerAccent
 private const val MinViewerScale = 1f
-private const val MaxViewerScale = 4f
+private const val MaxViewerScale = 6f
+private const val MaxViewerElasticScale = 9f
+private const val ViewerDoubleTapScale = 2.5f
 private const val ViewerZoomResetThreshold = 1.02f
+private const val ViewerFastDoubleTapWindowMillis = 260L
 private const val DefaultViewerVideoDurationMillis = 18_000L
-private const val LongImageHeightWidthRatioThreshold = 2.2f
+private const val LongImageHeightWidthRatioThreshold = 3.8f
 
 private object ViewerLayoutTuning {
     val topBarStartInset = 4.dp
@@ -194,33 +203,84 @@ private class ViewerZoomState {
         private set
     var offset by mutableStateOf(Offset.Zero)
         private set
+    private var latestContentSize by mutableStateOf(IntSize.Zero)
+    private var latestContentTopLeft by mutableStateOf(Offset.Zero)
+    private var latestMinimumScale by mutableStateOf(MinViewerScale)
 
     val isZoomed: Boolean
-        get() = scale > ViewerZoomResetThreshold
+        get() = abs(scale - MinViewerScale) > ViewerZoomResetThreshold - MinViewerScale
+
+    fun updateContentGeometry(
+        contentSize: IntSize,
+        contentTopLeft: Offset,
+        minimumScale: Float = MinViewerScale,
+    ) {
+        if (contentSize.width > 0 && contentSize.height > 0) {
+            latestContentSize = contentSize
+            latestContentTopLeft = contentTopLeft
+            latestMinimumScale = minimumScale.coerceIn(0.05f, MinViewerScale)
+        }
+    }
 
     fun applyTransform(
         zoomChange: Float,
         panChange: Offset,
+        focalPoint: Offset,
         containerSize: IntSize,
         contentSize: IntSize,
+        contentTopLeft: Offset,
     ) {
-        val nextScale = (scale * zoomChange).coerceIn(MinViewerScale, MaxViewerScale)
-        if (nextScale <= ViewerZoomResetThreshold) {
+        val previousScale = scale
+        val minimumScale = latestMinimumScale
+        val nextScale = (scale * zoomChange).coerceIn(minimumScale, MaxViewerElasticScale)
+        if (minimumScale >= MinViewerScale && nextScale <= ViewerZoomResetThreshold) {
             reset()
             return
         }
 
         scale = nextScale
-        offset = clampOffset(offset + panChange, nextScale, containerSize, contentSize)
+        val scaleRatio = if (previousScale > 0f) nextScale / previousScale else MinViewerScale
+        val focalAnchoredOffset = focalPoint -
+            contentTopLeft -
+            (focalPoint - contentTopLeft - offset) * scaleRatio +
+            panChange
+        offset = clampOffset(focalAnchoredOffset, nextScale, containerSize, contentSize, contentTopLeft)
+    }
+
+    fun settleAfterGesture(
+        containerSize: IntSize,
+        contentSize: IntSize,
+        contentTopLeft: Offset,
+    ) {
+        if (scale <= MaxViewerScale) {
+            offset = clampOffset(
+                value = offset,
+                currentScale = scale,
+                containerSize = containerSize,
+                contentSize = contentSize,
+                contentTopLeft = contentTopLeft,
+            )
+            return
+        }
+        val previousScale = scale
+        scale = MaxViewerScale
+        offset = clampOffset(
+            value = offset * (MaxViewerScale / previousScale),
+            currentScale = MaxViewerScale,
+            containerSize = containerSize,
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+        )
     }
 
     fun panBy(
         panChange: Offset,
         containerSize: IntSize,
         contentSize: IntSize,
+        contentTopLeft: Offset,
     ) {
         if (!isZoomed) return
-        offset = clampOffset(offset + panChange, scale, containerSize, contentSize)
+        offset = clampOffset(offset + panChange, scale, containerSize, contentSize, contentTopLeft)
     }
 
     fun reset() {
@@ -228,19 +288,52 @@ private class ViewerZoomState {
         offset = Offset.Zero
     }
 
+    fun toggleDoubleTap(
+        tapPosition: Offset,
+        containerSize: IntSize,
+    ) {
+        if (isZoomed) {
+            reset()
+            return
+        }
+        val contentSize = latestContentSize.takeIf { it.width > 0 && it.height > 0 } ?: containerSize
+        val contentTopLeft = latestContentTopLeft
+        val targetScale = ViewerDoubleTapScale.coerceIn(MinViewerScale, MaxViewerScale)
+        scale = targetScale
+        val normalizedTap = tapPosition - contentTopLeft
+        offset = clampOffset(
+            value = tapPosition - contentTopLeft - normalizedTap * targetScale,
+            currentScale = targetScale,
+            containerSize = containerSize,
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+        )
+    }
+
     private fun clampOffset(
         value: Offset,
         currentScale: Float,
         containerSize: IntSize,
         contentSize: IntSize,
+        contentTopLeft: Offset,
     ): Offset {
         val scaledWidth = contentSize.width * currentScale
         val scaledHeight = contentSize.height * currentScale
-        val maxX = ((scaledWidth - containerSize.width) / 2f).coerceAtLeast(0f)
-        val maxY = ((scaledHeight - containerSize.height) / 2f).coerceAtLeast(0f)
+        val minX = if (scaledWidth <= containerSize.width) {
+            ((containerSize.width - scaledWidth) / 2f) - contentTopLeft.x
+        } else {
+            containerSize.width - contentTopLeft.x - scaledWidth
+        }
+        val maxX = if (scaledWidth <= containerSize.width) minX else -contentTopLeft.x
+        val minY = if (scaledHeight <= containerSize.height) {
+            ((containerSize.height - scaledHeight) / 2f) - contentTopLeft.y
+        } else {
+            containerSize.height - contentTopLeft.y - scaledHeight
+        }
+        val maxY = if (scaledHeight <= containerSize.height) minY else -contentTopLeft.y
         return Offset(
-            x = value.x.coerceIn(-maxX, maxX),
-            y = value.y.coerceIn(-maxY, maxY),
+            x = value.x.coerceIn(minX, maxX),
+            y = value.y.coerceIn(minY, maxY),
         )
     }
 }
@@ -248,7 +341,8 @@ private class ViewerZoomState {
 private fun Modifier.viewerZoomGesture(
     zoomState: ViewerZoomState,
     contentSize: IntSize,
-): Modifier = pointerInput(zoomState, contentSize) {
+    contentTopLeft: Offset,
+): Modifier = pointerInput(zoomState, contentSize, contentTopLeft) {
     awaitEachGesture {
         while (true) {
             val event = awaitPointerEvent()
@@ -269,34 +363,49 @@ private fun Modifier.viewerZoomGesture(
                 zoomState.applyTransform(
                     zoomChange = zoomChange,
                     panChange = currentCentroid - previousCentroid,
+                    focalPoint = currentCentroid,
                     containerSize = size,
                     contentSize = contentSize,
+                    contentTopLeft = contentTopLeft,
                 )
                 activeChanges.forEach { it.consume() }
             } else if (zoomState.isZoomed) {
-                zoomState.panBy(
-                    panChange = activeChanges.first().positionChange(),
-                    containerSize = size,
-                    contentSize = contentSize,
-                )
-                activeChanges.forEach { it.consume() }
+                val panChange = activeChanges.first().positionChange()
+                if (panChange.getDistance() > viewConfiguration.touchSlop / 3f) {
+                    zoomState.panBy(
+                        panChange = panChange,
+                        containerSize = size,
+                        contentSize = contentSize,
+                        contentTopLeft = contentTopLeft,
+                    )
+                    activeChanges.forEach { it.consume() }
+                }
             }
         }
+        zoomState.settleAfterGesture(
+            containerSize = size,
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+        )
     }
 }
 
 internal fun Modifier.viewerSingleTapGesture(
     enabled: Boolean = true,
+    onDoubleTap: ((Offset, IntSize) -> Unit)? = null,
     onTap: (Offset, IntSize) -> Unit,
 ): Modifier {
     if (!enabled) return this
-    return pointerInput(onTap) {
+    return pointerInput(onTap, onDoubleTap) {
+        var lastTapUptimeMillis = 0L
+        var lastTapPosition: Offset? = null
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val start = down.position
             var pointerCountExceeded = false
             var moved = false
             var consumed = down.isConsumed
+            var upPosition = start
             while (true) {
                 val event = awaitPointerEvent()
                 val pressed = event.changes.filter { it.pressed }
@@ -306,11 +415,28 @@ internal fun Modifier.viewerSingleTapGesture(
                     if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
                         moved = true
                     }
+                    if (change.id == down.id && !change.pressed) {
+                        upPosition = change.position
+                    }
                 }
                 if (pressed.isEmpty()) {
-                    val up = event.changes.firstOrNull { it.id == down.id }
-                    if (!pointerCountExceeded && !moved && !consumed && up != null) {
-                        onTap(up.position, size)
+                    if (!pointerCountExceeded && !moved && !consumed) {
+                        val now = SystemClock.uptimeMillis()
+                        val previousTapPosition = lastTapPosition
+                        val doubleTapDistance = viewConfiguration.touchSlop * 8f
+                        val isDoubleTap = onDoubleTap != null &&
+                            previousTapPosition != null &&
+                            now - lastTapUptimeMillis <= ViewerFastDoubleTapWindowMillis &&
+                            (upPosition - previousTapPosition).getDistance() <= doubleTapDistance
+                        if (isDoubleTap) {
+                            lastTapUptimeMillis = 0L
+                            lastTapPosition = null
+                            onDoubleTap?.invoke(upPosition, size)
+                        } else {
+                            lastTapUptimeMillis = now
+                            lastTapPosition = upPosition
+                            onTap(upPosition, size)
+                        }
                     }
                     break
                 }
@@ -480,6 +606,7 @@ fun PhotoViewerScreen(
     onOpenPostDetail: (PostDetailPlaceholderRoute) -> Unit = {},
     onOpenCreatePost: (CreatePostRoute) -> Unit = {},
     onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
+    onRouteSnapshotChange: (PhotoViewerRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (route.mediaItems.isEmpty()) {
@@ -534,6 +661,14 @@ fun PhotoViewerScreen(
         }
     }
     val currentItem = viewerItems[currentIndex]
+    LaunchedEffect(route, viewerItems, currentIndex) {
+        onRouteSnapshotChange(
+            route.copy(
+                mediaItems = viewerItems,
+                initialIndex = currentIndex,
+            ),
+        )
+    }
     val currentOriginalTarget = remember(currentItem) {
         currentItem.toRealOriginalMediaTarget()
     }
@@ -614,8 +749,12 @@ fun PhotoViewerScreen(
     var relatedPostRoutes by remember(currentItem.mediaId, route.sourcePostRoute) {
         mutableStateOf<Map<String, PostDetailPlaceholderRoute>>(emptyMap())
     }
+    var relatedAlbumTitleById by remember(currentItem.mediaId, route.sourcePostRoute) {
+        mutableStateOf<Map<String, String>>(emptyMap())
+    }
     LaunchedEffect(currentItem.mediaId, currentItem.postIds, route.sourcePostRoute) {
         val postIds = currentItem.postIds.distinct()
+        relatedAlbumTitleById = buildCachedViewerAlbumTitleMap()
         val fallbackRoutes = postIds.associateWith { postId ->
             buildViewerRelatedPostRoute(
                 media = currentItem,
@@ -623,14 +762,25 @@ fun PhotoViewerScreen(
                 sourcePostRoute = route.sourcePostRoute,
             )
         }
-        relatedPostRoutes = fallbackRoutes
+        val cachedRoutes = buildCachedViewerRelatedPostRoutes(
+            postIds = postIds,
+            sourcePostRoute = route.sourcePostRoute,
+        )
+        relatedPostRoutes = fallbackRoutes + cachedRoutes
         if (RepositoryProvider.currentMode != RepositoryMode.REAL || postIds.isEmpty()) {
             return@LaunchedEffect
+        }
+        when (val albumResult = RepositoryProvider.albumRepository.getAlbums()) {
+            is ApiResult.Success -> {
+                relatedAlbumTitleById = albumResult.data.associate { it.albumId to it.title }
+            }
+            else -> Unit
         }
         when (val result = RepositoryProvider.postRepository.getPosts()) {
             is ApiResult.Success -> {
                 val summariesById = result.data.associateBy { it.postId }
                 relatedPostRoutes = postIds.associateWith { postId ->
+                    val cachedOrFallback = cachedRoutes[postId] ?: fallbackRoutes.getValue(postId)
                     when {
                         route.sourcePostRoute?.postId == postId -> route.sourcePostRoute
                         else -> summariesById[postId]?.toPostDetailPlaceholderRoute(
@@ -640,17 +790,18 @@ fun PhotoViewerScreen(
                                 .orEmpty()
                                 .ifBlank { route.sourcePostRoute?.albumId ?: "viewer-related" },
                         )
-                    } ?: fallbackRoutes.getValue(postId)
+                    } ?: cachedOrFallback
                 }
             }
             else -> Unit
         }
     }
-    val relatedPosts = remember(currentItem, route.sourcePostRoute, relatedPostRoutes) {
+    val relatedPosts = remember(currentItem, route.sourcePostRoute, relatedPostRoutes, relatedAlbumTitleById) {
         buildViewerRelatedPosts(
             media = currentItem,
             sourcePostRoute = route.sourcePostRoute,
             routeOverrides = relatedPostRoutes,
+            albumTitleById = relatedAlbumTitleById,
         )
     }
     val overlayUiModel = remember(
@@ -665,10 +816,7 @@ fun PhotoViewerScreen(
     ) {
         PhotoViewerOverlayUiModel(
             commentCountLabel = mediaComments.size.toString(),
-            timeLabel = buildMediaDisplayTimeLabel(
-                timeMillis = currentItem.mediaDisplayTimeMillis,
-                source = currentItem.displayTimeSource,
-            ),
+            timeLabel = formatMediaDisplayTime(currentItem.mediaDisplayTimeMillis),
             pageLabel = "",
             originalLoadState = currentOriginalState,
             showOriginalAction = canOpenOriginal,
@@ -746,7 +894,7 @@ fun PhotoViewerScreen(
             videoControlsVisible = false
         }
     }
-    BackHandler(enabled = !isImmersive && zoomState.isZoomed) {
+    BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
     }
     BackHandler(enabled = !isImmersive && showCommentPreview) {
@@ -764,7 +912,7 @@ fun PhotoViewerScreen(
     BackHandler(enabled = !isImmersive && !zoomState.isZoomed && !showCommentPreview && commentPanelState == null && !showRelatedPostsSheet && !showTimeEditorSheet) {
         onBack()
     }
-    BackHandler(enabled = isImmersive) {
+    BackHandler(enabled = isImmersive && !zoomState.isZoomed) {
         onBack()
     }
     ViewerStatusBarEffect(immersive = isImmersive)
@@ -840,29 +988,42 @@ fun PhotoViewerScreen(
         modifier = modifier
             .fillMaxSize()
             .background(ViewerNightBottom)
-            .viewerSingleTapGesture { position, size ->
-                if (currentItem.mediaType == AppMediaType.VIDEO) {
-                    val topTapZonePx = with(density) {
-                        if (isImmersive) {
-                            ViewerLayoutTuning.immersiveCanvasTopPadding.toPx()
-                        } else {
-                            ViewerLayoutTuning.canvasTopPadding.toPx()
+            .viewerSingleTapGesture(
+                onTap = { position, size ->
+                    if (currentItem.mediaType == AppMediaType.VIDEO) {
+                        val topTapZonePx = with(density) {
+                            if (isImmersive) {
+                                ViewerLayoutTuning.immersiveCanvasTopPadding.toPx()
+                            } else {
+                                ViewerLayoutTuning.canvasTopPadding.toPx()
+                            }
                         }
-                    }
-                    val bottomTapZonePx = with(density) {
-                        if (isImmersive) {
-                            ViewerLayoutTuning.immersiveVideoBottomExitZone.toPx()
-                        } else {
-                            ViewerLayoutTuning.canvasBottomPadding.toPx()
+                        val bottomTapZonePx = with(density) {
+                            if (isImmersive) {
+                                ViewerLayoutTuning.immersiveVideoBottomExitZone.toPx()
+                            } else {
+                                ViewerLayoutTuning.canvasBottomPadding.toPx()
+                            }
                         }
-                    }
-                    if (position.y <= topTapZonePx || position.y >= size.height - bottomTapZonePx) {
+                        if (position.y <= topTapZonePx || position.y >= size.height - bottomTapZonePx) {
+                            toggleImmersive()
+                        } else {
+                            videoControlsVisible = !videoControlsVisible
+                            videoControlsActivityNonce += 1
+                        }
+                    } else {
                         toggleImmersive()
                     }
-                } else {
-                    toggleImmersive()
-                }
-            },
+                },
+                onDoubleTap = { position, size ->
+                    if (currentItem.mediaType == AppMediaType.IMAGE) {
+                        zoomState.toggleDoubleTap(
+                            tapPosition = position,
+                            containerSize = size,
+                        )
+                    }
+                },
+            ),
     ) {
         ViewerAtmosphereLayer(
             modifier = Modifier
@@ -1025,7 +1186,6 @@ fun PhotoViewerScreen(
                 onBack = {
                     onBack()
                 },
-                timeLabel = overlayUiModel.timeLabel,
                 uploaderIdentity = uploaderIdentity,
                 onShare = {
                     if (shareInFlight) {
@@ -1124,6 +1284,7 @@ fun PhotoViewerScreen(
             PhotoViewerEdgeActions(
                 overlayUiModel = overlayUiModel,
                 originalActionLabel = originalActionLabel,
+                timeLabel = overlayUiModel.timeLabel,
                 showCommentPreview = showCommentPreview,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1546,7 +1707,6 @@ private fun EmptyPhotoViewerScreen(
 @Composable
 private fun PhotoViewerTopBar(
     onBack: () -> Unit,
-    timeLabel: String,
     uploaderIdentity: CollaboratorIdentityUiModel?,
     onShare: () -> Unit,
     onEditTime: () -> Unit,
@@ -1561,22 +1721,27 @@ private fun PhotoViewerTopBar(
         modifier = modifier.alpha(overlayAlpha),
     ) {
         val topButtonShape = CircleShape
-        Surface(
+        Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .size(ViewerLayoutTuning.backButtonTouchSize)
-                .yingShiClickable(shape = topButtonShape, pressedScale = 0.94f, onClick = onBack),
-            shape = topButtonShape,
-            color = ViewerNightTop.copy(alpha = 0.56f),
-            border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
+                .widthIn(max = 230.dp),
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    tint = ViewerSurface.copy(alpha = 0.94f),
-                    modifier = Modifier.size(22.dp),
-                )
+            Surface(
+                modifier = Modifier
+                    .size(ViewerLayoutTuning.backButtonTouchSize)
+                    .yingShiClickable(shape = topButtonShape, pressedScale = 0.94f, onClick = onBack),
+                shape = topButtonShape,
+                color = ViewerNightTop.copy(alpha = 0.56f),
+                border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        tint = ViewerSurface.copy(alpha = 0.94f),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
 
@@ -1610,13 +1775,6 @@ private fun PhotoViewerTopBar(
                     modifier = Modifier.wrapContentSize(Alignment.TopEnd),
                 ) {
                     DropdownMenuItem(
-                        text = { Text(text = "分享") },
-                        onClick = {
-                            menuExpanded = false
-                            onShare()
-                        },
-                    )
-                    DropdownMenuItem(
                         text = { Text(text = "修改时间") },
                         onClick = {
                             menuExpanded = false
@@ -1640,6 +1798,27 @@ private fun PhotoViewerTopBar(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ViewerTimeBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = ViewerNightTop.copy(alpha = 0.68f),
+        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.24f)),
+        shadowElevation = 4.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = ViewerSurface.copy(alpha = 0.96f),
+        )
     }
 }
 
@@ -1738,9 +1917,45 @@ private fun PhotoViewerCanvas(
         val contentSize = with(density) {
             IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
         }
-        val zoomTransformModifier = if (zoomState != null && !useLongImageReading) {
+        val longImageScrollState = rememberScrollState()
+        LaunchedEffect(media.mediaId, useLongImageReading) {
+            if (useLongImageReading) {
+                longImageScrollState.scrollTo(0)
+            }
+        }
+        val containerSize = with(density) {
+            IntSize(maxWidth.roundToPx(), maxHeight.roundToPx())
+        }
+        val longImageMinimumScale = if (useLongImageReading &&
+            contentSize.width > 0 &&
+            contentSize.height > 0 &&
+            containerSize.width > 0 &&
+            containerSize.height > 0
+        ) {
+            min(
+                containerSize.width.toFloat() / contentSize.width.toFloat(),
+                containerSize.height.toFloat() / contentSize.height.toFloat(),
+            ).coerceIn(0.05f, MinViewerScale)
+        } else {
+            MinViewerScale
+        }
+        val contentTopLeft = Offset(
+            x = ((containerSize.width - contentSize.width) / 2f),
+            y = if (useLongImageReading) {
+                -longImageScrollState.value.toFloat()
+            } else {
+                ((containerSize.height - contentSize.height) / 2f)
+            },
+        )
+        zoomState?.updateContentGeometry(
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+            minimumScale = longImageMinimumScale,
+        )
+        val zoomTransformModifier = if (zoomState != null) {
             Modifier
                 .graphicsLayer {
+                    transformOrigin = TransformOrigin(0f, 0f)
                     scaleX = zoomState.scale
                     scaleY = zoomState.scale
                     translationX = zoomState.offset.x
@@ -1749,19 +1964,14 @@ private fun PhotoViewerCanvas(
         } else {
             Modifier
         }
-        val gestureModifier = if (zoomState != null && !useLongImageReading) {
+        val gestureModifier = if (zoomState != null) {
             Modifier.viewerZoomGesture(
                 zoomState = zoomState,
                 contentSize = contentSize,
+                contentTopLeft = contentTopLeft,
             )
         } else {
             Modifier
-        }
-        val longImageScrollState = rememberScrollState()
-        LaunchedEffect(media.mediaId, useLongImageReading) {
-            if (useLongImageReading) {
-                longImageScrollState.scrollTo(0)
-            }
         }
         var mediaEnterActive by remember(media.mediaId, zoomState != null) { mutableStateOf(false) }
         LaunchedEffect(media.mediaId, zoomState != null) {
@@ -1784,7 +1994,10 @@ private fun PhotoViewerCanvas(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(longImageScrollState),
+                        .verticalScroll(
+                            state = longImageScrollState,
+                            enabled = zoomState?.isZoomed != true,
+                        ),
                     contentAlignment = Alignment.TopCenter,
                 ) {
                     Box(
@@ -1792,6 +2005,7 @@ private fun PhotoViewerCanvas(
                             .width(canvasWidth)
                             .height(canvasHeight)
                             .then(mediaEnterModifier)
+                            .then(zoomTransformModifier)
                             .background(ViewerNightBottom),
                     ) {
                         if (media.mediaSource != null) {
@@ -2213,6 +2427,9 @@ internal fun ViewerVideoCanvas(
     var retryVersion by remember(media.mediaId) { mutableStateOf(0) }
     val retryRequestNonce = playbackState?.retryRequestNonce ?: 0
     var isPrepared by remember(media.mediaId, retryVersion, retryRequestNonce) { mutableStateOf(false) }
+    var pendingSeekTargetMillis by remember(media.mediaId, retryVersion, retryRequestNonce) {
+        mutableStateOf<Long?>(null)
+    }
     val initialPositionMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
     val player = remember(media.mediaId, videoUrl, videoCacheKey, requestHeaders, retryVersion, retryRequestNonce) {
         if (videoUrl.isNullOrBlank()) {
@@ -2375,9 +2592,22 @@ internal fun ViewerVideoCanvas(
         }
         while (isCurrent && videoUrl != null && errorMessage == null) {
             if (isPrepared) {
+                val rawProgressMillis = player.currentPosition.coerceAtLeast(0L)
+                val pendingSeekMillis = pendingSeekTargetMillis
+                val displayedProgressMillis = if (pendingSeekMillis != null) {
+                    val distance = rawProgressMillis - pendingSeekMillis
+                    if (distance in -500L..500L) {
+                        pendingSeekTargetMillis = null
+                        rawProgressMillis
+                    } else {
+                        pendingSeekMillis
+                    }
+                } else {
+                    rawProgressMillis
+                }
                 updatePlaybackState {
                     it.copy(
-                        progressMillis = player.currentPosition.coerceAtLeast(0L),
+                        progressMillis = displayedProgressMillis,
                         durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
                         isLoading = player.playbackState == Player.STATE_BUFFERING,
                     )
@@ -2389,7 +2619,9 @@ internal fun ViewerVideoCanvas(
 
     LaunchedEffect(playbackState?.seekRequestNonce, player) {
         val targetMillis = playbackState?.seekRequestMillis ?: return@LaunchedEffect
-        player?.seekTo(targetMillis.coerceAtLeast(0L))
+        val normalizedTargetMillis = targetMillis.coerceAtLeast(0L)
+        pendingSeekTargetMillis = normalizedTargetMillis
+        player?.seekTo(normalizedTargetMillis)
     }
     val hasServerPosterImage = posterImageRequest != null &&
         posterImageState !is AsyncImagePainter.State.Error
@@ -2500,11 +2732,18 @@ internal fun ViewerVideoControls(
         (playbackState.progressMillis.toFloat() / safeDurationMillis.toFloat()).coerceIn(0f, 1f)
     }
     var draggedFraction by remember(playbackState.mediaId) { mutableStateOf<Float?>(null) }
-    val displayedFraction = draggedFraction ?: progressFraction
+    var releasedSeekFraction by remember(playbackState.mediaId) { mutableStateOf<Float?>(null) }
+    val displayedFraction = draggedFraction ?: releasedSeekFraction ?: progressFraction
     val displayedProgressMillis = if (safeDurationMillis <= 0L) {
         0L
     } else {
         (displayedFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
+    }
+
+    LaunchedEffect(releasedSeekFraction) {
+        if (releasedSeekFraction == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(520L)
+        releasedSeekFraction = null
     }
 
     Surface(
@@ -2552,7 +2791,7 @@ internal fun ViewerVideoControls(
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
                     Text(
-                        text = "${formatVideoProgress(displayedProgressMillis)} / ${formatVideoProgress(safeDurationMillis)}",
+                        text = "${formatVideoProgress(displayedProgressMillis)} / ${formatVideoProgress(safeDurationMillis)} · 剩余 ${formatVideoProgress((safeDurationMillis - displayedProgressMillis).coerceAtLeast(0L))}",
                         style = MaterialTheme.typography.labelMedium,
                         color = ViewerSurface.copy(alpha = 0.68f),
                     )
@@ -2569,6 +2808,7 @@ internal fun ViewerVideoControls(
                     } else {
                         (targetFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
                     }
+                    releasedSeekFraction = targetFraction
                     draggedFraction = null
                     onSeekPlayback(targetMillis)
                 },
@@ -2620,27 +2860,27 @@ private fun formatVideoProgress(timeMillis: Long): String {
 private fun PhotoViewerEdgeActions(
     overlayUiModel: PhotoViewerOverlayUiModel,
     originalActionLabel: String,
+    timeLabel: String,
     showCommentPreview: Boolean,
     onOpenComments: () -> Unit,
     onOpenOriginal: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Box(
         modifier = modifier,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewerCommentEntry(
             commentCountLabel = overlayUiModel.commentCountLabel,
             previewExpanded = showCommentPreview,
             onClick = onOpenComments,
+            modifier = Modifier.align(Alignment.CenterStart),
         )
 
-        ViewerCapsule(
-            text = overlayUiModel.timeLabel,
-            emphasized = false,
-            surfaceAlpha = 0.10f,
-            contentAlpha = 0.86f,
+        ViewerTimeBadge(
+            text = timeLabel,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(x = (-18).dp),
         )
 
         if (overlayUiModel.showOriginalAction) {
@@ -2649,6 +2889,7 @@ private fun PhotoViewerEdgeActions(
                 emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
                 enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
                 onClick = onOpenOriginal,
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         } else {
             ViewerCapsule(
@@ -2656,6 +2897,7 @@ private fun PhotoViewerEdgeActions(
                 emphasized = false,
                 surfaceAlpha = 0.08f,
                 contentAlpha = 0.78f,
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }
@@ -2666,12 +2908,13 @@ private fun ViewerCommentEntry(
     commentCountLabel: String,
     previewExpanded: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .yingShiClickable(
                 shape = RoundedCornerShape(radius.capsule),
                 pressedScale = 0.96f,
@@ -3274,15 +3517,46 @@ private fun ViewerRelatedPostsSheet(
                             .padding(horizontal = spacing.md, vertical = spacing.sm),
                         verticalArrangement = Arrangement.spacedBy(spacing.xs),
                     ) {
-                        Text(
-                            text = post.title,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = ViewerSurface.copy(alpha = 0.88f),
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = post.title,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = ViewerSurface.copy(alpha = 0.88f),
+                            )
+                            if (post.subtitle.isNotBlank()) {
+                                ViewerRelatedAlbumTag(text = post.subtitle)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ViewerRelatedAlbumTag(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = ViewerAccent.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.22f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = ViewerSurface.copy(alpha = 0.86f),
+            maxLines = 1,
+        )
     }
 }
 
@@ -3311,6 +3585,7 @@ private fun buildViewerRelatedPosts(
     media: PhotoFeedItem,
     sourcePostRoute: PostDetailPlaceholderRoute?,
     routeOverrides: Map<String, PostDetailPlaceholderRoute> = emptyMap(),
+    albumTitleById: Map<String, String> = emptyMap(),
 ): List<ViewerRelatedPostUiModel> {
     return media.postIds.distinct().map { postId ->
         val route = routeOverrides[postId] ?: buildViewerRelatedPostRoute(
@@ -3321,10 +3596,55 @@ private fun buildViewerRelatedPosts(
         ViewerRelatedPostUiModel(
             id = postId,
             title = route.title,
-            subtitle = "",
+            subtitle = route.viewerRelatedAlbumLabel(albumTitleById),
             route = route,
         )
     }
+}
+
+private fun SmallAlbumDetailRoute.viewerRelatedAlbumLabel(
+    albumTitleById: Map<String, String>,
+): String {
+    val title = albumIds
+        .asSequence()
+        .mapNotNull { albumId ->
+            albumTitleById[albumId]
+                ?: FakeAlbumRepository.getAlbum(albumId)?.title
+        }
+        .firstOrNull()
+    return title?.let { "大相册 $it" }.orEmpty()
+}
+
+private fun buildCachedViewerRelatedPostRoutes(
+    postIds: List<String>,
+    sourcePostRoute: PostDetailPlaceholderRoute?,
+): Map<String, PostDetailPlaceholderRoute> {
+    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return emptyMap()
+    val cachedDirectory = AppReadCacheStore.readAlbumDirectory(userId)?.payload ?: return emptyMap()
+    val summariesById = cachedDirectory.postsByAlbumId.values
+        .flatten()
+        .associateBy { it.postId }
+    return postIds.mapNotNull { postId ->
+        if (sourcePostRoute?.postId == postId) {
+            postId to sourcePostRoute
+        } else {
+            val summary = summariesById[postId] ?: return@mapNotNull null
+            postId to summary.toPostDetailPlaceholderRoute(
+                selectedAlbumId = summary.albumIds.firstOrNull().orEmpty().ifBlank {
+                    summary.albumId
+                },
+            )
+        }
+    }.toMap()
+}
+
+private fun buildCachedViewerAlbumTitleMap(): Map<String, String> {
+    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return emptyMap()
+    return AppReadCacheStore.readAlbumDirectory(userId)
+        ?.payload
+        ?.albums
+        .orEmpty()
+        .associate { it.albumId to it.title }
 }
 
 private fun buildViewerRelatedPostRoute(
@@ -3343,7 +3663,7 @@ private fun buildViewerRelatedPostRoute(
     val fallbackTitle = sourcePostRoute
         ?.takeIf { it.postId == postId }
         ?.title
-        ?: placeholderPostTitle(postId)
+        ?: "未命名小相册"
     val fallbackSummary = sourcePostRoute
         ?.takeIf { it.postId == postId }
         ?.summary
@@ -3360,30 +3680,6 @@ private fun buildViewerRelatedPostRoute(
         coverMediaType = media.mediaType,
         coverAspectRatio = media.aspectRatio,
     )
-}
-
-private fun placeholderPostTitle(postId: String): String {
-    return when (postId) {
-        "post_001" -> "春日散步"
-        "post_002" -> "灯下小物"
-        "post_003" -> "车窗一瞬"
-        "post-night-walk" -> "夜晚散步"
-        "post-april-window" -> "四月窗边"
-        "post-sunday-brunch" -> "周日早午餐"
-        "post-flower-table" -> "花桌小记"
-        "post-morning-metro" -> "早班地铁"
-        "post-late-return" -> "晚归路上"
-        "post-river-night" -> "河边夜色"
-        "post-new-year" -> "新年第一刻"
-        "post-fireworks" -> "烟花倒影"
-        "post-firework-reflection" -> "烟火倒影"
-        "post-window-light" -> "四月窗边"
-        "post-hill-road" -> "上坡那段路"
-        else -> postId
-            .removePrefix("post-")
-            .split("-")
-            .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
-    }
 }
 
 private fun deleteFakeViewerMedia(item: PhotoFeedItem) {

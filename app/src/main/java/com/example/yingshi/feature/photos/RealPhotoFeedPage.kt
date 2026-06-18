@@ -173,7 +173,6 @@ fun RealPhotoFeedPage(
     }
     androidx.compose.runtime.LaunchedEffect(uiState.statusMessage) {
         val message = uiState.statusMessage ?: return@LaunchedEffect
-        if (!message.startsWith("已删除")) return@LaunchedEffect
         delay(PhotoFeedDeleteStatusAutoHideMillis)
         viewModel.clearStatusMessage(message)
     }

@@ -10,8 +10,8 @@ enum class SystemMediaFilter(
     CAMERA("相机"),
     SCREENSHOT("截图"),
     VIDEO("视频"),
-    POSTED("已发帖"),
-    UNPOSTED("未发帖"),
+    IMPORTED("已导入"),
+    UNIMPORTED("未导入"),
 }
 
 enum class SystemMediaType(
@@ -41,11 +41,16 @@ data class SystemMediaItem(
     val height: Int?,
     val aspectRatio: Float,
     val palette: PhotoThumbnailPalette,
-    val linkedPostIds: List<String>,
+    val importedAppMediaId: String? = null,
+    val linkedSmallAlbumIds: List<String> = emptyList(),
+    val linkedPostIds: List<String> = linkedSmallAlbumIds,
     val videoDurationMillis: Long? = null,
     val uploadedByUserId: String? = null,
     val sizeBytes: Long? = null,
-)
+) {
+    val isImportedToApp: Boolean
+        get() = !importedAppMediaId.isNullOrBlank()
+}
 
 @Immutable
 data class SystemMediaRoute(

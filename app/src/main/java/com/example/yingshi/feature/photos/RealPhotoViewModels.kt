@@ -10,6 +10,7 @@ import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.CommentListState
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.UpdateAlbumPayload
@@ -885,18 +886,31 @@ class PostDetailRealViewModel(
 
     fun refresh() {
         viewModelScope.launch {
+            val cachedDetail = withContext(Dispatchers.IO) { readCachedPostDetail() }
+            val cachedAlbumTitleById = withContext(Dispatchers.IO) { readCachedAlbumTitleMap() }
+            if (cachedDetail != null && _uiState.value.detail == null) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = null,
+                    detail = cachedDetail.toPostDetailUiModel(cachedAlbumTitleById),
+                    currentUserId = AuthSessionManager.getCurrentUserSnapshot()?.userId,
+                )
+            }
             if (!AuthSessionManager.isLoggedIn) {
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
                     force = false,
                     reason = "real_post_detail_refresh",
                 )
                 if (!loginOutcome.success) {
-                    _uiState.value = PostDetailRealUiState(
-                        tokenMissing = true,
-                        errorMessage = loginOutcome.message.ifBlank {
-                            "需要先完成登录，请检查连接设置后再打开小相册。"
-                        },
-                    )
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            tokenMissing = state.detail == null,
+                            errorMessage = loginOutcome.message.ifBlank {
+                                "需要先完成登录，请检查连接设置后再打开小相册。"
+                            },
+                        )
+                    }
                     return@launch
                 }
             }
@@ -915,6 +929,9 @@ class PostDetailRealViewModel(
                 is ApiResult.Success -> {
                     val currentUser = currentUserDeferred.await()
                     val albumTitleById = albumMapDeferred.await()
+                    withContext(Dispatchers.IO) {
+                        writeCachedPostDetail(result.data)
+                    }
                     val detail = result.data.toPostDetailUiModel(albumTitleById)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -930,10 +947,12 @@ class PostDetailRealViewModel(
                     loadPostComments()
                 }
                 is ApiResult.Error -> {
-                    _uiState.value = PostDetailRealUiState(
-                        isLoading = false,
-                        errorMessage = result.toBackendUiMessage("读取小相册详情失败。"),
-                    )
+                    _uiState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            errorMessage = result.toBackendUiMessage("读取小相册详情失败。"),
+                        )
+                    }
                 }
                 ApiResult.Loading -> Unit
             }
@@ -1254,8 +1273,25 @@ class PostDetailRealViewModel(
     private suspend fun loadAlbumTitleMap(): Map<String, String> {
         return when (val result = albumRepository.getAlbums()) {
             is ApiResult.Success -> result.data.associate { it.albumId to it.title }
-            else -> emptyMap()
+            else -> readCachedAlbumTitleMap()
         }
+    }
+
+    private fun readCachedPostDetail(): RemotePostDetail? {
+        val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return null
+        return AppReadCacheStore.readPostDetail(userId = userId, postId = route.postId)?.payload
+    }
+
+    private fun writeCachedPostDetail(detail: RemotePostDetail) {
+        val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return
+        AppReadCacheStore.writePostDetail(userId = userId, postId = detail.postId, detail = detail)
+    }
+
+    private fun readCachedAlbumTitleMap(): Map<String, String> {
+        val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return emptyMap()
+        return AppReadCacheStore.readAlbumDirectory(userId)?.payload?.albums
+            .orEmpty()
+            .associate { it.albumId to it.title }
     }
 
     companion object {

@@ -55,6 +55,35 @@ Example meaning:
 Response data:
 - array of `MediaDto`
 
+### `POST /api/media/import-status`
+
+Request:
+
+```json
+{
+  "sourceFingerprints": ["sha256_hex_1", "sha256_hex_2"]
+}
+```
+
+Response data:
+
+```json
+[
+  {
+    "sourceFingerprint": "sha256_hex_1",
+    "mediaId": "media_001",
+    "smallAlbumIds": ["post_001", "post_002"]
+  }
+]
+```
+
+Behavior:
+- used by Android system-media tooling to decide whether a local MediaStore item has already been imported into the app library
+- unmatched fingerprints are omitted
+- only active media in the current shared library are returned
+- `smallAlbumIds` only contains active small-album relationships
+- request accepts at most 500 fingerprints
+
 ### `GET /api/media/files/{mediaId}`
 
 Response:

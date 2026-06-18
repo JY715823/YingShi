@@ -52,9 +52,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -65,6 +67,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
@@ -96,9 +100,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.size.Precision
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
@@ -110,16 +111,35 @@ import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val InitialSystemMediaRenderCount = 120
 private const val SystemMediaRenderPageSize = 90
-private const val SystemMediaThumbnailRequestSize = 384
+
+private fun systemMediaInitialRenderCount(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.OVERVIEW_16 -> 640
+        PhotoFeedDensity.OVERVIEW_8 -> 360
+        else -> InitialSystemMediaRenderCount
+    }
+}
+
+private fun systemMediaRenderPageSize(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.OVERVIEW_16 -> 512
+        PhotoFeedDensity.OVERVIEW_8 -> 240
+        else -> SystemMediaRenderPageSize
+    }
+}
 
 @Composable
 fun SystemMediaScreen(
@@ -155,9 +175,6 @@ fun SystemMediaScreen(
     var permissionRequestedOnce by rememberSaveable {
         mutableStateOf(false)
     }
-    var renderedCount by rememberSaveable(uiState.selectedFilter) {
-        mutableIntStateOf(InitialSystemMediaRenderCount)
-    }
     var selectionMode by rememberSaveable {
         mutableStateOf(false)
     }
@@ -176,14 +193,11 @@ fun SystemMediaScreen(
     var pendingTrashIds by rememberSaveable {
         mutableStateOf(emptyList<String>())
     }
-    var pendingSystemTrashItems by remember {
-        mutableStateOf<List<SystemMediaItem>>(emptyList())
-    }
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableIntStateOf(0) }
     var densityName by rememberSaveable {
         mutableStateOf(
-            LocalSystemMediaPageStateStore.savedDensityName ?: PhotoFeedDensity.DENSE_4.name,
+            LocalSystemMediaPageStateStore.savedDensityName ?: PhotoFeedDensity.COMFORT_3.name,
         )
     }
     var scrubberInteracting by remember {
@@ -204,25 +218,31 @@ fun SystemMediaScreen(
     var lastRequestedScrubberIndex by remember {
         mutableIntStateOf(-1)
     }
+    var scrubberScrollJob by remember { mutableStateOf<Job?>(null) }
     var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
     var pendingTargetRenderedCount by remember { mutableIntStateOf(-1) }
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
     val settingsState = SettingsRepository.getSettingsState()
-    LaunchedEffect(Unit) {
-        if (densityName == PhotoFeedDensity.DENSE_4.name && LocalSystemMediaPageStateStore.savedDensityName == null) {
-            densityName = settingsState.defaultSystemMediaDensity.name
-        }
-    }
     LaunchedEffect(densityName) {
         LocalSystemMediaPageStateStore.savedDensityName = densityName
-        runCatching { densityName?.let { enumValueOf<PhotoFeedDensity>(it) } }
-            .getOrNull()
-            ?.let(SettingsRepository::updateDefaultSystemMediaDensity)
     }
     val density = PhotoFeedDensity.valueOf(densityName)
-
+    val densityWarmWindow = remember(density) { systemMediaThumbnailWarmWindow(density) }
+    val densityWarmBatchSize = remember(density) { systemMediaThumbnailWarmBatchSize(density) }
+    val initialRenderCount = remember(density, uiState.filteredItems.size) {
+        if (density == PhotoFeedDensity.OVERVIEW_16) {
+            uiState.filteredItems.size
+        } else {
+            systemMediaInitialRenderCount(density)
+        }
+    }
+    val renderPageSize = remember(density) { systemMediaRenderPageSize(density) }
+    var renderedCount by rememberSaveable(uiState.selectedFilter, densityName) {
+        mutableIntStateOf(initialRenderCount)
+    }
+    val thumbnailRequestSize = remember(density) { systemMediaThumbnailRequestSize(density) }
     fun showNotice(
         message: String,
         tone: YingShiNoticeTone = YingShiNoticeTone.INFO,
@@ -234,23 +254,75 @@ fun SystemMediaScreen(
     val inlineVideoAutoPlayAllowed = inlineVideoAutoPlayEnabled &&
         !selectionMode &&
         density.columns <= 4
-    val updateDensity = remember(density) {
-        { nextDensity: PhotoFeedDensity ->
-            if (nextDensity != density) {
-                densityName = nextDensity.name
-            }
-        }
-    }
     val selectedIdSet = selectedIds.toSet()
     val selectedItems = uiState.filteredItems.filter { selectedIdSet.contains(it.id) }
     val spacingPx = with(LocalDensity.current) { 2.dp.toPx() }
-    val visibleItems by remember(uiState.filteredItems, renderedCount) {
+    val visibleItems by remember(uiState.filteredItems, renderedCount, density) {
         derivedStateOf {
-            uiState.filteredItems.take(renderedCount.coerceAtMost(uiState.filteredItems.size))
+            if (density == PhotoFeedDensity.OVERVIEW_16) {
+                uiState.filteredItems
+            } else {
+                uiState.filteredItems.take(renderedCount.coerceAtMost(uiState.filteredItems.size))
+            }
         }
     }
-    val gridBlocks = remember(visibleItems) {
-        buildSystemMediaGridBlocks(visibleItems)
+    val gridBlocks = remember(visibleItems, density) {
+        buildSystemMediaGridBlocks(visibleItems, density)
+    }
+    val scrubberTargetBlockIndexByMediaId = remember(gridBlocks) {
+        buildSystemMediaScrubberTargetIndexMap(gridBlocks)
+    }
+    val visibleItemIndexById = remember(visibleItems) {
+        visibleItems.mapIndexed { index, item -> item.id to index }.toMap()
+    }
+    LaunchedEffect(gridState, gridBlocks, visibleItems, thumbnailRequestSize, densityWarmWindow, scrubberInteracting) {
+        if (visibleItems.isEmpty() || densityWarmWindow <= 0 || scrubberInteracting) return@LaunchedEffect
+        snapshotFlow {
+            val mediaIndices = gridState.layoutInfo.visibleItemsInfo.mapNotNull { visibleInfo ->
+                val block = gridBlocks.getOrNull(visibleInfo.index) as? SystemMediaGridBlock.Media
+                block?.item?.id?.let(visibleItemIndexById::get)
+            }
+            if (mediaIndices.isEmpty()) {
+                null
+            } else {
+                mediaIndices.minOrNull()!! to mediaIndices.maxOrNull()!!
+            }
+        }.collectLatest { range ->
+            val (firstVisible, lastVisible) = range ?: return@collectLatest
+            val start = (firstVisible - densityWarmWindow).coerceAtLeast(0)
+            val end = (lastVisible + densityWarmWindow).coerceAtMost(visibleItems.lastIndex)
+            visibleItems
+                .subList(start, end + 1)
+                .chunked(densityWarmBatchSize)
+                .forEach { batch ->
+                    coroutineScope {
+                        batch.map { item ->
+                            async {
+                                prefetchSystemMediaThumbnail(
+                                    context = context,
+                                    uri = item.uri,
+                                    targetSizePx = thumbnailRequestSize,
+                                )
+                            }
+                        }.awaitAll()
+                    }
+                }
+        }
+    }
+    var densityGhost by remember { mutableStateOf<SystemMediaDensityGhost?>(null) }
+    val updateDensity = remember(density, gridBlocks, gridState) {
+        { nextDensity: PhotoFeedDensity ->
+            if (nextDensity != density) {
+                densityGhost = SystemMediaDensityGhost(
+                    density = density,
+                    blocks = gridBlocks,
+                    firstVisibleItemIndex = gridState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = gridState.firstVisibleItemScrollOffset,
+                    nonce = System.nanoTime(),
+                )
+                densityName = nextDensity.name
+            }
+        }
     }
     var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
     var pausedInlineVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -410,6 +482,9 @@ fun SystemMediaScreen(
             )
         }
     }
+    val scrubberYearMarkers = remember(uiState.filteredItems) {
+        buildSystemMediaScrubberYearMarkers(uiState.filteredItems)
+    }
     val displayedScrubberProgress = if (scrubberInteracting) {
         scrubberDragProgress ?: currentScrollProgress
     } else {
@@ -452,8 +527,11 @@ fun SystemMediaScreen(
             LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
             return@LaunchedEffect
         }
-        if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
-            val nextRenderedCount = (targetIndex + SystemMediaRenderPageSize)
+        if (density != PhotoFeedDensity.OVERVIEW_16 &&
+            targetIndex >= visibleItems.size &&
+            targetIndex < uiState.filteredItems.size
+        ) {
+            val nextRenderedCount = (targetIndex + renderPageSize)
                 .coerceAtMost(uiState.filteredItems.size)
             if (nextRenderedCount > renderedCount && pendingTargetRenderedCount != nextRenderedCount) {
                 pendingTargetRenderedCount = nextRenderedCount
@@ -461,7 +539,10 @@ fun SystemMediaScreen(
             }
             return@LaunchedEffect
         }
-        if (targetIndex in gridState.layoutInfo.visibleItemsInfo.map { it.index }) {
+        val targetBlockIndex = gridBlocks.indexOfFirst { block ->
+            block is SystemMediaGridBlock.Media && block.item.id == mediaId
+        }.takeIf { it >= 0 } ?: targetIndex
+        if (targetBlockIndex in gridState.layoutInfo.visibleItemsInfo.map { it.index }) {
             pendingTargetMediaIdSnapshot = null
             pendingTargetRenderedCount = -1
             LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
@@ -470,7 +551,7 @@ fun SystemMediaScreen(
         }
         snapshotFlow { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() }
             .first { it }
-        gridState.scrollToItem(targetIndex)
+        gridState.scrollToItem(targetBlockIndex)
         pendingTargetMediaIdSnapshot = null
         pendingTargetRenderedCount = -1
         LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
@@ -563,8 +644,8 @@ fun SystemMediaScreen(
         }
     }
 
-    LaunchedEffect(uiState.selectedFilter, uiState.filteredItems.size) {
-        renderedCount = InitialSystemMediaRenderCount.coerceAtMost(uiState.filteredItems.size)
+    LaunchedEffect(uiState.selectedFilter, uiState.filteredItems.size, initialRenderCount) {
+        renderedCount = initialRenderCount.coerceAtMost(uiState.filteredItems.size)
     }
 
     LaunchedEffect(bridgeMutationEvent.version) {
@@ -589,8 +670,11 @@ fun SystemMediaScreen(
             val lastVisibleIndex = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             lastVisibleIndex >= (gridBlocks.lastIndex - 24).coerceAtLeast(0)
         }.collectLatest { shouldLoadMore ->
-            if (shouldLoadMore && renderedCount < uiState.filteredItems.size) {
-                renderedCount = (renderedCount + SystemMediaRenderPageSize)
+            if (density != PhotoFeedDensity.OVERVIEW_16 &&
+                shouldLoadMore &&
+                renderedCount < uiState.filteredItems.size
+            ) {
+                renderedCount = (renderedCount + renderPageSize)
                     .coerceAtMost(uiState.filteredItems.size)
             }
         }
@@ -655,33 +739,6 @@ fun SystemMediaScreen(
         )
     }
 
-    if (pendingSystemTrashItems.isNotEmpty()) {
-        val trashCount = pendingSystemTrashItems.size
-        AlertDialog(
-            onDismissRequest = { pendingSystemTrashItems = emptyList() },
-            title = { Text("移到系统相册回收站？") },
-            confirmButton = {
-                SystemMediaActionChip(
-                    text = "继续移到回收站",
-                    emphasized = false,
-                    danger = true,
-                    onClick = {
-                        val items = pendingSystemTrashItems
-                        pendingSystemTrashItems = emptyList()
-                        launchSystemTrashRequest(items)
-                    },
-                )
-            },
-            dismissButton = {
-                SystemMediaActionChip(
-                    text = "取消",
-                    emphasized = false,
-                    onClick = { pendingSystemTrashItems = emptyList() },
-                )
-            },
-        )
-    }
-
     pendingImportPreview?.let { preview ->
         SystemMediaImportPreviewDialog(
             preview = preview,
@@ -714,6 +771,7 @@ fun SystemMediaScreen(
             .fillMaxSize()
             .background(colors.appBackground),
     ) {
+        SystemMediaAtmosphereLayer(modifier = Modifier.fillMaxSize())
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -732,12 +790,6 @@ fun SystemMediaScreen(
                     onBack = onBack,
                     onFilterSelected = viewModel::onFilterSelected,
                     onRefresh = { viewModel.refresh(forceRefresh = true) },
-                    onToggleSelectionMode = {
-                        selectionMode = !selectionMode
-                        if (!selectionMode) {
-                            selectedIds = emptyList()
-                        }
-                    },
                 )
             }
 
@@ -844,9 +896,16 @@ fun SystemMediaScreen(
                                     }
                                     is SystemMediaGridBlock.Media -> {
                                         val item = block.item
+                                        val cardModifier = if (density == PhotoFeedDensity.OVERVIEW_16) {
+                                            Modifier
+                                        } else {
+                                            Modifier.animateItem()
+                                        }
                                         SystemMediaCard(
                                             item = item,
+                                            modifier = cardModifier,
                                             density = density,
+                                            thumbnailRequestSize = thumbnailRequestSize,
                                             selectionMode = selectionMode,
                                             selected = selectedIdSet.contains(item.id),
                                             selectionFlash = selectionFlashByMediaId[item.id],
@@ -894,7 +953,20 @@ fun SystemMediaScreen(
                                         )
                                     }
                                 }
-                            }
+	                            }
+	                        }
+
+                        densityGhost?.let { ghost ->
+                            SystemMediaDensityGhostOverlay(
+                                ghost = ghost,
+                                gridEdgePadding = systemMediaGridEdgePadding(ghost.density),
+                                onFinished = {
+                                    if (densityGhost?.nonce == ghost.nonce) {
+                                        densityGhost = null
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
 
                         androidx.compose.animation.AnimatedVisibility(
@@ -904,60 +976,71 @@ fun SystemMediaScreen(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
                                 .fillMaxHeight(),
-                        ) {
-                            SystemMediaTimeScrubber(
-                                modifier = Modifier.fillMaxHeight(),
-                                progress = displayedScrubberProgress,
-                                label = displayedScrubberLabel,
-                                showLabel = scrubberInteracting,
-                                onSeekToProgress = { progress ->
-                                    val targetIndex = (progress * (uiState.filteredItems.lastIndex).coerceAtLeast(0))
-                                        .roundToInt()
-                                        .coerceIn(0, (uiState.filteredItems.size - 1).coerceAtLeast(0))
-                                    scrubberDragProgress = progress.coerceIn(0f, 1f)
-                                    val targetItem = uiState.filteredItems.getOrNull(targetIndex)
-                                    scrubberDragLabel = targetItem?.toSystemMediaScrubberLabel().orEmpty()
-                                    if (targetIndex == lastRequestedScrubberIndex) {
-                                        return@SystemMediaTimeScrubber
-                                    }
-                                    lastRequestedScrubberIndex = targetIndex
-                                    val nextRenderedCount = if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
-                                        (targetIndex + SystemMediaRenderPageSize)
+	                        ) {
+	                            Box(
+	                                modifier = Modifier
+	                                    .fillMaxHeight()
+	                                    .width(184.dp),
+	                            ) {
+	                                PhotoFeedTimeScrubber(
+	                                    modifier = Modifier.matchParentSize(),
+	                                    progress = displayedScrubberProgress,
+	                                    label = displayedScrubberLabel,
+	                                    showLabel = scrubberInteracting,
+	                                    yearMarkers = scrubberYearMarkers,
+		                                    onSeekToProgress = { progress ->
+		                                    val targetIndex = (progress * (uiState.filteredItems.lastIndex).coerceAtLeast(0))
+		                                        .roundToInt()
+		                                        .coerceIn(0, (uiState.filteredItems.size - 1).coerceAtLeast(0))
+	                                    scrubberDragProgress = progress.coerceIn(0f, 1f)
+		                                    val targetItem = uiState.filteredItems.getOrNull(targetIndex)
+		                                    scrubberDragLabel = targetItem?.toSystemMediaScrubberLabel().orEmpty()
+	                                    val scrubberStep = systemMediaScrubberIndexStep(density)
+		                                    if (
+                                                targetIndex == lastRequestedScrubberIndex ||
+                                                lastRequestedScrubberIndex >= 0 &&
+                                                abs(targetIndex - lastRequestedScrubberIndex) < scrubberStep
+                                            ) {
+		                                        return@PhotoFeedTimeScrubber
+		                                    }
+	                                    lastRequestedScrubberIndex = targetIndex
+	                                    val nextRenderedCount = if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
+	                                        (targetIndex + renderPageSize)
                                             .coerceAtMost(uiState.filteredItems.size)
                                     } else {
                                         renderedCount
                                     }
-                                    if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
-                                        renderedCount = nextRenderedCount
-                                    }
-                                    val targetBlocks = if (nextRenderedCount != visibleItems.size) {
-                                        buildSystemMediaGridBlocks(uiState.filteredItems.take(nextRenderedCount))
-                                    } else {
-                                        gridBlocks
-                                    }
-                                    val targetBlockIndex = targetItem
-                                        ?.let { item -> targetBlocks.indexOfFirst { block -> block is SystemMediaGridBlock.Media && block.item.id == item.id } }
-                                        ?.takeIf { it >= 0 }
-                                        ?: 0
-                                    coroutineScope.launch {
-                                        if (nextRenderedCount != visibleItems.size) {
-                                            delay(16)
-                                        }
-                                        gridState.scrollToItem(targetBlockIndex)
-                                    }
-                                },
-                                onInteractingChanged = { interacting ->
-                                    scrubberInteracting = interacting
-                                    if (interacting) {
-                                        scrubberDragProgress = currentScrollProgress
+	                                    if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
+	                                        renderedCount = nextRenderedCount
+	                                    }
+	                                    val targetBlockIndex = targetItem
+	                                        ?.let { item -> scrubberTargetBlockIndexByMediaId[item.id] }
+	                                        ?.takeIf { it >= 0 }
+	                                        ?: 0
+	                                    scrubberScrollJob?.cancel()
+	                                    scrubberScrollJob = coroutineScope.launch {
+	                                        if (nextRenderedCount != visibleItems.size) {
+	                                            delay(16)
+	                                        }
+		                                        gridState.scrollToItem(
+                                                index = targetBlockIndex,
+                                                scrollOffset = calculatePhotoFeedLikeSystemScrubberScrollOffset(gridState),
+                                            )
+	                                    }
+	                                    },
+	                                    onInteractingChanged = { interacting ->
+	                                    scrubberInteracting = interacting
+	                                    if (interacting) {
+	                                        scrubberDragProgress = currentScrollProgress
                                         scrubberDragLabel = currentScrubberLabel
                                     } else {
-                                        scrubberDragProgress = null
-                                        scrubberDragLabel = ""
-                                    }
-                                },
-                            )
-                        }
+	                                        scrubberDragProgress = null
+	                                        scrubberDragLabel = ""
+	                                    }
+	                                    },
+	                                )
+	                            }
+	                        }
                     }
                 }
             }
@@ -1016,11 +1099,7 @@ fun SystemMediaScreen(
                         showNotice("请先选择要移到系统回收站的媒体。", YingShiNoticeTone.WARNING)
                         return@SystemMediaSelectionBar
                     }
-                    pendingSystemTrashItems = selectedItems
-                },
-                onCancel = {
-                    selectionMode = false
-                    selectedIds = emptyList()
+                    launchSystemTrashRequest(selectedItems)
                 },
             )
         }
@@ -1092,10 +1171,10 @@ private fun SystemMediaTopBar(
     onBack: () -> Unit,
     onFilterSelected: (SystemMediaFilter) -> Unit,
     onRefresh: () -> Unit,
-    onToggleSelectionMode: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    var filterMenuExpanded by remember { mutableStateOf(false) }
 	
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1130,7 +1209,7 @@ private fun SystemMediaTopBar(
                         )
                         Text(
                             text = if (selectionMode) {
-                                if (selectedCount > 0) "多选中 $selectedCount 项" else "请选择媒体"
+                                "长按与滑动选择媒体"
                             } else {
                                 "当前筛选：${selectedFilter.label}"
                             },
@@ -1144,36 +1223,51 @@ private fun SystemMediaTopBar(
                         contentDescription = "刷新媒体",
                         onClick = onRefresh,
                     )
-                    SystemMediaActionChip(
-                        text = if (selectionMode) "取消多选" else "多选",
-                        emphasized = selectionMode,
-                        compact = true,
-                        onClick = onToggleSelectionMode,
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    SystemMediaFilter.entries.forEach { filter ->
-                        SystemMediaFilterChip(
-                            text = filter.label,
-                            selected = filter == selectedFilter,
-                            onClick = { onFilterSelected(filter) },
+                    Box {
+                        SystemMediaIconButton(
+                            icon = Icons.Default.Menu,
+                            contentDescription = "媒体分类",
+                            onClick = { filterMenuExpanded = true },
                         )
+                        DropdownMenu(
+                            expanded = filterMenuExpanded,
+                            onDismissRequest = { filterMenuExpanded = false },
+                        ) {
+                            SystemMediaFilter.entries.forEach { filter ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = filter.label,
+                                            fontWeight = if (filter == selectedFilter) FontWeight.SemiBold else FontWeight.Medium,
+                                        )
+                                    },
+                                    onClick = {
+                                        onFilterSelected(filter)
+                                        filterMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
 
         if (selectionMode) {
-            YingShiStatusPill(
-                text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                selected = true,
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+                color = colors.primaryContainer.copy(alpha = 0.88f),
+                border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.70f)),
+            ) {
+                Text(
+                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
+                    modifier = Modifier.padding(horizontal = spacing.md, vertical = 12.dp),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
@@ -1217,7 +1311,9 @@ private fun SystemMediaFilterChip(
 @Composable
 private fun SystemMediaCard(
     item: SystemMediaItem,
+    modifier: Modifier = Modifier,
     density: PhotoFeedDensity,
+    thumbnailRequestSize: Int,
     selectionMode: Boolean,
     selected: Boolean,
     selectionFlash: SelectionNumberFlash?,
@@ -1236,9 +1332,19 @@ private fun SystemMediaCard(
     val colors = YingShiThemeTokens.colors
     val motion = YingShiThemeTokens.motion
     val motionEnabled = rememberYingShiMotionEnabled()
+    val isOverview16 = density == PhotoFeedDensity.OVERVIEW_16
     val shape = RoundedCornerShape(0.dp)
-    val videoThumbnail = if (item.type == SystemMediaType.VIDEO) {
+    val videoThumbnail = if (item.type == SystemMediaType.VIDEO && density.columns <= 4) {
         rememberSystemVideoThumbnail(context, item.uri)
+    } else {
+        null
+    }
+    val mediaThumbnail = if (videoThumbnail == null) {
+        rememberSystemMediaThumbnail(
+            context = context,
+            uri = item.uri,
+            targetSizePx = thumbnailRequestSize,
+        )
     } else {
         null
     }
@@ -1251,20 +1357,28 @@ private fun SystemMediaCard(
         item.type == SystemMediaType.VIDEO &&
         density.columns <= 4
     val itemScale by animateFloatAsState(
-        targetValue = if (selected) motion.selectedMediaScale else 1f,
-        animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
+        targetValue = if (selected && !isOverview16) motion.selectedMediaScale else 1f,
+        animationSpec = tween(if (motionEnabled && !isOverview16) motion.stateMillis else 0, easing = motion.easing),
         label = "systemMediaCardSelectionScale",
+    )
+    val thumbnailAlpha by animateFloatAsState(
+        targetValue = if (videoThumbnail != null || mediaThumbnail != null) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (motionEnabled && !isOverview16) 90 else 0,
+            easing = motion.easing,
+        ),
+        label = "systemMediaThumbnailAlpha",
     )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
             .graphicsLayer {
                 scaleX = itemScale
                 scaleY = itemScale
             }
             .clip(shape)
-            .background(colors.sectionBackground.copy(alpha = 0.62f))
+            .background(systemMediaCardBackground(item = item, density = density))
             .combinedClickable(
                 onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
                 onLongClick = onLongPress,
@@ -1274,30 +1388,31 @@ private fun SystemMediaCard(
             Image(
                 bitmap = videoThumbnail.toComposeBitmap(),
                 contentDescription = item.displayName,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = thumbnailAlpha },
                 contentScale = ContentScale.Crop,
             )
-        } else {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(item.uri)
-                    .size(SystemMediaThumbnailRequestSize)
-                    .precision(Precision.INEXACT)
-                    .crossfade(false)
-                    .build(),
+        } else if (mediaThumbnail != null) {
+            Image(
+                bitmap = mediaThumbnail.toComposeBitmap(),
                 contentDescription = item.displayName,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = thumbnailAlpha },
                 contentScale = ContentScale.Crop,
             )
         }
 
-        YingShiMediaFrame(
-            modifier = Modifier.fillMaxSize(),
-            shape = shape,
-            selected = selected,
-            topScrimAlpha = if (item.type == SystemMediaType.VIDEO) 0.22f else 0.14f,
-            bottomGlowAlpha = if (selected) 0.24f else 0.14f,
-        )
+        if (!isOverview16) {
+            YingShiMediaFrame(
+                modifier = Modifier.fillMaxSize(),
+                shape = shape,
+                selected = selected,
+                topScrimAlpha = if (item.type == SystemMediaType.VIDEO) 0.22f else 0.14f,
+                bottomGlowAlpha = if (selected) 0.24f else 0.14f,
+            )
+        }
 
         if (supportsInlineVideo && isInlineVideoPlaying) {
             SystemMediaInlineVideoPlayer(
@@ -1329,12 +1444,21 @@ private fun SystemMediaCard(
             )
         }
 
-        if (item.type == SystemMediaType.VIDEO) {
+        if (item.type == SystemMediaType.VIDEO && !isOverview16) {
             VideoDurationBadge(
                 durationMillis = item.gridVideoBadgeDurationMillis(inlineVideoProgress),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 6.dp, end = 6.dp),
+            )
+        }
+
+        if (item.isImportedToApp && !isOverview16) {
+            SystemMediaBadge(
+                text = "已导入",
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 6.dp, start = 6.dp),
             )
         }
 
@@ -1366,10 +1490,12 @@ private fun SystemMediaCard(
                 )
             }
         }
-        SelectionNumberFlashOverlay(
-            flash = selectionFlash,
-            modifier = Modifier.align(Alignment.Center),
-        )
+        if (selectionMode && !isOverview16) {
+            SelectionNumberFlashOverlay(
+                flash = selectionFlash,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
     }
 }
 
@@ -1403,6 +1529,71 @@ private fun SystemMediaBadge(
     }
 }
 
+private fun systemMediaCardBackground(
+    item: SystemMediaItem,
+    density: PhotoFeedDensity,
+): Brush {
+    val alpha = if (density == PhotoFeedDensity.OVERVIEW_16) 0.82f else 0.62f
+    return Brush.linearGradient(
+        colors = listOf(
+            item.palette.start.copy(alpha = alpha),
+            item.palette.end.copy(alpha = (alpha + 0.08f).coerceAtMost(0.92f)),
+        ),
+    )
+}
+
+@Composable
+private fun SystemMediaAtmosphereLayer(
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            colors.primaryContainer.copy(alpha = 0.18f),
+                            colors.appBackground.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(80f, 120f),
+                        radius = 920f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            colors.memoryAccent.copy(alpha = 0.14f),
+                            colors.sectionBackground.copy(alpha = 0.10f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(1120f, 1880f),
+                        radius = 980f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            colors.raisedSurface.copy(alpha = 0.06f),
+                            Color.Transparent,
+                            colors.viewerBackground.copy(alpha = 0.08f),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
 @Composable
 private fun SystemMediaSelectionBar(
     selectedCount: Int,
@@ -1410,7 +1601,6 @@ private fun SystemMediaSelectionBar(
     onCreatePost: () -> Unit,
     onAddToPost: () -> Unit,
     onMoveToTrash: () -> Unit,
-    onCancel: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
@@ -1421,66 +1611,35 @@ private fun SystemMediaSelectionBar(
         contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
         highlighted = selectedCount > 0,
     ) {
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                YingShiStatusPill(
-                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                    selected = selectedCount > 0,
-                    modifier = Modifier.weight(1f),
-                )
-                SystemMediaActionChip(
-                    text = "取消",
-                    emphasized = false,
-                    compact = true,
-                    onClick = onCancel,
-                )
-            }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    SystemMediaActionChip(
-                        text = "导入照片流",
-                        emphasized = true,
-                        modifier = Modifier.weight(1f),
-                        onClick = onImportToApp,
-                    )
-                    SystemMediaActionChip(
-                        text = "新建小相册",
-                        emphasized = false,
-                        modifier = Modifier.weight(1f),
-                        onClick = onCreatePost,
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    SystemMediaActionChip(
-                        text = "加入已有小相册",
-                        emphasized = false,
-                        modifier = Modifier.weight(1f),
-                        onClick = onAddToPost,
-                    )
-                    SystemMediaActionChip(
-                        text = "移到系统回收站",
-                        emphasized = false,
-                        danger = true,
-                        modifier = Modifier.weight(1f),
-                        onClick = onMoveToTrash,
-                    )
-                }
-            }
+            SystemMediaActionChip(
+                text = "导入",
+                emphasized = true,
+                modifier = Modifier.weight(1f),
+                onClick = onImportToApp,
+            )
+            SystemMediaActionChip(
+                text = "新建",
+                emphasized = false,
+                modifier = Modifier.weight(1f),
+                onClick = onCreatePost,
+            )
+            SystemMediaActionChip(
+                text = "加入",
+                emphasized = false,
+                modifier = Modifier.weight(1f),
+                onClick = onAddToPost,
+            )
+            SystemMediaActionChip(
+                text = "删除",
+                emphasized = false,
+                danger = true,
+                modifier = Modifier.weight(1f),
+                onClick = onMoveToTrash,
+            )
         }
     }
 }
@@ -1701,12 +1860,50 @@ private fun SystemMediaDayHeaderRow(title: String) {
     )
 }
 
-private fun systemMediaGridEdgePadding(density: PhotoFeedDensity) = when (density) {
-    PhotoFeedDensity.COMFORT_2 -> 5.dp
-    PhotoFeedDensity.COMFORT_3 -> 4.dp
-    PhotoFeedDensity.DENSE_4 -> 4.dp
-    PhotoFeedDensity.OVERVIEW_8 -> 2.dp
-    PhotoFeedDensity.OVERVIEW_16 -> 2.dp
+private fun systemMediaGridEdgePadding(density: PhotoFeedDensity) = rowSpacing(density)
+
+private fun systemMediaThumbnailRequestSize(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 512
+        PhotoFeedDensity.COMFORT_3 -> 384
+        PhotoFeedDensity.DENSE_4 -> 288
+        PhotoFeedDensity.OVERVIEW_8 -> 144
+        PhotoFeedDensity.OVERVIEW_16 -> 96
+    }
+}
+
+private fun systemMediaThumbnailWarmWindow(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 18
+        PhotoFeedDensity.COMFORT_3 -> 24
+        PhotoFeedDensity.DENSE_4 -> 36
+        PhotoFeedDensity.OVERVIEW_8 -> 120
+        PhotoFeedDensity.OVERVIEW_16 -> 420
+    }
+}
+
+private fun systemMediaThumbnailWarmBatchSize(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 6
+        PhotoFeedDensity.COMFORT_3 -> 8
+        PhotoFeedDensity.DENSE_4 -> 10
+        PhotoFeedDensity.OVERVIEW_8 -> 14
+        PhotoFeedDensity.OVERVIEW_16 -> 18
+    }
+}
+
+private fun buildSystemMediaScrubberYearMarkers(
+    items: List<SystemMediaItem>,
+): List<PhotoFeedScrubberYearMarker> {
+    val anchors = items.mapIndexed { index, item ->
+        PhotoFeedScrubberAnchor(
+            blockKey = item.id,
+            itemIndex = index,
+            label = item.toSystemMediaScrubberLabel(),
+            timeMillis = item.displayTimeMillis,
+        )
+    }
+    return buildPhotoFeedScrubberYearMarkers(anchors)
 }
 
 @Composable
@@ -1889,6 +2086,119 @@ private fun SystemMediaLoadingState(
     }
 }
 
+private data class SystemMediaDensityGhost(
+    val density: PhotoFeedDensity,
+    val blocks: List<SystemMediaGridBlock>,
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffset: Int,
+    val nonce: Long,
+)
+
+@Composable
+private fun SystemMediaDensityGhostOverlay(
+    ghost: SystemMediaDensityGhost,
+    gridEdgePadding: androidx.compose.ui.unit.Dp,
+    onFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    key(ghost.nonce) {
+        val alpha = remember { Animatable(1f) }
+        val ghostState = rememberLazyGridState(
+            initialFirstVisibleItemIndex = ghost.firstVisibleItemIndex.coerceAtLeast(0),
+            initialFirstVisibleItemScrollOffset = ghost.firstVisibleItemScrollOffset.coerceAtLeast(0),
+        )
+        val thumbnailRequestSize = remember(ghost.density) {
+            systemMediaThumbnailRequestSize(ghost.density)
+        }
+        LaunchedEffect(ghost.nonce) {
+            alpha.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 520),
+            )
+            onFinished()
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(ghost.density.columns),
+            state = ghostState,
+            userScrollEnabled = false,
+            modifier = modifier
+                .graphicsLayer {
+                    this.alpha = alpha.value
+                    scaleX = 0.998f
+                    scaleY = 0.998f
+                },
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(
+                start = gridEdgePadding,
+                end = gridEdgePadding,
+                top = 2.dp,
+                bottom = 112.dp,
+            ),
+        ) {
+            items(
+                items = ghost.blocks,
+                key = { "ghost-${ghost.nonce}-${it.key}" },
+                span = { block ->
+                    when (block) {
+                        is SystemMediaGridBlock.Media -> GridItemSpan(1)
+                        is SystemMediaGridBlock.MonthHeader,
+                        is SystemMediaGridBlock.DayHeader,
+                        -> GridItemSpan(maxLineSpan)
+                    }
+                },
+                contentType = { block ->
+                    when (block) {
+                        is SystemMediaGridBlock.MonthHeader -> "ghost-system-month"
+                        is SystemMediaGridBlock.DayHeader -> "ghost-system-day"
+                        is SystemMediaGridBlock.Media -> "ghost-${block.item.type}-${ghost.density.columns}"
+                    }
+                },
+            ) { block ->
+                when (block) {
+                    is SystemMediaGridBlock.MonthHeader -> SystemMediaMonthHeaderRow(block.title)
+                    is SystemMediaGridBlock.DayHeader -> SystemMediaDayHeaderRow(block.title)
+                    is SystemMediaGridBlock.Media -> SystemMediaGhostCard(
+                        item = block.item,
+                        density = ghost.density,
+                        thumbnailRequestSize = thumbnailRequestSize,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SystemMediaGhostCard(
+    item: SystemMediaItem,
+    density: PhotoFeedDensity,
+    thumbnailRequestSize: Int,
+) {
+    val context = LocalContext.current
+    val thumbnail = rememberSystemMediaThumbnail(
+        context = context,
+        uri = item.uri,
+        targetSizePx = thumbnailRequestSize,
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(item.aspectRatio.coerceIn(0.56f, 1.8f))
+            .clip(RoundedCornerShape(if (density.columns <= 4) 14.dp else 7.dp))
+            .background(item.palette.start.copy(alpha = 0.58f)),
+    ) {
+        if (thumbnail != null) {
+            Image(
+                bitmap = thumbnail.toComposeBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+    }
+}
+
 @Composable
 private fun SystemMediaErrorState(
     message: String,
@@ -2020,17 +2330,38 @@ private fun SystemMediaItem.toSystemMediaScrubberLabel(): String {
     return SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(Date(displayTimeMillis))
 }
 
-private fun buildSystemMediaGridBlocks(items: List<SystemMediaItem>): List<SystemMediaGridBlock> {
+private fun buildSystemMediaGridBlocks(
+    items: List<SystemMediaItem>,
+    density: PhotoFeedDensity,
+): List<SystemMediaGridBlock> {
     if (items.isEmpty()) return emptyList()
     val monthFormat = SimpleDateFormat("yyyy年M月", Locale.CHINA)
     val monthKeyFormat = SimpleDateFormat("yyyy-MM", Locale.CHINA)
+    val yearFormat = SimpleDateFormat("yyyy年", Locale.CHINA)
+    val yearKeyFormat = SimpleDateFormat("yyyy", Locale.CHINA)
     val dayKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
     val blocks = mutableListOf<SystemMediaGridBlock>()
     var lastMonthKey: String? = null
+    var lastYearKey: String? = null
     var lastDayKey: String? = null
 
     items.forEach { item ->
         val date = Date(item.displayTimeMillis)
+        if (density.columns >= 16) {
+            val yearKey = yearKeyFormat.format(date)
+            if (yearKey != lastYearKey) {
+                blocks += SystemMediaGridBlock.MonthHeader(
+                    key = "system-year-$yearKey",
+                    title = yearFormat.format(date),
+                )
+                lastYearKey = yearKey
+            }
+            blocks += SystemMediaGridBlock.Media(
+                key = "system-media-${item.id}",
+                item = item,
+            )
+            return@forEach
+        }
         val monthKey = monthKeyFormat.format(date)
         if (monthKey != lastMonthKey) {
             blocks += SystemMediaGridBlock.MonthHeader(
@@ -2054,6 +2385,64 @@ private fun buildSystemMediaGridBlocks(items: List<SystemMediaItem>): List<Syste
         )
     }
     return blocks
+}
+
+private fun calculatePhotoFeedLikeSystemScrubberScrollOffset(
+    gridState: LazyGridState,
+): Int {
+    val layoutInfo = gridState.layoutInfo
+    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset)
+        .takeIf { it > 0 }
+        ?: layoutInfo.viewportSize.height
+    return -(viewportHeight * 0.36f).roundToInt()
+}
+
+private fun findSystemMediaScrubberTargetBlockIndex(
+    blocks: List<SystemMediaGridBlock>,
+    mediaId: String,
+): Int {
+    val mediaIndex = blocks.indexOfFirst { block ->
+        block is SystemMediaGridBlock.Media && block.item.id == mediaId
+    }
+    if (mediaIndex <= 0) return mediaIndex
+    for (index in mediaIndex downTo 0) {
+        when (blocks[index]) {
+            is SystemMediaGridBlock.DayHeader,
+            is SystemMediaGridBlock.MonthHeader,
+            -> return index
+            is SystemMediaGridBlock.Media -> Unit
+        }
+    }
+    return mediaIndex
+}
+
+private fun buildSystemMediaScrubberTargetIndexMap(
+    blocks: List<SystemMediaGridBlock>,
+): Map<String, Int> {
+    if (blocks.isEmpty()) return emptyMap()
+    val targetByMediaId = LinkedHashMap<String, Int>(blocks.size)
+    var currentHeaderIndex = 0
+    blocks.forEachIndexed { index, block ->
+        when (block) {
+            is SystemMediaGridBlock.DayHeader,
+            is SystemMediaGridBlock.MonthHeader,
+            -> currentHeaderIndex = index
+            is SystemMediaGridBlock.Media -> {
+                targetByMediaId[block.item.id] = currentHeaderIndex
+            }
+        }
+    }
+    return targetByMediaId
+}
+
+private fun systemMediaScrubberIndexStep(density: PhotoFeedDensity): Int {
+    return when (density) {
+        PhotoFeedDensity.COMFORT_2 -> 1
+        PhotoFeedDensity.COMFORT_3 -> 2
+        PhotoFeedDensity.DENSE_4 -> 3
+        PhotoFeedDensity.OVERVIEW_8 -> 12
+        PhotoFeedDensity.OVERVIEW_16 -> 36
+    }
 }
 
 private fun resolveCurrentSystemMediaVisibleLabel(

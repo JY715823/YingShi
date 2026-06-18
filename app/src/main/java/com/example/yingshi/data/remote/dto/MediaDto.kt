@@ -40,3 +40,13 @@ data class MediaDto(
     val postIds: List<String>
         get() = smallAlbumIds.orEmpty()
 }
+
+data class MediaImportStatusRequestDto(
+    val sourceFingerprints: List<String>,
+)
+
+data class MediaImportStatusDto(
+    val sourceFingerprint: String,
+    val mediaId: String,
+    val smallAlbumIds: List<String>? = emptyList(),
+)

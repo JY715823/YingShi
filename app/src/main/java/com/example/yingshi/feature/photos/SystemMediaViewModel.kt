@@ -177,8 +177,8 @@ private fun List<SystemMediaItem>.applyFilter(filter: SystemMediaFilter): List<S
             bucket.contains("screenshot") || displayName.contains("screenshot")
         }
         SystemMediaFilter.VIDEO -> filter { it.type == SystemMediaType.VIDEO }
-        SystemMediaFilter.POSTED -> filter { it.linkedPostIds.isNotEmpty() }
-        SystemMediaFilter.UNPOSTED -> filter { it.linkedPostIds.isEmpty() }
+        SystemMediaFilter.IMPORTED -> filter { it.isImportedToApp }
+        SystemMediaFilter.UNIMPORTED -> filter { !it.isImportedToApp }
     }
 }
 

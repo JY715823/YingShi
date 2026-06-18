@@ -1,19 +1,26 @@
 ﻿package com.example.yingshi.feature.photos
 
 import android.app.Activity
+import android.os.SystemClock
 import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
@@ -21,7 +28,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -58,7 +67,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -67,6 +78,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
@@ -82,41 +94,170 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.min
 
 private const val MinSystemViewerScale = 1f
-private const val MaxSystemViewerScale = 4f
+private const val StableMaxSystemViewerScale = 6f
+private const val ElasticMaxSystemViewerScale = 9f
+private const val SystemViewerDoubleTapScale = 2.5f
+private const val SystemViewerFastDoubleTapWindowMillis = 260L
 private const val SystemViewerResetScale = 1.02f
+private const val SystemLongImageHeightWidthRatioThreshold = 3.8f
+
+private object SystemViewerLayoutTuning {
+    val canvasHorizontalPadding = 0.dp
+    val canvasTopPadding = 88.dp
+    val canvasBottomPadding = 84.dp
+    val immersiveCanvasTopPadding = 0.dp
+    val immersiveCanvasBottomPadding = 0.dp
+    val immersiveVideoBottomExitZone = 64.dp
+}
 
 private class SystemViewerZoomState {
     var scale by mutableStateOf(MinSystemViewerScale)
         private set
     var offset by mutableStateOf(Offset.Zero)
         private set
+    private var latestContentSize by mutableStateOf(IntSize.Zero)
+    private var latestContentTopLeft by mutableStateOf(Offset.Zero)
+    private var latestMinimumScale by mutableStateOf(MinSystemViewerScale)
 
     val isZoomed: Boolean
-        get() = scale > SystemViewerResetScale
+        get() = abs(scale - MinSystemViewerScale) > SystemViewerResetScale - MinSystemViewerScale
 
     fun reset() {
         scale = MinSystemViewerScale
         offset = Offset.Zero
     }
 
+    fun updateContentGeometry(
+        contentSize: IntSize,
+        contentTopLeft: Offset,
+        minimumScale: Float = MinSystemViewerScale,
+    ) {
+        if (contentSize.width > 0 && contentSize.height > 0) {
+            latestContentSize = contentSize
+            latestContentTopLeft = contentTopLeft
+            latestMinimumScale = minimumScale.coerceIn(0.05f, MinSystemViewerScale)
+        }
+    }
+
+    fun toggleDoubleTap(
+        tapPosition: Offset,
+        containerSize: IntSize,
+    ) {
+        if (isZoomed) {
+            reset()
+        } else {
+            val targetScale = SystemViewerDoubleTapScale.coerceIn(
+                MinSystemViewerScale,
+                StableMaxSystemViewerScale,
+            )
+            scale = targetScale
+            val contentSize = latestContentSize.takeIf { it.width > 0 && it.height > 0 } ?: containerSize
+            val contentTopLeft = latestContentTopLeft
+            val normalizedTap = tapPosition - contentTopLeft
+            offset = clampOffset(
+                value = tapPosition - contentTopLeft - normalizedTap * targetScale,
+                currentScale = targetScale,
+                containerSize = containerSize,
+                contentSize = contentSize,
+                contentTopLeft = contentTopLeft,
+            )
+        }
+    }
+
+    fun settle(
+        containerSize: IntSize,
+        contentSize: IntSize,
+        contentTopLeft: Offset,
+    ) {
+        if (scale > StableMaxSystemViewerScale) {
+            val previousScale = scale
+            scale = StableMaxSystemViewerScale
+            offset = clampOffset(
+                value = offset * (StableMaxSystemViewerScale / previousScale),
+                currentScale = StableMaxSystemViewerScale,
+                containerSize = containerSize,
+                contentSize = contentSize,
+                contentTopLeft = contentTopLeft,
+            )
+            return
+        }
+        clampOffset(containerSize, contentSize = contentSize, contentTopLeft = contentTopLeft)
+    }
+
     fun applyTransform(
         zoomChange: Float,
         panChange: Offset,
+        focalPoint: Offset,
         containerSize: IntSize,
+        contentSize: IntSize,
+        contentTopLeft: Offset,
     ) {
-        val nextScale = (scale * zoomChange).coerceIn(MinSystemViewerScale, MaxSystemViewerScale)
-        if (nextScale <= SystemViewerResetScale) {
+        val minimumScale = latestMinimumScale
+        val nextScale = (scale * zoomChange).coerceIn(minimumScale, ElasticMaxSystemViewerScale)
+        if (minimumScale >= MinSystemViewerScale && nextScale <= SystemViewerResetScale) {
             reset()
             return
         }
+        val previousScale = scale
         scale = nextScale
-        val maxX = ((containerSize.width * nextScale - containerSize.width) / 2f).coerceAtLeast(0f)
-        val maxY = ((containerSize.height * nextScale - containerSize.height) / 2f).coerceAtLeast(0f)
-        offset = Offset(
-            x = (offset.x + panChange.x).coerceIn(-maxX, maxX),
-            y = (offset.y + panChange.y).coerceIn(-maxY, maxY),
+        val scaleRatio = if (previousScale > 0f) nextScale / previousScale else MinSystemViewerScale
+        val focalAnchoredOffset = focalPoint -
+            contentTopLeft -
+            (focalPoint - contentTopLeft - offset) * scaleRatio +
+            panChange
+        offset = clampOffset(
+            value = focalAnchoredOffset,
+            currentScale = nextScale,
+            containerSize = containerSize,
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+        )
+    }
+
+    private fun clampOffset(
+        containerSize: IntSize,
+        panChange: Offset = Offset.Zero,
+        contentSize: IntSize = latestContentSize.takeIf { it.width > 0 && it.height > 0 } ?: containerSize,
+        contentTopLeft: Offset = latestContentTopLeft,
+    ) {
+        if (containerSize.width <= 0 || containerSize.height <= 0) {
+            offset = Offset.Zero
+            return
+        }
+        offset = clampOffset(offset + panChange, scale, containerSize, contentSize, contentTopLeft)
+    }
+
+    private fun clampOffset(
+        value: Offset,
+        currentScale: Float,
+        containerSize: IntSize,
+        contentSize: IntSize,
+        contentTopLeft: Offset,
+    ): Offset {
+        if (containerSize.width <= 0 || containerSize.height <= 0) {
+            return Offset.Zero
+        }
+        val scaledWidth = contentSize.width * currentScale
+        val scaledHeight = contentSize.height * currentScale
+        val minX = if (scaledWidth <= containerSize.width) {
+            ((containerSize.width - scaledWidth) / 2f) - contentTopLeft.x
+        } else {
+            containerSize.width - contentTopLeft.x - scaledWidth
+        }
+        val maxX = if (scaledWidth <= containerSize.width) minX else -contentTopLeft.x
+        val minY = if (scaledHeight <= containerSize.height) {
+            ((containerSize.height - scaledHeight) / 2f) - contentTopLeft.y
+        } else {
+            containerSize.height - contentTopLeft.y - scaledHeight
+        }
+        val maxY = if (scaledHeight <= containerSize.height) minY else -contentTopLeft.y
+        return Offset(
+            x = value.x.coerceIn(minX, maxX),
+            y = value.y.coerceIn(minY, maxY),
         )
     }
 }
@@ -124,12 +265,32 @@ private class SystemViewerZoomState {
 private fun Modifier.systemViewerZoomGesture(
     zoomState: SystemViewerZoomState,
     contentSize: IntSize,
-): Modifier = pointerInput(zoomState, contentSize) {
+    contentTopLeft: Offset,
+    onDoubleTap: ((Offset, IntSize) -> Unit)? = null,
+): Modifier = pointerInput(zoomState, contentSize, contentTopLeft) {
+    var lastTapUptimeMillis = 0L
+    var lastTapPosition: Offset? = null
     awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val start = down.position
+        val wasZoomedAtGestureStart = zoomState.isZoomed
+        var pointerCountExceeded = false
+        var moved = false
+        var consumedByTransform = false
+        var upPosition = start
         while (true) {
             val event = awaitPointerEvent()
             val activeChanges = event.changes.filter { it.pressed }
-            if (activeChanges.isEmpty()) break
+            if (activeChanges.isEmpty()) {
+                event.changes.firstOrNull { it.id == down.id }?.let { upPosition = it.position }
+                break
+            }
+            if (activeChanges.size > 1) pointerCountExceeded = true
+            event.changes.forEach { change ->
+                if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
+                    moved = true
+                }
+            }
 
             if (activeChanges.size >= 2) {
                 val currentCentroid = activeChanges.systemViewerCentroid(usePrevious = false)
@@ -150,17 +311,54 @@ private fun Modifier.systemViewerZoomGesture(
                 zoomState.applyTransform(
                     zoomChange = zoomChange,
                     panChange = currentCentroid - previousCentroid,
+                    focalPoint = currentCentroid,
                     containerSize = size,
+                    contentSize = contentSize,
+                    contentTopLeft = contentTopLeft,
                 )
                 activeChanges.forEach { it.consume() }
+                consumedByTransform = true
             } else if (zoomState.isZoomed) {
                 val change = activeChanges.first()
-                zoomState.applyTransform(
-                    zoomChange = 1f,
-                    panChange = change.positionChange(),
-                    containerSize = size,
-                )
-                activeChanges.forEach { it.consume() }
+                val panChange = change.positionChange()
+                if (panChange.getDistance() > viewConfiguration.touchSlop / 3f) {
+                    zoomState.applyTransform(
+                        zoomChange = 1f,
+                        panChange = panChange,
+                        focalPoint = change.position,
+                        containerSize = size,
+                        contentSize = contentSize,
+                        contentTopLeft = contentTopLeft,
+                    )
+                    activeChanges.forEach { it.consume() }
+                    consumedByTransform = true
+                }
+            }
+        }
+        zoomState.settle(
+            containerSize = size,
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+        )
+        if (wasZoomedAtGestureStart &&
+            !pointerCountExceeded &&
+            !moved &&
+            !consumedByTransform &&
+            onDoubleTap != null
+        ) {
+            val now = SystemClock.uptimeMillis()
+            val previousTapPosition = lastTapPosition
+            val doubleTapDistance = viewConfiguration.touchSlop * 8f
+            val isDoubleTap = previousTapPosition != null &&
+                now - lastTapUptimeMillis <= SystemViewerFastDoubleTapWindowMillis &&
+                (upPosition - previousTapPosition).getDistance() <= doubleTapDistance
+            if (isDoubleTap) {
+                lastTapUptimeMillis = 0L
+                lastTapPosition = null
+                onDoubleTap(upPosition, size)
+            } else {
+                lastTapUptimeMillis = now
+                lastTapPosition = upPosition
             }
         }
     }
@@ -207,7 +405,7 @@ fun SystemMediaViewerScreen(
     var showMenuSheet by rememberSaveable { mutableStateOf(false) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
-    var showSystemTrashConfirm by rememberSaveable { mutableStateOf(false) }
+    var isImmersive by rememberSaveable { mutableStateOf(false) }
     var pendingTrashIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableIntStateOf(0) }
@@ -320,32 +518,6 @@ fun SystemMediaViewerScreen(
             )
         }
 
-        if (showSystemTrashConfirm) {
-            val dialogColors = YingShiThemeTokens.colors
-            AlertDialog(
-                onDismissRequest = { showSystemTrashConfirm = false },
-                containerColor = dialogColors.raisedSurface,
-                titleContentColor = dialogColors.titleAccent,
-                title = {
-                    Text(
-                        text = "移到系统相册回收站？",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    )
-                },
-                confirmButton = {
-                    TrashDialogActionButton(
-                        text = "继续系统回收站",
-                        onClick = {
-                            showSystemTrashConfirm = false
-                            launchSystemTrashRequest(item)
-                        },
-                    )
-                },
-                dismissButton = {
-                    TrashDialogActionButton(text = "取消", onClick = { showSystemTrashConfirm = false })
-                },
-            )
-        }
     }
 
     DisposableEffect(currentItem?.id) {
@@ -354,7 +526,13 @@ fun SystemMediaViewerScreen(
     }
 
     BackHandler {
-        onBack()
+        if (zoomState.isZoomed) {
+            zoomState.reset()
+        } else if (isImmersive) {
+            isImmersive = false
+        } else {
+            onBack()
+        }
     }
 
     LaunchedEffect(bridgeMutationEvent.version) {
@@ -372,61 +550,92 @@ fun SystemMediaViewerScreen(
         }
     }
 
+    ViewerStatusBarEffect(immersive = isImmersive)
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(viewerColors.viewerBackground),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
-        ) {
-            SystemMediaViewerTopBar(
-                currentIndex = currentIndex,
-                totalCount = viewerItems.size,
-                showMenu = currentItem != null,
-                overlaysVisible = !zoomState.isZoomed,
-                onBack = {
-                    onBack()
+            .background(viewerColors.viewerBackground)
+            .viewerSingleTapGesture(
+                onTap = { _, _ ->
+                    if (currentItem != null) {
+                        isImmersive = !isImmersive
+                    }
                 },
-                onOpenMenu = { showMenuSheet = true },
-            )
-
-            if (viewerItems.isEmpty() || currentItem == null) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "当前没有可查看的系统媒体。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = viewerColors.viewerTextSecondary,
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        beyondViewportPageCount = 1,
-                        key = { page -> viewerItems[page].id },
-                        userScrollEnabled = viewerItems.size > 1 && !zoomState.isZoomed,
-                    ) { page ->
-                        val item = viewerItems[page]
-                        SystemMediaViewerCanvas(
-                            item = item,
-                            isCurrent = page == currentIndex,
-                            zoomState = if (page == currentIndex) zoomState else null,
+                onDoubleTap = { position, size ->
+                    if (currentItem?.type == SystemMediaType.IMAGE) {
+                        zoomState.toggleDoubleTap(
+                            tapPosition = position,
+                            containerSize = size,
                         )
                     }
-                }
+                },
+            ),
+    ) {
+        SystemMediaViewerAtmosphereLayer(modifier = Modifier.fillMaxSize())
 
+        if (viewerItems.isEmpty() || currentItem == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "当前没有可查看的系统媒体。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = viewerColors.viewerTextSecondary,
+                )
+            }
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
+                key = { page -> viewerItems[page].id },
+                userScrollEnabled = viewerItems.size > 1 && !zoomState.isZoomed,
+            ) { page ->
+                val item = viewerItems[page]
+                SystemMediaViewerCanvas(
+                    item = item,
+                    isCurrent = page == currentIndex,
+                    immersive = isImmersive,
+                    zoomState = if (page == currentIndex) zoomState else null,
+                )
+            }
+
+            AnimatedVisibility(
+                visible = !isImmersive,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+            ) {
+                SystemMediaViewerTopBar(
+                    currentIndex = currentIndex,
+                    totalCount = viewerItems.size,
+                    showMenu = true,
+                    overlaysVisible = !zoomState.isZoomed,
+                    onBack = {
+                        if (zoomState.isZoomed) {
+                            zoomState.reset()
+                        } else {
+                            onBack()
+                        }
+                    },
+                    onOpenMenu = { showMenuSheet = true },
+                )
+            }
+
+            AnimatedVisibility(
+                visible = !isImmersive && !zoomState.isZoomed,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+            ) {
                 SystemMediaViewerInfoCard(item = currentItem)
             }
         }
@@ -447,6 +656,7 @@ fun SystemMediaViewerScreen(
 
     if (showMenuSheet && currentItem != null) {
         SystemMediaViewerMenuSheet(
+            itemImported = currentItem.isImportedToApp,
             onDismiss = { showMenuSheet = false },
             onImportToApp = {
                 showMenuSheet = false
@@ -475,7 +685,7 @@ fun SystemMediaViewerScreen(
             },
             onMoveToTrash = {
                 showMenuSheet = false
-                showSystemTrashConfirm = true
+                launchSystemTrashRequest(currentItem)
             },
         )
     }
@@ -529,6 +739,7 @@ private fun SystemMediaViewerTopBar(
 private fun SystemMediaViewerCanvas(
     item: SystemMediaItem,
     isCurrent: Boolean,
+    immersive: Boolean,
     zoomState: SystemViewerZoomState?,
 ) {
     var containerSize by remember(item.id) { mutableStateOf(IntSize.Zero) }
@@ -536,6 +747,7 @@ private fun SystemMediaViewerCanvas(
         mutableStateOf(ViewerVideoPlaybackState())
     }
     val colors = YingShiThemeTokens.colors
+    val density = LocalDensity.current
     var videoRetryVersion by remember(item.id) { mutableStateOf(0) }
     var videoControlsVisible by remember(item.id) { mutableStateOf(true) }
     var videoControlsActivityNonce by remember(item.id) { mutableIntStateOf(0) }
@@ -565,6 +777,7 @@ private fun SystemMediaViewerCanvas(
     val transformModifier = if (zoomState != null) {
         Modifier
             .graphicsLayer(
+                transformOrigin = TransformOrigin(0f, 0f),
                 scaleX = zoomState.scale,
                 scaleY = zoomState.scale,
                 translationX = zoomState.offset.x,
@@ -573,51 +786,164 @@ private fun SystemMediaViewerCanvas(
     } else {
         Modifier
     }
-    val gestureModifier = if (zoomState != null) {
-        Modifier.systemViewerZoomGesture(
-            zoomState = zoomState,
-            contentSize = containerSize,
-        )
-    } else {
-        Modifier
-    }
-
-    Box(
+    val topPadding by animateDpAsState(
+        targetValue = if (immersive) {
+            SystemViewerLayoutTuning.immersiveCanvasTopPadding
+        } else {
+            SystemViewerLayoutTuning.canvasTopPadding
+        },
+        label = "systemViewerCanvasTopPadding",
+    )
+    val bottomPadding by animateDpAsState(
+        targetValue = if (immersive) {
+            if (item.type == SystemMediaType.VIDEO) {
+                SystemViewerLayoutTuning.immersiveVideoBottomExitZone
+            } else {
+                SystemViewerLayoutTuning.immersiveCanvasBottomPadding
+            }
+        } else {
+            SystemViewerLayoutTuning.canvasBottomPadding
+        },
+        label = "systemViewerCanvasBottomPadding",
+    )
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 4.dp, bottom = 8.dp)
-            .background(colors.viewerBackground, RoundedCornerShape(28.dp))
-            .padding(8.dp)
-            .graphicsLayer { clip = true; shape = RoundedCornerShape(24.dp) },
+            .padding(
+                start = SystemViewerLayoutTuning.canvasHorizontalPadding,
+                top = topPadding,
+                end = SystemViewerLayoutTuning.canvasHorizontalPadding,
+                bottom = bottomPadding,
+            )
+            .onSizeChanged { containerSize = it },
         contentAlignment = Alignment.Center,
     ) {
+        val mediaAspectRatio = item.systemViewerAspectRatio()
+        val useLongImageReading = item.type == SystemMediaType.IMAGE &&
+            item.shouldUseSystemLongImageReading()
+        val fittedMediaWidth = if (maxHeight * mediaAspectRatio <= maxWidth) {
+            maxHeight * mediaAspectRatio
+        } else {
+            maxWidth
+        }
+        val fittedMediaHeight = if (maxWidth / mediaAspectRatio <= maxHeight) {
+            maxWidth / mediaAspectRatio
+        } else {
+            maxHeight
+        }
+        val canvasWidth = if (item.type == SystemMediaType.VIDEO || useLongImageReading) {
+            maxWidth
+        } else {
+            fittedMediaWidth
+        }
+        val canvasHeight = if (item.type == SystemMediaType.VIDEO) {
+            maxHeight
+        } else if (useLongImageReading) {
+            (maxWidth / mediaAspectRatio).coerceAtLeast(maxHeight)
+        } else {
+            fittedMediaHeight
+        }
+        val contentSize = with(density) {
+            IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
+        }
+        val longImageScrollState = rememberScrollState()
+        LaunchedEffect(item.id, useLongImageReading) {
+            if (useLongImageReading) {
+                longImageScrollState.scrollTo(0)
+            }
+        }
+        val containerSizePx = with(density) {
+            IntSize(maxWidth.roundToPx(), maxHeight.roundToPx())
+        }
+        val longImageMinimumScale = if (useLongImageReading &&
+            contentSize.width > 0 &&
+            contentSize.height > 0 &&
+            containerSizePx.width > 0 &&
+            containerSizePx.height > 0
+        ) {
+            min(
+                containerSizePx.width.toFloat() / contentSize.width.toFloat(),
+                containerSizePx.height.toFloat() / contentSize.height.toFloat(),
+            ).coerceIn(0.05f, MinSystemViewerScale)
+        } else {
+            MinSystemViewerScale
+        }
+        val contentTopLeft = Offset(
+            x = ((containerSizePx.width - contentSize.width) / 2f),
+            y = if (useLongImageReading) {
+                -longImageScrollState.value.toFloat()
+            } else {
+                ((containerSizePx.height - contentSize.height) / 2f)
+            },
+        )
+        zoomState?.updateContentGeometry(
+            contentSize = contentSize,
+            contentTopLeft = contentTopLeft,
+            minimumScale = longImageMinimumScale,
+        )
+        val gestureModifier = if (zoomState != null) {
+            Modifier.systemViewerZoomGesture(
+                zoomState = zoomState,
+                contentSize = contentSize,
+                contentTopLeft = contentTopLeft,
+                onDoubleTap = { position, size ->
+                    zoomState.toggleDoubleTap(
+                        tapPosition = position,
+                        containerSize = size,
+                    )
+                },
+            )
+        } else {
+            Modifier
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(colors.viewerBackground)
-                .graphicsLayer { clip = true }
-                .then(gestureModifier)
-                .then(
-                    Modifier
-                        .fillMaxSize()
-                        .onSizeChanged { containerSize = it },
-                ),
-            contentAlignment = Alignment.Center,
+                .then(gestureModifier),
+            contentAlignment = if (useLongImageReading) Alignment.TopCenter else Alignment.Center,
         ) {
             when (item.type) {
                 SystemMediaType.IMAGE -> {
-                    AsyncImage(
-                        model = item.uri,
-                        contentDescription = item.displayName,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(transformModifier),
-                        contentScale = ContentScale.Fit,
-                    )
+                    if (useLongImageReading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(
+                                    state = longImageScrollState,
+                                    enabled = zoomState?.isZoomed != true,
+                                ),
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            AsyncImage(
+                                model = item.uri,
+                                contentDescription = item.displayName,
+                                modifier = Modifier
+                                    .width(canvasWidth)
+                                    .height(canvasHeight)
+                                    .then(transformModifier),
+                                contentScale = ContentScale.FillWidth,
+                            )
+                        }
+                    } else {
+                        AsyncImage(
+                            model = item.uri,
+                            contentDescription = item.displayName,
+                            modifier = Modifier
+                                .width(canvasWidth)
+                                .height(canvasHeight)
+                                .then(transformModifier),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
                 }
 
                 SystemMediaType.VIDEO -> {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .width(canvasWidth)
+                            .height(canvasHeight),
+                    ) {
                         val revealInteractionSource = remember(item.id) { MutableInteractionSource() }
                         SystemMediaViewerVideoCanvas(
                             item = item,
@@ -907,6 +1233,78 @@ private fun SystemMediaViewerVideoCanvas(
     }
 }
 
+private fun SystemMediaItem.shouldUseSystemLongImageReading(): Boolean {
+    if (type != SystemMediaType.IMAGE) return false
+    val widthValue = width
+    val heightValue = height
+    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
+        return heightValue.toFloat() / widthValue.toFloat() >= SystemLongImageHeightWidthRatioThreshold
+    }
+    val normalizedAspectRatio = aspectRatio.takeIf { it > 0f } ?: return false
+    return 1f / normalizedAspectRatio >= SystemLongImageHeightWidthRatioThreshold
+}
+
+private fun SystemMediaItem.systemViewerAspectRatio(): Float {
+    val widthValue = width
+    val heightValue = height
+    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
+        return (widthValue.toFloat() / heightValue.toFloat()).coerceIn(0.05f, 20f)
+    }
+    return aspectRatio.coerceIn(0.05f, 20f)
+}
+
+@Composable
+private fun SystemMediaViewerAtmosphereLayer(
+    modifier: Modifier = Modifier,
+) {
+    val colors = YingShiThemeTokens.colors
+    Box(modifier = modifier.background(colors.viewerBackground)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            colors.viewerAccent.copy(alpha = 0.18f),
+                            colors.viewerSurface.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(0f, 0f),
+                        radius = 980f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            colors.primaryContainer.copy(alpha = 0.12f),
+                            colors.viewerBackground.copy(alpha = 0.18f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(1180f, 2140f),
+                        radius = 920f,
+                    ),
+                ),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            colors.viewerSurface.copy(alpha = 0.08f),
+                            Color.Transparent,
+                            colors.viewerBackground.copy(alpha = 0.34f),
+                        ),
+                    ),
+                ),
+        )
+    }
+}
+
 @Composable
 private fun SystemMediaVideoPlaceholder(
     message: String,
@@ -959,28 +1357,31 @@ private fun SystemMediaViewerInfoCard(
     val colors = YingShiThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = colors.viewerSurface.copy(alpha = 0.68f),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = colors.viewerSurface.copy(alpha = 0.62f),
         border = BorderStroke(1.dp, colors.viewerAccent.copy(alpha = 0.14f)),
     ) {
-        Column(
-            modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = item.displayName.ifBlank { "未命名媒体" },
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                text = item.type.label,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.viewerText,
             )
             Text(
-                text = "类型：${item.type.label}",
-                style = MaterialTheme.typography.bodySmall,
+                text = formatSystemViewerDisplayTime(item.displayTimeMillis),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
                 color = colors.viewerTextSecondary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             Text(
-                text = "日期：${buildMediaDisplayTimeLabel(item.displayTimeMillis, item.displayTimeSource)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.viewerTextSecondary,
+                text = if (item.isImportedToApp) "已导入" else "未导入",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = if (item.isImportedToApp) colors.viewerAccent else colors.viewerTextSecondary,
             )
         }
     }
@@ -1080,6 +1481,7 @@ private fun SystemMediaVideoControls(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SystemMediaViewerMenuSheet(
+    itemImported: Boolean,
     onDismiss: () -> Unit,
     onImportToApp: () -> Unit,
     onAddToPost: () -> Unit,
@@ -1107,7 +1509,8 @@ private fun SystemMediaViewerMenuSheet(
                 color = colors.viewerText,
             )
             SystemMediaViewerMenuAction(
-                title = "导入照片流",
+                title = if (itemImported) "已导入照片流" else "导入照片流",
+                enabled = !itemImported,
                 onClick = onImportToApp,
             )
             SystemMediaViewerMenuAction(
@@ -1127,6 +1530,7 @@ private fun SystemMediaViewerMenuSheet(
 private fun SystemMediaViewerMenuAction(
     title: String,
     danger: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1138,10 +1542,13 @@ private fun SystemMediaViewerMenuAction(
         } else {
             colors.viewerBackground.copy(alpha = 0.82f)
         },
+        enabled = enabled,
         onClick = onClick,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier
+                .alpha(if (enabled) 1f else 0.42f)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
@@ -1182,6 +1589,11 @@ private fun formatVideoProgress(timeMillis: Long): String {
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
     return "%d:%02d".format(Locale.ROOT, minutes, seconds)
+}
+
+private fun formatSystemViewerDisplayTime(timeMillis: Long?): String {
+    if (timeMillis == null || timeMillis <= 0L) return "时间未知"
+    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
 }
 
 @Preview(showBackground = true)
