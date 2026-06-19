@@ -18,6 +18,7 @@ import com.example.yingshi.BuildConfig
 import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.model.CreateUploadTokenPayload
+import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
@@ -30,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
@@ -44,8 +46,11 @@ object LocalSystemMediaBridgeRepository {
     private const val ReadLocalMediaTimeoutMillis = 180_000L
     private const val CreateUploadTokenTimeoutMillis = 15_000L
     private const val UploadFileTimeoutMillis = 10 * 60_000L
+    private const val MaxConcurrentRealUploads = 2
     private const val ImportOverlayPreferencesName = "system_media_import_overlay"
     private const val ImportOverlayItemsKey = "items_json"
+    private const val UploadTasksPreferencesName = "system_media_upload_tasks"
+    private const val UploadTasksItemsKey = "tasks_json"
 
     enum class MutationKind {
         OVERLAY_ONLY,
@@ -150,6 +155,7 @@ object LocalSystemMediaBridgeRepository {
         private set
 
     private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val uploadSemaphore = Semaphore(MaxConcurrentRealUploads)
     private val uploadTasksState = mutableStateListOf<SystemMediaUploadTaskUiModel>()
     private val operationResultsState = mutableStateListOf<OperationResultEvent>()
     private val finalizedOperationIds = linkedSetOf<String>()
@@ -162,13 +168,31 @@ object LocalSystemMediaBridgeRepository {
     private val uploadJobsByTaskId = linkedMapOf<String, Job>()
     private val publishedFirstSuccessOperationIds = linkedSetOf<String>()
     private var overlayPreferences: SharedPreferences? = null
+    private var uploadTaskPreferences: SharedPreferences? = null
     private var persistentOverlayLoaded = false
+    private var persistentUploadTasksLoaded = false
 
     val uploadTasks: List<SystemMediaUploadTaskUiModel>
         get() = uploadTasksState
 
     val operationResults: List<OperationResultEvent>
         get() = operationResultsState
+
+    fun warmPersistentTransferCenter(context: Context) {
+        warmPersistentUploadTasks(context)
+        refreshRemoteUploadHistory()
+    }
+
+    fun refreshRemoteUploadHistory() {
+        if (RepositoryProvider.currentMode != RepositoryMode.REAL) return
+        uploadScope.launch {
+            when (val result = RepositoryProvider.uploadRepository.getUploadHistory(pageSize = 100)) {
+                is ApiResult.Success -> mergeRemoteUploadHistory(result.data)
+                is ApiResult.Error -> debugUploadLog("history refresh failed: ${result.message}", result.throwable)
+                ApiResult.Loading -> Unit
+            }
+        }
+    }
 
     fun remainingUploadTaskCount(): Int {
         return uploadTasksState.count { task ->
@@ -199,6 +223,7 @@ object LocalSystemMediaBridgeRepository {
             Context.MODE_PRIVATE,
         )
         overlayPreferences = prefs
+        warmPersistentUploadTasks(context)
         if (persistentOverlayLoaded) return
         persistentOverlayLoaded = true
         val raw = prefs.getString(ImportOverlayItemsKey, null)?.takeIf { it.isNotBlank() }
@@ -218,6 +243,115 @@ object LocalSystemMediaBridgeRepository {
                 }
             }
         }
+    }
+
+    private fun warmPersistentUploadTasks(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(
+            UploadTasksPreferencesName,
+            Context.MODE_PRIVATE,
+        )
+        uploadTaskPreferences = prefs
+        if (persistentUploadTasksLoaded) return
+        persistentUploadTasksLoaded = true
+        val raw = prefs.getString(UploadTasksItemsKey, null)?.takeIf { it.isNotBlank() }
+            ?: return
+        runCatching {
+            val array = JSONArray(raw)
+            val restoredTasks = buildList {
+                for (index in 0 until array.length()) {
+                    val entry = array.optJSONObject(index) ?: continue
+                    val restored = entry.toPersistedUploadTask() ?: continue
+                    add(restored)
+                }
+            }
+            if (restoredTasks.isNotEmpty()) {
+                uploadTasksState.removeAll { existing ->
+                    restoredTasks.any { it.taskId == existing.taskId }
+                }
+                uploadTasksState.addAll(restoredTasks)
+                restoredTasks.map { it.operationId }.distinct().forEach(::refreshOperationTaskMeta)
+            }
+        }
+    }
+
+    private fun mergeRemoteUploadHistory(tasks: List<RemoteUploadTask>) {
+        if (tasks.isEmpty()) return
+        var changed = false
+        tasks.forEach { remoteTask ->
+            val uiTask = remoteTask.toUploadTaskUiModel()
+            val existingIndex = uploadTasksState.indexOfFirst { it.taskId == uiTask.taskId }
+            if (existingIndex >= 0) {
+                val current = uploadTasksState[existingIndex]
+                if (!current.state.isActivelyUploading()) {
+                    uploadTasksState[existingIndex] = uiTask.copy(
+                        previewUri = current.previewUri ?: uiTask.previewUri,
+                        thumbnailUrl = uiTask.thumbnailUrl ?: current.thumbnailUrl,
+                        canRetry = current.canRetry,
+                    )
+                    changed = true
+                }
+            } else {
+                uploadTasksState.add(uiTask)
+                changed = true
+            }
+        }
+        if (changed) {
+            tasks.mapNotNull { it.operationId ?: it.uploadId }.distinct().forEach(::refreshOperationTaskMeta)
+            persistUploadTasks()
+        }
+    }
+
+    private fun RemoteUploadTask.toUploadTaskUiModel(): SystemMediaUploadTaskUiModel {
+        val type = if (mediaType.equals("video", ignoreCase = true)) {
+            SystemMediaType.VIDEO
+        } else {
+            SystemMediaType.IMAGE
+        }
+        val opType = runCatching {
+            OperationType.valueOf(operationType.orEmpty().ifBlank { OperationType.IMPORT_TO_APP.name })
+        }.getOrDefault(OperationType.IMPORT_TO_APP)
+        return SystemMediaUploadTaskUiModel(
+            taskId = uploadId,
+            operationId = operationId?.takeIf { it.isNotBlank() } ?: uploadId,
+            mediaId = sourceItemId?.takeIf { it.isNotBlank() } ?: mediaId ?: uploadId,
+            fileName = fileName,
+            targetLabel = opType.defaultTargetLabel(),
+            mediaType = type,
+            thumbnailUrl = media?.coverUrl
+                ?: media?.previewUrl
+                ?: media?.thumbnailUrl
+                ?: media?.mediaUrl,
+            resultMediaId = mediaId,
+            progressPercent = progressPercent.coerceIn(0, 100),
+            state = state,
+            statusMessage = when (state) {
+                UploadState.WAITING -> "等待上传"
+                UploadState.UPLOADING -> "正在上传 $progressPercent%"
+                UploadState.SUCCESS -> "上传完成"
+                UploadState.FAILURE -> "上传失败"
+                UploadState.CANCELLED -> "已取消"
+            },
+            errorMessage = errorMessage,
+            canRetry = false,
+            operationType = opType,
+            operationTitle = operationTitle,
+            operationMediaCount = operationMediaCount ?: 1,
+            createdAtMillis = createdAtMillis ?: updatedAtMillis ?: completedAtMillis ?: System.currentTimeMillis(),
+            updatedAtMillis = updatedAtMillis ?: completedAtMillis ?: createdAtMillis ?: System.currentTimeMillis(),
+            completedAtMillis = completedAtMillis,
+        )
+    }
+
+    private fun OperationType.defaultTargetLabel(): String {
+        return when (this) {
+            OperationType.IMPORT_TO_APP -> "导入照片流"
+            OperationType.CREATE_POST -> "新建小相册"
+            OperationType.ADD_TO_EXISTING_POST -> "加入已有小相册"
+        }
+    }
+
+    private fun UploadState.isActivelyUploading(): Boolean {
+        return this == UploadState.WAITING || this == UploadState.UPLOADING
     }
 
     fun rememberImportStatus(
@@ -473,6 +607,23 @@ object LocalSystemMediaBridgeRepository {
         return moveToSimulatedSystemTrash(mediaIds)
     }
 
+    fun pauseUploadTask(taskId: String) {
+        val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
+        if (task.isTerminal) return
+        updateUploadTask(
+            taskId = taskId,
+            state = UploadState.CANCELLED,
+            progressPercent = task.progressPercent,
+            statusMessage = "已暂停，可重试",
+            canRetry = true,
+        )
+        cancelUploadJob(task)
+        publishOperationSummaryIfReady(task.operationId)
+        uploadScope.launch {
+            RepositoryProvider.uploadRepository.cancelUpload(taskId)
+        }
+    }
+
     fun cancelUploadTask(taskId: String) {
         val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
         if (task.isTerminal) return
@@ -480,8 +631,8 @@ object LocalSystemMediaBridgeRepository {
             taskId = taskId,
             state = UploadState.CANCELLED,
             progressPercent = task.progressPercent,
-            statusMessage = "上传已取消",
-            canRetry = true,
+            statusMessage = "已取消",
+            canRetry = false,
         )
         cancelUploadJob(task)
         publishOperationSummaryIfReady(task.operationId)
@@ -508,10 +659,28 @@ object LocalSystemMediaBridgeRepository {
             .forEach(::cancelUploadTask)
     }
 
+    fun pauseUploadOperation(operationId: String) {
+        uploadTasksState
+            .filter { task -> task.operationId == operationId && !task.isTerminal }
+            .map { it.taskId }
+            .forEach(::pauseUploadTask)
+    }
+
     fun dismissUploadTask(taskId: String) {
         val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
         uploadTasksState.removeAll { it.taskId == taskId }
         cleanupOperationIfIdle(task.operationId)
+        persistUploadTasks()
+        if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            uploadScope.launch {
+                when (val result = RepositoryProvider.uploadRepository.dismissUpload(task.taskId)) {
+                    is ApiResult.Error -> debugUploadLog("dismiss failed task=${task.taskId}: ${result.message}", result.throwable)
+                    is ApiResult.Success,
+                    ApiResult.Loading,
+                    -> Unit
+                }
+            }
+        }
     }
 
     fun dismissOperationResult(eventId: String) {
@@ -889,6 +1058,10 @@ object LocalSystemMediaBridgeRepository {
                     height = mediaItem.height?.coerceAtLeast(1) ?: 1,
                     durationMillis = null,
                     mediaItem = mediaItem,
+                    operationId = operationId,
+                    operationType = operationRequestsById[operationId]?.operationType,
+                    operationTitle = operationTaskMeta(operationId).operationTitle,
+                    operationMediaCount = operationTaskMeta(operationId).mediaCount,
                 ),
             )
             val uploadId = when (tokenResult) {
@@ -945,6 +1118,7 @@ object LocalSystemMediaBridgeRepository {
                     progressPercent = progress,
                     statusMessage = "正在上传 $progress%",
                     canRetry = false,
+                    updatedAtMillis = System.currentTimeMillis(),
                 )
             }
 
@@ -1145,7 +1319,11 @@ object LocalSystemMediaBridgeRepository {
 
         val job = uploadScope.launch {
             var activeTaskId = initialTaskId
+            var uploadPermitAcquired = false
             try {
+                uploadSemaphore.acquire()
+                uploadPermitAcquired = true
+                if (isUploadTaskCancelled(activeTaskId)) return@launch
                 debugUploadLog(
                     "enqueue operation=$operationId target=$targetLabel mediaId=${mediaItem.id} " +
                         "uri=${mediaItem.uri} mime=${mediaItem.mimeType} displayName=${mediaItem.displayName}",
@@ -1214,6 +1392,11 @@ object LocalSystemMediaBridgeRepository {
                     importedAtMillis = metadata.importedAtMillis,
                     displayTimeSource = metadata.displayTimeSource,
                     sourceFingerprint = mediaItem.stableImportSourceFingerprint(),
+                    operationId = operationId,
+                    operationType = operationRequestsById[operationId]?.operationType?.name,
+                    operationTitle = operationTaskMeta(operationId).operationTitle,
+                    operationMediaCount = operationTaskMeta(operationId).mediaCount,
+                    sourceItemId = mediaItem.id,
                 )
                 val tokenResult = runUploadApiWithTimeout(
                     timeoutMillis = CreateUploadTokenTimeoutMillis,
@@ -1332,6 +1515,10 @@ object LocalSystemMediaBridgeRepository {
                             progressPercent = 100,
                             statusMessage = finalizeWaitingMessage(targetLabel),
                             resultMediaId = uploadedMediaId,
+                            thumbnailUrl = uploadResult.data.coverUrl
+                                ?: uploadResult.data.previewUrl
+                                ?: uploadResult.data.thumbnailUrl
+                                ?: uploadResult.data.mediaUrl,
                         )
                         rememberUploadedMediaId(
                             operationId = operationId,
@@ -1434,6 +1621,9 @@ object LocalSystemMediaBridgeRepository {
                 publishOperationSummaryIfReady(operationId)
                 debugUploadLog("upload crashed operation=$operationId task=$activeTaskId", throwable)
             } finally {
+                if (uploadPermitAcquired) {
+                    uploadSemaphore.release()
+                }
                 uploadJobsByTaskId.remove(initialTaskId)
                 uploadJobsByTaskId.remove(activeTaskId)
             }
@@ -1835,7 +2025,9 @@ object LocalSystemMediaBridgeRepository {
             statusMessage = statusMessage,
             errorMessage = null,
             canRetry = false,
+            updatedAtMillis = System.currentTimeMillis(),
         )
+        persistUploadTasks()
         uploadJobsByTaskId.remove(oldTaskId)?.let { job ->
             uploadJobsByTaskId[newTaskId] = job
         }
@@ -1851,10 +2043,12 @@ object LocalSystemMediaBridgeRepository {
         canRetry: Boolean = false,
         resultMediaId: String? = null,
         previewUri: String? = null,
+        thumbnailUrl: String? = null,
     ) {
         val currentIndex = uploadTasksState.indexOfFirst { it.taskId == taskId }
         if (currentIndex < 0) return
         val current = uploadTasksState[currentIndex]
+        val nowMillis = System.currentTimeMillis()
         uploadTasksState[currentIndex] = current.copy(
             state = state,
             progressPercent = progressPercent,
@@ -1863,6 +2057,9 @@ object LocalSystemMediaBridgeRepository {
             canRetry = canRetry,
             resultMediaId = resultMediaId ?: current.resultMediaId,
             previewUri = previewUri ?: current.previewUri,
+            thumbnailUrl = thumbnailUrl ?: current.thumbnailUrl,
+            updatedAtMillis = nowMillis,
+            completedAtMillis = if (state.isTerminalUploadState()) current.completedAtMillis ?: nowMillis else current.completedAtMillis,
         )
         refreshOperationTaskMeta(current.operationId)
     }
@@ -1889,6 +2086,8 @@ object LocalSystemMediaBridgeRepository {
                     errorMessage = errorMessage,
                     canRetry = canRetry,
                     resultPostRoute = resultPostRoute ?: task.resultPostRoute,
+                    updatedAtMillis = System.currentTimeMillis(),
+                    completedAtMillis = if (state.isTerminalUploadState()) task.completedAtMillis ?: System.currentTimeMillis() else task.completedAtMillis,
                 )
             }
         }
@@ -1917,6 +2116,8 @@ object LocalSystemMediaBridgeRepository {
                     errorMessage = errorMessage,
                     canRetry = canRetry,
                     resultPostRoute = resultPostRoute ?: task.resultPostRoute,
+                    updatedAtMillis = System.currentTimeMillis(),
+                    completedAtMillis = if (state.isTerminalUploadState()) task.completedAtMillis ?: System.currentTimeMillis() else task.completedAtMillis,
                 )
             }
         }
@@ -1934,6 +2135,7 @@ object LocalSystemMediaBridgeRepository {
                     statusMessage = "未加入新小相册",
                     errorMessage = task.errorMessage ?: "该媒体未上传成功，可稍后重试。",
                     canRetry = true,
+                    updatedAtMillis = System.currentTimeMillis(),
                 )
             }
         }
@@ -2244,6 +2446,113 @@ object LocalSystemMediaBridgeRepository {
         prefs.edit().putString(ImportOverlayItemsKey, array.toString()).apply()
     }
 
+    private fun persistUploadTasks() {
+        val prefs = uploadTaskPreferences ?: return
+        val array = JSONArray()
+        uploadTasksState
+            .filterNot { task ->
+                task.isTerminal &&
+                    task.resultMediaId.isNullOrBlank() &&
+                    task.errorMessage.isNullOrBlank() &&
+                    task.statusMessage.isNullOrBlank()
+            }
+            .forEach { task ->
+                array.put(task.toPersistedUploadTaskJson())
+            }
+        prefs.edit().putString(UploadTasksItemsKey, array.toString()).apply()
+    }
+
+    private fun SystemMediaUploadTaskUiModel.toPersistedUploadTaskJson(): JSONObject {
+        return JSONObject()
+            .put("taskId", taskId)
+            .put("operationId", operationId)
+            .put("mediaId", mediaId)
+            .put("fileName", fileName)
+            .put("targetLabel", targetLabel)
+            .put("mediaType", mediaType.name)
+            .put("previewUri", previewUri)
+            .put("thumbnailUrl", thumbnailUrl)
+            .put("resultMediaId", resultMediaId)
+            .put("progressPercent", progressPercent)
+            .put("state", state.name)
+            .put("statusMessage", statusMessage)
+            .put("errorMessage", errorMessage)
+            .put("canRetry", canRetry)
+            .put("operationType", operationType.name)
+            .put("operationTitle", operationTitle)
+            .put("operationMediaCount", operationMediaCount)
+            .put("operationSuccessCount", operationSuccessCount)
+            .put("operationFailureCount", operationFailureCount)
+            .put("operationCancelledCount", operationCancelledCount)
+            .put("createdAtMillis", createdAtMillis)
+            .put("completedAtMillis", completedAtMillis)
+            .put("updatedAtMillis", updatedAtMillis)
+    }
+
+    private fun JSONObject.toPersistedUploadTask(): SystemMediaUploadTaskUiModel? {
+        val cutoffMillis = System.currentTimeMillis() - 30L * 24L * 60L * 60L * 1000L
+        val updatedAtMillis = optLong("updatedAtMillis", System.currentTimeMillis())
+        if (updatedAtMillis < cutoffMillis) return null
+        val taskId = optString("taskId").takeIf { it.isNotBlank() } ?: return null
+        val operationId = optString("operationId").takeIf { it.isNotBlank() } ?: return null
+        val mediaId = optString("mediaId").takeIf { it.isNotBlank() } ?: taskId
+        val restoredState = optString("state").toPersistedUploadState()
+        val state = if (restoredState == UploadState.WAITING || restoredState == UploadState.UPLOADING) {
+            UploadState.CANCELLED
+        } else {
+            restoredState
+        }
+        val resumedMessage = if (state == UploadState.CANCELLED && restoredState != UploadState.CANCELLED) {
+            "应用关闭后已暂停，可重新选择媒体继续上传"
+        } else {
+            optString("statusMessage").takeIf { it.isNotBlank() }
+        }
+        return SystemMediaUploadTaskUiModel(
+            taskId = taskId,
+            operationId = operationId,
+            mediaId = mediaId,
+            fileName = optString("fileName").takeIf { it.isNotBlank() } ?: mediaId,
+            targetLabel = optString("targetLabel").takeIf { it.isNotBlank() } ?: "传输任务",
+            mediaType = runCatching {
+                SystemMediaType.valueOf(optString("mediaType").ifBlank { SystemMediaType.IMAGE.name })
+            }.getOrDefault(SystemMediaType.IMAGE),
+            previewUri = optString("previewUri").takeIf { it.isNotBlank() },
+            thumbnailUrl = optString("thumbnailUrl").takeIf { it.isNotBlank() },
+            resultMediaId = optString("resultMediaId").takeIf { it.isNotBlank() },
+            progressPercent = if (state.isTerminalUploadState()) {
+                optInt("progressPercent", 100).coerceIn(0, 100)
+            } else {
+                optInt("progressPercent", 0).coerceIn(0, 100)
+            },
+            state = state,
+            statusMessage = resumedMessage,
+            errorMessage = optString("errorMessage").takeIf { it.isNotBlank() },
+            canRetry = optBoolean("canRetry", false) &&
+                restoredState != UploadState.SUCCESS &&
+                operationRequestsById.containsKey(operationId),
+            operationType = runCatching {
+                OperationType.valueOf(optString("operationType").ifBlank { OperationType.IMPORT_TO_APP.name })
+            }.getOrDefault(OperationType.IMPORT_TO_APP),
+            operationTitle = optString("operationTitle").takeIf { it.isNotBlank() },
+            operationMediaCount = optInt("operationMediaCount", 1).coerceAtLeast(1),
+            operationSuccessCount = optInt("operationSuccessCount", 0).coerceAtLeast(0),
+            operationFailureCount = optInt("operationFailureCount", 0).coerceAtLeast(0),
+            operationCancelledCount = optInt("operationCancelledCount", 0).coerceAtLeast(0),
+            createdAtMillis = optLong("createdAtMillis", updatedAtMillis),
+            updatedAtMillis = updatedAtMillis,
+            completedAtMillis = optLong("completedAtMillis", 0L).takeIf { it > 0L },
+        )
+    }
+
+    private fun String.toPersistedUploadState(): UploadState {
+        return runCatching { UploadState.valueOf(ifBlank { UploadState.FAILURE.name }) }
+            .getOrDefault(UploadState.FAILURE)
+    }
+
+    private fun UploadState.isTerminalUploadState(): Boolean {
+        return this == UploadState.SUCCESS || this == UploadState.FAILURE || this == UploadState.CANCELLED
+    }
+
     private fun JSONArray?.toStringSet(): LinkedHashSet<String> {
         val values = linkedSetOf<String>()
         if (this == null) return values
@@ -2502,6 +2811,10 @@ object LocalSystemMediaBridgeRepository {
         height: Int,
         durationMillis: Long?,
         mediaItem: SystemMediaItem,
+        operationId: String? = null,
+        operationType: OperationType? = null,
+        operationTitle: String? = null,
+        operationMediaCount: Int? = null,
     ): CreateUploadTokenPayload {
         val resolvedTime = resolvePreferredMediaDisplayTime(
             metadata = DeviceMediaTimeMetadata(
@@ -2523,6 +2836,12 @@ object LocalSystemMediaBridgeRepository {
             capturedAtMillis = resolvedTime.capturedAtMillis,
             importedAtMillis = resolvedTime.importedAtMillis,
             displayTimeSource = resolvedTime.displayTimeSource,
+            sourceFingerprint = mediaItem.stableImportSourceFingerprint(),
+            operationId = operationId,
+            operationType = operationType?.name,
+            operationTitle = operationTitle,
+            operationMediaCount = operationMediaCount,
+            sourceItemId = mediaItem.id,
         )
     }
 
@@ -2790,6 +3109,7 @@ object LocalSystemMediaBridgeRepository {
                 )
             }
         }
+        persistUploadTasks()
     }
 
     private fun publishFirstSuccessIfNeeded(
@@ -2864,6 +3184,7 @@ object LocalSystemMediaBridgeRepository {
         if (!keepRequest) {
             operationRequestsById.remove(operationId)
         }
+        persistUploadTasks()
     }
 
     private fun cleanupOperationIfIdle(operationId: String) {

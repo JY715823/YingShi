@@ -209,7 +209,7 @@ fun PhotoFeedScreen(
     onRetryLoadMore: () -> Unit = { },
     onShowNotice: (String) -> Unit = {},
     scrollTrigger: Int = 0,
-    inlineVideoAutoPlayEnabled: Boolean = true,
+    inlineVideoAutoPlayEnabled: Boolean = false,
     allowOpenMediaWhileSelecting: Boolean = true,
     disabledMediaIds: Set<String> = emptySet(),
     disabledSelectionLabel: String? = null,
@@ -510,14 +510,6 @@ fun PhotoFeedScreen(
                     )?.let(imageLoader::enqueue)
                     return@forEach
                 }
-                val posterVideoUrl = mediaSource.videoPosterVideoUrl(item.mediaType) ?: return@forEach
-                prefetchVideoPoster(
-                    context = context,
-                    url = posterVideoUrl,
-                    accessToken = accessToken,
-                    cacheKey = mediaSource.videoPosterVideoCacheKey(item.mediaType),
-                    diskCacheKey = mediaSource.videoPosterVideoDiskCacheKey(item.mediaType),
-                )
             }
         }
     }
@@ -2072,9 +2064,8 @@ private fun PrefetchPhotoFeedThumbnails(
 
                     AppMediaType.VIDEO -> {
                         val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
-                        val posterVideoUrl = mediaSource.videoPosterVideoUrl(item.mediaType)
-                        when {
-                            !posterImageUrl.isNullOrBlank() -> PrefetchTarget(
+                        if (!posterImageUrl.isNullOrBlank()) {
+                            PrefetchTarget(
                                 url = posterImageUrl,
                                 cacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType),
                                 diskCacheKey = mediaSource.videoPosterImageDiskCacheKey(item.mediaType),
@@ -2082,8 +2073,10 @@ private fun PrefetchPhotoFeedThumbnails(
                                 mimeType = mediaSource?.mimeType,
                                 extractVideoPoster = false,
                             )
-
-                            !posterVideoUrl.isNullOrBlank() -> PrefetchTarget(
+                        } else {
+                            val posterVideoUrl = mediaSource.videoPosterVideoUrl(item.mediaType)
+                                ?: return@mapNotNull null
+                            PrefetchTarget(
                                 url = posterVideoUrl,
                                 cacheKey = mediaSource.videoPosterVideoCacheKey(item.mediaType),
                                 diskCacheKey = mediaSource.videoPosterVideoDiskCacheKey(item.mediaType),
@@ -2091,8 +2084,6 @@ private fun PrefetchPhotoFeedThumbnails(
                                 mimeType = mediaSource?.mimeType,
                                 extractVideoPoster = true,
                             )
-
-                            else -> null
                         }
                     }
                 }

@@ -714,6 +714,31 @@ fun YingShiApp() {
         photosTopDestinationName = PhotosTopDestination.PHOTOS.name
         photoFeedScrollTrigger++
     }
+    val openPhotoFeedMediaFromTransferCenter: (String, List<String>, Boolean) -> Unit = { selectedMediaId, resultMediaIds, hasRetryableItems ->
+        val targetMediaId = selectedMediaId.takeIf { it.isNotBlank() }
+        if (targetMediaId != null) {
+            val validResultMediaIds = (listOf(targetMediaId) + resultMediaIds)
+                .filter { it.isNotBlank() }
+                .distinct()
+            GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
+            GlobalPhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            GlobalPhotoFeedPageStateStore.pendingHighlightNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingNewImportedMediaIds = validResultMediaIds.toSet()
+            GlobalPhotoFeedPageStateStore.pendingNewImportedNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingImportHasRetryableItems = hasRetryableItems
+            GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage = "已定位到所选媒体"
+            GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = "媒体已导入，照片流还在刷新定位"
+            photoViewerRoute = null
+            systemMediaViewerRoute = null
+            systemMediaRoute = null
+            createPostRoute = null
+            postDetailRoute = null
+            transferCenterRoute = null
+            selectedDestinationName = RootDestination.PHOTOS.name
+            photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+            photoFeedScrollTrigger++
+        }
+    }
     val requestPhotoFeedRestoreLocate: (List<String>) -> Unit = { resultMediaIds ->
         val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
         val targetMediaId = validResultMediaIds.firstOrNull()
@@ -840,10 +865,25 @@ fun YingShiApp() {
                 event.successCount > 0 &&
                 event.resultMediaIds.isNotEmpty()
             ) {
-                requestPhotoFeedRefresh(
-                    event.resultMediaIds,
-                    event.failureCount > 0 || event.cancelledCount > 0,
-                )
+                val validResultMediaIds = event.resultMediaIds.filter { it.isNotBlank() }.distinct()
+                val targetMediaId = validResultMediaIds.firstOrNull()
+                if (targetMediaId != null) {
+                    GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId = targetMediaId
+                    GlobalPhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+                    GlobalPhotoFeedPageStateStore.pendingHighlightNonce += 1
+                    GlobalPhotoFeedPageStateStore.pendingNewImportedMediaIds = validResultMediaIds.toSet()
+                    GlobalPhotoFeedPageStateStore.pendingNewImportedNonce += 1
+                    GlobalPhotoFeedPageStateStore.pendingImportHasRetryableItems =
+                        event.failureCount > 0 || event.cancelledCount > 0
+                    GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage = "已定位到刚导入媒体"
+                    GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = "已导入媒体，照片流还在刷新定位"
+                    if (
+                        selectedDestinationName == RootDestination.PHOTOS.name &&
+                        photosTopDestinationName == PhotosTopDestination.PHOTOS.name
+                    ) {
+                        photoFeedScrollTrigger++
+                    }
+                }
             }
             LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
         }
@@ -1222,34 +1262,29 @@ fun YingShiApp() {
                         route = route,
                         onBack = { transferCenterRoute = null },
                         onOpenTaskMedia = { task ->
+                            val selectedMediaId = task.resultMediaId?.takeIf { it.isNotBlank() }
                             when {
+                                selectedMediaId != null -> {
+                                    val operationMediaIds = task.successfulResultMediaIdsInOperation()
+                                    openPhotoFeedMediaFromTransferCenter(
+                                        selectedMediaId,
+                                        operationMediaIds,
+                                        task.operationFailureCount > 0 || task.operationCancelledCount > 0,
+                                    )
+                                }
+
                                 task.resultPostRoute != null -> {
                                     transferCenterRoute = null
                                     openPostDetailAfterAdd(task.resultPostRoute)
                                 }
 
-                                !task.resultMediaId.isNullOrBlank() -> {
-                                    val mediaIds = task.successfulResultMediaIdsInOperation()
-	                                    if (mediaIds.isNotEmpty()) {
-	                                        requestPhotoFeedRefresh(
-	                                            mediaIds,
-	                                            task.operationFailureCount > 0 || task.operationCancelledCount > 0,
-	                                        )
-	                                    } else {
-	                                        showAppNotice(
-	                                            "没有成功导入的媒体，可在传输中心查看失败原因并重试。",
-	                                            YingShiNoticeTone.WARNING,
-	                                        )
-	                                    }
-	                                }
-	
-	                                else -> {
-	                                    showAppNotice(
-	                                        "这个任务还没有可查看的结果。",
-	                                        YingShiNoticeTone.WARNING,
-	                                    )
-	                                }
-	                            }
+                                else -> {
+                                    showAppNotice(
+                                        "这个任务还没有可查看的结果。",
+                                        YingShiNoticeTone.WARNING,
+                                    )
+                                }
+                            }
                         },
                     )
                 }

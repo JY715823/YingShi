@@ -12,6 +12,7 @@ data class SystemMediaUploadTaskUiModel(
     val targetLabel: String,
     val mediaType: SystemMediaType = SystemMediaType.IMAGE,
     val previewUri: String? = null,
+    val thumbnailUrl: String? = null,
     val resultMediaId: String? = null,
     val progressPercent: Int,
     val state: UploadState,
@@ -24,6 +25,9 @@ data class SystemMediaUploadTaskUiModel(
     val operationSuccessCount: Int = 0,
     val operationFailureCount: Int = 0,
     val operationCancelledCount: Int = 0,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val updatedAtMillis: Long = createdAtMillis,
+    val completedAtMillis: Long? = null,
     val resultPostRoute: PostDetailPlaceholderRoute? = null,
 ) {
     val isTerminal: Boolean

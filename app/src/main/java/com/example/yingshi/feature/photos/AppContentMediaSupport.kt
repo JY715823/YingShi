@@ -166,7 +166,7 @@ internal fun AppContentMediaSource?.thumbnailModelUrl(
             originalUrl,
             coverUrl,
         )
-        AppMediaType.VIDEO -> videoPosterImageUrl(mediaType) ?: videoPosterVideoUrl(mediaType)
+        AppMediaType.VIDEO -> videoPosterImageUrl(mediaType)
     }
 }
 
@@ -181,8 +181,7 @@ internal fun AppContentMediaSource?.thumbnailModelCacheKey(
             originalCacheKey,
             coverCacheKey,
         ).withRefreshKey(refreshKey)
-        AppMediaType.VIDEO -> (videoPosterImageCacheKey(mediaType) ?: videoPosterVideoCacheKey(mediaType))
-            .withRefreshKey(refreshKey)
+        AppMediaType.VIDEO -> videoPosterImageCacheKey(mediaType).withRefreshKey(refreshKey)
     }
 }
 
@@ -198,7 +197,6 @@ internal fun AppContentMediaSource?.thumbnailModelDiskCacheKey(
             coverCacheKey,
         )
         AppMediaType.VIDEO -> videoPosterImageDiskCacheKey(mediaType)
-            ?: videoPosterVideoDiskCacheKey(mediaType)
     }
 }
 
@@ -207,8 +205,8 @@ internal fun AppContentMediaSource?.videoPosterImageUrl(
 ): String? {
     if (mediaType != AppMediaType.VIDEO || this == null) return null
     return firstNotBlank(
-        thumbnailUrl.takeIf { canUseAsVideoPoster(thumbnailUrl, mimeType) },
         coverUrl.takeIf { canUseAsVideoPoster(coverUrl, mimeType) },
+        thumbnailUrl.takeIf { canUseAsVideoPoster(thumbnailUrl, mimeType) },
         mediaUrl.takeIf { canUseAsVideoPoster(mediaUrl, mimeType) },
         originalUrl.takeIf { canUseAsVideoPoster(originalUrl, mimeType) },
     )
@@ -421,11 +419,20 @@ internal fun backendMediaRequestHeaders(
     accessToken: String?,
 ): Map<String, String> {
     if (url.isNullOrBlank() || accessToken.isNullOrBlank()) return emptyMap()
-    return if (url.startsWith("http", ignoreCase = true)) {
+    return if (isBackendApiUrl(url)) {
         mapOf("Authorization" to "${RemoteConfig.AUTH_SCHEME} $accessToken")
     } else {
         emptyMap()
     }
+}
+
+private fun isBackendApiUrl(url: String): Boolean {
+    val normalizedUrl = url.trim().lowercase()
+    if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+        return false
+    }
+    val baseUrl = BackendDebugConfig.currentBaseUrl().trim().lowercase()
+    return normalizedUrl.startsWith(baseUrl)
 }
 
 internal fun backendMediaImageRequest(

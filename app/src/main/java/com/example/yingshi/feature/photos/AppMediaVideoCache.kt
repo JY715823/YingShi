@@ -54,7 +54,7 @@ internal object AppMediaVideoCache {
         return directory(appContext).deleteContentsSafely()
     }
 
-    private fun cache(context: Context): SimpleCache {
+    fun cache(context: Context): SimpleCache {
         val appContext = context.applicationContext
         synchronized(lock) {
             simpleCache?.let { return it }

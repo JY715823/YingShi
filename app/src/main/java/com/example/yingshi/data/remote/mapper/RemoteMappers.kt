@@ -352,6 +352,14 @@ fun UploadCompleteResponseDto.toRemoteModel(): RemoteUploadTask {
         state = state.toUploadState(),
         progressPercent = if (state.equals("success", ignoreCase = true)) 100 else 0,
         errorMessage = null,
+        operationId = null,
+        operationType = null,
+        operationTitle = null,
+        operationMediaCount = null,
+        sourceItemId = null,
+        createdAtMillis = null,
+        updatedAtMillis = null,
+        completedAtMillis = null,
         media = media.toRemoteModel(),
     )
 }
@@ -366,6 +374,14 @@ fun UploadTaskDto.toRemoteModel(): RemoteUploadTask {
         state = state.toUploadState(),
         progressPercent = progressPercent,
         errorMessage = errorMessage,
+        operationId = operationId,
+        operationType = operationType,
+        operationTitle = operationTitle,
+        operationMediaCount = operationMediaCount,
+        sourceItemId = sourceItemId,
+        createdAtMillis = createdAtMillis,
+        updatedAtMillis = updatedAtMillis,
+        completedAtMillis = completedAtMillis,
         media = media?.toRemoteModel(),
     )
 }
@@ -390,7 +406,7 @@ private fun String.toUploadState(): UploadState {
         "waiting" -> UploadState.WAITING
         "uploading" -> UploadState.UPLOADING
         "success" -> UploadState.SUCCESS
-        "failure" -> UploadState.FAILURE
+        "failure", "failed" -> UploadState.FAILURE
         "cancelled" -> UploadState.CANCELLED
         else -> UploadState.FAILURE
     }

@@ -4,6 +4,7 @@ import com.example.yingshi.data.remote.dto.ApiEnvelopeDto
 import com.example.yingshi.data.remote.dto.ConfirmUploadRequestDto
 import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.UploadCompleteResponseDto
+import com.example.yingshi.data.remote.dto.UploadDismissBatchRequestDto
 import com.example.yingshi.data.remote.dto.UploadTaskDto
 import com.example.yingshi.data.remote.dto.UploadTokenDto
 import retrofit2.http.GET
@@ -12,6 +13,7 @@ import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Part
+import retrofit2.http.Query
 import okhttp3.MultipartBody
 
 interface UploadApi {
@@ -32,6 +34,13 @@ interface UploadApi {
         @Path("uploadId") uploadId: String,
     ): ApiEnvelopeDto<UploadTaskDto>
 
+    @GET("api/uploads")
+    suspend fun getUploadHistory(
+        @Query("state") state: String? = null,
+        @Query("operationType") operationType: String? = null,
+        @Query("pageSize") pageSize: Int? = null,
+    ): ApiEnvelopeDto<List<UploadTaskDto>>
+
     @POST("api/uploads/{uploadId}/confirm")
     suspend fun confirmUpload(
         @Path("uploadId") uploadId: String,
@@ -42,4 +51,14 @@ interface UploadApi {
     suspend fun cancelUpload(
         @Path("uploadId") uploadId: String,
     ): ApiEnvelopeDto<UploadTaskDto>
+
+    @POST("api/uploads/{uploadId}/dismiss")
+    suspend fun dismissUpload(
+        @Path("uploadId") uploadId: String,
+    ): ApiEnvelopeDto<UploadTaskDto>
+
+    @POST("api/uploads/dismiss-batch")
+    suspend fun dismissUploadBatch(
+        @Body request: UploadDismissBatchRequestDto,
+    ): ApiEnvelopeDto<List<UploadTaskDto>>
 }

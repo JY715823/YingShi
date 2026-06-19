@@ -57,4 +57,39 @@ class MediaCacheKeyTest {
             mediaSource.thumbnailModelCacheKey(AppMediaType.IMAGE),
         )
     }
+
+    @Test
+    fun videoThumbnailUsesPosterImageInsteadOfVideoStream() {
+        val mediaSource = AppContentMediaSource(
+            mediaUrl = "https://api.example.com/api/media/files/media_001",
+            videoUrl = "https://api.example.com/api/media/files/media_001",
+            coverUrl = "https://api.example.com/api/media/files/media_001?variant=cover",
+            mimeType = "video/mp4",
+            mediaCacheKey = "media:media_001:video",
+            videoCacheKey = "media:media_001:video",
+            coverCacheKey = "media:media_001:cover",
+        )
+
+        assertEquals(
+            "https://api.example.com/api/media/files/media_001?variant=cover",
+            mediaSource.thumbnailModelUrl(AppMediaType.VIDEO),
+        )
+        assertEquals("media:media_001:cover", mediaSource.thumbnailModelCacheKey(AppMediaType.VIDEO))
+        assertEquals("media:media_001:cover", mediaSource.thumbnailModelDiskCacheKey(AppMediaType.VIDEO))
+    }
+
+    @Test
+    fun videoThumbnailDoesNotFallBackToRemoteVideoWithoutPoster() {
+        val mediaSource = AppContentMediaSource(
+            mediaUrl = "https://api.example.com/api/media/files/media_001",
+            videoUrl = "https://api.example.com/api/media/files/media_001",
+            mimeType = "video/mp4",
+            mediaCacheKey = "media:media_001:video",
+            videoCacheKey = "media:media_001:video",
+        )
+
+        assertEquals(null, mediaSource.thumbnailModelUrl(AppMediaType.VIDEO))
+        assertEquals(null, mediaSource.thumbnailModelCacheKey(AppMediaType.VIDEO))
+        assertEquals(null, mediaSource.thumbnailModelDiskCacheKey(AppMediaType.VIDEO))
+    }
 }

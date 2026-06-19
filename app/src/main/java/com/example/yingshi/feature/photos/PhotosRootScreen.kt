@@ -125,7 +125,7 @@ fun PhotosRootScreen(
     onPhotoSelectionShellStateChange: (PhotosRootSelectionUiState) -> Unit = { },
     photoSelectionAction: PhotoSelectionShellAction? = null,
     photoSelectionActionNonce: Int = 0,
-    inlineVideoAutoPlayEnabled: Boolean = true,
+    inlineVideoAutoPlayEnabled: Boolean = false,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors

@@ -201,6 +201,21 @@ interface UploadRepository {
     suspend fun getUploadTask(
         uploadId: String,
     ): ApiResult<RemoteUploadTask>
+
+    suspend fun getUploadHistory(
+        state: String? = null,
+        operationType: String? = null,
+        pageSize: Int = 50,
+    ): ApiResult<List<RemoteUploadTask>>
+
+    suspend fun dismissUpload(
+        uploadId: String,
+    ): ApiResult<RemoteUploadTask>
+
+    suspend fun dismissUploadBatch(
+        state: String? = null,
+        operationType: String? = null,
+    ): ApiResult<List<RemoteUploadTask>>
 }
 
 interface AuthRepository {

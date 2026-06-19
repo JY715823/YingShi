@@ -1,5 +1,7 @@
 package com.example.yingshi.feature.photos
 
+import kotlin.math.abs
+
 internal data class ViewerVideoPlaybackState(
     val mediaId: String? = null,
     val isPlaying: Boolean = false,
@@ -11,6 +13,7 @@ internal data class ViewerVideoPlaybackState(
     val seekRequestMillis: Long? = null,
     val seekRequestNonce: Int = 0,
     val retryRequestNonce: Int = 0,
+    val pendingSeekTargetMillis: Long? = null,
 )
 
 internal enum class ViewerImageFailureReason(
@@ -55,5 +58,24 @@ internal fun ViewerVideoPlaybackState.retryState(): ViewerVideoPlaybackState {
         seekRequestMillis = 0L,
         seekRequestNonce = seekRequestNonce + 1,
         retryRequestNonce = retryRequestNonce + 1,
+        pendingSeekTargetMillis = 0L,
     )
+}
+
+internal fun ViewerVideoPlaybackState.mergePendingSeekDisplay(
+    previous: ViewerVideoPlaybackState?,
+): ViewerVideoPlaybackState {
+    val pendingTarget = pendingSeekTargetMillis ?: previous?.pendingSeekTargetMillis
+    if (pendingTarget == null) return this
+    val normalizedTarget = pendingTarget.coerceAtLeast(0L)
+    val isSettled = !isLoading && abs(progressMillis - normalizedTarget) <= 650L
+    return if (isSettled) {
+        copy(pendingSeekTargetMillis = null)
+    } else {
+        copy(
+            progressMillis = normalizedTarget,
+            durationMillis = durationMillis ?: previous?.durationMillis,
+            pendingSeekTargetMillis = normalizedTarget,
+        )
+    }
 }

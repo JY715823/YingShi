@@ -46,7 +46,7 @@ fun RealPhotoFeedPage(
     onAddedMediaToPost: (PostDetailPlaceholderRoute) -> Unit,
     modifier: Modifier = Modifier,
     scrollTrigger: Int = 0,
-    inlineVideoAutoPlayEnabled: Boolean = true,
+    inlineVideoAutoPlayEnabled: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

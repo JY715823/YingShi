@@ -582,6 +582,13 @@ class FakeUploadRepositoryShell : UploadRepository {
             objectKey = "uploads/fake/${payload.fileName}",
             state = UploadState.WAITING,
             progressPercent = 0,
+            operationId = payload.operationId,
+            operationType = payload.operationType,
+            operationTitle = payload.operationTitle,
+            operationMediaCount = payload.operationMediaCount,
+            sourceItemId = payload.sourceItemId,
+            createdAtMillis = System.currentTimeMillis(),
+            updatedAtMillis = System.currentTimeMillis(),
         )
         return ApiResult.Success(
             RemoteUploadToken(
@@ -648,6 +655,42 @@ class FakeUploadRepositoryShell : UploadRepository {
         return fakeUploadTasks[uploadId]
             ?.let { ApiResult.Success(it) }
             ?: ApiResult.Error(code = "UPLOAD_NOT_FOUND", message = "Fake upload task not found")
+    }
+
+    override suspend fun getUploadHistory(
+        state: String?,
+        operationType: String?,
+        pageSize: Int,
+    ): ApiResult<List<RemoteUploadTask>> {
+        val stateFilter = state?.lowercase()
+        val typeFilter = operationType?.uppercase()
+        return ApiResult.Success(
+            fakeUploadTasks.values
+                .filter { task -> stateFilter == null || task.state.name.lowercase() == stateFilter }
+                .filter { task -> typeFilter == null || task.operationType == typeFilter }
+                .sortedByDescending { it.updatedAtMillis ?: 0L }
+                .take(pageSize),
+        )
+    }
+
+    override suspend fun dismissUpload(uploadId: String): ApiResult<RemoteUploadTask> {
+        val task = fakeUploadTasks.remove(uploadId)
+            ?: return ApiResult.Error(code = "UPLOAD_NOT_FOUND", message = "Fake upload task not found")
+        return ApiResult.Success(task)
+    }
+
+    override suspend fun dismissUploadBatch(
+        state: String?,
+        operationType: String?,
+    ): ApiResult<List<RemoteUploadTask>> {
+        val stateFilter = state?.lowercase()
+        val typeFilter = operationType?.uppercase()
+        val removed = fakeUploadTasks.values
+            .filter { task -> stateFilter == null || task.state.name.lowercase() == stateFilter }
+            .filter { task -> typeFilter == null || task.operationType == typeFilter }
+            .toList()
+        removed.forEach { fakeUploadTasks.remove(it.uploadId) }
+        return ApiResult.Success(removed)
     }
 }
 

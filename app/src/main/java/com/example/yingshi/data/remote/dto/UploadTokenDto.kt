@@ -25,6 +25,11 @@ data class CreateUploadTokenRequestDto(
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val sourceFingerprint: String? = null,
+    val operationId: String? = null,
+    val operationType: String? = null,
+    val operationTitle: String? = null,
+    val operationMediaCount: Int? = null,
+    val sourceItemId: String? = null,
 )
 
 data class UploadCompleteResponseDto(
@@ -42,10 +47,23 @@ data class UploadTaskDto(
     val state: String,
     val progressPercent: Int = 0,
     val errorMessage: String? = null,
+    val operationId: String? = null,
+    val operationType: String? = null,
+    val operationTitle: String? = null,
+    val operationMediaCount: Int? = null,
+    val sourceItemId: String? = null,
+    val createdAtMillis: Long? = null,
+    val updatedAtMillis: Long? = null,
+    val completedAtMillis: Long? = null,
     val media: MediaDto? = null,
 )
 
 data class ConfirmUploadRequestDto(
     val etag: String,
     val objectKey: String,
+)
+
+data class UploadDismissBatchRequestDto(
+    val state: String? = null,
+    val operationType: String? = null,
 )

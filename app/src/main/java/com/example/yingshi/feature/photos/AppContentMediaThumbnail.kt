@@ -134,8 +134,11 @@ fun AppContentMediaThumbnail(
     val originalPainter = rememberAsyncImagePainter(model = originalRequest)
     val previewState = previewPainter.state
     val originalState = originalPainter.state
-    val videoPosterUrl = if (mediaType == AppMediaType.VIDEO && posterImageUrl.isNullOrBlank()) {
+    val shouldExtractVideoPoster = mediaType == AppMediaType.VIDEO &&
+        (posterImageUrl.isNullOrBlank() || previewState is AsyncImagePainter.State.Error)
+    val videoPosterUrl = if (shouldExtractVideoPoster) {
         mediaSource.videoPosterVideoUrl(mediaType)
+            ?.takeIf(::canExtractPosterOnClient)
     } else {
         null
     }
@@ -287,6 +290,15 @@ fun AppContentMediaThumbnail(
             }
         }
     }
+}
+
+private fun canExtractPosterOnClient(url: String): Boolean {
+    val normalized = url.trim().lowercase()
+    return normalized.startsWith("content://") ||
+        normalized.startsWith("file://") ||
+        normalized.startsWith("http://") ||
+        normalized.startsWith("https://") ||
+        normalized.startsWith("/")
 }
 
 private fun thumbnailMemoryCacheKey(

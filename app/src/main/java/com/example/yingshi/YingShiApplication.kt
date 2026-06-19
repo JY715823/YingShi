@@ -12,6 +12,7 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.feature.photos.SettingsRepository
+import com.example.yingshi.feature.photos.VideoPreloadWorker
 import com.example.yingshi.feature.life.push.PushTokenRegistrar
 
 class YingShiApplication : Application(), ImageLoaderFactory {
@@ -22,6 +23,7 @@ class YingShiApplication : Application(), ImageLoaderFactory {
         BackendDebugConfig.init(applicationContext)
         NetworkConnectivityMonitor.init(applicationContext)
         SettingsRepository.init(applicationContext)
+        VideoPreloadWorker.schedulePeriodic(applicationContext)
         PushTokenRegistrar.registerCurrentTokenIfPossible(applicationContext)
     }
 

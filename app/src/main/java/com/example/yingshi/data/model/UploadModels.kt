@@ -21,6 +21,11 @@ data class CreateUploadTokenPayload(
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val sourceFingerprint: String? = null,
+    val operationId: String? = null,
+    val operationType: String? = null,
+    val operationTitle: String? = null,
+    val operationMediaCount: Int? = null,
+    val sourceItemId: String? = null,
 )
 
 data class ConfirmUploadPayload(
@@ -37,5 +42,13 @@ data class RemoteUploadTask(
     val state: UploadState,
     val progressPercent: Int,
     val errorMessage: String? = null,
+    val operationId: String? = null,
+    val operationType: String? = null,
+    val operationTitle: String? = null,
+    val operationMediaCount: Int? = null,
+    val sourceItemId: String? = null,
+    val createdAtMillis: Long? = null,
+    val updatedAtMillis: Long? = null,
+    val completedAtMillis: Long? = null,
     val media: RemoteMedia? = null,
 )

@@ -147,6 +147,7 @@ class AlbumPageRealViewModel(
                     val selectedAlbumId = _uiState.value.selectedAlbumId
                         ?.takeIf { currentId -> albums.any { it.id == currentId } }
                         ?: albums.firstOrNull()?.id
+                    OfflineAccessManager.clear()
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         isPostsLoading = false,
@@ -173,7 +174,6 @@ class AlbumPageRealViewModel(
                             postsByAlbumId = cachedPostsByAlbumId,
                         )
                     }
-                    OfflineAccessManager.clear()
                     if (selectedAlbumId != null) {
                         loadAlbumPosts(
                             albumId = selectedAlbumId,
@@ -225,9 +225,9 @@ class AlbumPageRealViewModel(
                     statusMessage = message,
                     isOfflineReadOnly = true,
                 )
-                    return@launch
-                }
-                val hasVisibleContent = _uiState.value.albums.isNotEmpty() || _uiState.value.posts.isNotEmpty()
+                return@launch
+            }
+            val hasVisibleContent = _uiState.value.albums.isNotEmpty() || _uiState.value.posts.isNotEmpty()
             if (hasVisibleContent) {
                 OfflineAccessManager.enterReadOnly(message)
             }
@@ -557,6 +557,7 @@ class AlbumPageRealViewModel(
                         )
                     }
                     rememberAlbumPostCards(albumId, posts)
+                    OfflineAccessManager.clear()
                     _uiState.update {
                         it.copy(
                             isPostsLoading = false,

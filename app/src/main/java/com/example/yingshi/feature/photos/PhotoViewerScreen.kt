@@ -1094,6 +1094,7 @@ fun PhotoViewerScreen(
                             } else {
                                 videoPlaybackState.seekRequestNonce
                             },
+                            pendingSeekTargetMillis = if (shouldRestart) 0L else videoPlaybackState.pendingSeekTargetMillis,
                             errorMessage = null,
                             isCompleted = false,
                         )
@@ -1109,14 +1110,16 @@ fun PhotoViewerScreen(
                         progressMillis = targetMillis,
                         seekRequestMillis = targetMillis,
                         seekRequestNonce = videoPlaybackState.seekRequestNonce + 1,
+                        pendingSeekTargetMillis = targetMillis,
                         errorMessage = null,
                         isCompleted = false,
                     )
                 },
                 onVideoPlaybackStateChange = { mediaId, state ->
-                    videoPlaybackStateCache = videoPlaybackStateCache + (mediaId to state)
+                    val mergedState = state.mergePendingSeekDisplay(videoPlaybackStateCache[mediaId])
+                    videoPlaybackStateCache = videoPlaybackStateCache + (mediaId to mergedState)
                     if (mediaId == currentItem.mediaId) {
-                        videoPlaybackState = state
+                        videoPlaybackState = mergedState
                     }
                 },
                 onOriginalLoadStateChange = { mediaId, state ->
@@ -1466,11 +1469,9 @@ private fun PrefetchViewerMediaAssets(
         val imageLoader = context.imageLoader
         targets.forEach { item ->
             if (item.mediaType == AppMediaType.VIDEO) {
-                val posterImageCacheKey = item.mediaSource.thumbnailModelCacheKey(item.mediaType)
-                val posterImageUrl = item.mediaSource
-                    ?.thumbnailModelUrl(item.mediaType)
-                    ?.takeUnless { looksLikeVideoSource(it, item.mediaSource?.mimeType) }
-                val posterImageDiskCacheKey = item.mediaSource?.thumbnailModelDiskCacheKey(item.mediaType)
+                val posterImageCacheKey = item.mediaSource.videoPosterImageCacheKey(item.mediaType)
+                val posterImageUrl = item.mediaSource.videoPosterImageUrl(item.mediaType)
+                val posterImageDiskCacheKey = item.mediaSource.videoPosterImageDiskCacheKey(item.mediaType)
                 if (posterImageUrl != null) {
                     backendMediaImageRequest(
                         context = context,
@@ -1481,15 +1482,6 @@ private fun PrefetchViewerMediaAssets(
                         size = 1280,
                     )?.let(imageLoader::enqueue)
                     return@forEach
-                }
-                item.mediaSource?.viewerVideoUrl(item.mediaType)?.let { videoUrl ->
-                    prefetchVideoPoster(
-                        context = context,
-                        url = videoUrl,
-                        accessToken = accessToken,
-                        cacheKey = item.mediaSource.viewerVideoCacheKey(item.mediaType),
-                        diskCacheKey = item.mediaSource.viewerVideoDiskCacheKey(item.mediaType),
-                    )
                 }
             } else {
                 item.mediaSource?.viewerPreviewImageUrl(item.mediaType)?.let { previewUrl ->
@@ -2314,7 +2306,7 @@ private fun ViewerImageFallback(
 
 @Composable
 private fun ViewerVideoPosterFallback(
-    message: String,
+    message: String?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
@@ -2350,11 +2342,13 @@ private fun ViewerVideoPosterFallback(
                         )
                     }
                 }
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = ViewerSurface.copy(alpha = 0.82f),
-                )
+                if (!message.isNullOrBlank()) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = ViewerSurface.copy(alpha = 0.82f),
+                    )
+                }
             }
         }
     }
@@ -2388,20 +2382,21 @@ internal fun ViewerVideoCanvas(
         AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
     }
     val posterImageUrl = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource
-            .thumbnailModelUrl(media.mediaType)
-            ?.takeUnless { looksLikeVideoSource(it, media.mediaSource?.mimeType) }
+        media.mediaSource.videoPosterImageUrl(media.mediaType)
     }
     val posterImageCacheKey = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.thumbnailModelCacheKey(media.mediaType)
+        media.mediaSource.videoPosterImageCacheKey(media.mediaType)
     }
-    val posterImageRequest = remember(context, posterImageUrl, posterImageCacheKey, accessToken) {
+    val posterImageDiskCacheKey = remember(media.mediaSource, media.mediaType) {
+        media.mediaSource.videoPosterImageDiskCacheKey(media.mediaType)
+    }
+    val posterImageRequest = remember(context, posterImageUrl, posterImageCacheKey, posterImageDiskCacheKey, accessToken) {
         backendMediaImageRequest(
             context = context,
             url = posterImageUrl,
             accessToken = accessToken,
             memoryCacheKey = posterImageCacheKey ?: posterImageUrl?.let(::sharedPreviewMemoryCacheKey),
-            diskCacheKey = posterImageCacheKey,
+            diskCacheKey = posterImageDiskCacheKey,
             size = 1280,
         )
     }
@@ -2410,7 +2405,7 @@ internal fun ViewerVideoCanvas(
     val fallbackPosterVideoUrl = if (posterImageUrl.isNullOrBlank() ||
         posterImageState is AsyncImagePainter.State.Error
     ) {
-        videoUrl
+        videoUrl?.takeIf(::canExtractViewerPosterOnClient)
     } else {
         null
     }
@@ -2431,8 +2426,11 @@ internal fun ViewerVideoCanvas(
         mutableStateOf<Long?>(null)
     }
     val initialPositionMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
-    val player = remember(media.mediaId, videoUrl, videoCacheKey, requestHeaders, retryVersion, retryRequestNonce) {
-        if (videoUrl.isNullOrBlank()) {
+    val shouldPreparePlayer = isCurrent &&
+        !videoUrl.isNullOrBlank() &&
+        (isPlaying || initialPositionMillis > 0L || retryRequestNonce > 0 || (playbackState?.seekRequestNonce ?: 0) > 0)
+    val player = remember(media.mediaId, videoUrl, videoCacheKey, requestHeaders, retryVersion, retryRequestNonce, shouldPreparePlayer) {
+        if (videoUrl.isNullOrBlank() || !shouldPreparePlayer) {
             null
         } else {
             ExoPlayer.Builder(context).build().apply {
@@ -2487,12 +2485,17 @@ internal fun ViewerVideoCanvas(
                 ),
             )
         } else {
+            val currentProgressMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
             onPlaybackStateChange(
                 media.mediaId,
                 ViewerVideoPlaybackState(
                     mediaId = media.mediaId,
-                    isLoading = true,
+                    isLoading = playbackState?.isPlaying == true,
+                    progressMillis = currentProgressMillis,
                     durationMillis = media.viewerVideoDurationMillis(),
+                    seekRequestMillis = playbackState?.seekRequestMillis,
+                    seekRequestNonce = playbackState?.seekRequestNonce ?: 0,
+                    pendingSeekTargetMillis = playbackState?.pendingSeekTargetMillis,
                 ),
             )
         }
@@ -2610,6 +2613,7 @@ internal fun ViewerVideoCanvas(
                         progressMillis = displayedProgressMillis,
                         durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
                         isLoading = player.playbackState == Player.STATE_BUFFERING,
+                        pendingSeekTargetMillis = pendingSeekTargetMillis,
                     )
                 }
             }
@@ -2624,7 +2628,7 @@ internal fun ViewerVideoCanvas(
         player?.seekTo(normalizedTargetMillis)
     }
     val hasServerPosterImage = posterImageRequest != null &&
-        posterImageState !is AsyncImagePainter.State.Error
+        posterImageState is AsyncImagePainter.State.Success
     val hasExtractedPosterImage = videoPosterState.model != null &&
         extractedPosterPainter.state !is AsyncImagePainter.State.Error
     val posterPainter = if (hasServerPosterImage) {
@@ -2633,8 +2637,10 @@ internal fun ViewerVideoCanvas(
         extractedPosterPainter
     }
     val hasPosterImage = hasServerPosterImage || hasExtractedPosterImage
+    val hasPendingSeek = playbackState?.pendingSeekTargetMillis != null ||
+        (playbackState?.seekRequestMillis != null && playbackState.seekRequestNonce > 0 && isLoading)
     val shouldShowPoster = hasPosterImage &&
-        (!isPrepared || (playbackState?.progressMillis ?: 0L) <= 0L || errorMessage != null)
+        (!isPrepared || hasPendingSeek || (playbackState?.progressMillis ?: 0L) <= 0L || errorMessage != null)
 
     Box(
         modifier = modifier
@@ -2676,7 +2682,7 @@ internal fun ViewerVideoCanvas(
                     videoUrl.isNullOrBlank() -> "暂无视频地址"
                     errorMessage != null -> "视频加载失败"
                     posterImageState is AsyncImagePainter.State.Loading || videoPosterState.isLoading || isLoading -> "视频准备中"
-                    else -> "暂无视频封面"
+                    else -> null
                 },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -2717,6 +2723,15 @@ internal fun ViewerVideoCanvas(
     }
 }
 
+private fun canExtractViewerPosterOnClient(url: String): Boolean {
+    val normalized = url.trim().lowercase()
+    return normalized.startsWith("content://") ||
+        normalized.startsWith("file://") ||
+        normalized.startsWith("http://") ||
+        normalized.startsWith("https://") ||
+        normalized.startsWith("/")
+}
+
 @Composable
 internal fun ViewerVideoControls(
     playbackState: ViewerVideoPlaybackState,
@@ -2728,22 +2743,36 @@ internal fun ViewerVideoControls(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val safeDurationMillis = durationMillis.coerceAtLeast(0L)
-    val progressFraction = if (safeDurationMillis <= 0L) 0f else {
-        (playbackState.progressMillis.toFloat() / safeDurationMillis.toFloat()).coerceIn(0f, 1f)
-    }
     var draggedFraction by remember(playbackState.mediaId) { mutableStateOf<Float?>(null) }
-    var releasedSeekFraction by remember(playbackState.mediaId) { mutableStateOf<Float?>(null) }
-    val displayedFraction = draggedFraction ?: releasedSeekFraction ?: progressFraction
-    val displayedProgressMillis = if (safeDurationMillis <= 0L) {
-        0L
+    var releasedSeekMillis by remember(playbackState.mediaId) { mutableStateOf<Long?>(null) }
+    val displayedProgressMillis = when {
+        safeDurationMillis <= 0L -> 0L
+        draggedFraction != null -> (draggedFraction!! * safeDurationMillis)
+            .toLong()
+            .coerceIn(0L, safeDurationMillis)
+        releasedSeekMillis != null -> releasedSeekMillis!!.coerceIn(0L, safeDurationMillis)
+        playbackState.pendingSeekTargetMillis != null -> playbackState.pendingSeekTargetMillis.coerceIn(0L, safeDurationMillis)
+        else -> playbackState.progressMillis.coerceIn(0L, safeDurationMillis)
+    }
+    val displayedFraction = if (safeDurationMillis <= 0L) {
+        0f
     } else {
-        (displayedFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
+        (displayedProgressMillis.toFloat() / safeDurationMillis.toFloat()).coerceIn(0f, 1f)
     }
 
-    LaunchedEffect(releasedSeekFraction) {
-        if (releasedSeekFraction == null) return@LaunchedEffect
-        kotlinx.coroutines.delay(520L)
-        releasedSeekFraction = null
+    LaunchedEffect(
+        releasedSeekMillis,
+        playbackState.progressMillis,
+        playbackState.pendingSeekTargetMillis,
+        playbackState.isLoading,
+    ) {
+        val targetMillis = releasedSeekMillis ?: return@LaunchedEffect
+        if (playbackState.pendingSeekTargetMillis == null &&
+            !playbackState.isLoading &&
+            abs(playbackState.progressMillis - targetMillis) <= 650L
+        ) {
+            releasedSeekMillis = null
+        }
     }
 
     Surface(
@@ -2808,7 +2837,7 @@ internal fun ViewerVideoControls(
                     } else {
                         (targetFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
                     }
-                    releasedSeekFraction = targetFraction
+                    releasedSeekMillis = targetMillis
                     draggedFraction = null
                     onSeekPlayback(targetMillis)
                 },

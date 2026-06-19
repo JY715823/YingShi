@@ -839,6 +839,11 @@ class RealUploadRepository(
                     importedAtMillis = payload.importedAtMillis,
                     displayTimeSource = payload.displayTimeSource,
                     sourceFingerprint = payload.sourceFingerprint,
+                    operationId = payload.operationId,
+                    operationType = payload.operationType,
+                    operationTitle = payload.operationTitle,
+                    operationMediaCount = payload.operationMediaCount,
+                    sourceItemId = payload.sourceItemId,
                 ),
             ).data.toRemoteModel().also { token ->
                 uploadTokens[token.uploadId] = token
@@ -996,6 +1001,67 @@ class RealUploadRepository(
                 ApiResult.Error(
                     code = "UPLOAD_TASK_REQUEST_FAILED",
                     message = uploadRequestErrorMessage(it, "读取上传任务失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getUploadHistory(
+        state: String?,
+        operationType: String?,
+        pageSize: Int,
+    ): ApiResult<List<RemoteUploadTask>> {
+        return runCatching {
+            uploadApi.getUploadHistory(
+                state = state,
+                operationType = operationType,
+                pageSize = pageSize,
+            ).data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_HISTORY_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "读取传输记录失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun dismissUpload(uploadId: String): ApiResult<RemoteUploadTask> {
+        return runCatching {
+            uploadApi.dismissUpload(uploadId).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_DISMISS_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "清理传输记录失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun dismissUploadBatch(
+        state: String?,
+        operationType: String?,
+    ): ApiResult<List<RemoteUploadTask>> {
+        return runCatching {
+            uploadApi.dismissUploadBatch(
+                com.example.yingshi.data.remote.dto.UploadDismissBatchRequestDto(
+                    state = state,
+                    operationType = operationType,
+                ),
+            ).data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "UPLOAD_DISMISS_BATCH_REQUEST_FAILED",
+                    message = uploadRequestErrorMessage(it, "清理传输记录失败，请稍后重试。"),
                     throwable = it,
                 )
             },
