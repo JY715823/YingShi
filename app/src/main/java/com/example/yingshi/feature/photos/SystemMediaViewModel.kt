@@ -30,6 +30,7 @@ class SystemMediaViewModel(
     private var queriedItems: List<SystemMediaItem> = emptyList()
     private var refreshJob: Job? = null
     private var hasLoadedOnce = false
+    private var pendingForceRefresh = false
 
     init {
         val cachedItems = repository.peekCachedMedia()
@@ -44,6 +45,7 @@ class SystemMediaViewModel(
                 isLoading = false,
                 errorMessage = null,
             )
+            refresh(forceRefresh = true)
         }
     }
 
@@ -55,20 +57,26 @@ class SystemMediaViewModel(
     }
 
     fun refresh(forceRefresh: Boolean = false) {
-        if (refreshJob?.isActive == true) return
+        if (refreshJob?.isActive == true) {
+            if (forceRefresh) {
+                pendingForceRefresh = true
+            }
+            return
+        }
 
         refreshJob = viewModelScope.launch {
+            val shouldForceRefresh = forceRefresh || pendingForceRefresh
+            pendingForceRefresh = false
             val showLoading = _uiState.value.allItems.isEmpty()
-            if (showLoading) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = true,
-                    errorMessage = null,
-                )
-            }
+            _uiState.value = _uiState.value.copy(
+                isLoading = if (showLoading) true else _uiState.value.isLoading,
+                isRefreshing = true,
+                errorMessage = null,
+            )
 
             runCatching {
                 withContext(Dispatchers.IO) {
-                    repository.loadMedia(forceRefresh = forceRefresh)
+                    repository.loadMedia(forceRefresh = shouldForceRefresh)
                 }
             }.onSuccess { items ->
                 queriedItems = items
@@ -83,6 +91,7 @@ class SystemMediaViewModel(
                 if (_uiState.value.allItems.isEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         allItems = emptyList(),
                         filteredItems = emptyList(),
                         errorMessage = throwable.toSystemMediaMessage(),
@@ -90,9 +99,13 @@ class SystemMediaViewModel(
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         errorMessage = throwable.toSystemMediaMessage(),
                     )
                 }
+            }
+            if (pendingForceRefresh) {
+                refresh(forceRefresh = true)
             }
         }
     }
@@ -139,6 +152,7 @@ class SystemMediaViewModel(
         val visibleItems = LocalSystemMediaBridgeRepository.applyOverlay(rawItems)
         _uiState.value = SystemMediaUiState(
             isLoading = isLoading,
+            isRefreshing = false,
             selectedFilter = selectedFilter,
             allItems = visibleItems,
             filteredItems = visibleItems.applyFilter(selectedFilter),

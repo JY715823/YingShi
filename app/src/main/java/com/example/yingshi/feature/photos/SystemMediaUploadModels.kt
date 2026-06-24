@@ -32,4 +32,10 @@ data class SystemMediaUploadTaskUiModel(
 ) {
     val isTerminal: Boolean
         get() = state == UploadState.SUCCESS || state == UploadState.FAILURE || state == UploadState.CANCELLED
+
+    val canPause: Boolean
+        get() = state == UploadState.WAITING || state == UploadState.UPLOADING
+
+    val canCancel: Boolean
+        get() = canPause || (state == UploadState.CANCELLED && canRetry)
 }

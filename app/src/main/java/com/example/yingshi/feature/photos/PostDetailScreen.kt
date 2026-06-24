@@ -68,6 +68,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,6 +106,9 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
@@ -166,6 +170,19 @@ fun PostDetailScreen(
         delay(2600L)
         if (actionNoticeVersion == version) {
             actionNotice = null
+        }
+    }
+
+    LaunchedEffect(route.autoOpenComment, route.focusMediaId, detail) {
+        if (!route.autoOpenComment) return@LaunchedEffect
+        val targetId = route.focusMediaId
+        if (targetId != null) {
+            val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
+            if (targetIndex >= 0) {
+                mediaCommentPage = targetIndex
+            }
+        } else {
+            showSmallAlbumComments = true
         }
     }
 
@@ -272,6 +289,7 @@ private fun RealPostDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val detailWithEntryNotice = uiState.detail?.copy(entryNotice = route.entryNotice)
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     var inPostViewerInitialPage by rememberSaveable(route.postId) {
         mutableStateOf<Int?>(null)
     }
@@ -304,6 +322,25 @@ private fun RealPostDetailScreen(
 
     val detail = detailWithEntryNotice
     val detailMediaIds = detail?.mediaItems?.map { it.id }.orEmpty()
+
+    LaunchedEffect(route.autoOpenComment, route.focusMediaId, detail?.postId) {
+        if (!route.autoOpenComment) return@LaunchedEffect
+        val targetId = route.focusMediaId
+        if (targetId != null) {
+            val items = detail?.mediaItems ?: return@LaunchedEffect
+            val targetIndex = items.indexOfFirst { it.id == targetId }
+            if (targetIndex >= 0) {
+                mediaCommentPage = targetIndex
+            }
+        } else {
+            detail ?: return@LaunchedEffect
+            showSmallAlbumComments = true
+            viewModel.retryPostComments()
+            delay(800L)
+            viewModel.retryPostComments()
+        }
+    }
+
     val selectedMedia = mediaCommentPage?.let { page ->
         detail?.mediaItems?.getOrNull(page.coerceAtLeast(0))
     }
@@ -333,6 +370,16 @@ private fun RealPostDetailScreen(
                 viewModel.refresh()
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { Triple(syncStaleState.photoFeedStale, syncStaleState.albumsStale, syncStaleState.trashStale) }
+            .collect { (photoStale, albumsStale, trashStale) ->
+                if (photoStale || albumsStale || trashStale) {
+                    viewModel.refresh()
+                    if (albumsStale) SyncVersionTracker.markRefreshed(SyncModule.ALBUMS)
+                }
+            }
     }
 
     Box(
@@ -460,6 +507,18 @@ private fun RealPostDetailScreen(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+
+                StaleBanner(
+                    module = SyncModule.ALBUMS,
+                    onRefresh = {
+                        viewModel.refresh()
+                        SyncVersionTracker.markRefreshed(SyncModule.ALBUMS)
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = YingShiThemeTokens.spacing.md),
+                )
             }
         }
     }
@@ -4291,4 +4350,3 @@ private fun PostDetailScreenPreview() {
         )
     }
 }
-

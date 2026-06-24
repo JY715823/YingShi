@@ -629,6 +629,7 @@ fun PhotosRootScreen(
                                     onAddedMediaToPost = onAddedMediaToPost,
                                     scrollTrigger = photoFeedScrollTrigger,
                                     inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                                    isActive = selectedSection == PhotosTopDestination.PHOTOS,
                                 )
                             } else {
                                 val feedItems = FakePhotoFeedRepository.getPhotoFeed()

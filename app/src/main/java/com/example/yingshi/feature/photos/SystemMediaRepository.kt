@@ -13,6 +13,10 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.Locale
 import org.json.JSONArray
@@ -21,6 +25,21 @@ import org.json.JSONObject
 interface SystemMediaRepository {
     fun peekCachedMedia(): List<SystemMediaItem>?
     suspend fun loadMedia(forceRefresh: Boolean = false): List<SystemMediaItem>
+}
+
+internal fun preloadSystemMediaCache(context: Context) {
+    val appContext = context.applicationContext
+    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        runCatching {
+            if (hasSystemMediaReadAccess(appContext)) {
+                LocalSystemMediaRepository(appContext).loadMedia(forceRefresh = true)
+            }
+        }
+    }
+}
+
+internal fun invalidateSystemMediaMetadataCache(context: Context? = null) {
+    LocalSystemMediaQueryCache.invalidate(context)
 }
 
 class LocalSystemMediaRepository(
@@ -56,11 +75,18 @@ class LocalSystemMediaRepository(
         if (isEmpty() || RepositoryProvider.currentMode != RepositoryMode.REAL || !AuthSessionManager.isLoggedIn) {
             return this
         }
-        val itemsByFingerprint = associateBy { it.stableImportSourceFingerprint() }
+        val itemsByFingerprint = flatMap { item ->
+            listOf(
+                item.stableImportSourceFingerprint(),
+                item.stableImportMetadataSourceFingerprint(),
+            )
+        }.distinct()
         val statuses = mutableMapOf<String, Pair<String, List<String>>>()
-        itemsByFingerprint.keys.chunked(SystemMediaImportStatusBatchSize).forEach { fingerprints ->
+        var anyBatchSucceeded = false
+        itemsByFingerprint.chunked(SystemMediaImportStatusBatchSize).forEach { fingerprints ->
             when (val result = RepositoryProvider.mediaRepository.getImportStatus(fingerprints)) {
                 is ApiResult.Success -> {
+                    anyBatchSucceeded = true
                     result.data.forEach { status ->
                         statuses[status.sourceFingerprint] = status.mediaId to status.smallAlbumIds
                     }
@@ -70,11 +96,20 @@ class LocalSystemMediaRepository(
                 -> return@forEach
             }
         }
-        if (statuses.isEmpty()) {
+        if (!anyBatchSucceeded) {
             return this
         }
         return map { item ->
-            val status = statuses[item.stableImportSourceFingerprint()] ?: return@map item
+            val status = statuses[item.stableImportSourceFingerprint()]
+                ?: statuses[item.stableImportMetadataSourceFingerprint()]
+            if (status == null) {
+                LocalSystemMediaBridgeRepository.forgetImportStatus(item)
+                return@map item.copy(
+                    importedAppMediaId = null,
+                    linkedSmallAlbumIds = emptyList(),
+                    linkedPostIds = emptyList(),
+                )
+            }
             LocalSystemMediaBridgeRepository.rememberImportStatus(
                 item = item,
                 appMediaId = status.first,
@@ -113,6 +148,13 @@ private object LocalSystemMediaQueryCache {
         val normalizedItems = items.take(MaxCachedItems)
         memoryItems = normalizedItems
         writeToDisk(context, normalizedItems)
+    }
+
+    fun invalidate(context: Context? = null) {
+        memoryItems = null
+        context?.let {
+            preferences(it).edit().remove(ItemsKey).apply()
+        }
     }
 
     private fun preferences(context: Context): SharedPreferences {

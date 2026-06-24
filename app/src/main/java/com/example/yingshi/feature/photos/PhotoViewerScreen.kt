@@ -1,4 +1,4 @@
-﻿package com.example.yingshi.feature.photos
+package com.example.yingshi.feature.photos
 
 import android.app.Activity
 import android.content.ContextWrapper
@@ -669,6 +669,7 @@ fun PhotoViewerScreen(
             ),
         )
     }
+
     val currentOriginalTarget = remember(currentItem) {
         currentItem.toRealOriginalMediaTarget()
     }
@@ -862,6 +863,11 @@ fun PhotoViewerScreen(
         }
         videoControlsVisible = true
         videoControlsActivityNonce += 1
+
+        if (GlobalPhotoFeedPageStateStore.pendingAutoOpenComment) {
+            GlobalPhotoFeedPageStateStore.pendingAutoOpenComment = false
+            commentPanelState = ViewerCommentPanelState()
+        }
     }
     LaunchedEffect(
         currentItem.mediaId,

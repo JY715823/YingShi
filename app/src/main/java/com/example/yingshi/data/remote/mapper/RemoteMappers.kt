@@ -18,6 +18,9 @@ import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemotePushPreference
+import com.example.yingshi.data.model.RemotePushDeliveryAudit
+import com.example.yingshi.data.model.RemotePushDiagnostics
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
@@ -41,6 +44,9 @@ import com.example.yingshi.data.remote.dto.PostDetailDto
 import com.example.yingshi.data.remote.dto.PostMediaDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.PendingCleanupDto
+import com.example.yingshi.data.remote.dto.PushPreferenceDto
+import com.example.yingshi.data.remote.dto.PushDeliveryAuditDto
+import com.example.yingshi.data.remote.dto.PushDiagnosticsResponseDto
 import com.example.yingshi.data.remote.dto.TrashDetailDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UploadCompleteResponseDto
@@ -160,6 +166,44 @@ fun LifeConsoleBowelMutationResponseDto.toRemoteModel(): RemoteLifeConsoleBowelM
     return RemoteLifeConsoleBowelMutation(
         eventId = event?.bowelEventId,
         bowel = bowel.toRemoteModel(),
+    )
+}
+
+fun PushPreferenceDto.toRemoteModel(): RemotePushPreference {
+    return RemotePushPreference(
+        module = module,
+        category = category,
+        enabled = enabled,
+    )
+}
+
+fun PushDeliveryAuditDto.toRemoteModel(): RemotePushDeliveryAudit {
+    return RemotePushDeliveryAudit(
+        id = id,
+        module = module,
+        category = category,
+        eventType = eventType,
+        status = status,
+        reason = reason,
+        targetRoute = targetRoute,
+        actorUserId = actorUserId,
+        enabledDeviceCount = enabledDeviceCount,
+        partnerDeviceCount = partnerDeviceCount,
+        targetDeviceCount = targetDeviceCount,
+        attemptedCount = attemptedCount,
+        successfulCount = successfulCount,
+        invalidTokenCount = invalidTokenCount,
+        usedSelfFallback = usedSelfFallback,
+        createdAtMillis = createdAtMillis,
+    )
+}
+
+fun PushDiagnosticsResponseDto.toRemoteModel(): RemotePushDiagnostics {
+    return RemotePushDiagnostics(
+        selfFallbackEnabled = selfFallbackEnabled,
+        currentUserEnabledDeviceCount = currentUserEnabledDeviceCount,
+        libraryEnabledDeviceCount = libraryEnabledDeviceCount,
+        recentDeliveries = recentDeliveries.map(PushDeliveryAuditDto::toRemoteModel),
     )
 }
 

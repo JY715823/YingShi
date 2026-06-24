@@ -20,7 +20,7 @@ The Gradle build applies the Google Services plugin only when that file exists. 
 1. In Firebase Console, open Project settings -> Service accounts.
 2. Generate a new private key for Firebase Admin SDK.
 3. Store that JSON outside git.
-4. Set either `FCM_SERVICE_ACCOUNT_PATH` or `FCM_SERVICE_ACCOUNT_JSON_BASE64`.
+4. For local Docker Compose, set the host JSON path and let Compose mount it into the container.
 
 Local `.env` example:
 
@@ -28,7 +28,9 @@ Local `.env` example:
 FCM_ENABLED=true
 FCM_DRY_RUN=false
 FCM_PROJECT_ID=your-firebase-project-id
-FCM_SERVICE_ACCOUNT_PATH=E:\Secrets\yingshi-firebase-adminsdk.json
+FCM_SERVICE_ACCOUNT_HOST_PATH=E:/Secrets/yingshi-firebase-adminsdk.json
+FCM_SERVICE_ACCOUNT_PATH=/run/secrets/firebase-service-account.json
+FCM_SERVICE_ACCOUNT_JSON_BASE64=
 ```
 
 Secret-manager/base64 example:
@@ -39,10 +41,12 @@ FCM_PROJECT_ID=your-firebase-project-id
 FCM_SERVICE_ACCOUNT_JSON_BASE64=base64-encoded-service-account-json
 ```
 
+For local development, keep `FCM_SERVICE_ACCOUNT_JSON_BASE64` empty when using `FCM_SERVICE_ACCOUNT_HOST_PATH`; the backend checks base64 first when it is non-empty.
+
 ## Behavior
 
 - App startup and login restore try to register the current FCM token with `POST /api/push/device-tokens`.
 - `FirebaseMessagingService.onNewToken()` registers refreshed tokens.
-- Backend life-console media and bowel mutations send a data message with `type=life_console.changed`.
-- Android receives that data message and refreshes both life-console widgets.
+- Backend photo/comment/delete and life-console mutations send visible partner notifications when the corresponding preference is enabled.
+- Android receives `life_console.changed` data and refreshes both life-console widgets.
 - If Firebase is not configured, backend logs and skips sending; manual refresh, foreground refresh, and the 30-minute widget refresh still work.

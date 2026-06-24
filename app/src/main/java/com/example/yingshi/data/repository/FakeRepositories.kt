@@ -607,6 +607,7 @@ class FakeUploadRepositoryShell : UploadRepository {
         mimeType: String,
         fileBytes: ByteArray,
         onProgressPercent: (Int) -> Unit,
+        shouldCancel: () -> Boolean,
     ): ApiResult<RemoteMedia> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",
@@ -621,6 +622,7 @@ class FakeUploadRepositoryShell : UploadRepository {
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
         onProgressPercent: (Int) -> Unit,
+        shouldCancel: () -> Boolean,
     ): ApiResult<RemoteMedia> {
         return ApiResult.Error(
             code = "NOT_IMPLEMENTED",
@@ -1133,10 +1135,21 @@ private fun com.example.yingshi.feature.photos.NotificationCenterItemUiModel.toR
     return RemoteNotification(
         notificationId = id,
         type = type.apiValue,
+        module = module,
+        category = category,
         title = title,
         body = body,
         createdAtMillis = createdAtMillis,
         isRead = isRead,
+        actorUserId = actorUserId,
+        actorDisplayName = actorDisplayName,
+        actorAvatarUrl = actorAvatarUrl,
+        actorIsCurrentUser = actorIsCurrentUser,
+        groupId = groupId,
+        operationId = operationId,
+        groupItemCount = groupItemCount,
+        mediaItems = emptyList(),
+        targetRoute = targetRoute,
         targetSummary = targetSummary,
         targetType = targetType,
         smallAlbumId = postId,

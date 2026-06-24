@@ -1,4 +1,5 @@
 package com.example.yingshi.feature.photos
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -1159,6 +1160,8 @@ fun PhotoFeedScreen(
     var consumedNewImportedNonce by remember { mutableIntStateOf(0) }
     var restoredMediaIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var consumedRestoredNonce by remember { mutableIntStateOf(0) }
+    var notificationMediaIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var consumedNotificationNonce by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(currentScrollProgress, scrubberInteracting, scrollAnchors.size) {
         if (scrollAnchors.size <= 1) {
@@ -1205,20 +1208,41 @@ fun PhotoFeedScreen(
         }
     }
 
+    LaunchedEffect(pageStateStore.pendingNotificationNonce) {
+        val nonce = pageStateStore.pendingNotificationNonce
+        if (nonce == 0 || nonce == consumedNotificationNonce) return@LaunchedEffect
+        consumedNotificationNonce = nonce
+        val ids = pageStateStore.pendingNotificationMediaIds
+        if (ids.isEmpty()) return@LaunchedEffect
+        notificationMediaIds = ids
+        delay(PhotoFeedNewImportBadgeMillis)
+        if (consumedNotificationNonce == nonce) {
+            notificationMediaIds = emptySet()
+            pageStateStore.pendingNotificationMediaIds = emptySet()
+        }
+    }
+
     LaunchedEffect(scrollTrigger, blocks) {
         val mediaId = pageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
         val highlightNonce = pageStateStore.pendingHighlightNonce
+        Log.d("PhotoFeedScreen", "Pending scroll target: mediaId=$mediaId, highlightNonce=$highlightNonce, blocks.size=${blocks.size}")
         val targetBlockIndex = findBlockIndexForMedia(blocks, mediaId)
         if (mediaId != pendingTargetMediaIdSnapshot) {
             pendingTargetMediaIdSnapshot = mediaId
             pendingTargetLoadAttemptBlockCount = -1
         }
         if (targetBlockIndex < 0) {
+            Log.d("PhotoFeedScreen", "Target media not found in current blocks, hasMore=$hasMore, isLoadingMore=$isLoadingMore")
             if (!hasMore) {
+                if (pendingTargetLoadAttemptBlockCount != blocks.size) {
+                    pendingTargetLoadAttemptBlockCount = blocks.size
+                    return@LaunchedEffect
+                }
                 delay(PhotoFeedPendingTargetRefreshGraceMillis)
                 if (pageStateStore.pendingScrollTargetMediaId != mediaId) {
                     return@LaunchedEffect
                 }
+                Log.w("PhotoFeedScreen", "Failed to locate target media: $mediaId")
                 pageStateStore.pendingScrollTargetMediaId = null
                 pageStateStore.pendingScrollAnchorOriginalIndex = -1
                 pageStateStore.pendingLocateFailureMessage?.let { message ->
@@ -1237,6 +1261,7 @@ fun PhotoFeedScreen(
             }
             return@LaunchedEffect
         }
+        Log.d("PhotoFeedScreen", "Found target media at index $targetBlockIndex, scrolling...")
         val targetScrollOffset = calculatePhotoFeedTargetScrollOffset(listState)
         listState.scrollToItem(
             index = targetBlockIndex,
@@ -1256,6 +1281,18 @@ fun PhotoFeedScreen(
         pageStateStore.pendingLocateSuccessMessage = null
         pageStateStore.pendingLocateFailureMessage = null
         pageStateStore.pendingImportHasRetryableItems = false
+        if (pageStateStore.pendingAutoOpenViewer) {
+            pageStateStore.pendingAutoOpenViewer = false
+            val viewerIndex = mediaPositionLookup[mediaId] ?: 0
+            Log.d("PhotoFeedScreen", "Auto opening viewer at index $viewerIndex, autoOpenComment=${pageStateStore.pendingAutoOpenComment}")
+            onOpenViewer(
+                PhotoViewerRoute(
+                    mediaItems = displayFeedItems,
+                    initialIndex = viewerIndex,
+                    sourceLabel = "notification-media",
+                ),
+            )
+        }
         pendingTargetMediaIdSnapshot = null
         pendingTargetLoadAttemptBlockCount = -1
     }
@@ -1687,6 +1724,7 @@ fun PhotoFeedScreen(
                             highlightNonce = highlightedTargetNonce,
                             newImportedMediaIds = newImportedMediaIds,
                             restoredMediaIds = restoredMediaIds,
+                            notificationMediaIds = notificationMediaIds,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayAllowed,
                             allowOpenMediaWhileSelecting = allowOpenMediaWhileSelecting,
                             playingInlineVideoId = playingInlineVideoId,
@@ -3257,6 +3295,7 @@ private fun PhotoFeedGridRowContent(
     highlightNonce: Int,
     newImportedMediaIds: Set<String>,
     restoredMediaIds: Set<String>,
+    notificationMediaIds: Set<String>,
     inlineVideoAutoPlayEnabled: Boolean,
     allowOpenMediaWhileSelecting: Boolean,
     playingInlineVideoId: String?,
@@ -3291,6 +3330,7 @@ private fun PhotoFeedGridRowContent(
                     highlightNonce = highlightNonce,
                     isNewImported = item.mediaId in newImportedMediaIds,
                     isRestored = item.mediaId in restoredMediaIds,
+                    isNotificationHighlighted = item.mediaId in notificationMediaIds,
                     inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                     allowOpenMediaWhileSelecting = allowOpenMediaWhileSelecting,
                     isInlineVideoPlaying = playingInlineVideoId == item.mediaId,
@@ -3329,6 +3369,7 @@ private fun PhotoFeedCard(
     highlightNonce: Int,
     isNewImported: Boolean,
     isRestored: Boolean,
+    isNotificationHighlighted: Boolean,
     inlineVideoAutoPlayEnabled: Boolean,
     allowOpenMediaWhileSelecting: Boolean,
     isInlineVideoPlaying: Boolean,
@@ -3401,7 +3442,7 @@ private fun PhotoFeedCard(
         YingShiMediaFrame(
             modifier = Modifier.matchParentSize(),
             selected = isSelected,
-            memoryActive = isNewImported || isRestored || isHighlighted,
+            memoryActive = isNewImported || isRestored || isHighlighted || isNotificationHighlighted,
             topScrimAlpha = if (item.mediaType == AppMediaType.VIDEO) 0.22f else 0.14f,
             bottomGlowAlpha = if (isSelected) 0.24f else 0.16f,
         )
@@ -3416,7 +3457,7 @@ private fun PhotoFeedCard(
                 ),
         )
         MemoryStatusSweepOverlay(
-            visible = isNewImported || isRestored || isHighlighted,
+            visible = isNewImported || isRestored || isHighlighted || isNotificationHighlighted,
             warm = isNewImported || isRestored,
             nonce = if (isHighlighted) highlightNonce else item.mediaId.hashCode(),
             motionEnabled = motionEnabled,
@@ -3474,6 +3515,14 @@ private fun PhotoFeedCard(
         } else if (isRestored) {
             YingShiMemoryBadge(
                 text = "已恢复",
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 6.dp, top = 6.dp),
+                compact = density.columns >= 4,
+            )
+        } else if (isNotificationHighlighted) {
+            YingShiMemoryBadge(
+                text = "通知",
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 6.dp, top = 6.dp),

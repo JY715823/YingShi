@@ -8,13 +8,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -26,14 +27,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,18 +60,29 @@ import com.example.yingshi.data.cache.AppReadCacheStore
 import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.RemoteNotification
+import com.example.yingshi.data.model.RemoteNotificationMediaItem
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostMedia
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.material.icons.Icons as MaterialIcons
+import androidx.compose.material.icons.rounded.Refresh
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -149,8 +167,12 @@ fun NotificationCenterScreen(
     val coroutineScope = rememberCoroutineScope()
     val sessionKey = realBackendSessionKey("notification-center-${route.source}")
     val currentUserId = AuthSessionManager.getCurrentUserSnapshot()?.userId
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
+    val notificationStale = syncStaleState.notificationsStale
     var selectedFilterName by remember(route.source) { mutableStateOf(route.selectedFilterName) }
     var selectedCategoryName by remember(route.source) { mutableStateOf(route.selectedCategoryName) }
+    var includeSelfActor by remember(route.source) { mutableStateOf(false) }
+    var includePartnerActor by remember(route.source) { mutableStateOf(true) }
     fun cachedNotificationsUiState(
         cachedList: List<RemoteNotification>,
         isOfflineReadOnly: Boolean = false,
@@ -186,8 +208,10 @@ fun NotificationCenterScreen(
     val selectedCategory = availableCategories.firstOrNull { it.name == selectedCategoryName }
         ?: NotificationCategoryFilter.ALL
     val filteredNotifications = uiState.notifications
+        .filterByActor(includeSelf = includeSelfActor, includePartner = includePartnerActor)
         .filterBy(selectedFilter)
         .filterBy(selectedFilter, selectedCategory)
+    val notificationSections = filteredNotifications.toNotificationDateSections()
     val unreadCount = filteredNotifications.count { !it.isRead }
     val totalCount = filteredNotifications.size
 
@@ -325,6 +349,16 @@ fun NotificationCenterScreen(
             refresh(showLoading = true)
         }
     }
+
+    LaunchedEffect(Unit) {
+        snapshotFlow { syncStaleState.notificationsStale }.collect { currentlyStale ->
+            if (currentlyStale) {
+                refresh(showLoading = false)
+                SyncVersionTracker.markRefreshed(SyncModule.NOTIFICATIONS)
+            }
+        }
+    }
+
     ReconnectRefreshEffect(
         shouldRefresh = uiState.isOfflineReadOnly ||
             uiState.errorMessage != null ||
@@ -338,7 +372,6 @@ fun NotificationCenterScreen(
             selectedCategoryName = NotificationCategoryFilter.ALL.name
         }
     }
-
     LaunchedEffect(route.source, selectedFilterName, selectedCategoryName, listState) {
         snapshotFlow {
             NotificationCenterRoute(
@@ -365,6 +398,52 @@ fun NotificationCenterScreen(
                 .padding(horizontal = spacing.lg, vertical = spacing.md),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
+            val motion = YingShiThemeTokens.motion
+
+            AnimatedVisibility(
+                visible = notificationStale,
+                enter = fadeIn(animationSpec = tween(motion.noticeMillis, easing = motion.easing)) +
+                    slideInVertically(animationSpec = tween(motion.noticeMillis, easing = motion.easing)) {
+                        -it / 2
+                    },
+                exit = fadeOut(animationSpec = tween(motion.stateMillis, easing = motion.easing)) +
+                    slideOutVertically(animationSpec = tween(motion.stateMillis, easing = motion.easing)) {
+                        -it / 2
+                    },
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .yingShiClickable(onClick = {
+                            refresh(showLoading = false)
+                            SyncVersionTracker.markRefreshed(SyncModule.NOTIFICATIONS)
+                        }),
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    color = colors.primaryContainer.copy(alpha = 0.92f),
+                    border = BorderStroke(1.dp, colors.primaryAction.copy(alpha = 0.18f)),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = MaterialIcons.Rounded.Refresh,
+                            contentDescription = null,
+                            tint = colors.titleAccent,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "有新通知，点击刷新",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            color = colors.titleAccent,
+                        )
+                    }
+                }
+            }
+
             NotificationCenterTopBar(
                 selectedFilter = selectedFilter,
                 selectedCategory = selectedCategory,
@@ -372,11 +451,15 @@ fun NotificationCenterScreen(
                 notifications = uiState.notifications,
                 totalCount = totalCount,
                 unreadCount = unreadCount,
+                includeSelfActor = includeSelfActor,
+                includePartnerActor = includePartnerActor,
                 markAllReadEnabled = unreadCount > 0 && !uiState.isMutating && !uiState.isOfflineReadOnly,
                 deleteAllEnabled = filteredNotifications.isNotEmpty() && !uiState.isMutating && !uiState.isOfflineReadOnly,
                 onBack = onBack,
                 onFilterSelected = { selectedFilterName = it.name },
                 onCategorySelected = { selectedCategoryName = it.name },
+                onToggleSelfActor = { includeSelfActor = !includeSelfActor },
+                onTogglePartnerActor = { includePartnerActor = !includePartnerActor },
                 onMarkAllRead = {
                     if (uiState.isOfflineReadOnly) {
                         showNotice("当前为缓存只读，恢复连接后才能批量标记已读。", YingShiNoticeTone.WARNING)
@@ -466,12 +549,47 @@ fun NotificationCenterScreen(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(spacing.sm),
                     ) {
-                        items(
-                            items = filteredNotifications,
-                            key = NotificationCenterItemUiModel::id,
-                        ) { item ->
+                        notificationSections.forEach { section ->
+                            item(key = "date-${section.key}") {
+                                NotificationDateSectionHeader(title = section.title)
+                            }
+                            items(
+                                items = section.items,
+                                key = NotificationCenterItemUiModel::id,
+                            ) { item ->
                             NotificationCenterItemRow(
                                 item = item,
+                                onMediaClick = { mediaItem ->
+                                    coroutineScope.launch {
+                                        val optimisticItem = item.copy(isRead = true, mediaId = mediaItem.mediaId)
+                                        val updatedState = uiState.replaceNotification(optimisticItem)
+                                        updateUiState(updatedState)
+                                        persistNotificationUiState(currentUserId, updatedState.notifications)
+                                        if (!uiState.isOfflineReadOnly && !item.isRead && !NotificationCenterLocalStore.contains(item.id)) {
+                                            when (val result = RepositoryProvider.notificationRepository.markRead(item.id)) {
+                                                is ApiResult.Success -> {
+                                                    val serverItem = result.data
+                                                        .toNotificationCenterItemUiModel()
+                                                        .copy(mediaId = mediaItem.mediaId)
+                                                    val serverState = uiState.replaceNotification(serverItem)
+                                                    updateUiState(serverState)
+                                                    if (currentUserId != null) {
+                                                        withContext(Dispatchers.IO) {
+                                                            AppReadCacheStore.writeNotification(
+                                                                userId = currentUserId,
+                                                                notification = result.data,
+                                                            )
+                                                        }
+                                                    }
+                                                    persistNotificationUiState(currentUserId, serverState.notifications)
+                                                }
+                                                is ApiResult.Error,
+                                                ApiResult.Loading -> Unit
+                                            }
+                                        }
+                                        onOpenNotificationTarget(optimisticItem)
+                                    }
+                                },
                                 onClick = {
                                     coroutineScope.launch {
                                         if (uiState.isOfflineReadOnly) {
@@ -518,6 +636,7 @@ fun NotificationCenterScreen(
                                     }
                                 },
                             )
+                            }
                         }
                     }
                 }
@@ -595,139 +714,181 @@ private fun NotificationCenterTopBar(
     notifications: List<NotificationCenterItemUiModel>,
     totalCount: Int,
     unreadCount: Int,
+    includeSelfActor: Boolean,
+    includePartnerActor: Boolean,
     markAllReadEnabled: Boolean,
     deleteAllEnabled: Boolean,
     onBack: () -> Unit,
     onFilterSelected: (NotificationCenterFilter) -> Unit,
     onCategorySelected: (NotificationCategoryFilter) -> Unit,
+    onToggleSelfActor: () -> Unit,
+    onTogglePartnerActor: () -> Unit,
     onMarkAllRead: () -> Unit,
     onDeleteAll: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+    val actorFilteredNotifications = remember(notifications, includeSelfActor, includePartnerActor) {
+        notifications.filterByActor(includeSelf = includeSelfActor, includePartner = includePartnerActor)
+    }
 
-    YingShiToolSurface(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = spacing.md, vertical = spacing.md),
-        highlighted = unreadCount > 0,
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NotificationIconButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                onClick = onBack,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "通知",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                )
+                Text(
+                    text = if (unreadCount > 0) {
+                        "共 $totalCount 条，$unreadCount 条未读"
+                    } else {
+                        "共 $totalCount 条，全部已读"
+                    },
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
+                    ),
+                    color = if (unreadCount > 0) colors.memoryAccent else colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            NotificationActionPill(
+                text = "一键已读",
+                enabled = markAllReadEnabled,
+                onClick = onMarkAllRead,
+            )
+            NotificationIconButton(
+                icon = Icons.Default.Delete,
+                contentDescription = "清空当前筛选通知",
+                enabled = deleteAllEnabled,
+                danger = true,
+                onClick = onDeleteAll,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NotificationActorChip(
+                text = "对方",
+                selected = includePartnerActor,
+                onClick = onTogglePartnerActor,
+            )
+            NotificationActorChip(
+                text = "自己",
+                selected = includeSelfActor,
+                onClick = onToggleSelfActor,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.md),
-                verticalAlignment = Alignment.Top,
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
+                NotificationCenterFilter.entries.forEach { filter ->
+                    NotificationFilterChip(
+                        text = filter.label,
+                        selected = filter == selectedFilter,
+                        count = actorFilteredNotifications.unreadCount(filter),
+                        onClick = { onFilterSelected(filter) },
+                    )
+                }
+            }
+            NotificationStatusBadge(
+                text = selectedCategory.displayLabel(selectedFilter),
+                emphasized = selectedCategory != NotificationCategoryFilter.ALL,
+            )
+            Box {
                 NotificationIconButton(
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "返回",
-                    onClick = onBack,
+                    icon = Icons.Default.Menu,
+                    contentDescription = "通知分类",
+                    onClick = { categoryMenuExpanded = true },
                 )
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "通知",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.titleAccent,
-                        )
-                        NotificationActionPill(
-                            text = "一键已读",
-                            enabled = markAllReadEnabled,
-                            onClick = onMarkAllRead,
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "共 $totalCount 条通知",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textSecondary,
-                            )
-                            Text(
-                                text = if (unreadCount > 0) "$unreadCount 条未读" else "全部已读",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = if (unreadCount > 0) {
-                                    colors.memoryAccent
-                                } else {
-                                    colors.textSecondary
-                                },
-                            )
-                        }
-                        NotificationActionPill(
-                            text = "清空",
-                            enabled = deleteAllEnabled,
-                            onClick = onDeleteAll,
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                NotificationFilterSectionLabel(text = "模块")
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                ) {
-                    NotificationCenterFilter.entries.forEach { filter ->
-                        NotificationFilterChip(
-                            text = filter.label,
-                            selected = filter == selectedFilter,
-                            count = notifications.unreadCount(filter),
-                            onClick = { onFilterSelected(filter) },
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                NotificationFilterSectionLabel(text = "分类")
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                DropdownMenu(
+                    expanded = categoryMenuExpanded,
+                    onDismissRequest = { categoryMenuExpanded = false },
                 ) {
                     availableCategories.forEach { category ->
-                        NotificationFilterChip(
-                            text = category.displayLabel(selectedFilter),
-                            selected = category == selectedCategory,
-                            count = notifications
-                                .filterBy(selectedFilter)
-                                .filterBy(selectedFilter, category)
-                                .count { !it.isRead },
-                            onClick = { onCategorySelected(category) },
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = category.displayLabel(selectedFilter),
+                                    color = colors.titleAccent,
+                                )
+                            },
+                            onClick = {
+                                categoryMenuExpanded = false
+                                onCategorySelected(category)
+                            },
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NotificationActorChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier.yingShiClickable(
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (selected) colors.memoryContainer.copy(alpha = 0.90f) else colors.sectionBackground.copy(alpha = 0.56f),
+        border = BorderStroke(1.dp, if (selected) colors.memoryAccent.copy(alpha = 0.32f) else colors.dividerSoft.copy(alpha = 0.52f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(if (selected) colors.memoryAccent else colors.dividerSoft),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
         }
     }
 }
@@ -752,54 +913,60 @@ private fun NotificationFilterChip(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val badgeLabel = when {
+        count > 99 -> "99+"
+        count > 0 -> count.toString()
+        else -> null
+    }
 
-    Surface(
-        modifier = Modifier
-            .yingShiClickable(
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                pressedScale = 0.97f,
-                onClick = onClick,
-            ),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (selected) {
-            colors.primaryContainer.copy(alpha = 0.88f)
-        } else {
-            colors.sectionBackground.copy(alpha = 0.72f)
-        },
-        border = BorderStroke(
-            1.dp,
-            if (selected) {
-                colors.glassStroke.copy(alpha = 0.78f)
-            } else {
-                colors.dividerSoft.copy(alpha = 0.64f)
-            },
-        ),
+    Box(
+        modifier = Modifier.padding(top = 5.dp, end = 6.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            modifier = Modifier
+                .yingShiClickable(
+                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                    pressedScale = 0.97f,
+                    onClick = onClick,
+                ),
+            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+            color = if (selected) {
+                colors.primaryContainer.copy(alpha = 0.88f)
+            } else {
+                colors.sectionBackground.copy(alpha = 0.72f)
+            },
+            border = BorderStroke(
+                1.dp,
+                if (selected) {
+                    colors.glassStroke.copy(alpha = 0.78f)
+                } else {
+                    colors.dividerSoft.copy(alpha = 0.64f)
+                },
+            ),
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                ),
+                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
                 color = colors.titleAccent,
             )
-            if (count > 0) {
-                Surface(
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    color = colors.memoryContainer.copy(alpha = 0.90f),
-                    border = BorderStroke(1.dp, colors.memoryAccent.copy(alpha = 0.22f)),
-                ) {
-                    Text(
-                        text = count.toString(),
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.onMemoryContainer,
-                    )
-                }
+        }
+        if (badgeLabel != null) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 5.dp, y = (-5).dp),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                color = colors.memoryAccent,
+                border = BorderStroke(1.dp, colors.appBackground.copy(alpha = 0.90f)),
+            ) {
+                Text(
+                    text = badgeLabel,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = colors.onMemoryContainer,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -807,12 +974,14 @@ private fun NotificationFilterChip(
 @Composable
 private fun NotificationCenterItemRow(
     item: NotificationCenterItemUiModel,
+    onMediaClick: (NotificationCenterMediaItemUiModel) -> Unit,
     onClick: () -> Unit,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     val presentation = rememberNotificationPresentation(item)
+    var mediaExpanded by remember(item.id) { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier
@@ -836,7 +1005,7 @@ private fun NotificationCenterItemRow(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -847,8 +1016,10 @@ private fun NotificationCenterItemRow(
                 Text(
                     text = formatNotificationTime(item.createdAtMillis),
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.textSecondary,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 NotificationStatusBadge(
                     text = if (item.isRead) "已读" else "未读",
@@ -890,22 +1061,17 @@ private fun NotificationCenterItemRow(
                             text = presentation.body,
                             style = MaterialTheme.typography.bodyMedium,
                             color = colors.textSecondary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = presentation.targetSummary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (item.isRead) {
-                                colors.titleAccent.copy(alpha = 0.82f)
-                            } else {
-                                colors.memoryAccent
-                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (presentation.visual != NotificationVisual.None) {
+                    if (item.mediaItems.isNotEmpty()) {
+                        NotificationMediaStrip(
+                            mediaItems = item.mediaItems,
+                            isCollapsed = item.mediaItems.size > 1 && !mediaExpanded,
+                            onMediaClick = onMediaClick,
+                        )
+                    } else if (presentation.visual != NotificationVisual.None) {
                         NotificationVisualPane(
                             visual = presentation.visual,
                             modifier = Modifier
@@ -915,7 +1081,83 @@ private fun NotificationCenterItemRow(
                     }
                 }
             }
+            if (item.mediaItems.size > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    NotificationActionPill(
+                        text = if (mediaExpanded) "折叠" else "展开 ${item.mediaItems.size} 项",
+                        enabled = true,
+                        onClick = { mediaExpanded = !mediaExpanded },
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun NotificationMediaStrip(
+    mediaItems: List<NotificationCenterMediaItemUiModel>,
+    isCollapsed: Boolean,
+    onMediaClick: (NotificationCenterMediaItemUiModel) -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val visibleItems = if (isCollapsed) mediaItems.take(3) else mediaItems
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        visibleItems.forEachIndexed { index, media ->
+            NotificationMediaTile(
+                media = media,
+                modifier = Modifier
+                    .size(76.dp)
+                    .offset(x = if (isCollapsed) (-index * 22).dp else 0.dp, y = if (isCollapsed) (index * 5).dp else 0.dp)
+                    .alpha(if (index == 0) 1f else 0.72f),
+                onClick = { onMediaClick(media) },
+            )
+        }
+        if (mediaItems.size > visibleItems.size) {
+            Text(
+                text = "+${mediaItems.size - visibleItems.size}",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = YingShiThemeTokens.colors.textSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NotificationMediaTile(
+    media: NotificationCenterMediaItemUiModel,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = modifier.yingShiClickable(
+            shape = RoundedCornerShape(radius.lg),
+            pressedScale = 0.96f,
+            onClick = onClick,
+        ),
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.sectionBackground.copy(alpha = 0.56f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.60f)),
+    ) {
+        AppContentMediaThumbnail(
+            mediaSource = media.mediaSource,
+            mediaType = media.mediaType,
+            palette = realPaletteFor(media.mediaId),
+            modifier = Modifier.fillMaxSize(),
+            contentDescription = if (media.mediaType == AppMediaType.VIDEO) "通知视频预览" else "通知图片预览",
+            requestSize = 240,
+            showLoadingIndicator = false,
+            showStatusBadge = true,
+            showVideoPlayOverlay = false,
+        )
     }
 }
 
@@ -1233,19 +1475,53 @@ private fun NotificationCenterEmptyState(
 }
 
 @Composable
+private fun NotificationDateSectionHeader(
+    title: String,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = YingShiThemeTokens.colors.titleAccent,
+        modifier = Modifier.padding(top = YingShiThemeTokens.spacing.xs),
+    )
+}
+
+@Composable
 private fun NotificationIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
+    enabled: Boolean = true,
+    danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
+    val containerColor = when {
+        !enabled -> colors.sectionBackground.copy(alpha = 0.42f)
+        danger -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.74f)
+        else -> colors.sectionBackground.copy(alpha = 0.78f)
+    }
+    val borderColor = when {
+        !enabled -> colors.dividerSoft.copy(alpha = 0.42f)
+        danger -> MaterialTheme.colorScheme.error.copy(alpha = 0.20f)
+        else -> colors.dividerSoft.copy(alpha = 0.72f)
+    }
+    val iconTint = when {
+        !enabled -> colors.textSecondary.copy(alpha = 0.56f)
+        danger -> MaterialTheme.colorScheme.onErrorContainer
+        else -> colors.titleAccent
+    }
     Surface(
         modifier = Modifier
             .size(44.dp)
-            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+            .yingShiClickable(
+                enabled = enabled,
+                shape = CircleShape,
+                pressedScale = 0.94f,
+                onClick = onClick,
+            ),
         shape = CircleShape,
-        color = colors.sectionBackground.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -1253,7 +1529,7 @@ private fun NotificationIconButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = colors.titleAccent,
+                tint = iconTint,
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -1304,6 +1580,17 @@ private fun List<NotificationCenterItemUiModel>.filterBy(
     filter: NotificationCenterFilter,
 ): List<NotificationCenterItemUiModel> {
     return filter { it.matchesModule(filter) }
+}
+
+private fun List<NotificationCenterItemUiModel>.filterByActor(
+    includeSelf: Boolean,
+    includePartner: Boolean,
+): List<NotificationCenterItemUiModel> {
+    if (includeSelf && includePartner) return this
+    if (!includeSelf && !includePartner) return emptyList()
+    return filter { item ->
+        if (item.actorIsCurrentUser) includeSelf else includePartner
+    }
 }
 
 private fun mergeNotificationStreams(
@@ -1595,6 +1882,25 @@ private fun List<NotificationCenterItemUiModel>.filterBy(
     }
 }
 
+private data class NotificationDateSection(
+    val key: String,
+    val title: String,
+    val items: List<NotificationCenterItemUiModel>,
+)
+
+private fun List<NotificationCenterItemUiModel>.toNotificationDateSections(): List<NotificationDateSection> {
+    return groupBy { item -> notificationDateKey(item.createdAtMillis) }
+        .map { (key, items) ->
+            val sortedItems = items.sortedByDescending(NotificationCenterItemUiModel::createdAtMillis)
+            NotificationDateSection(
+                key = key,
+                title = notificationDateTitle(sortedItems.first().createdAtMillis),
+                items = sortedItems,
+            )
+        }
+        .sortedByDescending { section -> section.items.firstOrNull()?.createdAtMillis ?: 0L }
+}
+
 private fun List<NotificationCenterItemUiModel>.unreadCount(
     filter: NotificationCenterFilter,
 ): Int {
@@ -1604,6 +1910,12 @@ private fun List<NotificationCenterItemUiModel>.unreadCount(
 private fun NotificationCenterItemUiModel.matchesModule(
     filter: NotificationCenterFilter,
 ): Boolean {
+    if (module.equals("life", ignoreCase = true)) {
+        return filter == NotificationCenterFilter.LIFE
+    }
+    if (module.equals("photos", ignoreCase = true)) {
+        return filter == NotificationCenterFilter.PHOTOS
+    }
     val haystack = listOfNotNull(targetType, targetSummary, title, body)
         .joinToString(separator = " ")
         .lowercase()
@@ -1626,10 +1938,10 @@ private fun NotificationCenterItemUiModel.matchesCategory(
     return when (filter) {
         NotificationCenterFilter.PHOTOS -> when (category) {
             NotificationCategoryFilter.ALL -> true
-            NotificationCategoryFilter.COMMENT -> type == NotificationCenterItemType.COMMENT
-            NotificationCategoryFilter.CONTENT_UPDATE -> type == NotificationCenterItemType.CONTENT_UPDATE
-            NotificationCategoryFilter.DELETE_RESTORE -> type == NotificationCenterItemType.DELETE_RESTORE
-            NotificationCategoryFilter.SYSTEM -> type == NotificationCenterItemType.SYSTEM
+            NotificationCategoryFilter.COMMENT -> this.category.equals("comment", ignoreCase = true) || type == NotificationCenterItemType.COMMENT
+            NotificationCategoryFilter.CONTENT_UPDATE -> this.category.equals("content_update", ignoreCase = true) || type == NotificationCenterItemType.CONTENT_UPDATE
+            NotificationCategoryFilter.DELETE_RESTORE -> this.category.equals("delete", ignoreCase = true) || type == NotificationCenterItemType.DELETE_RESTORE
+            NotificationCategoryFilter.SYSTEM -> this.category.equals("system", ignoreCase = true) || type == NotificationCenterItemType.SYSTEM
             NotificationCategoryFilter.LEDGER,
             NotificationCategoryFilter.CHAT,
             NotificationCategoryFilter.TRACE,
@@ -1638,11 +1950,12 @@ private fun NotificationCenterItemUiModel.matchesCategory(
 
         NotificationCenterFilter.LIFE -> when (category) {
             NotificationCategoryFilter.ALL -> true
-            NotificationCategoryFilter.LEDGER -> isLifeLedgerTarget()
-            NotificationCategoryFilter.CHAT -> isLifeChatTarget()
-            NotificationCategoryFilter.TRACE -> isLifeConsoleTarget()
+            NotificationCategoryFilter.LEDGER -> this.category.equals("ledger", ignoreCase = true) || isLifeLedgerTarget()
+            NotificationCategoryFilter.CHAT -> this.category.equals("chat", ignoreCase = true) || isLifeChatTarget()
+            NotificationCategoryFilter.TRACE -> this.category.equals("trace", ignoreCase = true) || isLifeConsoleTarget()
             NotificationCategoryFilter.SYSTEM -> {
-                matchesModule(NotificationCenterFilter.LIFE) &&
+                this.category.equals("system", ignoreCase = true) ||
+                    matchesModule(NotificationCenterFilter.LIFE) &&
                     !isLifeLedgerTarget() &&
                     !isLifeChatTarget() &&
                     !isLifeConsoleTarget()
@@ -1661,18 +1974,16 @@ private fun notificationCategoriesFor(
     return when (filter) {
         NotificationCenterFilter.PHOTOS -> listOf(
             NotificationCategoryFilter.ALL,
-            NotificationCategoryFilter.COMMENT,
             NotificationCategoryFilter.CONTENT_UPDATE,
+            NotificationCategoryFilter.COMMENT,
             NotificationCategoryFilter.DELETE_RESTORE,
-            NotificationCategoryFilter.SYSTEM,
         )
 
         NotificationCenterFilter.LIFE -> listOf(
             NotificationCategoryFilter.ALL,
+            NotificationCategoryFilter.TRACE,
             NotificationCategoryFilter.LEDGER,
             NotificationCategoryFilter.CHAT,
-            NotificationCategoryFilter.TRACE,
-            NotificationCategoryFilter.SYSTEM,
         )
     }
 }
@@ -1684,7 +1995,6 @@ private fun NotificationCategoryFilter.displayLabel(
         NotificationCenterFilter.PHOTOS -> label
         NotificationCenterFilter.LIFE -> when (this) {
             NotificationCategoryFilter.CHAT -> "聊天导入"
-            NotificationCategoryFilter.SYSTEM -> "同步提醒"
             else -> label
         }
     }
@@ -1692,6 +2002,14 @@ private fun NotificationCategoryFilter.displayLabel(
 
 private fun formatNotificationTime(timeMillis: Long): String {
     return SimpleDateFormat("M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
+}
+
+private fun notificationDateKey(timeMillis: Long): String {
+    return SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date(timeMillis))
+}
+
+private fun notificationDateTitle(timeMillis: Long): String {
+    return SimpleDateFormat("M月d日", Locale.CHINA).format(Date(timeMillis))
 }
 
 private suspend fun persistNotificationUiState(
@@ -1711,15 +2029,41 @@ private fun NotificationCenterItemUiModel.toRemoteNotification(): RemoteNotifica
     return RemoteNotification(
         notificationId = id,
         type = type.apiValue,
+        module = module,
+        category = category,
         title = title,
         body = body,
         createdAtMillis = createdAtMillis,
         isRead = isRead,
+        actorUserId = actorUserId,
+        actorDisplayName = actorDisplayName,
+        actorAvatarUrl = actorAvatarUrl,
+        actorIsCurrentUser = actorIsCurrentUser,
+        groupId = groupId,
+        operationId = operationId,
+        groupItemCount = groupItemCount,
+        mediaItems = mediaItems.map(NotificationCenterMediaItemUiModel::toRemoteNotificationMediaItem),
+        targetRoute = targetRoute,
         targetSummary = targetSummary,
         targetType = targetType,
         smallAlbumId = postId,
         mediaId = mediaId,
         trashItemId = trashItemId,
+    )
+}
+
+private fun NotificationCenterMediaItemUiModel.toRemoteNotificationMediaItem(): RemoteNotificationMediaItem {
+    return RemoteNotificationMediaItem(
+        mediaId = mediaId,
+        mediaType = mediaType.name.lowercase(Locale.US),
+        mimeType = mimeType,
+        previewUrl = mediaSource?.thumbnailUrl,
+        thumbnailUrl = mediaSource?.thumbnailUrl,
+        coverUrl = mediaSource?.coverUrl,
+        mediaUrl = mediaSource?.mediaUrl ?: mediaSource?.originalUrl,
+        videoUrl = mediaSource?.videoUrl,
+        displayTimeMillis = displayTimeMillis,
+        durationMillis = durationMillis,
     )
 }
 

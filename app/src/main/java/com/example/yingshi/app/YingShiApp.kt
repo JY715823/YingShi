@@ -24,7 +24,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -58,6 +62,8 @@ import com.example.yingshi.feature.life.LifeConsoleScreen
 import com.example.yingshi.feature.life.LifeScreen
 import com.example.yingshi.feature.life.push.PushTokenRegistrar
 import com.example.yingshi.feature.ledger.LedgerScreen
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.feature.me.EditProfileRoute
 import com.example.yingshi.feature.me.EditProfileScreen
 import com.example.yingshi.feature.me.MyScreen
@@ -115,6 +121,7 @@ import com.example.yingshi.feature.photos.TrashDetailRoute
 import com.example.yingshi.feature.photos.TrashDetailScreen
 import com.example.yingshi.feature.photos.TrashEntryType
 import com.example.yingshi.feature.photos.TrashPageScreen
+import com.example.yingshi.feature.photos.toPostDetailPlaceholderRoute
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -265,6 +272,8 @@ fun YingShiApp() {
     val openLifeConsoleNonce = AppNavigationRequests.openLifeConsoleNonce
     val openLedgerRequestNonce = AppNavigationRequests.openLedgerNonce
     val openLedgerAddRequestNonce = AppNavigationRequests.openLedgerAddNonce
+    val openPhotoFeedRequestNonce = AppNavigationRequests.openPhotoFeedNonce
+    val openSmallAlbumRequestNonce = AppNavigationRequests.openSmallAlbumNonce
     val initialCurrentUserSnapshot = remember(appContext, backendSettings.baseUrl) {
         AuthSessionManager.getCurrentUserSnapshot()
     }
@@ -313,9 +322,34 @@ fun YingShiApp() {
         currentUser?.let(AuthSessionManager::saveCurrentUserSnapshot)
     }
 
+    LaunchedEffect(currentUser?.userId) {
+        SyncVersionTracker.reset()
+    }
+
     LaunchedEffect(offlineAccessState.isReadOnly) {
         if (offlineAccessState.isReadOnly) {
             showQuickAddSheet = false
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                SyncVersionTracker.setAppInForeground(true)
+                SyncVersionTracker.startPolling()
+            } else if (event == Lifecycle.Event.ON_STOP) {
+                SyncVersionTracker.setAppInForeground(false)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            SyncVersionTracker.setAppInForeground(true)
+            SyncVersionTracker.startPolling()
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            SyncVersionTracker.setAppInForeground(false)
         }
     }
 
@@ -545,6 +579,7 @@ fun YingShiApp() {
             is ApiResult.Success -> {
                 currentUser = result.data
                 PushTokenRegistrar.registerCurrentTokenIfPossible(context)
+                SyncVersionTracker.requestImmediatePoll()
                 authNoticeMessage = null
                 profileRefreshMessage = null
                 isCheckingAuth = false
@@ -631,6 +666,33 @@ fun YingShiApp() {
         ledgerOpenAddNonce += 1
     }
 
+    LaunchedEffect(openPhotoFeedRequestNonce) {
+        if (openPhotoFeedRequestNonce <= 0) return@LaunchedEffect
+        val mediaId = AppNavigationRequests.photoFeedMediaId
+        val autoOpenViewer = AppNavigationRequests.photoFeedAutoOpenViewer
+        val autoOpenComment = AppNavigationRequests.photoFeedAutoOpenComment
+        if (!mediaId.isNullOrBlank()) {
+            GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId = mediaId
+            GlobalPhotoFeedPageStateStore.pendingScrollAnchorOriginalIndex = -1
+            GlobalPhotoFeedPageStateStore.pendingHighlightNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingNotificationMediaIds = setOf(mediaId)
+            GlobalPhotoFeedPageStateStore.pendingNotificationNonce += 1
+            GlobalPhotoFeedPageStateStore.pendingAutoOpenViewer = autoOpenViewer
+            GlobalPhotoFeedPageStateStore.pendingAutoOpenComment = autoOpenComment
+            GlobalPhotoFeedPageStateStore.pendingLocateSuccessMessage = "已定位到通知里的媒体"
+            GlobalPhotoFeedPageStateStore.pendingLocateFailureMessage = "照片流还在刷新定位"
+        }
+        photoViewerRoute = null
+        systemMediaViewerRoute = null
+        notificationCenterRoute = null
+        notificationDetailRoute = null
+        postDetailRoute = null
+        transferCenterRoute = null
+        selectedDestinationName = RootDestination.PHOTOS.name
+        photosTopDestinationName = PhotosTopDestination.PHOTOS.name
+        photoFeedScrollTrigger++
+    }
+
     val isProfileFlowActive = personalProfileRoute != null || editProfileRoute != null
 
     val markPostListUpdated: (String, String?) -> Unit = { postId, albumId ->
@@ -675,6 +737,41 @@ fun YingShiApp() {
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
         postDetailRoute = postDetailRouteWithNotice(route, route.entryNotice ?: "已加入小相册")
+    }
+    LaunchedEffect(openSmallAlbumRequestNonce) {
+        if (openSmallAlbumRequestNonce <= 0) return@LaunchedEffect
+        val postId = AppNavigationRequests.smallAlbumId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val autoOpenComment = AppNavigationRequests.smallAlbumAutoOpenComment
+        photoViewerRoute = null
+        systemMediaViewerRoute = null
+        systemMediaRoute = null
+        createPostRoute = null
+        transferCenterRoute = null
+        notificationCenterRoute = null
+        notificationDetailRoute = null
+        selectedDestinationName = RootDestination.PHOTOS.name
+        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+
+        val resolvedRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+            when (val result = RepositoryProvider.postRepository.getPostDetail(postId)) {
+                is ApiResult.Success -> result.data.toPostDetailPlaceholderRoute()
+                is ApiResult.Error -> {
+                    showAppNotice("已进入小相册，详情还在同步。", YingShiNoticeTone.WARNING)
+                    pushSmallAlbumFallbackRoute(postId)
+                }
+                ApiResult.Loading -> pushSmallAlbumFallbackRoute(postId)
+            }
+        } else {
+            FakeAlbumRepository.getPost(postId)
+                ?.let(FakeAlbumRepository::toPostDetailRoute)
+                ?: pushSmallAlbumFallbackRoute(postId)
+        }
+        val route = resolvedRoute.copy(
+            entryNotice = "从推送进入",
+            autoOpenComment = autoOpenComment,
+        )
+        markPostListUpdated(route.postId, route.albumId)
+        postDetailRoute = postDetailRouteWithNotice(route, "从推送进入")
     }
     val requestPhotoFeedRefresh: (List<String>, Boolean) -> Unit = { resultMediaIds, hasRetryableItems ->
         val validResultMediaIds = resultMediaIds.filter { it.isNotBlank() }.distinct()
@@ -883,6 +980,19 @@ fun YingShiApp() {
                     ) {
                         photoFeedScrollTrigger++
                     }
+                }
+            }
+            if (event.successCount > 0) {
+                if (event.operationType == LocalSystemMediaBridgeRepository.OperationType.IMPORT_TO_APP) {
+                    SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                    SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
+                } else if (
+                    event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST ||
+                    event.operationType == LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST
+                ) {
+                    SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                    SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                    SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                 }
             }
             LocalSystemMediaBridgeRepository.dismissOperationResult(event.eventId)
@@ -1110,44 +1220,14 @@ fun YingShiApp() {
             val openNotificationTarget: (NotificationCenterItemUiModel) -> Unit = { item ->
                 captureNotificationReturnRoute()
                 when {
+                    // 1. 缓存管理入口
                     item.id == "notice-cache-1" -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
                         cacheManagementRoute = CacheManagementRoute(source = "notification-center")
                     }
 
-                    !item.postId.isNullOrBlank() -> {
-                        notificationCenterRoute = null
-                        notificationDetailRoute = null
-                        selectedDestinationName = RootDestination.PHOTOS.name
-                        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                        postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                            item.toNotificationPostRoute()
-                        } else {
-                            FakeAlbumRepository.getPost(item.postId)
-                                ?.let(FakeAlbumRepository::toPostDetailRoute)
-                                ?.copy(
-                                    entryNotice = "从通知进入",
-                                    highlightMediaIds = item.mediaId?.let(::listOf).orEmpty(),
-                                    focusMediaId = item.mediaId,
-                                )
-                                ?: item.toNotificationPostRoute()
-                        }
-                    }
-
-                    !item.trashItemId.isNullOrBlank() && RepositoryProvider.currentMode == RepositoryMode.REAL -> {
-                        notificationCenterRoute = null
-                        notificationDetailRoute = null
-                        selectedDestinationName = RootDestination.PHOTOS.name
-                        photosTopDestinationName = PhotosTopDestination.TRASH.name
-                        trashDetailRoute = TrashDetailRoute(
-                            entryId = item.trashItemId,
-                            entryType = item.targetType.toTrashEntryTypeOrNull(),
-                            sourcePostId = item.postId,
-                            sourceMediaId = item.mediaId,
-                        )
-                    }
-
+                    // 2. 生活模块（记账 / 今日痕迹 / 聊天导入）
                     item.isLifeLedgerTarget() -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
@@ -1175,6 +1255,20 @@ fun YingShiApp() {
                         chatViewerRouteActive = true
                     }
 
+                    // 3. 回收站 — 有具体条目跳详情，否则跳回收站列表
+                    !item.trashItemId.isNullOrBlank() && RepositoryProvider.currentMode == RepositoryMode.REAL -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.PHOTOS.name
+                        photosTopDestinationName = PhotosTopDestination.TRASH.name
+                        trashDetailRoute = TrashDetailRoute(
+                            entryId = item.trashItemId,
+                            entryType = item.targetType.toTrashEntryTypeOrNull(),
+                            sourcePostId = item.postId,
+                            sourceMediaId = item.mediaId,
+                        )
+                    }
+
                     item.type == NotificationCenterItemType.DELETE_RESTORE -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
@@ -1182,12 +1276,39 @@ fun YingShiApp() {
                         photosTopDestinationName = PhotosTopDestination.TRASH.name
                     }
 
+                    // 4. 导入完成 — 跳转照片流定位到导入的媒体
                     item.targetType.equals("UPLOAD", ignoreCase = true) -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
-                        transferCenterRoute = TransferCenterRoute(source = "notification-center")
+                        openPhotoFeedMediaFromTransferCenter(
+                            item.mediaId.orEmpty(),
+                            item.mediaItems.map { it.mediaId },
+                            false,
+                        )
                     }
 
+                    // 5. 小相册（新建 / 编辑 / 评论）- 进入相册详情，高亮对应媒体
+                    !item.postId.isNullOrBlank() -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        selectedDestinationName = RootDestination.PHOTOS.name
+                        photosTopDestinationName = PhotosTopDestination.ALBUMS.name
+                        postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                            item.toNotificationPostRoute()
+                        } else {
+                            FakeAlbumRepository.getPost(item.postId)
+                                ?.let(FakeAlbumRepository::toPostDetailRoute)
+                                ?.copy(
+                                    entryNotice = "从通知进入",
+                                    highlightMediaIds = item.mediaId?.let(::listOf).orEmpty(),
+                                    focusMediaId = item.mediaId,
+                                    autoOpenComment = item.type == NotificationCenterItemType.COMMENT,
+                                )
+                                ?: item.toNotificationPostRoute()
+                        }
+                    }
+
+                    // 6. 内容更新（无具体相册时回退到相册列表）
                     item.type == NotificationCenterItemType.CONTENT_UPDATE -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
@@ -1195,6 +1316,24 @@ fun YingShiApp() {
                         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                     }
 
+                    // 7. 单媒体（无相册归属）- 在照片流中定位，评论类型自动打开查看器
+                    item.targetRoute?.startsWith("photos:media:", ignoreCase = true) == true ||
+                        (!item.mediaId.isNullOrBlank() && item.mediaItems.isNotEmpty()) ||
+                        (item.type == NotificationCenterItemType.COMMENT && !item.mediaId.isNullOrBlank()) -> {
+                        notificationCenterRoute = null
+                        notificationDetailRoute = null
+                        if (item.type == NotificationCenterItemType.COMMENT) {
+                            GlobalPhotoFeedPageStateStore.pendingAutoOpenViewer = true
+                            GlobalPhotoFeedPageStateStore.pendingAutoOpenComment = true
+                        }
+                        openPhotoFeedMediaFromTransferCenter(
+                            item.mediaId.orEmpty(),
+                            item.mediaItems.map { it.mediaId },
+                            false,
+                        )
+                    }
+
+                    // 8. 兜底 — 打开通知详情页
                     else -> {
                         notificationDetailRoute = NotificationDetailRoute(
                             notificationId = item.id,
@@ -1349,6 +1488,10 @@ fun YingShiApp() {
                         onBack = { trashDetailRoute = null },
                         onEntryRemoved = { trashDetailRoute = null },
                         onEntryRestored = { mediaIds ->
+                            SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+                            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                             trashDetailRoute = null
                             if (mediaIds.isNotEmpty()) {
                                 requestPhotoFeedRestoreLocate(mediaIds)
@@ -1537,6 +1680,8 @@ fun YingShiApp() {
                         route = route,
                         onBack = { createPostRoute = null },
                         onCreated = { createdRoute ->
+                            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                             markPostListUpdated(createdRoute.postId, createdRoute.albumId)
                             createPostRoute = null
                             selectedDestinationName = RootDestination.PHOTOS.name
@@ -1565,6 +1710,8 @@ fun YingShiApp() {
                         route = route,
                         onBack = { gearEditRoute = null },
                         onPostUpdated = { postId, albumId ->
+                            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                             markPostListUpdated(postId, albumId)
                             postDetailRoute = postDetailRoute?.let { currentRoute ->
                                 if (currentRoute.postId == postId) {
@@ -1584,6 +1731,12 @@ fun YingShiApp() {
                         },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
                             if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
+                                if (deleteMediaSystemWide) {
+                                    SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                                }
+                                SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                                SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+                                SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                                 markPostListUpdated(postId, postDetailRoute?.albumId)
                                 gearEditRoute = null
                                 postDetailRoute = null
@@ -1865,6 +2018,22 @@ private fun NotificationCenterItemUiModel.toNotificationPostRoute(): PostDetailP
         entryNotice = "从通知进入",
         highlightMediaIds = mediaId?.let(::listOf).orEmpty(),
         focusMediaId = mediaId,
+        autoOpenComment = type == NotificationCenterItemType.COMMENT,
+    )
+}
+
+private fun pushSmallAlbumFallbackRoute(postId: String): PostDetailPlaceholderRoute {
+    val syntheticAlbumId = "push-entry"
+    return PostDetailPlaceholderRoute(
+        postId = postId,
+        albumId = syntheticAlbumId,
+        albumIds = listOf(syntheticAlbumId),
+        title = "小相册",
+        summary = "正在同步详情",
+        postDisplayTimeMillis = System.currentTimeMillis(),
+        mediaCount = 0,
+        coverPalette = NotificationPlaceholderPalette,
+        entryNotice = "从推送进入",
     )
 }
 

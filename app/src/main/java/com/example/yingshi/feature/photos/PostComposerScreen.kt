@@ -319,10 +319,18 @@ fun CreatePostScreen(
                     additionalAppCoverMediaId = resolvedCoverMediaId,
                 )
                 if (queuedCount > 0) {
-                    Toast.makeText(context, "已加入上传队列，完成后会创建新小相册。", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        if (selectedSystemMediaItems.all { it.isImportedToApp }) {
+                            "正在复用已导入媒体创建小相册。"
+                        } else {
+                            "已加入上传队列，完成后会创建新小相册。"
+                        },
+                        Toast.LENGTH_SHORT,
+                    ).show()
                     onSubmittedToBackground()
                 } else {
-                    localMessage = "当前没有可处理的媒体。"
+                    localMessage = "当前媒体已在目标位置或暂时不可处理，请刷新后重试。"
                 }
             } else {
                 val createdPost = LocalSystemMediaBridgeRepository.createPostFromSystemMediaDraft(

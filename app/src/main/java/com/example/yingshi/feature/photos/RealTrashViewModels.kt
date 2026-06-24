@@ -250,6 +250,7 @@ class RealTrashListViewModel(
             }
             if (successCount > 0) {
                 notifyRealBackendContentChanged()
+                invalidateSystemMediaMetadataCache()
             }
             refresh(selectedType)
             _uiState.update {
@@ -296,6 +297,9 @@ class RealTrashListViewModel(
                 when (trashRepository.purgeTrashItem(entry.id)) {
                     is ApiResult.Success -> {
                         successCount += 1
+                        entry.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+                        entry.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+                        invalidateSystemMediaMetadataCache()
                     }
                     is ApiResult.Error -> {
                         failureCount += 1
@@ -432,7 +436,7 @@ class RealTrashDetailViewModel(
             _uiState.update { it.copy(errorMessage = "缓存只读模式下不能恢复回收站内容。") }
             return
         }
-        mutateTrashItem("已恢复到正常列表。", onSuccess) {
+        mutateTrashItem("已恢复到正常列表。", onSuccess = onSuccess) {
             trashRepository.restoreTrashItem(route.entryId)
         }
     }
@@ -442,7 +446,7 @@ class RealTrashDetailViewModel(
             _uiState.update { it.copy(errorMessage = "缓存只读模式下不能恢复回收站内容。") }
             return
         }
-        mutateTrashItem("已恢复到正常列表。", onSuccess) {
+        mutateTrashItem("已恢复到正常列表。", onSuccess = onSuccess) {
             trashRepository.restoreTrashItem(trashItemId)
         }
     }
@@ -452,7 +456,13 @@ class RealTrashDetailViewModel(
             _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
             return
         }
-        mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
+        mutateTrashItem("已永久删除该回收站项目。", clearImportOverlayOnSuccess = true, onSuccess = {
+            _uiState.value.detail?.item?.let { item ->
+                item.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+                item.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+            }
+            onSuccess()
+        }) {
             trashRepository.purgeTrashItem(route.entryId)
         }
     }
@@ -462,7 +472,13 @@ class RealTrashDetailViewModel(
             _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
             return
         }
-        mutateTrashItem("已永久删除该回收站项目。", { onSuccess() }) {
+        mutateTrashItem("已永久删除该回收站项目。", clearImportOverlayOnSuccess = true, onSuccess = {
+            _uiState.value.detail?.item?.let { item ->
+                item.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+                item.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+            }
+            onSuccess()
+        }) {
             trashRepository.purgeTrashItem(trashItemId)
         }
     }
@@ -519,6 +535,7 @@ class RealTrashDetailViewModel(
 
     private fun mutateTrashItem(
         successMessage: String,
+        clearImportOverlayOnSuccess: Boolean = false,
         onSuccess: ((RemoteTrashItem) -> Unit)? = null,
         block: suspend () -> ApiResult<RemoteTrashItem>,
     ) {
@@ -532,6 +549,12 @@ class RealTrashDetailViewModel(
             when (val result = block()) {
                 is ApiResult.Success -> {
                     notifyRealBackendContentChanged()
+                    invalidateSystemMediaMetadataCache()
+                    if (clearImportOverlayOnSuccess) {
+                        LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaIds(
+                            result.data.relatedMediaIds + listOfNotNull(result.data.sourceMediaId),
+                        )
+                    }
                     _uiState.update {
                         it.copy(
                             isMutating = false,

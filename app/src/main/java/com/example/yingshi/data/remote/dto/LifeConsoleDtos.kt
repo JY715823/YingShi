@@ -86,3 +86,45 @@ data class RegisterPushTokenResponseDto(
     val lastSeenAtMillis: Long,
     val enabled: Boolean,
 )
+
+data class PushPreferenceDto(
+    val module: String,
+    val category: String,
+    val enabled: Boolean,
+)
+
+data class PushPreferencesResponseDto(
+    val preferences: List<PushPreferenceDto> = emptyList(),
+)
+
+data class PushDeliveryAuditDto(
+    val id: String,
+    val module: String,
+    val category: String,
+    val eventType: String,
+    val status: String,
+    val reason: String,
+    val targetRoute: String,
+    val actorUserId: String,
+    val enabledDeviceCount: Int,
+    val partnerDeviceCount: Int,
+    val targetDeviceCount: Int,
+    val attemptedCount: Int,
+    val successfulCount: Int,
+    val invalidTokenCount: Int,
+    val usedSelfFallback: Boolean,
+    val createdAtMillis: Long,
+)
+
+data class PushDiagnosticsResponseDto(
+    val selfFallbackEnabled: Boolean,
+    val currentUserEnabledDeviceCount: Int,
+    val libraryEnabledDeviceCount: Int,
+    val recentDeliveries: List<PushDeliveryAuditDto> = emptyList(),
+)
+
+data class UpdatePushPreferenceRequestDto(
+    val module: String,
+    val category: String,
+    val enabled: Boolean,
+)

@@ -116,6 +116,7 @@ data class SmallAlbumDetailRoute(
     val highlightMediaIds: List<String> = emptyList(),
     val focusMediaId: String? = highlightMediaIds.firstOrNull(),
     val feedbackNonce: Int = 0,
+    val autoOpenComment: Boolean = false,
 ) {
     val smallAlbumId: String
         get() = postId

@@ -22,6 +22,8 @@ import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemotePushDiagnostics
+import com.example.yingshi.data.model.RemotePushPreference
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
@@ -178,6 +180,7 @@ interface UploadRepository {
         mimeType: String,
         fileBytes: ByteArray,
         onProgressPercent: (Int) -> Unit = {},
+        shouldCancel: () -> Boolean = { false },
     ): ApiResult<RemoteMedia>
 
     suspend fun uploadLocalStream(
@@ -187,6 +190,7 @@ interface UploadRepository {
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
         onProgressPercent: (Int) -> Unit = {},
+        shouldCancel: () -> Boolean = { false },
     ): ApiResult<RemoteMedia>
 
     suspend fun confirmUpload(
@@ -284,4 +288,16 @@ interface LifeConsoleRepository {
         platform: String,
         token: String,
     ): ApiResult<Unit>
+}
+
+interface PushPreferenceRepository {
+    suspend fun getPushPreferences(): ApiResult<List<RemotePushPreference>>
+
+    suspend fun getPushDiagnostics(): ApiResult<RemotePushDiagnostics>
+
+    suspend fun updatePushPreference(
+        module: String,
+        category: String,
+        enabled: Boolean,
+    ): ApiResult<List<RemotePushPreference>>
 }

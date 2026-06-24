@@ -14,6 +14,7 @@ import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.MediaRepository
 import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +44,7 @@ class RealPhotoFeedViewModel(
     private var loadMoreInFlight = false
     private var loadMoreBlockedByError = false
     private var refreshJob: Job? = null
+    private var refreshCompletion: CompletableDeferred<Boolean>? = null
     private var refreshVersion = 0
     private val _uiState = MutableStateFlow(RealPhotoFeedUiState(isLoading = true))
     val uiState: StateFlow<RealPhotoFeedUiState> = _uiState.asStateFlow()
@@ -52,7 +54,18 @@ class RealPhotoFeedViewModel(
     }
 
     fun refresh() {
+        startRefresh()
+    }
+
+    suspend fun refreshAndAwait(): Boolean {
+        return startRefresh().await()
+    }
+
+    private fun startRefresh(): CompletableDeferred<Boolean> {
         refreshJob?.cancel()
+        refreshCompletion?.complete(false)
+        val completion = CompletableDeferred<Boolean>()
+        refreshCompletion = completion
         val requestVersion = ++refreshVersion
         refreshJob = viewModelScope.launch {
             val cachedFeed = withContext(Dispatchers.IO) { readCachedFeed() }
@@ -66,6 +79,7 @@ class RealPhotoFeedViewModel(
                         statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
                         isOfflineReadOnly = true,
                     )
+                    completion.complete(false)
                     return@launch
                 }
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
@@ -80,6 +94,7 @@ class RealPhotoFeedViewModel(
                             "需要先完成登录，请检查连接设置后重试。"
                         },
                     )
+                    completion.complete(false)
                     return@launch
                 }
             }
@@ -123,6 +138,7 @@ class RealPhotoFeedViewModel(
                             loadMoreErrorMessage = null,
                         )
                     }
+                    completion.complete(true)
                 }
                 is ApiResult.Error -> {
                     if (requestVersion != refreshVersion) return@launch
@@ -134,6 +150,7 @@ class RealPhotoFeedViewModel(
                             statusMessage = message,
                             isOfflineReadOnly = true,
                         )
+                        completion.complete(false)
                     } else {
                         _uiState.update {
                             it.copy(
@@ -142,14 +159,17 @@ class RealPhotoFeedViewModel(
                                 errorMessage = result.toBackendUiMessage("读取照片流失败。"),
                             )
                         }
+                        completion.complete(false)
                     }
                 }
-                ApiResult.Loading -> Unit
+                ApiResult.Loading -> completion.complete(false)
             }
             if (refreshVersion == requestVersion) {
                 refreshJob = null
+                refreshCompletion = null
             }
         }
+        return completion
     }
 
     fun handleConnectivityLost() {
@@ -375,6 +395,10 @@ class RealPhotoFeedViewModel(
             if (deletedIds.isNotEmpty()) {
                 withContext(Dispatchers.IO) {
                     persistCurrentFeedSnapshot()
+                    deletedIds.forEach { mediaId ->
+                        LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(mediaId)
+                    }
+                    invalidateSystemMediaMetadataCache()
                 }
                 notifyRealBackendContentChangedWithoutPhotoFeed(mediaIds = deletedIds)
             }

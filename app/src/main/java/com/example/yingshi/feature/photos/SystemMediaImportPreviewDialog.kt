@@ -75,6 +75,20 @@ internal fun SystemMediaImportPreviewDialog(
                         color = colors.textSecondary,
                     )
                 }
+                if (preview.duplicateCount > 0) {
+                    Text(
+                        text = "已自动跳过 ${preview.duplicateCount} 个已导入或重复选择的媒体。",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                    )
+                }
+                if (preview.timeNoticeCount > 0) {
+                    Text(
+                        text = "${preview.timeNoticeCount} 个媒体使用“$timePreferenceLabel”规则重新确定时间。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                }
             }
         },
         confirmButton = {

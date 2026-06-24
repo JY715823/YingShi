@@ -4,7 +4,7 @@
 
 - Module key: `submit_transferCenter`
 - Status: `closed`
-- Last updated: `2026-06-19`
+- Last updated: `2026-06-24`
 - Primary surfaces: `android | server | shared`
 - Linked server brief: `none`
 
@@ -123,6 +123,20 @@
 - 传输中心主动点击媒体缩略图只负责切回照片流并定位/高亮目标 mediaId，不再自动打开 Viewer。
 - 视频 poster 选择进一步收紧为 `coverUrl` 优先，服务端视频 DTO 的 `access` 同时暴露 `preview` 和 `cover`，两者都指向同一个 cover jpg，兼容只消费 preview 的旧组件和消费 cover 的新组件。
 - 视频封面客户端兜底恢复为“服务端 cover 优先，cover URL 缺失或加载失败时再用视频 URL 抽一张静态 poster 并缓存到 `video-posters`”；照片流列表不恢复自动播放，只做静态帧兜底，Viewer 未播放时也能显示同一兜底 poster。
+- 2026-06-22 热修：上传请求体进度回调不再吞掉取消异常；`shouldCancel` 会在每个 chunk 读写前后检查任务状态并抛出 `IOException`，让 OkHttp 流真正中断，而不是只把 UI 改成已取消。
+- 2026-06-22 热修：远端历史合并时本地 `CANCELLED` 状态优先，远端迟到的旧成功/进行中记录不能把重启后的取消项复活；只允许补回缩略图/预览信息。
+- 2026-06-22 交互修正：对方上传导致照片流版本变更时，正在浏览照片流的一端不再自动刷新列表；只显示“有新内容，点击刷新”提示，用户点击后再刷新并清除 stale 标记，避免打断当前位置。
+- 2026-06-22 系统媒体/传输中心联动修复：App 启动后授权可用时后台预热系统媒体 metadata；系统媒体进入/恢复/手动刷新/后端内容变更时都强制刷新 MediaStore + import-status，强刷不会被旧 refresh job 吞掉；手动刷新会显式失效 metadata cache。
+- 2026-06-22 导入去重修复：删除 App 媒体、清空/永久删除回收站项时会立刻清理本地 import overlay，并用 `invalidatedAppMediaIds` 压掉旧 metadata cache 里的 `importedAppMediaId`，避免已进回收站/已删除媒体继续显示“已导入”或被本地误判重复；恢复回收站项只失效 cache 并触发服务器 import-status 重查，由后端真实 active media 状态恢复“已导入”。
+- 2026-06-22 传输中心暂停修复：暂停任务仍可重试，同时保留取消入口；组级取消现在包含“已暂停可重试”项，暂停项不再被进度统计当作真正完成。传输中心缩略图优先使用本地 `previewUri` 抽帧/缩略图，远端缩略图迟到或缺失时图片和视频都不应只剩纯色占位。
+- 2026-06-22 新建小相册复用修复：从系统媒体新建小相册时，如果选中项全是已导入媒体，入口提示改为“复用已导入媒体”，桥接层会记回 source -> appMediaId 并发布明确操作结果，避免无上传任务时表现为没有反应或闪退。
+- 2026-06-22 推送核验：服务端上传完成走 `UploadService.afterCommitAsync(... CATEGORY_PHOTOS_CONTENT_UPDATE ...)`，新建/加入/更新小相册走 `PostService.notifyContentUpdated()` after-commit，删除走 `TrashService.notifyDeleted()`；照片删除推送默认偏好为关闭，真机若要看到删除类系统推送需在推送设置里开启照片删除类别。
+- 2026-06-24 推送与刷新提示修复：FCM 前台展示和同步兜底通知都会读取本地推送偏好，删除类关闭时不再由客户端兜底绕过；兜底继续排除 `actorIsCurrentUser`。照片流版本只对应 active media 可见性变化，评论/小相册变更不再污染照片流 banner。
+- 2026-06-24 页面级刷新提示收窄：纯评论、加入/编辑小相册、相册媒体排序/封面等本地操作只吸收 `ALBUMS/NOTIFICATIONS`，不再标记 `PHOTO_FEED`；小相册详情和相册媒体管理页的 stale banner 改归属 `ALBUMS`。照片流只保留真实照片流变化的 banner，切回照片流时若已有 stale 会自动刷新并标记已刷新。
+- 2026-06-24 系统媒体 import-status 联动：系统媒体页现在监听 `PHOTO_FEED/TRASH` 远端 stale，只失效本地 metadata cache 并强制刷新系统媒体/import-status，不替照片流或回收站清 stale，避免删除/恢复后必须退出重进才对齐“已导入”。
+- 2026-06-24 追修：相册媒体管理页残留的 `photoFeedStale` 自动刷新/标记逻辑已移除，避免相册操作仍牵动照片页刷新提示；`SyncVersionTracker.markLocalMutation` 改为 30 秒吸收窗口，本机操作在服务端提交稍慢或重连后同步版本推进时，不再被当成远端更新提示。
+- 2026-06-24 追修：同步兜底通知按 `notificationId` 持久去重，同一通知即使 `notificationVersion` 后续因别的事件前进也不重复弹；状态栏 dedupe TTL 从 2 分钟延长到 24 小时，并优先使用 `notificationId/operationId/groupId` 作为稳定去重键。
+- 2026-06-24 追修：系统媒体 overlay 不再回退使用已 invalidated 的缓存 `importedAppMediaId`；App 媒体移入回收站后，即使系统媒体首屏来自旧 metadata cache，也会立刻显示为未导入。
 
 ### Server
 - `upload_tasks` 增加 operation 元数据、错误信息和 `dismissed_at`，新增 `FAILED` 状态和 `V16__upload_transfer_center_history.sql` 迁移。
@@ -131,6 +145,11 @@
 - 视频上传完成后会尽力预热 `?variant=cover` 封面并写入 `coverObjectKey/previewObjectKey`；只使用系统 `ffmpeg` 或自动发现的 `imageio-ffmpeg` Windows 可执行文件抽帧；抽帧失败不阻塞上传，客户端保持封面优先和占位兜底。
 - 启动 warmup 不再只看数据库 cover 字段，会实际 `ensureVideoCover()` 校验/补齐对象；当前运行容器里仍可读取既有 `cover-v1` 对象，新代码部署后会改用 `cover-v2` 重新生成。
 - 视频 cover key 升级为 `cover-v2`，让旧的可能方向错误的 `cover-v1` 不再被复用；视频抽帧不再使用 JCodec fallback 生成封面，因为它不可靠处理手机视频旋转元数据，避免继续生成倒置封面。没有可用 ffmpeg 时宁可不生成 cover，等待部署环境修复 ffmpeg 后重新生成。
+- 2026-06-22 热修：`POST /api/uploads/{uploadId}/file` 和 direct confirm 在完成前多次重新检查任务状态；最终写 SUCCESS 改为 `state = WAITING` 的条件更新，取消请求抢先落库后，同一个上传请求不能再把任务覆盖成成功。
+- 2026-06-22 热修：视频上传完成不再同步等待服务端抽帧；服务端先登记 cover/preview object key 并后台 warmup，减少前端卡在 98% “服务器正在确认接收”的时间。
+- 2026-06-22 热修补充：照片上传卡 98% 的主要风险不是视频抽帧，而是上传完成后同步调用 FCM 推送。上传完成通知现在改为事务提交后后台执行，FCM 网络超时只影响推送日志，不再拖住上传接口响应。
+- 2026-06-24 同步版本和推送兜底修复：`SyncService.photoFeedVersion` 收窄为媒体表 active/deleted 状态，不再包含评论、postMedia 或相册更新时间；`PushNotificationService.targetTokensFor` 不再对 `photos/delete` 使用 self fallback，删除推送仍按接收者偏好过滤。
+- 2026-06-24 追修：上传完成推送改为 after-commit 后延迟重查 operation tasks，只有同一 operation 的 expected count 个任务都已创建且全部终态后才发送；同一 server 进程内按 `libraryId:operationId` 去重，避免两个媒体上传时先推 1 个、后推 2 个。
 
 ### Design
 - 顶栏保留返回、标题摘要、常驻“清空”按钮和三横线分类菜单。
@@ -148,6 +167,12 @@
 - Contract sanity: Android DTO/Repository、Server request/response、迁移和双端 `upload-api.md` 已同步；视频 DTO 现在保持 `previewUrl/coverUrl` 指向封面变体，客户端缩略图不再回退到远端视频流。
 - Test plan quality: 已给本地验证、关联模块回归和真机大视频场景分别列出检查项。
 - Known gaps: 真正分片断点续传仍未实现；需要真机确认两三分钟视频上传、播放拖动和系统媒体权限路径；生产部署环境必须显式安装/配置可用 `ffmpeg`，否则新策略会跳过封面生成而不是生成可能倒置的封面。
+- 2026-06-22 hotfix validation: Android `:app:compileDebugKotlin` 通过；focused `TransferCenterBehaviorTest` + `MediaCacheKeyTest` 通过；Server focused upload/history/video tests 通过；`mvnw.cmd -DskipTests package` 通过；新 jar 已 `docker cp` 到 `yingshi-server` 并重启，`GET /api/health` 返回 UP。
+- 2026-06-22 follow-up validation: server `mvnw.cmd -DskipTests package` 通过；focused `YingshiServerApplicationTests#uploadHistoryKeepsOperationMetadataAndDismissesRecords` 通过；最终 jar 已部署到 `yingshi-server`，`GET /api/health` 返回 UP。
+- 2026-06-22 photo-feed stale UX validation: Android `:app:compileDebugKotlin` 通过；照片流 stale 自动刷新监听已移除，保留 banner 点击刷新。
+- 2026-06-22 system-media/upload-sync validation: Android `:app:compileDebugKotlin` 通过；局部 `git diff --check` 通过。后端本轮未改代码，只核验了上传、相册内容更新、删除三个推送触发点仍存在。
+- 2026-06-24 push/page-refresh/system-media validation: Server `mvnw.cmd -q -DskipTests compile` 通过；Android `:app:compileDebugKotlin` 第二次通过，第一次失败是 build 输出目录 `Permission denied`，清理 Kotlin 增量输出和停止 Gradle daemon 后消失；除 `MediaManagementScreen.kt` 既有 CRLF/尾随空白脏差异外，本轮相关文件 `git diff --check` 通过。
+- 2026-06-24 follow-up validation: Server `mvnw.cmd -q -DskipTests compile` 通过；Android `:app:compileDebugKotlin` 通过；本轮改动文件局部 `git diff --check` 通过，`MediaManagementScreen.kt` 仍有既有 CRLF/尾随空白历史差异，本轮未做整文件格式化。
 
 ## New Coupling Recheck
 - Module: Photos root/photo feed.
@@ -159,6 +184,21 @@
 - Module: Upload API.
   - What was rechecked: 历史列表、隐藏、operation 元数据、`failed` 状态、迁移字段和视频封面变体。
   - Result: Focused server tests 通过；视频封面生成策略收束为 ffmpeg-only，避免 JCodec 忽略旋转元数据导致倒置封面。
+- Module: System media/import-status.
+  - What was rechecked: 本地 metadata cache、import overlay、App 内容删除/回收站恢复/永久删除后的 `已导入` 状态。
+  - Result: 客户端强刷队列、cache 失效和 overlay invalidation 已接入；真实状态仍需真机按“删除 -> 再导入 -> 恢复 -> 再导入”链路确认。
+- Module: Notifications/push.
+  - What was rechecked: 上传完成、小相册创建/加入/更新、删除三类服务端推送触发点。
+  - Result: content_update 与 delete 触发点存在；删除推送默认偏好关闭，若测试删除推送需要先开启设置。
+- Module: Notifications/push preferences.
+  - What was rechecked: 服务端目标 token、客户端 FCM 前台展示、同步兜底通知。
+  - Result: delete 类别关闭时不再被 self fallback 或客户端 fallback 绕过；兜底排除当前用户自己的通知。
+- Module: Page stale banners.
+  - What was rechecked: 照片流、相册页、小相册详情、相册媒体管理、回收站的 stale module 归属。
+  - Result: 评论/相册操作归 `ALBUMS/NOTIFICATIONS`，照片流只响应媒体可见性；切回照片流时自动刷新已存在的照片流 stale。
+- Module: Upload and notification dedupe.
+  - What was rechecked: 上传 operation 完成推送、同步兜底通知、状态栏去重键、本机操作版本吸收。
+  - Result: 批量上传只在 operation 完整终态后推一次；同一 notification/operation 24 小时内不重复弹；本机 mutation 在 30 秒窗口内持续吸收服务端版本推进。
 
 ## Implement Test Plan
 ### Locally validated
@@ -197,6 +237,18 @@
 - Scenario: 视频上传和播放 seek。
   - Steps: 上传两个 2-3 分钟视频，完成后进入播放，反复拖动进度条。
   - Expected result: 上传不因时长被拦；拖动时进度不闪回开头，不卡顿，不闪退。
+- Scenario: 系统媒体启动和刷新。
+  - Steps: 启动 App 后不要先进入系统媒体，等待几秒再打开系统媒体；随后新增/删除本机媒体并点刷新。
+  - Expected result: 首次进入能直接看到最近媒体；手动刷新按钮立即转动并拉最新 MediaStore，不再等几秒只多一张。
+- Scenario: App 删除、回收站、恢复、去重。
+  - Steps: 导入一个视频，确认系统媒体显示已导入；从 App 删除进回收站，回系统媒体；再导入同一个本机视频；然后从回收站恢复，再尝试导入。
+  - Expected result: 删除进回收站后系统媒体变未导入；再导入不会被本地旧 overlay 误判重复；恢复后 import-status 重查恢复已导入；恢复后再导入按 active media 去重。
+- Scenario: 暂停任务取消和缩略图。
+  - Steps: 上传图片和视频混合任务，在传输中心暂停某项，再观察 tile 控制和缩略图。
+  - Expected result: 暂停项同时有重试和取消入口；图片/视频 tile 有本地缩略图或视频帧，不退化成纯色块。
+- Scenario: 上传/相册操作推送。
+  - Steps: B 设备开启照片内容更新推送；A 上传媒体、新建小相册、加入小相册。若要测删除推送，先在设置里打开照片删除推送。
+  - Expected result: B 收到 content_update 推送；删除推送只有开启删除类别后才出现。
 
 ### Still unverified
 - Risk: 真机大视频上传耗时和 Android 系统媒体 URI 权限差异。
@@ -220,6 +272,15 @@
   - Resolution: 移除传输中心 pending open viewer，只保留照片流定位/高亮；视频 cover 升级 `cover-v2` 并禁用 JCodec fallback，避免旧倒置封面被复用或继续生成方向错误的新封面。服务端 focused tests 通过并已重新打包 jar。
 - 2026-06-18: 用户反馈照片流列表视频又没有封面，Viewer 未播放时也不显示封面。
   - Resolution: 客户端恢复静态 poster 兜底：服务端 `cover/preview` 图片缺失或加载失败时，照片流缩略图和 Viewer 会用视频 URL 抽取第一帧并缓存；Viewer 只在服务端 poster 图片加载成功后才把它视为可展示封面。补齐 `VideoPreloadWorker` 缺失 import，避免应用启动处已有调度代码编译失败。
+- 2026-06-22: 用户反馈媒体上传长期卡在 98%；取消任务无效，过一会儿仍上传成功；退出重进后取消任务缩略图变纯色且仍像进行中。
+  - Root cause: 客户端 `ProgressInputStreamRequestBody` 的进度回调原本用 `runCatching` 吞掉取消异常，只改 UI 不会真正中断 OkHttp 上传流；服务端上传请求入口只检查一次 `WAITING`，取消和上传完成竞态时上传请求可以最后覆盖成 `SUCCESS`；视频 cover 同步 warmup 会拖住上传响应，表现为 98% 停很久。
+  - Resolution: 客户端请求体 chunk 读写前后检查 `shouldCancel` 并抛出 `IOException`；服务端完成前刷新状态并把最终成功落库改为 `WHERE state = WAITING` 条件更新，失败则清理已写对象；视频 cover 改后台 warmup；远端历史合并保护本地 `CANCELLED` 状态，避免旧远端记录复活取消 UI。
+- 2026-06-22: 用户补充小照片也会卡在 98%，说明问题不只在视频。
+  - Root cause: 上传完成后 `notifyUploadOperationIfCompleted()` 同步调用 FCM。若服务器访问 Google token/FCM 超时，文件和 DB 已完成但 HTTP 响应迟迟不返回，客户端就停在 98% 等“服务器确认接收”。
+  - Resolution: 上传完成推送改为 after-commit 后台任务；推送异常只记录 `Async upload completion side effect failed`，不影响上传接口返回。
+- 2026-06-22: 用户反馈 A 上传时 B 正在照片流页不应立刻刷新，应该提示有新内容，点击后再刷新。
+  - Root cause: `RealPhotoFeedPage` 同时渲染 `StaleBanner` 和监听 `photoFeedStale` 自动 `viewModel.refresh()`，提示一出现就被自动刷新打断。
+  - Resolution: 移除照片流 stale 自动刷新监听；`StaleBanner` 点击仍执行 `viewModel.refresh()` 和 `SyncVersionTracker.markRefreshed(PHOTO_FEED)`。
 
 ## Validation Snapshot
 ### Verified
@@ -228,9 +289,16 @@
 - Android revalidation after transfer-center precise open and cover-priority fix passed: `:app:compileDebugKotlin` and focused `TransferCenterBehaviorTest` + `MediaCacheKeyTest`.
 - Android revalidation after removing transfer-center auto-open Viewer passed: `:app:compileDebugKotlin` and focused `TransferCenterBehaviorTest` + `MediaCacheKeyTest`.
 - Android revalidation after client-side video poster fallback passed with high-memory single-use Gradle daemon: `:app:compileDebugKotlin` and focused `TransferCenterBehaviorTest` + `MediaCacheKeyTest`.
+- Android hotfix revalidation passed: `:app:compileDebugKotlin`.
+- Android focused hotfix tests passed: `TransferCenterBehaviorTest` + `MediaCacheKeyTest`.
 - Server upload history/dismiss focused test passed.
 - Server video upload focused test passed with video-frame extractor path; no skip; video DTO now includes both `access.preview` and `access.cover` for the cover jpg.
 - Server focused tests passed after `cover-v2` and ffmpeg-only cover generation change; `mvnw.cmd -DskipTests package` rebuilt `YingShi-Server/target/yingshi-server-0.0.1-SNAPSHOT.jar`.
+- Server hotfix focused tests passed: `YingshiServerApplicationTests#localVideoUploadReturnsJsonEnvelope+localVideoUploadWarmsCoverWhenVideoFrameExtractorIsAvailable+uploadHistoryKeepsOperationMetadataAndDismissesRecords`.
+- Server hotfix package passed and final jar was deployed to Docker container `yingshi-server`; `/api/health` returned `UP` with database and storage checks UP after restart.
+- Server follow-up focused test passed after async upload push change: `YingshiServerApplicationTests#uploadHistoryKeepsOperationMetadataAndDismissesRecords`.
+- Server follow-up package passed and final jar was redeployed to `yingshi-server`; `/api/health` returned `UP` with database and storage checks UP.
+- Android photo-feed stale UX compile passed: `:app:compileDebugKotlin`.
 - docker-local server is running on port 8080; `/api/health` reports `UP`, but the running container has not been confirmed rebuilt with the latest jar.
 - Existing live MinIO/DB may still expose old `cover-v1` objects until the rebuilt server is deployed and warmup/upload generation writes `cover-v2`.
 - Live Docker server rebuild is pending because Windows Docker CLI previously returned `500 Internal Server Error` for Docker Engine API calls; the rebuilt server jar exists at `YingShi-Server/target/yingshi-server-0.0.1-SNAPSHOT.jar`.
@@ -244,26 +312,36 @@
 - None for this module. Broader full-suite validation is limited by existing unrelated failures in album/life console and migration safety tests.
 
 ## Closeout Summary
-- Shipped: transfer center now persists upload history, groups one multi-select import into one operation, sorts newest first, supports status/source filters, clears visible records without deleting media, keeps completed operations collapsible, and restores scroll/category state.
-- Shipped: each task media tile uses real thumbnails where available, exposes per-item progress/control affordances while active, and opens the selected imported media by returning to the photo feed location rather than auto-opening Viewer.
-- Shipped: system media/bottom-plus imports no longer force navigation away from the current page; photo feed receives a pending locate target and highlights it when the user returns.
-- Shipped: video handling is hardened across upload, photo feed, and Viewer: list autoplay is off by default, service-side covers use `cover-v2` with ffmpeg-only generation, client-side static poster fallback covers missing/failed server covers, and Viewer seek display no longer jumps back to zero while the player is catching up.
-- Validated: Android compile and focused `TransferCenterBehaviorTest` + `MediaCacheKeyTest` passed; the latest client-side poster fallback required a high-memory single-use Gradle daemon because the default 2G Kotlin daemon OOMs on the current large Compose codebase.
-- Validated: server focused upload/history/video cover tests passed; `mvnw.cmd -DskipTests package` rebuilt `YingShi-Server/target/yingshi-server-0.0.1-SNAPSHOT.jar`; docker-local `/api/health` reports `UP`.
+- Shipped: transfer center now persists upload history, groups one multi-select import into one operation, sorts newest first, supports status/source filters, clears visible records without deleting media, keeps completed operations collapsible, restores scroll/category state, shows media thumbnails, and lets paused tasks be cancelled or retried.
+- Shipped: upload completion no longer stalls on synchronous side effects. Client cancellation interrupts the request stream, server success writes are guarded as `WAITING -> SUCCESS`, video cover warmup runs asynchronously, and upload push dispatch runs after commit.
+- Shipped: batch upload operation notifications are delayed until expected tasks exist and all are terminal, then deduped by operation. This avoids the intermittent "uploaded 1 media" followed by "uploaded 2 media" double notification.
+- Shipped: system media import status is now treated as active-media state. App start/entry/refresh preloads MediaStore and import-status; delete/trash/permanent-delete invalidates local overlay immediately; restore triggers import-status recheck; duplicate import is ultimately decided by server active fingerprint/import-status rather than stale local overlay.
+- Shipped: push filtering is layered on server preferences, FCM foreground display, and sync fallback display. Delete notifications respect the disabled photo-delete preference, actor-self notifications are excluded, and repeated fallback/status-bar notifications are deduped with stable `notificationId/operationId/groupId` keys.
+- Shipped: page refresh prompts are scoped by module. Album/comment operations dirty `ALBUMS/NOTIFICATIONS`, not the photo feed; photo feed only reacts to real media visibility changes; local mutations are absorbed for a short window so the current device does not show remote-style "new content" prompts for its own actions.
+- Shipped: video handling remains hardened across upload, photo feed, transfer center, and Viewer: server cover uses `cover-v2` with ffmpeg-only generation, Android has a client static-poster fallback, feed autoplay stays off by default, and Viewer seek display avoids jumping back to zero while the player catches up.
+- Validated: Android `:app:compileDebugKotlin` passed after the latest push/page-refresh/system-media fixes; earlier focused `TransferCenterBehaviorTest` and `MediaCacheKeyTest` also passed for the transfer-center/media-cache behavior.
+- Validated: Server `mvnw.cmd -q -DskipTests compile` passed after the latest upload-notification and push/sync fixes; earlier focused upload/history/video-cover tests passed for the server upload path.
+- Validated: latest doc closeout check passed with `git diff --check -- docs/refinement/submit_transferCenter.md`; code-format check remains noisy only in pre-existing `MediaManagementScreen.kt` CRLF/trailing-whitespace history, which this closeout did not reformat.
+- Remaining risk: broad real-device smoke is still recommended before freezing this area: two-device push, delete/restore/import-status, reconnect dedupe, transfer-center thumbnails, and long-video upload/seek should be exercised together.
 - Remaining risk: true resumable/chunked upload remains intentionally out of scope; pause/resume still means stop/retry under the current protocol.
-- Remaining risk: production/server environments need a real ffmpeg path or install. Without ffmpeg, the server skips cover generation rather than generating rotated covers; the Android client poster fallback keeps the UI from going blank.
-- Remaining risk: the running docker container has not been confirmed rebuilt with the latest jar, so existing live data may still expose `cover-v1` until deployment/warmup writes `cover-v2`.
-- Remaining risk: full server test suite still has unrelated failures in other modules; this closeout relies on targeted upload/video tests plus Android focused tests.
+- Remaining risk: production/server environments need a real ffmpeg path or install. Without ffmpeg, the server skips cover generation rather than generating rotated covers; Android's poster fallback keeps the UI from going blank.
+- Remaining risk: broad server suite still has unrelated failures outside this module; this closeout relies on targeted upload/video checks plus Android/server compile validation.
+- Remaining risk: if the latest server code must be verified inside a live container, confirm deployment/restart separately; the code compiles, but container freshness is an environment/deployment check.
 
 ## Carry-forward Notes
 - If upload is revisited, design a real chunked/resumable protocol instead of stretching the current pause/retry semantics.
 - If deployment or media infrastructure is touched, install/configure ffmpeg explicitly and verify one portrait/HEVC upload writes a correctly oriented `cover-v2` object.
 - If Viewer/photo feed is touched, preserve the three-layer video poster order: server cover first, client-extracted static frame second, quiet fallback last.
+- If photo feed or stale-banner logic changes, preserve the final routing rule: album/comment changes must not show a photo-feed refresh prompt; only real photo-feed media visibility changes should.
+- If sync tracking changes, preserve either the current local-mutation absorb window or replace it with stronger actor-aware version tracking so local actions do not show remote refresh banners.
+- If push or notification-center code changes, keep preference filtering in all three layers: server targeting, FCM foreground presentation, and sync fallback presentation. Keep stable dedupe ids in notification data.
+- If upload notification delivery needs once-only guarantees across server restarts or multiple instances, replace the current in-process operation dedupe with a persistent outbox/audit table.
+- If system media/import-status changes, never trust cached `importedAppMediaId` after that app media id has been invalidated; active server media/import-status remains the source of truth.
 - If photo feed navigation changes, preserve non-interrupting import behavior: imports should not force a route switch, and transfer center media taps should locate in the feed rather than opening Viewer.
 - If transfer center state changes, preserve completed-operation default folding on fresh entry, per-media tile actions while active, and "clear record does not delete media" copy/behavior.
 - If build tooling is cleaned up, raise Kotlin/Gradle daemon memory or split very large Compose files; current default 2G settings can OOM during `compileDebugKotlin`.
 
 ## Closeout Self-check
-- Brief completeness: Final shipped behavior, validation, deferred chunked upload, server deployment caveat, video cover policy, and linked photo feed/Viewer/upload API coupling are captured.
-- Remaining risk clarity: Device smoke, ffmpeg deployment, docker rebuild, and unrelated full-suite failures are explicit rather than implied.
-- Carry-forward quality: Future-sensitive notes are short and tied to concrete modules: upload protocol, media infra, Viewer/photo feed, transfer center state, and build tooling.
+- Brief completeness: Final shipped behavior now covers transfer center, upload completion, operation push dedupe, notification filtering, page-scoped stale prompts, system-media import-status, video covers, and the latest validation snapshot.
+- Remaining risk clarity: Real-device smoke, chunked upload defer, ffmpeg deployment, broad suite failures, and live-container freshness are explicit rather than implied.
+- Carry-forward quality: Future-sensitive notes are short and tied to concrete modules: upload protocol, media infra, push/dedupe, sync stale routing, system media, Viewer/photo feed, transfer center state, and build tooling.

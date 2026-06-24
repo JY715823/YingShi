@@ -15,7 +15,6 @@ data class BackendDebugSettings(
 object BackendDebugConfig {
     private const val PREFS_NAME = "backend_debug_settings"
     private const val KEY_BASE_URL = "base_url"
-    private const val LEGACY_CLOUDFLARE_HOST = "trycloudflare.com"
     private const val LEGACY_LOCAL_HOST = "10.106.3.193"
 
     private var appContext: Context? = null
@@ -37,9 +36,7 @@ object BackendDebugConfig {
         val preferences = preferences()
         val storedBaseUrl = preferences.getString(KEY_BASE_URL, defaultBaseUrl()) ?: defaultBaseUrl()
         val normalizedBaseUrl = normalizeBaseUrl(storedBaseUrl)
-        val resolvedBaseUrl = if (shouldReplaceLegacyTunnelUrl(normalizedBaseUrl) ||
-            shouldReplaceLegacyLocalHost(normalizedBaseUrl)
-        ) {
+        val resolvedBaseUrl = if (shouldReplaceLegacyLocalHost(normalizedBaseUrl)) {
             val fallbackBaseUrl = defaultBaseUrl()
             preferences.edit().putString(KEY_BASE_URL, fallbackBaseUrl).apply()
             fallbackBaseUrl
@@ -78,10 +75,6 @@ object BackendDebugConfig {
     private fun normalizeBaseUrl(rawValue: String): String {
         val trimmed = rawValue.trim().ifBlank { defaultBaseUrl() }
         return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
-    }
-
-    private fun shouldReplaceLegacyTunnelUrl(baseUrl: String): Boolean {
-        return baseUrl.contains(LEGACY_CLOUDFLARE_HOST, ignoreCase = true)
     }
 
     private fun shouldReplaceLegacyLocalHost(baseUrl: String): Boolean {

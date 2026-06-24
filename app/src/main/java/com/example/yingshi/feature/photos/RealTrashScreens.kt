@@ -59,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,6 +89,9 @@ import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -412,6 +416,16 @@ fun RealTrashPageScreen(
             viewModel.refresh(selectedType)
         }
     }
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { syncStaleState.trashStale }
+            .collect { currentlyStale ->
+                if (currentlyStale) {
+                    viewModel.refresh(selectedType)
+                    SyncVersionTracker.markRefreshed(SyncModule.TRASH)
+                }
+            }
+    }
     ReconnectRefreshEffect(
         shouldRefresh = uiState.isOfflineReadOnly ||
             uiState.errorMessage != null ||
@@ -514,6 +528,15 @@ fun RealTrashPageScreen(
                     onRequestClearCurrent = { deleteFromTopBar() },
                 )
             }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                StaleBanner(
+                    module = SyncModule.TRASH,
+                    onRefresh = {
+                        viewModel.refresh(selectedType)
+                        SyncVersionTracker.markRefreshed(SyncModule.TRASH)
+                    },
+                )
+            }
             uiState.errorMessage?.let { message ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     RealTrashSectionCard(title = "请求失败", body = message)
@@ -607,6 +630,15 @@ fun RealTrashPageScreen(
                     onRequestClearCurrent = { deleteFromTopBar() },
                 )
             }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                StaleBanner(
+                    module = SyncModule.TRASH,
+                    onRefresh = {
+                        viewModel.refresh(selectedType)
+                        SyncVersionTracker.markRefreshed(SyncModule.TRASH)
+                    },
+                )
+            }
             uiState.errorMessage?.let { message ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     RealTrashSectionCard(title = "请求失败", body = message)
@@ -682,6 +714,16 @@ fun RealTrashPageScreen(
                     },
                     onRestoreCurrent = { restoreFromTopBar() },
                     onRequestClearCurrent = { deleteFromTopBar() },
+                )
+            }
+
+            item {
+                StaleBanner(
+                    module = SyncModule.TRASH,
+                    onRefresh = {
+                        viewModel.refresh(selectedType)
+                        SyncVersionTracker.markRefreshed(SyncModule.TRASH)
+                    },
                 )
             }
 
@@ -776,6 +818,7 @@ fun RealTrashPageScreen(
                             entries = entries,
                             selectedType = selectedType,
                         )
+                        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
                     },
                 )
             },
@@ -812,6 +855,10 @@ fun RealTrashPageScreen(
                             selectedType = selectedType,
                             onFirstRestoredMediaIds = onRestoreTargetMediaIds,
                         )
+                        SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                        SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+                        SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                         onSelectionStateChange(false, emptySet())
                     },
                 )
@@ -851,6 +898,7 @@ fun RealTrashPageScreen(
                             entries = selectedEntries,
                             selectedType = selectedType,
                         )
+                        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
                         onSelectionStateChange(false, emptySet())
                     },
                 )

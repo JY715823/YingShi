@@ -71,6 +71,7 @@ data class SystemMediaViewerRoute(
 @Immutable
 data class SystemMediaUiState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val selectedFilter: SystemMediaFilter = SystemMediaFilter.ALL,
     val allItems: List<SystemMediaItem> = emptyList(),
     val filteredItems: List<SystemMediaItem> = emptyList(),

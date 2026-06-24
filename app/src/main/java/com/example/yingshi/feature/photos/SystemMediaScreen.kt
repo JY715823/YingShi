@@ -1,4 +1,4 @@
-﻿package com.example.yingshi.feature.photos
+package com.example.yingshi.feature.photos
 
 import android.app.Activity
 import android.app.Application
@@ -100,6 +100,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
@@ -162,6 +163,8 @@ fun SystemMediaScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val bridgeMutationEvent = LocalSystemMediaBridgeRepository.latestMutationEvent
+    val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
@@ -573,7 +576,7 @@ fun SystemMediaScreen(
                 val granted = hasSystemMediaReadAccess(context)
                 hasPermission = granted
                 if (granted) {
-                    viewModel.ensureLoaded()
+                    viewModel.refresh(forceRefresh = true)
                 }
             }
         }
@@ -591,6 +594,7 @@ fun SystemMediaScreen(
 
         if (result.resultCode == Activity.RESULT_OK) {
             val hiddenCount = LocalSystemMediaBridgeRepository.markMovedToSystemTrash(processedIds)
+            invalidateSystemMediaMetadataCache(context)
             selectionMode = false
             selectedIds = emptyList()
             viewModel.refresh(forceRefresh = true)
@@ -640,7 +644,7 @@ fun SystemMediaScreen(
             permissionRequestedOnce = true
             permissionLauncher.launch(requiredSystemMediaPermissions())
         } else if (hasPermission) {
-            viewModel.ensureLoaded()
+            viewModel.refresh(forceRefresh = true)
         }
     }
 
@@ -650,6 +654,29 @@ fun SystemMediaScreen(
 
     LaunchedEffect(bridgeMutationEvent.version) {
         viewModel.handleBridgeMutation(bridgeMutationEvent)
+    }
+
+    LaunchedEffect(backendMutationEvent.version) {
+        if (backendMutationEvent.version > 0 &&
+            (
+                backendMutationEvent.affectsPhotoFeed() ||
+                    backendMutationEvent.affectsAlbums() ||
+                    backendMutationEvent.affectsTrash() ||
+                    backendMutationEvent.affectsSystemMediaDestinations()
+                )
+        ) {
+            viewModel.refresh(forceRefresh = true)
+        }
+    }
+
+    LaunchedEffect(hasPermission) {
+        snapshotFlow { syncStaleState.photoFeedStale || syncStaleState.trashStale }
+            .collect { shouldRefreshImportStatus ->
+                if (hasPermission && shouldRefreshImportStatus) {
+                    invalidateSystemMediaMetadataCache(context)
+                    viewModel.refresh(forceRefresh = true)
+                }
+            }
     }
 
     LaunchedEffect(uiState.selectedFilter) {
@@ -789,7 +816,11 @@ fun SystemMediaScreen(
                     selectedCount = selectedIds.size,
                     onBack = onBack,
                     onFilterSelected = viewModel::onFilterSelected,
-                    onRefresh = { viewModel.refresh(forceRefresh = true) },
+                    onRefresh = {
+                        invalidateSystemMediaMetadataCache(context)
+                        viewModel.refresh(forceRefresh = true)
+                    },
+                    isRefreshing = uiState.isRefreshing,
                 )
             }
 
@@ -1171,11 +1202,12 @@ private fun SystemMediaTopBar(
     onBack: () -> Unit,
     onFilterSelected: (SystemMediaFilter) -> Unit,
     onRefresh: () -> Unit,
+    isRefreshing: Boolean = false,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
     var filterMenuExpanded by remember { mutableStateOf(false) }
-	
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spacing.sm),
@@ -1218,11 +1250,28 @@ private fun SystemMediaTopBar(
                         )
                     }
 
-                    SystemMediaIconButton(
-                        icon = Icons.Default.Refresh,
-                        contentDescription = "刷新媒体",
-                        onClick = onRefresh,
-                    )
+                    if (isRefreshing) {
+                        Surface(
+                            modifier = Modifier.size(44.dp),
+                            shape = CircleShape,
+                            color = colors.sectionBackground.copy(alpha = 0.80f),
+                            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(21.dp),
+                                    strokeWidth = 2.dp,
+                                    color = colors.primaryAction,
+                                )
+                            }
+                        }
+                    } else {
+                        SystemMediaIconButton(
+                            icon = Icons.Default.Refresh,
+                            contentDescription = "刷新媒体",
+                            onClick = onRefresh,
+                        )
+                    }
                     Box {
                         SystemMediaIconButton(
                             icon = Icons.Default.Menu,

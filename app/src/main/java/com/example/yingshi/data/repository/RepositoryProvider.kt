@@ -37,4 +37,7 @@ object RepositoryProvider {
 
     val lifeConsoleRepository: LifeConsoleRepository
         get() = RealLifeConsoleRepository(RemoteServiceFactory.lifeConsoleApi)
+
+    val pushPreferenceRepository: PushPreferenceRepository
+        get() = RealPushPreferenceRepository(RemoteServiceFactory.lifeConsoleApi)
 }

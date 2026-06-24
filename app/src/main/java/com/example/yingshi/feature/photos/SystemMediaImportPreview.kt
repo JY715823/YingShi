@@ -172,6 +172,17 @@ internal fun SystemMediaItem.stableImportSourceFingerprint(): String {
         .joinToString(separator = "") { byte -> "%02x".format(byte) }
 }
 
+internal fun SystemMediaItem.stableImportMetadataSourceFingerprint(): String {
+    val bytes = stableImportMetadataKey().toByteArray(Charsets.UTF_8)
+    return MessageDigest.getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString(separator = "") { byte -> "%02x".format(byte) }
+}
+
+internal fun SystemMediaItem.stableImportSourceKeys(): List<String> {
+    return listOf(stableImportSourceKey(), stableImportMetadataKey()).distinct()
+}
+
 private fun SystemMediaItem.stableImportMetadataKey(): String {
     return buildString {
         append("meta:")

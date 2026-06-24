@@ -8,8 +8,13 @@ object AppNavigationRequests {
     const val ACTION_OPEN_LIFE_CONSOLE = "com.example.yingshi.action.OPEN_LIFE_CONSOLE"
     const val ACTION_OPEN_LEDGER = "com.example.yingshi.action.OPEN_LEDGER"
     const val ACTION_OPEN_LEDGER_ADD = "com.example.yingshi.action.OPEN_LEDGER_ADD"
+    const val ACTION_OPEN_PHOTO_FEED = "com.example.yingshi.action.OPEN_PHOTO_FEED"
+    const val ACTION_OPEN_SMALL_ALBUM = "com.example.yingshi.action.OPEN_SMALL_ALBUM"
     const val EXTRA_LIFE_CONSOLE_SLOT_KEY = "life_console_slot_key"
     const val EXTRA_LIFE_CONSOLE_MEDIA_ID = "life_console_media_id"
+    const val EXTRA_PHOTO_FEED_MEDIA_ID = "photo_feed_media_id"
+    const val EXTRA_SMALL_ALBUM_ID = "small_album_id"
+    const val EXTRA_AUTO_OPEN_COMMENT = "auto_open_comment"
 
     var openLifeConsoleNonce by mutableIntStateOf(0)
         private set
@@ -17,9 +22,23 @@ object AppNavigationRequests {
         private set
     var openLedgerAddNonce by mutableIntStateOf(0)
         private set
+    var openPhotoFeedNonce by mutableIntStateOf(0)
+        private set
+    var openSmallAlbumNonce by mutableIntStateOf(0)
+        private set
     var lifeConsoleSlotKey: String? = null
         private set
     var lifeConsoleMediaId: String? = null
+        private set
+    var photoFeedMediaId: String? = null
+        private set
+    var photoFeedAutoOpenViewer: Boolean = false
+        private set
+    var photoFeedAutoOpenComment: Boolean = false
+        private set
+    var smallAlbumId: String? = null
+        private set
+    var smallAlbumAutoOpenComment: Boolean = false
         private set
 
     fun requestLifeConsole(slotKey: String? = null, mediaId: String? = null) {
@@ -34,5 +53,22 @@ object AppNavigationRequests {
 
     fun requestLedgerAdd() {
         openLedgerAddNonce += 1
+    }
+
+    fun requestPhotoFeed(
+        mediaId: String? = null,
+        autoOpenViewer: Boolean = false,
+        autoOpenComment: Boolean = false,
+    ) {
+        photoFeedMediaId = mediaId
+        photoFeedAutoOpenViewer = autoOpenViewer
+        photoFeedAutoOpenComment = autoOpenComment
+        openPhotoFeedNonce += 1
+    }
+
+    fun requestSmallAlbum(postId: String, autoOpenComment: Boolean = false) {
+        smallAlbumId = postId.takeIf { it.isNotBlank() }
+        smallAlbumAutoOpenComment = autoOpenComment
+        openSmallAlbumNonce += 1
     }
 }

@@ -23,6 +23,8 @@ import com.example.yingshi.data.repository.AuthRepository
 import com.example.yingshi.data.repository.CommentRepository
 import com.example.yingshi.data.repository.PostRepository
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -1137,6 +1139,9 @@ class PostDetailRealViewModel(
             when (val result = block()) {
                 is ApiResult.Success -> {
                     onSuccess?.invoke()
+                    notifyRealBackendCommentChanged(postIds = setOf(route.postId))
+                    SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                    SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                     if (deletedCommentId != null) {
                         _uiState.update {
                             it.copy(
@@ -1202,6 +1207,8 @@ class PostDetailRealViewModel(
                         postIds = setOf(route.postId),
                         mediaIds = setOf(mediaId),
                     )
+                    SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                    SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                     if (deletedCommentId != null) {
                         _uiState.update { state ->
                             state.copy(

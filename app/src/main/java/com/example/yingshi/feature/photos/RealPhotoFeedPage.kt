@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.yingShiClickable
@@ -47,6 +51,7 @@ fun RealPhotoFeedPage(
     modifier: Modifier = Modifier,
     scrollTrigger: Int = 0,
     inlineVideoAutoPlayEnabled: Boolean = false,
+    isActive: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -57,6 +62,7 @@ fun RealPhotoFeedPage(
     )
     val uiState by viewModel.uiState.collectAsState()
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -148,6 +154,18 @@ fun RealPhotoFeedPage(
         }
     }
 
+    LaunchedEffect(Unit) {
+        if (GlobalPhotoFeedPageStateStore.pendingScrollTargetMediaId != null) {
+            SyncVersionTracker.requestImmediatePoll()
+        }
+    }
+    LaunchedEffect(isActive) {
+        if (isActive && syncStaleState.photoFeedStale) {
+            if (viewModel.refreshAndAwait()) {
+                SyncVersionTracker.markRefreshed(SyncModule.PHOTO_FEED)
+            }
+        }
+    }
     ReconnectRefreshEffect(
         shouldRefresh = uiState.isOfflineReadOnly ||
             uiState.errorMessage != null ||
@@ -194,6 +212,9 @@ fun RealPhotoFeedPage(
                         viewModel.deleteSelectedMedia(selectedIds) { deletedIds ->
                             onSelectionStateChange(selectionState.without(deletedIds))
                         }
+                        SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+                        SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                     },
                 )
             },
@@ -238,6 +259,8 @@ fun RealPhotoFeedPage(
                                 postIds = setOf(postId),
                                 mediaIds = selectedItems.map { it.mediaId }.toSet(),
                             )
+                            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                             viewModel.refresh()
                             onSelectionStateChange(
                                 selectionState.without(selectedItems.mapTo(linkedSetOf()) { it.mediaId }),
@@ -313,6 +336,17 @@ fun RealPhotoFeedPage(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
+                    StaleBanner(
+                        module = SyncModule.PHOTO_FEED,
+                        onRefresh = {
+                            scope.launch {
+                                if (viewModel.refreshAndAwait()) {
+                                    SyncVersionTracker.markRefreshed(SyncModule.PHOTO_FEED)
+                                }
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
                     uiState.statusMessage?.let { statusMessage ->
                         BackendInlineNotice(
                             text = statusMessage,
@@ -361,4 +395,3 @@ fun RealPhotoFeedPage(
         )
     }
 }
-

@@ -4,6 +4,8 @@ import com.example.yingshi.data.remote.api.LedgerApi
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.data.remote.dto.UpsertLedgerSnapshotRequestDto
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.google.gson.Gson
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -67,6 +69,7 @@ class RemoteLedgerSyncBridge(
     override suspend fun afterMutation(repository: LedgerRepository) {
         if (!hydrated || !AuthSessionManager.isLoggedIn) return
         pushSnapshot(repository)
+        SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
     }
 
     private suspend fun pushSnapshot(repository: LedgerRepository) {

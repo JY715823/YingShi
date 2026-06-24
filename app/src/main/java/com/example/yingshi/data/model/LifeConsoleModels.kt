@@ -63,3 +63,35 @@ data class RemoteLifeConsoleBowelMutation(
     val eventId: String?,
     val bowel: RemoteLifeConsoleBowelSummary,
 )
+
+data class RemotePushPreference(
+    val module: String,
+    val category: String,
+    val enabled: Boolean,
+)
+
+data class RemotePushDeliveryAudit(
+    val id: String,
+    val module: String,
+    val category: String,
+    val eventType: String,
+    val status: String,
+    val reason: String,
+    val targetRoute: String,
+    val actorUserId: String,
+    val enabledDeviceCount: Int,
+    val partnerDeviceCount: Int,
+    val targetDeviceCount: Int,
+    val attemptedCount: Int,
+    val successfulCount: Int,
+    val invalidTokenCount: Int,
+    val usedSelfFallback: Boolean,
+    val createdAtMillis: Long,
+)
+
+data class RemotePushDiagnostics(
+    val selfFallbackEnabled: Boolean,
+    val currentUserEnabledDeviceCount: Int,
+    val libraryEnabledDeviceCount: Int,
+    val recentDeliveries: List<RemotePushDeliveryAudit>,
+)

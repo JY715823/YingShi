@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -853,6 +857,7 @@ private fun UnifiedRealPostMediaManagementScreen(
         factory = RealMediaManagementViewModel.factory(route),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     var isSaving by rememberSaveable(route.postId) { mutableStateOf(false) }
     var showDeleteCurrentPostConfirm by rememberSaveable(route.postId) { mutableStateOf(false) }
 
@@ -895,12 +900,13 @@ private fun UnifiedRealPostMediaManagementScreen(
             val initialCoverId = remember(route.postId, uiState.mediaItems) {
                 uiState.mediaItems.firstOrNull { it.isCover }?.id ?: uiState.mediaItems.firstOrNull()?.id
             }
-            PostMediaListScreen(
-                initialItems = initialItems,
-                initialCoverMediaId = initialCoverId,
-                allowEmpty = true,
-                onCancel = onBack,
-                onConfirm = { finalItems, finalCoverId ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                PostMediaListScreen(
+                    initialItems = initialItems,
+                    initialCoverMediaId = initialCoverId,
+                    allowEmpty = true,
+                    onCancel = onBack,
+                    onConfirm = { finalItems, finalCoverId ->
                     if (isSaving) return@PostMediaListScreen
                     val finalIds = finalItems.map { it.id }
                     if (finalIds.isEmpty()) {
@@ -952,6 +958,8 @@ private fun UnifiedRealPostMediaManagementScreen(
                                     mediaIds = (removedIds + finalIds).toSet(),
                                 )
                             }
+                            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                             onPostUpdated(route.postId)
                             Toast.makeText(context, "小相册媒体列表已保存", Toast.LENGTH_SHORT).show()
                             onBack()
@@ -962,6 +970,18 @@ private fun UnifiedRealPostMediaManagementScreen(
                 },
                 modifier = modifier,
             )
+                StaleBanner(
+                    module = SyncModule.ALBUMS,
+                    onRefresh = {
+                        viewModel.refresh()
+                        SyncVersionTracker.markRefreshed(SyncModule.ALBUMS)
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = YingShiThemeTokens.spacing.md),
+                )
+            }
         }
     }
 
@@ -982,6 +1002,9 @@ private fun UnifiedRealPostMediaManagementScreen(
                             isSaving = true
                             when (val result = RepositoryProvider.postRepository.deleteSmallAlbum(route.postId)) {
                                 is ApiResult.Success -> {
+                                    SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                                    SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+                                    SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                                     notifyRealBackendContentChanged(postIds = setOf(route.postId))
                                     showDeleteCurrentPostConfirm = false
                                     isSaving = false

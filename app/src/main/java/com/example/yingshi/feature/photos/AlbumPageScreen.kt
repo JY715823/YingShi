@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +68,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import com.example.yingshi.ui.components.yingShiClickable
@@ -251,6 +255,16 @@ private fun RealAlbumPageScreen(
             viewModel.refresh()
         }
     }
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { syncStaleState.albumsStale }
+            .collect { currentlyStale ->
+                if (currentlyStale) {
+                    viewModel.refresh()
+                    SyncVersionTracker.markRefreshed(SyncModule.ALBUMS)
+                }
+            }
+    }
     ReconnectRefreshEffect(
         shouldRefresh = uiState.isOfflineReadOnly ||
             uiState.errorMessage != null ||
@@ -339,6 +353,14 @@ private fun RealAlbumPageScreen(
             }
 
             else -> {
+                StaleBanner(
+                    module = SyncModule.ALBUMS,
+                    onRefresh = {
+                        viewModel.refresh()
+                        SyncVersionTracker.markRefreshed(SyncModule.ALBUMS)
+                    },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
                 uiState.statusMessage?.let { statusMessage ->
                     BackendInlineNotice(
                         text = statusMessage,
@@ -365,6 +387,7 @@ private fun RealAlbumPageScreen(
                     },
                     onDeleteAlbum = { album ->
                         viewModel.deleteAlbum(album.id)
+                        SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
                     },
                 )
 

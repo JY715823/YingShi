@@ -2,9 +2,13 @@ package com.example.yingshi.feature.photos
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +33,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,10 +52,12 @@ import androidx.core.content.ContextCompat
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.feature.life.push.PushTokenRegistrar
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.launch
 
 data class SettingsRoute(
     val source: String = "my-page",
@@ -60,13 +73,23 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val spacing = YingShiThemeTokens.spacing
     val settingsState = SettingsRepository.getSettingsState()
     val viewerPreferences = settingsState.viewerPreferences
     val sharePreferences = settingsState.sharePreferences
     val interactionPreferences = settingsState.interactionPreferences
+    val pushPreferences = settingsState.pushPreferences
+    val pushDiagnostics = settingsState.pushDiagnostics
+    val pushTokenDiagnostic by PushTokenRegistrar.diagnosticState.collectAsState()
     val offlineAccessState = OfflineAccessManager.state
     val currentUser = CollaboratorDirectoryStore.currentUser ?: AuthSessionManager.getCurrentUserSnapshot()
+    var notificationPermissionRefresh by remember { mutableIntStateOf(0) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) {
+        notificationPermissionRefresh += 1
+    }
     val loginStatusValue = when {
         offlineAccessState.isReadOnly -> "缓存只读"
         AuthSessionManager.isLoggedIn -> "已连接"
@@ -78,8 +101,49 @@ fun SettingsScreen(
     } else {
         "未授权"
     }
-    val notificationPermissionValue = resolveNotificationPermissionStatus(context)
+    val notificationPermissionValue = notificationPermissionRefresh.let {
+        resolveNotificationPermissionStatus(context)
+    }
     val cacheSummary = MediaCacheRepository.getSummary(context)
+    LaunchedEffect(AuthSessionManager.isLoggedIn) {
+        if (AuthSessionManager.isLoggedIn) {
+            SettingsRepository.refreshPushPreferencesFromRemote()
+        }
+    }
+
+    fun updatePushPreference(
+        module: String,
+        category: String,
+        enabled: Boolean,
+        transform: (PushPreferenceState) -> PushPreferenceState,
+    ) {
+        coroutineScope.launch {
+            SettingsRepository.updatePushPreference(
+                module = module,
+                category = category,
+                enabled = enabled,
+                transform = transform,
+            )
+        }
+    }
+
+    fun requestOrOpenNotificationPermission() {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                },
+            )
+        }
+    }
 
     YingShiMistBackground(modifier = modifier, showWaves = false) {
         Column(
@@ -266,10 +330,111 @@ fun SettingsScreen(
                     subtitle = "系统媒体工具区会根据权限结果显示空态、错误态或授权提示。",
                     value = systemMediaAccessValue,
                 )
-                SettingsInfoRow(
+                SettingsActionInfoRow(
                     title = "通知权限",
-                    subtitle = "通知中心会显示评论、内容更新和回收站变更。",
+                    subtitle = if (notificationPermissionValue == "已开启") {
+                        "系统通知已开启，点这里可进入系统通知设置。"
+                    } else {
+                        "点击向系统申请通知权限；如果曾经拒绝，可进入系统设置重新开启。"
+                    },
                     value = notificationPermissionValue,
+                    onClick = ::requestOrOpenNotificationPermission,
+                )
+                SettingsActionInfoRow(
+                    title = "推送设备注册",
+                    subtitle = pushTokenDiagnostic.detail,
+                    value = pushTokenDiagnostic.status,
+                    onClick = { PushTokenRegistrar.registerCurrentTokenIfPossible(context, forceRetry = true) },
+                )
+                SettingsActionInfoRow(
+                    title = "最近推送诊断",
+                    subtitle = pushDiagnostics.detail,
+                    value = pushDiagnostics.status,
+                    onClick = {
+                        coroutineScope.launch {
+                            SettingsRepository.refreshPushDiagnosticsFromRemote()
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "照片内容更新推送",
+                    subtitle = "默认开启，提醒对方新增或调整了照片内容。",
+                    checked = pushPreferences.photosContentUpdate,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("photos", "content_update", checked) {
+                            it.copy(photosContentUpdate = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "照片评论推送",
+                    subtitle = "默认开启，评论会同时进入通知中心。",
+                    checked = pushPreferences.photosComment,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("photos", "comment", checked) {
+                            it.copy(photosComment = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "照片删除推送",
+                    subtitle = "默认关闭，回收站变动仍会保留在通知中心。",
+                    checked = pushPreferences.photosDelete,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("photos", "delete", checked) {
+                            it.copy(photosDelete = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "照片系统推送",
+                    subtitle = "默认关闭，包含传输和维护类提醒。",
+                    checked = pushPreferences.photosSystem,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("photos", "system", checked) {
+                            it.copy(photosSystem = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "今日痕迹推送",
+                    subtitle = "默认开启，点击会回到生活模块的今日痕迹。",
+                    checked = pushPreferences.lifeTrace,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("life", "trace", checked) {
+                            it.copy(lifeTrace = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "记账推送",
+                    subtitle = "默认关闭，记账历史仍可在生活模块查看。",
+                    checked = pushPreferences.lifeLedger,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("life", "ledger", checked) {
+                            it.copy(lifeLedger = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "聊天导入推送",
+                    subtitle = "默认关闭，导入结果仍会留在通知中心。",
+                    checked = pushPreferences.lifeChat,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("life", "chat", checked) {
+                            it.copy(lifeChat = checked)
+                        }
+                    },
+                )
+                SettingsSwitchRow(
+                    title = "生活系统推送",
+                    subtitle = "默认关闭，包含同步和维护类提醒。",
+                    checked = pushPreferences.lifeSystem,
+                    onCheckedChange = { checked ->
+                        updatePushPreference("life", "system", checked) {
+                            it.copy(lifeSystem = checked)
+                        }
+                    },
                 )
             }
 
@@ -570,6 +735,62 @@ private fun SettingsInfoRow(
                 text = value,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                 color = colors.softGreenAction,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsActionInfoRow(
+    title: String,
+    subtitle: String,
+    value: String,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .yingShiHapticClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.sectionBackground.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.44f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.md, vertical = spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.textPrimary,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                color = colors.softGreenAction,
+            )
+            Icon(
+                imageVector = Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.titleAccent.copy(alpha = 0.72f),
+                modifier = Modifier.padding(end = spacing.xxs),
             )
         }
     }

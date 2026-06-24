@@ -44,12 +44,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +85,9 @@ import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
@@ -185,6 +190,7 @@ fun LifeConsoleScreen(
                     LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, result.data)
                     actionMessage = null
                     showNotice("已上传到今日痕迹", YingShiNoticeTone.SUCCESS)
+                    SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
                     loadHistory()
                 }
                 is ApiResult.Error -> {
@@ -199,6 +205,17 @@ fun LifeConsoleScreen(
     LaunchedEffect(Unit) {
         loadToday()
         loadHistory(historyRange.limitDays)
+    }
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
+    LaunchedEffect(Unit) {
+        snapshotFlow { syncStaleState.lifeConsoleStale }
+            .collect { currentlyStale ->
+                if (currentlyStale) {
+                    loadToday()
+                    loadHistory(historyRange.limitDays)
+                    SyncVersionTracker.markRefreshed(SyncModule.LIFE_CONSOLE)
+                }
+            }
     }
     LaunchedEffect(zoneId) {
         while (true) {
@@ -284,6 +301,15 @@ fun LifeConsoleScreen(
                 }
             },
         ) {
+            StaleBanner(
+                module = SyncModule.LIFE_CONSOLE,
+                onRefresh = {
+                    loadToday()
+                    loadHistory(historyRange.limitDays)
+                    SyncVersionTracker.markRefreshed(SyncModule.LIFE_CONSOLE)
+                },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
             when {
                 isLoading && snapshot == null -> {
                     Box(
@@ -338,6 +364,7 @@ fun LifeConsoleScreen(
                                             snapshot = next
                                             LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                         }
+                                        SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
                                         loadHistory(historyRange.limitDays)
                                     }
                                     is ApiResult.Error -> {
@@ -363,6 +390,7 @@ fun LifeConsoleScreen(
                                             snapshot = next
                                             LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                         }
+                                        SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
                                         loadHistory(historyRange.limitDays)
                                     }
                                     is ApiResult.Error -> {
@@ -427,6 +455,7 @@ fun LifeConsoleScreen(
                                         LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, next)
                                     }
                                     showNotice("已从今日痕迹移除", YingShiNoticeTone.SUCCESS)
+                                    SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
                                     loadToday()
                                     loadHistory(historyRange.limitDays)
                                 }

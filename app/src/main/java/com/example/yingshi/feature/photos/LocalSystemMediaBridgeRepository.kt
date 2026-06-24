@@ -161,6 +161,7 @@ object LocalSystemMediaBridgeRepository {
     private val finalizedOperationIds = linkedSetOf<String>()
     private val publishedOperationSummaryIds = linkedSetOf<String>()
     private val hiddenMediaIds = linkedSetOf<String>()
+    private val invalidatedAppMediaIds = linkedSetOf<String>()
     private val linkedPostIdsByMediaId = linkedMapOf<String, LinkedHashSet<String>>()
     private val realUploadedMediaIdsByOperationId = linkedMapOf<String, LinkedHashMap<String, String>>()
     private val appMediaIdBySystemSourceKey = linkedMapOf<String, String>()
@@ -206,7 +207,8 @@ object LocalSystemMediaBridgeRepository {
         return items
             .filterNot { hiddenMediaIds.contains(it.id) }
             .map { item ->
-                val importedMediaId = knownAppMediaIdForSource(item) ?: item.importedAppMediaId
+                val importedMediaId = knownAppMediaIdForSource(item)
+                    ?: item.importedAppMediaId?.takeIf { it.isNotBlank() && it !in invalidatedAppMediaIds }
                 val linkedPostIds = linkedPostIdsByMediaId[item.id]
                     ?: importedMediaId?.let { linkedPostIdsByMediaId[it] }
                 item.copy(
@@ -282,7 +284,14 @@ object LocalSystemMediaBridgeRepository {
             val existingIndex = uploadTasksState.indexOfFirst { it.taskId == uiTask.taskId }
             if (existingIndex >= 0) {
                 val current = uploadTasksState[existingIndex]
-                if (!current.state.isActivelyUploading()) {
+                if (current.state == UploadState.CANCELLED) {
+                    uploadTasksState[existingIndex] = current.copy(
+                        thumbnailUrl = current.thumbnailUrl ?: uiTask.thumbnailUrl,
+                        previewUri = current.previewUri ?: uiTask.previewUri,
+                        updatedAtMillis = maxOf(current.updatedAtMillis, uiTask.updatedAtMillis),
+                    )
+                    changed = true
+                } else if (!current.state.isActivelyUploading()) {
                     uploadTasksState[existingIndex] = uiTask.copy(
                         previewUri = current.previewUri ?: uiTask.previewUri,
                         thumbnailUrl = uiTask.thumbnailUrl ?: current.thumbnailUrl,
@@ -366,8 +375,45 @@ object LocalSystemMediaBridgeRepository {
         linkedPostIdsByMediaId[appMediaId] = linkedSetOf<String>().apply {
             addAll(smallAlbumIds.filter { it.isNotBlank() })
         }
+        invalidatedAppMediaIds.remove(appMediaId)
         persistImportOverlay()
         publishMutation(MutationKind.OVERLAY_ONLY, setOf(item.id))
+    }
+
+    fun forgetImportStatus(item: SystemMediaItem) {
+        var changed = false
+        item.stableImportSourceKeys().forEach { sourceKey ->
+            if (appMediaIdBySystemSourceKey.remove(sourceKey) != null) {
+                changed = true
+            }
+        }
+        if (changed) {
+            persistImportOverlay()
+            publishMutation(MutationKind.OVERLAY_ONLY, setOf(item.id))
+        }
+    }
+
+    fun forgetImportStatusByAppMediaId(appMediaId: String) {
+        if (appMediaId.isBlank()) return
+        invalidatedAppMediaIds += appMediaId
+        val keysToRemove = appMediaIdBySystemSourceKey.entries
+            .filter { it.value == appMediaId }
+            .map { it.key }
+        linkedPostIdsByMediaId.remove(appMediaId)
+        if (keysToRemove.isEmpty()) {
+            publishMutation(MutationKind.OVERLAY_ONLY)
+            return
+        }
+        keysToRemove.forEach { appMediaIdBySystemSourceKey.remove(it) }
+        linkedPostIdsByMediaId.entries.removeAll { (mediaId, _) ->
+            mediaId == appMediaId || mediaId in keysToRemove
+        }
+        persistImportOverlay()
+        publishMutation(MutationKind.OVERLAY_ONLY)
+    }
+
+    fun forgetImportStatusByAppMediaIds(appMediaIds: Collection<String>) {
+        appMediaIds.filter { it.isNotBlank() }.distinct().forEach(::forgetImportStatusByAppMediaId)
     }
 
     fun createPostFromSystemMedia(
@@ -609,7 +655,7 @@ object LocalSystemMediaBridgeRepository {
 
     fun pauseUploadTask(taskId: String) {
         val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
-        if (task.isTerminal) return
+        if (!task.canPause) return
         updateUploadTask(
             taskId = taskId,
             state = UploadState.CANCELLED,
@@ -626,7 +672,7 @@ object LocalSystemMediaBridgeRepository {
 
     fun cancelUploadTask(taskId: String) {
         val task = uploadTasksState.firstOrNull { it.taskId == taskId } ?: return
-        if (task.isTerminal) return
+        if (task.state == UploadState.SUCCESS || (task.state == UploadState.CANCELLED && !task.canRetry)) return
         updateUploadTask(
             taskId = taskId,
             state = UploadState.CANCELLED,
@@ -654,14 +700,14 @@ object LocalSystemMediaBridgeRepository {
 
     fun cancelUploadOperation(operationId: String) {
         uploadTasksState
-            .filter { task -> task.operationId == operationId && !task.isTerminal }
+            .filter { task -> task.operationId == operationId && task.canCancel }
             .map { it.taskId }
             .forEach(::cancelUploadTask)
     }
 
     fun pauseUploadOperation(operationId: String) {
         uploadTasksState
-            .filter { task -> task.operationId == operationId && !task.isTerminal }
+            .filter { task -> task.operationId == operationId && task.canPause }
             .map { it.taskId }
             .forEach(::pauseUploadTask)
     }
@@ -1391,7 +1437,7 @@ object LocalSystemMediaBridgeRepository {
                     capturedAtMillis = metadata.capturedAtMillis,
                     importedAtMillis = metadata.importedAtMillis,
                     displayTimeSource = metadata.displayTimeSource,
-                    sourceFingerprint = mediaItem.stableImportSourceFingerprint(),
+                    sourceFingerprint = mediaItem.stableImportMetadataSourceFingerprint(),
                     operationId = operationId,
                     operationType = operationRequestsById[operationId]?.operationType?.name,
                     operationTitle = operationTaskMeta(operationId).operationTitle,
@@ -1464,18 +1510,24 @@ object LocalSystemMediaBridgeRepository {
                                 ?: error("无法读取已选择的媒体。")
                         },
                         onProgressPercent = { progress ->
-                            val mappedProgress = (35 + progress * 61 / 100).coerceIn(35, 96)
+                            val mappedProgress = if (progress >= 100) {
+                                98
+                            } else {
+                                (35 + progress * 63 / 100).coerceIn(35, 97)
+                            }
                             uploadScope.launch {
                                 if (!isUploadTaskCancelled(uploadId)) {
+                                    val message = if (progress >= 100) "服务器正在确认接收" else "正在上传 $mappedProgress%"
                                     updateUploadTask(
                                         taskId = uploadId,
                                         state = UploadState.UPLOADING,
                                         progressPercent = mappedProgress,
-                                        statusMessage = "正在上传 $mappedProgress%",
+                                        statusMessage = message,
                                     )
                                 }
                             }
                         },
+                        shouldCancel = { isUploadTaskCancelled(uploadId) },
                     )
                 }
                 when (uploadResult) {
@@ -1486,7 +1538,7 @@ object LocalSystemMediaBridgeRepository {
                         updateUploadTask(
                             taskId = uploadId,
                             state = UploadState.UPLOADING,
-                            progressPercent = 95,
+                            progressPercent = 99,
                             statusMessage = "上传完成，正在处理",
                         )
                         val uploadedMediaId = uploadResult.data.mediaId
@@ -1915,6 +1967,11 @@ object LocalSystemMediaBridgeRepository {
                 )
             ) {
                 is ApiResult.Success -> {
+                    sourceItems.forEach { item ->
+                        uploadedMap[item.id]?.let { appMediaId ->
+                            rememberAppMediaIdForSource(item, appMediaId)
+                        }
+                    }
                     publishMutation(
                         kind = MutationKind.OVERLAY_ONLY,
                         mediaIds = sourceItems.map { it.id },
@@ -1935,6 +1992,7 @@ object LocalSystemMediaBridgeRepository {
                             successCount = sourceItems.size,
                             failureCount = 0,
                             totalCount = sourceItems.size,
+                            shouldAutoOpenResult = result.data.operationType == OperationType.IMPORT_TO_APP,
                         ),
                     )
                 }
@@ -2403,9 +2461,14 @@ object LocalSystemMediaBridgeRepository {
     private fun knownAppMediaIdForSource(
         item: SystemMediaItem,
     ): String? {
-        item.importedAppMediaId?.takeIf { it.isNotBlank() }?.let { return it }
-        val sourceKey = item.stableImportSourceKey()
-        appMediaIdBySystemSourceKey[sourceKey]?.let { return it }
+        item.importedAppMediaId
+            ?.takeIf { it.isNotBlank() && it !in invalidatedAppMediaIds }
+            ?.let { return it }
+        item.stableImportSourceKeys().forEach { sourceKey ->
+            appMediaIdBySystemSourceKey[sourceKey]
+                ?.takeIf { it !in invalidatedAppMediaIds }
+                ?.let { return it }
+        }
         if (RepositoryProvider.currentMode != RepositoryMode.REAL) {
             FakePhotoFeedRepository.findPhotoFeedItem(item.id)?.mediaId?.let { mediaId ->
                 rememberAppMediaIdForSource(item, mediaId)
@@ -2420,7 +2483,10 @@ object LocalSystemMediaBridgeRepository {
         appMediaId: String,
     ) {
         if (appMediaId.isBlank()) return
-        appMediaIdBySystemSourceKey[item.stableImportSourceKey()] = appMediaId
+        invalidatedAppMediaIds.remove(appMediaId)
+        item.stableImportSourceKeys().forEach { sourceKey ->
+            appMediaIdBySystemSourceKey[sourceKey] = appMediaId
+        }
         persistImportOverlay()
     }
 
@@ -2836,7 +2902,7 @@ object LocalSystemMediaBridgeRepository {
             capturedAtMillis = resolvedTime.capturedAtMillis,
             importedAtMillis = resolvedTime.importedAtMillis,
             displayTimeSource = resolvedTime.displayTimeSource,
-            sourceFingerprint = mediaItem.stableImportSourceFingerprint(),
+            sourceFingerprint = mediaItem.stableImportMetadataSourceFingerprint(),
             operationId = operationId,
             operationType = operationType?.name,
             operationTitle = operationTitle,

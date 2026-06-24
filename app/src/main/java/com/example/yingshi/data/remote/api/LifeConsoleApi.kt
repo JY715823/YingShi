@@ -5,9 +5,12 @@ import com.example.yingshi.data.remote.dto.LifeConsoleBowelMutationResponseDto
 import com.example.yingshi.data.remote.dto.LifeConsoleHistoryDto
 import com.example.yingshi.data.remote.dto.LifeConsoleMediaRequestDto
 import com.example.yingshi.data.remote.dto.LifeConsoleTodayDto
+import com.example.yingshi.data.remote.dto.PushDiagnosticsResponseDto
+import com.example.yingshi.data.remote.dto.PushPreferencesResponseDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenResponseDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
+import com.example.yingshi.data.remote.dto.UpdatePushPreferenceRequestDto
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -49,4 +52,15 @@ interface LifeConsoleApi {
     suspend fun registerPushToken(
         @Body request: RegisterPushTokenRequestDto,
     ): ApiEnvelopeDto<RegisterPushTokenResponseDto>
+
+    @GET("api/push/preferences")
+    suspend fun getPushPreferences(): ApiEnvelopeDto<PushPreferencesResponseDto>
+
+    @GET("api/push/diagnostics")
+    suspend fun getPushDiagnostics(): ApiEnvelopeDto<PushDiagnosticsResponseDto>
+
+    @POST("api/push/preferences")
+    suspend fun updatePushPreference(
+        @Body request: UpdatePushPreferenceRequestDto,
+    ): ApiEnvelopeDto<PushPreferencesResponseDto>
 }

@@ -22,6 +22,8 @@ import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
 import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.RemotePendingCleanup
+import com.example.yingshi.data.model.RemotePushDiagnostics
+import com.example.yingshi.data.model.RemotePushPreference
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
@@ -58,6 +60,7 @@ import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostMediaOrderRequestDto
+import com.example.yingshi.data.remote.dto.UpdatePushPreferenceRequestDto
 import com.example.yingshi.data.remote.mapper.toRemoteModel
 import com.example.yingshi.data.remote.mapper.toRemoteDetail
 import com.example.yingshi.data.remote.mapper.toRemotePage
@@ -72,6 +75,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
 import retrofit2.HttpException
+import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -866,6 +870,7 @@ class RealUploadRepository(
         mimeType: String,
         fileBytes: ByteArray,
         onProgressPercent: (Int) -> Unit,
+        shouldCancel: () -> Boolean,
     ): ApiResult<RemoteMedia> {
         return runCatching {
             val uploadToken = uploadTokens[uploadId]
@@ -877,6 +882,7 @@ class RealUploadRepository(
                         bytes = fileBytes,
                         mimeType = mimeType,
                         onProgressPercent = onProgressPercent,
+                        shouldCancel = shouldCancel,
                     ),
                 )
             }
@@ -887,6 +893,7 @@ class RealUploadRepository(
                     bytes = fileBytes,
                     mimeType = mimeType,
                     onProgressPercent = onProgressPercent,
+                    shouldCancel = shouldCancel,
                 ),
             )
             uploadApi.uploadFile(
@@ -912,6 +919,7 @@ class RealUploadRepository(
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
         onProgressPercent: (Int) -> Unit,
+        shouldCancel: () -> Boolean,
     ): ApiResult<RemoteMedia> {
         return runCatching {
             val uploadToken = uploadTokens[uploadId]
@@ -924,6 +932,7 @@ class RealUploadRepository(
                         mimeType = mimeType,
                         openInputStream = openInputStream,
                         onProgressPercent = onProgressPercent,
+                        shouldCancel = shouldCancel,
                     ),
                 )
             }
@@ -935,6 +944,7 @@ class RealUploadRepository(
                     mimeType = mimeType,
                     openInputStream = openInputStream,
                     onProgressPercent = onProgressPercent,
+                    shouldCancel = shouldCancel,
                 ),
             )
             uploadApi.uploadFile(
@@ -1142,6 +1152,7 @@ private class ProgressRequestBody(
     private val bytes: ByteArray,
     private val mimeType: String,
     private val onProgressPercent: (Int) -> Unit,
+    private val shouldCancel: () -> Boolean = { false },
 ) : RequestBody() {
     override fun contentType() = mimeType.toMediaTypeOrNull()
 
@@ -1157,8 +1168,10 @@ private class ProgressRequestBody(
         var lastProgress = -1
         notifyProgress(0)
         while (written < bytes.size) {
+            throwIfCancelled()
             val byteCount = minOf(UploadProgressChunkBytes, bytes.size - written)
             sink.write(bytes, written, byteCount)
+            throwIfCancelled()
             written += byteCount
             val progress = ((written.toLong() * 100L) / bytes.size.toLong()).toInt().coerceIn(0, 100)
             if (progress != lastProgress) {
@@ -1169,8 +1182,13 @@ private class ProgressRequestBody(
     }
 
     private fun notifyProgress(progress: Int) {
-        runCatching {
-            onProgressPercent(progress.coerceIn(0, 100))
+        onProgressPercent(progress.coerceIn(0, 100))
+        throwIfCancelled()
+    }
+
+    private fun throwIfCancelled() {
+        if (shouldCancel()) {
+            throw IOException("Upload cancelled by user")
         }
     }
 }
@@ -1180,6 +1198,7 @@ private class ProgressInputStreamRequestBody(
     private val mimeType: String,
     private val openInputStream: () -> InputStream,
     private val onProgressPercent: (Int) -> Unit,
+    private val shouldCancel: () -> Boolean = { false },
 ) : RequestBody() {
     override fun contentType() = mimeType.toMediaTypeOrNull()
 
@@ -1192,10 +1211,12 @@ private class ProgressInputStreamRequestBody(
         notifyProgress(0)
         openInputStream().use { input ->
             while (true) {
+                throwIfCancelled()
                 val readCount = input.read(buffer)
                 if (readCount < 0) break
                 if (readCount == 0) continue
                 sink.write(buffer, 0, readCount)
+                throwIfCancelled()
                 written += readCount.toLong()
                 val progress = if (expectedLengthBytes > 0L) {
                     ((written * 100L) / expectedLengthBytes)
@@ -1216,8 +1237,13 @@ private class ProgressInputStreamRequestBody(
     }
 
     private fun notifyProgress(progress: Int) {
-        runCatching {
-            onProgressPercent(progress.coerceIn(0, 100))
+        onProgressPercent(progress.coerceIn(0, 100))
+        throwIfCancelled()
+    }
+
+    private fun throwIfCancelled() {
+        if (shouldCancel()) {
+            throw IOException("Upload cancelled by user")
         }
     }
 }
@@ -1396,6 +1422,65 @@ class RealLifeConsoleRepository(
         )
     }
 
+}
+
+class RealPushPreferenceRepository(
+    private val lifeConsoleApi: LifeConsoleApi,
+) : PushPreferenceRepository {
+    override suspend fun getPushPreferences(): ApiResult<List<RemotePushPreference>> {
+        return runCatching {
+            lifeConsoleApi.getPushPreferences().data.preferences.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "PUSH_PREFERENCES_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "读取推送设置失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun getPushDiagnostics(): ApiResult<RemotePushDiagnostics> {
+        return runCatching {
+            lifeConsoleApi.getPushDiagnostics().data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "PUSH_DIAGNOSTICS_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "读取推送诊断失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun updatePushPreference(
+        module: String,
+        category: String,
+        enabled: Boolean,
+    ): ApiResult<List<RemotePushPreference>> {
+        return runCatching {
+            lifeConsoleApi.updatePushPreference(
+                UpdatePushPreferenceRequestDto(
+                    module = module,
+                    category = category,
+                    enabled = enabled,
+                ),
+            ).data.preferences.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "PUSH_PREFERENCE_UPDATE_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "保存推送设置失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
 }
 
 private fun uploadRequestErrorMessage(

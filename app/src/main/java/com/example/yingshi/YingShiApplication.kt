@@ -13,7 +13,10 @@ import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.feature.photos.VideoPreloadWorker
+import com.example.yingshi.feature.photos.preloadSystemMediaCache
+import com.example.yingshi.feature.life.push.PushNotificationChannels
 import com.example.yingshi.feature.life.push.PushTokenRegistrar
+import com.example.yingshi.feature.sync.SyncVersionTracker
 
 class YingShiApplication : Application(), ImageLoaderFactory {
 
@@ -23,8 +26,11 @@ class YingShiApplication : Application(), ImageLoaderFactory {
         BackendDebugConfig.init(applicationContext)
         NetworkConnectivityMonitor.init(applicationContext)
         SettingsRepository.init(applicationContext)
+        PushNotificationChannels.ensureSharedUpdatesChannel(applicationContext)
         VideoPreloadWorker.schedulePeriodic(applicationContext)
+        preloadSystemMediaCache(applicationContext)
         PushTokenRegistrar.registerCurrentTokenIfPossible(applicationContext)
+        SyncVersionTracker.init(applicationContext)
     }
 
     override fun newImageLoader(): ImageLoader {

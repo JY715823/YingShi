@@ -55,6 +55,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +90,9 @@ import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
 import com.example.yingshi.feature.ledger.data.LedgerCategoryType
+import com.example.yingshi.feature.sync.StaleBanner
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalTime
@@ -126,6 +130,7 @@ fun LedgerScreen(
     ),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(
         fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
     )
@@ -149,6 +154,15 @@ fun LedgerScreen(
 
     LaunchedEffect(Unit) {
         viewModel.handleLedgerEntry()
+    }
+    LaunchedEffect(Unit) {
+        snapshotFlow { syncStaleState.lifeConsoleStale }
+            .collect { currentlyStale ->
+                if (currentlyStale) {
+                    viewModel.handleLedgerEntry()
+                    SyncVersionTracker.markRefreshed(SyncModule.LIFE_CONSOLE)
+                }
+            }
     }
     LaunchedEffect(collaboratorDirectory.currentUser?.userId) {
         viewModel.refreshBookCreatorsFromCollaborators()
@@ -408,6 +422,17 @@ fun LedgerScreen(
                     )
                 }
             }
+
+            StaleBanner(
+                module = SyncModule.LIFE_CONSOLE,
+                onRefresh = {
+                    viewModel.handleLedgerEntry()
+                    SyncVersionTracker.markRefreshed(SyncModule.LIFE_CONSOLE)
+                },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp),
+            )
 
             YingShiNoticeHost(
                 notice = notice,

@@ -3,6 +3,7 @@ package com.example.yingshi.feature.photos
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.mutableStateListOf
 import com.example.yingshi.data.model.RemoteNotification
+import com.example.yingshi.data.model.RemoteNotificationMediaItem
 
 @Immutable
 data class NotificationCenterRoute(
@@ -23,15 +24,36 @@ data class NotificationDetailRoute(
 data class NotificationCenterItemUiModel(
     val id: String,
     val type: NotificationCenterItemType,
+    val module: String? = null,
+    val category: String? = null,
     val title: String,
     val body: String,
     val createdAtMillis: Long,
     val isRead: Boolean,
+    val actorUserId: String? = null,
+    val actorDisplayName: String? = null,
+    val actorAvatarUrl: String? = null,
+    val actorIsCurrentUser: Boolean = false,
+    val groupId: String? = null,
+    val operationId: String? = null,
+    val groupItemCount: Int? = null,
+    val mediaItems: List<NotificationCenterMediaItemUiModel> = emptyList(),
+    val targetRoute: String? = null,
     val targetSummary: String,
     val targetType: String? = null,
     val postId: String? = null,
     val mediaId: String? = null,
     val trashItemId: String? = null,
+)
+
+@Immutable
+data class NotificationCenterMediaItemUiModel(
+    val mediaId: String,
+    val mediaType: AppMediaType = AppMediaType.IMAGE,
+    val mimeType: String? = null,
+    val mediaSource: AppContentMediaSource? = null,
+    val displayTimeMillis: Long? = null,
+    val durationMillis: Long? = null,
 )
 
 enum class NotificationCenterItemType(
@@ -367,15 +389,54 @@ fun RemoteNotification.toNotificationCenterItemUiModel(): NotificationCenterItem
     return NotificationCenterItemUiModel(
         id = notificationId,
         type = NotificationCenterItemType.fromApiValue(type),
+        module = module,
+        category = category,
         title = title,
         body = body,
         createdAtMillis = createdAtMillis,
         isRead = isRead,
+        actorUserId = actorUserId,
+        actorDisplayName = actorDisplayName,
+        actorAvatarUrl = actorAvatarUrl,
+        actorIsCurrentUser = actorIsCurrentUser,
+        groupId = groupId,
+        operationId = operationId,
+        groupItemCount = groupItemCount,
+        mediaItems = mediaItems.map(RemoteNotificationMediaItem::toNotificationCenterMediaItemUiModel),
+        targetRoute = targetRoute,
         targetSummary = targetSummary.orNotificationTargetSummary(),
         targetType = targetType,
         postId = postId,
         mediaId = mediaId,
         trashItemId = trashItemId,
+    )
+}
+
+private fun RemoteNotificationMediaItem.toNotificationCenterMediaItemUiModel(): NotificationCenterMediaItemUiModel {
+    val resolvedType = resolveAppMediaType(
+        rawType = mediaType,
+        mimeType = mimeType,
+        thumbnailUrl = thumbnailUrl ?: previewUrl,
+        mediaUrl = mediaUrl,
+        videoUrl = videoUrl,
+        coverUrl = coverUrl,
+        originalUrl = null,
+    )
+    return NotificationCenterMediaItemUiModel(
+        mediaId = mediaId,
+        mediaType = resolvedType,
+        mimeType = mimeType,
+        mediaSource = AppContentMediaSource(
+            thumbnailUrl = resolveBackendMediaUrl(thumbnailUrl ?: previewUrl),
+            originalUrl = resolveBackendMediaUrl(mediaUrl),
+            mediaUrl = resolveBackendMediaUrl(mediaUrl),
+            videoUrl = resolveBackendMediaUrl(videoUrl),
+            coverUrl = resolveBackendMediaUrl(coverUrl),
+            mimeType = mimeType,
+            durationMillis = durationMillis,
+        ),
+        displayTimeMillis = displayTimeMillis,
+        durationMillis = durationMillis,
     )
 }
 
@@ -393,6 +454,8 @@ private fun NotificationCenterItemUiModel.matchesNotificationCenterFilter(
 }
 
 fun NotificationCenterItemUiModel.belongsToLifeModule(): Boolean {
+    if (module.equals("life", ignoreCase = true)) return true
+    if (module.equals("photos", ignoreCase = true)) return false
     val text = listOfNotNull(targetType, targetSummary, title, body)
         .joinToString(separator = " ")
         .lowercase()

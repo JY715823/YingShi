@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
@@ -24,6 +25,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.YingShi">
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/default_notification_channel_id" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -33,6 +38,14 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.example.yingshi.action.OPEN_PHOTO_FEED" />
+                <action android:name="com.example.yingshi.action.OPEN_SMALL_ALBUM" />
+                <action android:name="com.example.yingshi.action.OPEN_LIFE_CONSOLE" />
+                <action android:name="com.example.yingshi.action.OPEN_LEDGER" />
+                <action android:name="com.example.yingshi.action.OPEN_LEDGER_ADD" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 

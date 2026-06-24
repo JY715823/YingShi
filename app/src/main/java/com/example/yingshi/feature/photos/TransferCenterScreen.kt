@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
@@ -49,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -58,8 +60,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.size.Precision
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.ui.components.YingShiMistBackground
@@ -126,7 +126,7 @@ fun TransferCenterScreen(
     val dateSections = remember(operationGroups) {
         operationGroups.toTransferDateSections()
     }
-    val completedGroups = operationGroups.count { group -> group.all { it.isTerminal } }
+    val completedGroups = operationGroups.count { group -> group.all { it.isTerminal && !it.canRetry } }
     val runningGroups = operationGroups.size - completedGroups
     var showClearCompletedDialog by rememberSaveable { mutableStateOf(false) }
     val colors = YingShiThemeTokens.colors
@@ -242,7 +242,7 @@ fun TransferCenterScreen(
                     onConfirm = {
                         showClearCompletedDialog = false
                         operationGroups.flatten().forEach { task ->
-                            if (!task.isTerminal) {
+                            if (task.canCancel) {
                                 LocalSystemMediaBridgeRepository.cancelUploadTask(task.taskId)
                             }
                             LocalSystemMediaBridgeRepository.dismissUploadTask(task.taskId)
@@ -371,7 +371,8 @@ private fun TransferOperationCard(
     val colors = YingShiThemeTokens.colors
     val primaryTask = tasks.first()
     val retryableTasks = tasks.filter { it.canRetry }
-    val runningTasks = tasks.filterNot { it.isTerminal }
+    val runningTasks = tasks.filter { it.canPause }
+    val cancellableTasks = tasks.filter { it.canCancel }
     val allTerminal = tasks.all { it.isTerminal }
     val entranceNonce = TransferCenterStateStore.entranceNonce
     var isCollapsed by remember(primaryTask.operationId, allTerminal, entranceNonce) {
@@ -555,8 +556,10 @@ private fun TransferOperationCard(
                         emphasized = false,
                         onClick = { onPauseOperation(task.operationId) },
                     )
+                }
+                cancellableTasks.firstOrNull()?.let { task ->
                     TransferActionPill(
-                        text = if (runningTasks.size > 1) "取消全部" else "取消",
+                        text = if (cancellableTasks.size > 1) "取消全部" else "取消",
                         emphasized = false,
                         onClick = { onCancelOperation(task.operationId) },
                     )
@@ -762,12 +765,15 @@ private fun TransferMediaTile(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             when {
-                !task.isTerminal -> {
+                task.canPause -> {
                     TransferIconActionButton(icon = Icons.Default.Pause, contentDescription = "暂停", onClick = onPause)
                     TransferIconActionButton(icon = Icons.Default.Close, contentDescription = "取消", onClick = onCancel)
                 }
                 task.canRetry || task.state == UploadState.FAILURE -> {
                     TransferIconActionButton(icon = Icons.Default.Refresh, contentDescription = "重试", onClick = onRetry)
+                    if (task.canCancel) {
+                        TransferIconActionButton(icon = Icons.Default.Close, contentDescription = "取消", onClick = onCancel)
+                    }
                 }
             }
         }
@@ -803,7 +809,7 @@ private fun TransferTaskThumbnail(
         resolveBackendMediaUrl(task.thumbnailUrl)
     }
     val previewUri = task.previewUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
-    val imageRequest = remember(context, thumbnailUrl, previewUri, accessToken) {
+    val networkRequest = remember(context, thumbnailUrl, accessToken) {
         if (!thumbnailUrl.isNullOrBlank()) {
             backendMediaImageRequest(
                 context = context,
@@ -814,14 +820,17 @@ private fun TransferTaskThumbnail(
                 size = 512,
             )
         } else {
-            previewUri?.let {
-                ImageRequest.Builder(context)
-                    .data(it)
-                    .precision(Precision.EXACT)
-                    .crossfade(true)
-                    .build()
-            }
+            null
         }
+    }
+    val localThumbnail = if (previewUri != null) {
+        rememberSystemMediaThumbnail(
+            context = context,
+            uri = previewUri,
+            targetSizePx = 256,
+        )
+    } else {
+        null
     }
     val backgroundColor = if (task.mediaType == SystemMediaType.VIDEO) {
         colors.sectionBackground.copy(alpha = 0.86f)
@@ -835,18 +844,32 @@ private fun TransferTaskThumbnail(
             .background(backgroundColor),
         contentAlignment = Alignment.Center,
     ) {
-        if (imageRequest != null) {
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = task.fileName,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            if (task.mediaType == SystemMediaType.VIDEO) {
-                VideoBadge()
+        when {
+            localThumbnail != null -> {
+                Image(
+                    bitmap = localThumbnail.asImageBitmap(),
+                    contentDescription = task.fileName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                if (task.mediaType == SystemMediaType.VIDEO) {
+                    VideoBadge()
+                }
             }
-        } else {
-            PlaceholderBadge(isVideo = task.mediaType == SystemMediaType.VIDEO)
+            networkRequest != null -> {
+                AsyncImage(
+                    model = networkRequest,
+                    contentDescription = task.fileName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+                if (task.mediaType == SystemMediaType.VIDEO) {
+                    VideoBadge()
+                }
+            }
+            else -> {
+                PlaceholderBadge(isVideo = task.mediaType == SystemMediaType.VIDEO)
+            }
         }
     }
 }
@@ -1149,7 +1172,7 @@ private fun List<SystemMediaUploadTaskUiModel>.matchesTransferCategory(
     if (isEmpty()) return false
     return when (category) {
         TransferCenterCategory.ALL -> true
-        TransferCenterCategory.RUNNING -> any { !it.isTerminal }
+        TransferCenterCategory.RUNNING -> any { it.canPause }
         TransferCenterCategory.RETRYABLE -> any { it.canRetry || it.state == UploadState.FAILURE }
         TransferCenterCategory.COMPLETED -> all { it.state == UploadState.SUCCESS }
         TransferCenterCategory.CANCELLED -> any { it.state == UploadState.CANCELLED }
@@ -1211,7 +1234,7 @@ internal fun calculateTransferOperationProcessedCount(
     totalCount: Int,
 ): Int {
     val virtualCompletedCount = (totalCount - tasks.size).coerceAtLeast(0)
-    return (virtualCompletedCount + tasks.count { it.isTerminal })
+    return (virtualCompletedCount + tasks.count { it.isTerminal && !it.canRetry })
         .coerceIn(0, totalCount.coerceAtLeast(0))
 }
 
@@ -1223,7 +1246,7 @@ internal fun calculateTransferOperationProgressPercent(
     if (totalCount <= 0) return 0
     val virtualCompletedUnits = (totalCount - tasks.size).coerceAtLeast(0) * 100
     val taskUnits = tasks.sumOf { task ->
-        if (task.isTerminal) {
+        if (task.isTerminal && !task.canRetry) {
             100
         } else {
             task.progressPercent.coerceIn(0, 100)
