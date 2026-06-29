@@ -619,7 +619,7 @@ private fun RealSmallAlbumDetailContent(
                 coroutineScope.launch {
                     when (val result = RepositoryProvider.postRepository.addMediaToPost(detail.postId, mediaIds)) {
                         is ApiResult.Success -> {
-                            notifyRealBackendContentChanged(
+                            notifyRealBackendContentChangedWithoutPhotoFeed(
                                 postIds = setOf(detail.postId),
                                 mediaIds = mediaIds.toSet(),
                             )
@@ -3106,7 +3106,7 @@ private fun SmallAlbumMediaGridSection(
                 }
             }
             if (successCount > 0) {
-                notifyRealBackendContentChanged(
+                notifyRealBackendContentChangedWithoutPhotoFeed(
                     postIds = setOf(postId),
                     mediaIds = pendingIds,
                 )

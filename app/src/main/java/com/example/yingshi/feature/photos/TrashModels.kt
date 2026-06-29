@@ -90,6 +90,7 @@ data class TrashPostRelationSnapshot(
 data class TrashPendingCleanupUiModel(
     val entry: TrashEntryUiModel,
     val removedAtMillis: Long,
+    val undoDeadlineMillis: Long = removedAtMillis + 24L * 60L * 60L * 1000L,
 )
 
 @Immutable

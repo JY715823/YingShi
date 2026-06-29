@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -63,16 +64,22 @@ class LocalSystemMediaRepository(
         if (!forceRefresh) {
             LocalSystemMediaQueryCache.peek(appContext)?.let { return it }
         }
-        return dataSource.queryMedia()
+        val localItems = dataSource.queryMedia()
             .sortedByDescending { it.displayTimeMillis }
-            .withAppImportStatus()
+        return localItems
+            .withAppImportStatus(allowRemoteRefresh = NetworkConnectivityMonitor.currentState.isConnected)
             .also { items ->
                 LocalSystemMediaQueryCache.store(appContext, items)
             }
     }
 
-    private suspend fun List<SystemMediaItem>.withAppImportStatus(): List<SystemMediaItem> {
-        if (isEmpty() || RepositoryProvider.currentMode != RepositoryMode.REAL || !AuthSessionManager.isLoggedIn) {
+    private suspend fun List<SystemMediaItem>.withAppImportStatus(allowRemoteRefresh: Boolean): List<SystemMediaItem> {
+        if (
+            isEmpty() ||
+            RepositoryProvider.currentMode != RepositoryMode.REAL ||
+            !AuthSessionManager.isLoggedIn ||
+            !allowRemoteRefresh
+        ) {
             return this
         }
         val itemsByFingerprint = flatMap { item ->

@@ -132,12 +132,17 @@ class RealTrashListViewModel(
             val itemsDeferred = async {
                 trashRepository.getTrashItems(selectedType?.toApiItemType())
             }
+            val pendingDeferred = async {
+                trashRepository.getPendingCleanupItems()
+            }
 
             val itemsResult = itemsDeferred.await()
+            val pendingResult = pendingDeferred.await()
 
             val rawError = itemsResult as? ApiResult.Error
             val itemError = rawError?.toBackendUiMessage("读取回收站列表失败。")
             val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
+            val successPendingItems = (pendingResult as? ApiResult.Success)?.data.orEmpty()
             if (successItems.isNotEmpty()) {
                 withContext(Dispatchers.IO) {
                     persistTrashList(selectedType, successItems)
@@ -173,7 +178,9 @@ class RealTrashListViewModel(
                 isOfflineReadOnly = false,
                 errorMessage = itemError,
                 entries = deduplicatedEntries,
-                pendingEntries = emptyList(),
+                pendingEntries = successPendingItems
+                    .map { it.toTrashPendingCleanupUiModel() }
+                    .sortedBy { it.undoDeadlineMillis },
                 statusMessage = _uiState.value.statusMessage,
             )
             _uiState.value = nextState
@@ -274,7 +281,7 @@ class RealTrashListViewModel(
         }
     }
 
-    fun purgeEntries(
+    fun moveEntriesToPendingCleanup(
         entries: List<TrashEntryUiModel>,
         selectedType: TrashEntryType?,
     ) {
@@ -294,12 +301,9 @@ class RealTrashListViewModel(
             var successCount = 0
             var failureCount = 0
             entries.forEach { entry ->
-                when (trashRepository.purgeTrashItem(entry.id)) {
+                when (trashRepository.moveTrashItemOut(entry.id)) {
                     is ApiResult.Success -> {
                         successCount += 1
-                        entry.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-                        entry.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-                        invalidateSystemMediaMetadataCache()
                     }
                     is ApiResult.Error -> {
                         failureCount += 1
@@ -315,12 +319,66 @@ class RealTrashListViewModel(
                 it.copy(
                     isMutating = false,
                     statusMessage = when {
-                        successCount > 0 && failureCount > 0 -> "清空当前分类完成：成功 $successCount 项，失败 $failureCount 项。失败项已保留。"
-                        successCount > 0 -> "已清空当前分类 $successCount 项。"
+                        successCount > 0 && failureCount > 0 -> "已移出回收站 $successCount 项，失败 $failureCount 项。失败项已保留。"
+                        successCount > 0 -> "已移出回收站 $successCount 项，可在待清理中撤销或永久删除。"
                         else -> null
                     },
                     errorMessage = if (successCount == 0 && failureCount > 0) {
-                        "清空当前分类失败，条目已保留。"
+                        "移出回收站失败，条目已保留。"
+                    } else {
+                        it.errorMessage
+                    },
+                )
+            }
+        }
+    }
+
+    fun purgePendingCleanupEntries(
+        entries: List<TrashPendingCleanupUiModel>,
+        selectedType: TrashEntryType?,
+    ) {
+        if (entries.isEmpty()) return
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能永久删除回收站内容。") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMutating = true,
+                    errorMessage = null,
+                    statusMessage = null,
+                )
+            }
+            var successCount = 0
+            var failureCount = 0
+            entries.forEach { pending ->
+                val entry = pending.entry
+                when (trashRepository.purgeTrashItem(entry.id)) {
+                    is ApiResult.Success -> {
+                        successCount += 1
+                        entry.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+                        entry.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
+                        invalidateSystemMediaMetadataCache()
+                    }
+                    is ApiResult.Error -> failureCount += 1
+                    ApiResult.Loading -> Unit
+                }
+            }
+            if (successCount > 0) {
+                notifyRealBackendContentChanged()
+            }
+            refresh(selectedType)
+            _uiState.update {
+                it.copy(
+                    isMutating = false,
+                    statusMessage = when {
+                        successCount > 0 && failureCount > 0 -> "永久删除完成：成功 $successCount 项，失败 $failureCount 项。"
+                        successCount > 0 -> "已永久删除 $successCount 项。"
+                        else -> null
+                    },
+                    errorMessage = if (successCount == 0 && failureCount > 0) {
+                        "永久删除失败，条目仍保留在待清理。"
                     } else {
                         it.errorMessage
                     },
@@ -456,14 +514,8 @@ class RealTrashDetailViewModel(
             _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
             return
         }
-        mutateTrashItem("已永久删除该回收站项目。", clearImportOverlayOnSuccess = true, onSuccess = {
-            _uiState.value.detail?.item?.let { item ->
-                item.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-                item.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-            }
-            onSuccess()
-        }) {
-            trashRepository.purgeTrashItem(route.entryId)
+        mutate("已移出回收站，可在待清理中撤销或永久删除。", onSuccess = onSuccess) {
+            trashRepository.moveTrashItemOut(route.entryId)
         }
     }
 
@@ -472,14 +524,8 @@ class RealTrashDetailViewModel(
             _uiState.update { it.copy(errorMessage = "缓存只读模式下不能删除回收站内容。") }
             return
         }
-        mutateTrashItem("已永久删除该回收站项目。", clearImportOverlayOnSuccess = true, onSuccess = {
-            _uiState.value.detail?.item?.let { item ->
-                item.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-                item.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-            }
-            onSuccess()
-        }) {
-            trashRepository.purgeTrashItem(trashItemId)
+        mutate("已移出回收站，可在待清理中撤销或永久删除。", onSuccess = onSuccess) {
+            trashRepository.moveTrashItemOut(trashItemId)
         }
     }
 
@@ -490,6 +536,18 @@ class RealTrashDetailViewModel(
         }
         mutate("已撤销移出回收站。") {
             trashRepository.undoMoveTrashItemOut(route.entryId)
+        }
+    }
+
+    fun purgePendingCleanup(onSuccess: () -> Unit) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能永久删除回收站内容。") }
+            return
+        }
+        mutateTrashItem("已永久删除该回收站项目。", clearImportOverlayOnSuccess = true, onSuccess = {
+            onSuccess()
+        }) {
+            trashRepository.purgeTrashItem(route.entryId)
         }
     }
 
@@ -558,7 +616,7 @@ class RealTrashDetailViewModel(
                     _uiState.update {
                         it.copy(
                             isMutating = false,
-                            statusMessage = successMessage,
+                            statusMessage = result.data.restoreSuccessMessage(successMessage),
                         )
                     }
                     if (onSuccess != null) {
@@ -589,6 +647,14 @@ class RealTrashDetailViewModel(
                 }
             }
         }
+    }
+}
+
+private fun RemoteTrashItem.restoreSuccessMessage(defaultMessage: String): String {
+    return if (itemType == "mediaSystemDeleted" && state == "restored") {
+        "已恢复到正常列表；如存在重复内容，服务端已自动合并展示。"
+    } else {
+        defaultMessage
     }
 }
 

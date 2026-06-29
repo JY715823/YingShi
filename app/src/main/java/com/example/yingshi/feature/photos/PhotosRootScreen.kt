@@ -131,7 +131,7 @@ fun PhotosRootScreen(
     val colors = YingShiThemeTokens.colors
     val context = LocalContext.current
     val transferTasks = LocalSystemMediaBridgeRepository.uploadTasks
-    val hasTransferFailure = transferTasks.any { it.canRetry || it.state == UploadState.FAILURE }
+    val hasTransferFailure = hasUnseenTransferProblem(transferTasks)
     val runningTransferCount = transferTasks.count {
         it.state == UploadState.WAITING || it.state == UploadState.UPLOADING
     }

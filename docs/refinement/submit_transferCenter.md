@@ -281,6 +281,9 @@
 - 2026-06-22: 用户反馈 A 上传时 B 正在照片流页不应立刻刷新，应该提示有新内容，点击后再刷新。
   - Root cause: `RealPhotoFeedPage` 同时渲染 `StaleBanner` 和监听 `photoFeedStale` 自动 `viewModel.refresh()`，提示一出现就被自动刷新打断。
   - Resolution: 移除照片流 stale 自动刷新监听；`StaleBanner` 点击仍执行 `viewModel.refresh()` 和 `SyncVersionTracker.markRefreshed(PHOTO_FEED)`。
+- 2026-06-25: 用户反馈评论仍重复推、小相册新增媒体不推送、通知只有状态栏图标没有横幅卡片、系统媒体离线刷新一直转、传输中心失败红点看过后仍常驻。
+  - Root cause: 评论 FCM 直推没有带通知中心稳定 `notificationId`，会和同步兜底使用不同去重键；小相册新增媒体只改关联表时可能不推进 `small_albums.updated_at`；旧 Android 通知 channel 不能原地提升 importance；系统媒体刷新离线时仍等远端 import-status；传输中心红点只看失败状态，没有“已查看失败项”概念。
+  - Resolution: 评论/相册内容推送带稳定 `notificationId/groupId`，同步兜底即使被 presenter 去重也标记版本已处理；新增媒体显式 touch 小相册并按 `post:<id>:<updatedAt>` 推送；通知切到新的 heads-up channel 并启用声音/震动默认提示；离线系统媒体只刷新本地 MediaStore，跳过远端 import-status；传输中心进入、展开、查看失败、打开缩略图会把当前失败项记为已查看，只有新失败再亮红点。
 
 ## Validation Snapshot
 ### Verified
@@ -299,6 +302,9 @@
 - Server follow-up focused test passed after async upload push change: `YingshiServerApplicationTests#uploadHistoryKeepsOperationMetadataAndDismissesRecords`.
 - Server follow-up package passed and final jar was redeployed to `yingshi-server`; `/api/health` returned `UP` with database and storage checks UP.
 - Android photo-feed stale UX compile passed: `:app:compileDebugKotlin`.
+- Android follow-up compile passed after 2026-06-25 push/offline/transfer-badge fixes: `:app:compileDebugKotlin`.
+- Server follow-up compile passed after 2026-06-25 notification-id and small-album touch fixes: `mvnw.cmd -q -DskipTests compile`.
+- 2026-06-25 local diff checks passed for touched Android and Server files.
 - docker-local server is running on port 8080; `/api/health` reports `UP`, but the running container has not been confirmed rebuilt with the latest jar.
 - Existing live MinIO/DB may still expose old `cover-v1` objects until the rebuilt server is deployed and warmup/upload generation writes `cover-v2`.
 - Live Docker server rebuild is pending because Windows Docker CLI previously returned `500 Internal Server Error` for Docker Engine API calls; the rebuilt server jar exists at `YingShi-Server/target/yingshi-server-0.0.1-SNAPSHOT.jar`.

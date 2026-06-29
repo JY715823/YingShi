@@ -394,7 +394,7 @@ class RealGearEditViewModel(
                         postIds = setOf(route.postId),
                     )
                     if (mediaChanged) {
-                        notifyRealBackendContentChanged(
+                        notifyRealBackendContentChangedWithoutPhotoFeed(
                             postIds = setOf(route.postId),
                             mediaIds = (removedIds + finalMediaIds).toSet(),
                         )
@@ -438,7 +438,7 @@ class RealGearEditViewModel(
                             statusMessage = "小相册已移入回收站。",
                         )
                     }
-                    notifyRealBackendContentChanged(
+                    notifyRealBackendContentChangedWithoutPhotoFeed(
                         postIds = setOf(route.postId),
                     )
                     onSuccess()
@@ -601,7 +601,7 @@ class RealMediaManagementViewModel(
                 )
             }
             if (successCount > 0) {
-                notifyRealBackendContentChanged(
+                notifyRealBackendContentChangedWithoutPhotoFeed(
                     postIds = setOf(route.postId),
                     mediaIds = normalizedIds.toSet(),
                 )
@@ -634,7 +634,7 @@ class RealMediaManagementViewModel(
                             statusMessage = "小相册已移入回收站。",
                         )
                     }
-                    notifyRealBackendContentChanged(
+                    notifyRealBackendContentChangedWithoutPhotoFeed(
                         postIds = setOf(route.postId),
                     )
                     onSuccess()

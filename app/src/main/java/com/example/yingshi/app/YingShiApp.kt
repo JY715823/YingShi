@@ -990,7 +990,6 @@ fun YingShiApp() {
                     event.operationType == LocalSystemMediaBridgeRepository.OperationType.CREATE_POST ||
                     event.operationType == LocalSystemMediaBridgeRepository.OperationType.ADD_TO_EXISTING_POST
                 ) {
-                    SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
                     SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
                     SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
                 }

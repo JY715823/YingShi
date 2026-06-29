@@ -1,7 +1,6 @@
 package com.example.yingshi.feature.photos
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,20 +16,20 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +40,16 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
+import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
-import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.ui.components.YingShiMistCard
+import com.example.yingshi.ui.components.YingShiPrimaryMistButton
+import com.example.yingshi.ui.components.YingShiStateLayer
+import com.example.yingshi.ui.components.YingShiNoticeTone
+import com.example.yingshi.ui.components.YingShiTextField
+import com.example.yingshi.ui.components.yingShiHapticClickable
+import com.example.yingshi.ui.components.yingShiRouteReveal
+import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.launch
@@ -75,9 +82,17 @@ fun BackendDiagnosticsScreen(
 
     val isBusy = isRunning || autoLoginState.inFlight
 
+    val connectionTone = when (autoLoginState.phase) {
+        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Success -> YingShiNoticeTone.SUCCESS
+        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Failed -> YingShiNoticeTone.WARNING
+        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.LoggingIn -> YingShiNoticeTone.INFO
+        else -> YingShiNoticeTone.WARNING
+    }
+
     YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
-        showWaves = false,
+        showWaves = true,
+        variant = YingShiBackdropVariant.LIFE,
     ) {
         Column(
             modifier = Modifier
@@ -91,99 +106,149 @@ fun BackendDiagnosticsScreen(
                 onBack = onBack,
             )
 
-            DiagnosticsSection(
-                title = "服务地址",
-                subtitle = "保存后会清除当前会话，并回到重新登录的状态。",
+            // ── Server URL ──
+            YingShiMistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .yingShiRouteReveal(),
             ) {
-                OutlinedTextField(
-                    value = baseUrlInput,
-                    onValueChange = { baseUrlInput = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("服务地址") },
-                    singleLine = true,
-                )
-
-                BackendConnectionActionButton(
-                    text = "保存地址",
-                    onClick = {
-                        scope.launch {
-                            isRunning = true
-                            BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                            val outcome = BackendAutoLoginManager.loginDefault(
-                                force = true,
-                                reason = "save_base_url",
-                            )
-                            lastResult = outcome.message
-                            isRunning = false
-                        }
-                    },
-                    enabled = !isBusy,
-                    modifier = Modifier.fillMaxWidth(),
-                    emphasized = true,
-                )
-
-                ValueCard(
-                    title = "当前服务地址",
-                    value = RemoteServiceFactory.currentBaseUrl(),
-                    note = "用于同步照片、通知和生活记录。",
-                )
-            }
-
-            DiagnosticsSection(
-                title = "连接状态",
-                subtitle = "网络恢复后，若会话仍有效会自动恢复；若会话已失效，会保留缓存并提示重新登录。",
-            ) {
-                ValueCard(
-                    title = "状态",
-                    value = autoLoginState.phase.displayLabel,
-                    note = autoLoginState.message,
-                )
-                ValueCard(
-                    title = "离线兜底",
-                    value = if (offlineAccessState.isReadOnly) "缓存只读中" else "实时连接优先",
-                    note = offlineAccessState.message ?: "Me、照片流、相册目录、通知和回收站支持持久化读缓存。",
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                Column(
+                    modifier = Modifier.padding(spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
                 ) {
-                    BackendConnectionActionButton(
-                        text = "检查会话",
+                    Text(
+                        text = "服务地址",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                    )
+                    Text(
+                        text = "保存后会清除当前会话，并回到重新登录的状态。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                    YingShiTextField(
+                        value = baseUrlInput,
+                        onValueChange = { baseUrlInput = it },
+                        placeholder = "输入服务地址",
+                        icon = Icons.Rounded.Link,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    YingShiPrimaryMistButton(
+                        text = "保存地址",
                         onClick = {
                             scope.launch {
                                 isRunning = true
+                                BackendDebugConfig.updateBaseUrl(baseUrlInput)
                                 val outcome = BackendAutoLoginManager.loginDefault(
                                     force = true,
-                                    reason = "manual_retry",
+                                    reason = "save_base_url",
                                 )
                                 lastResult = outcome.message
                                 isRunning = false
                             }
                         },
                         enabled = !isBusy,
-                        modifier = Modifier.weight(1f),
-                        emphasized = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-
-                    BackendConnectionActionButton(
-                        text = "退出连接",
-                        onClick = {
-                            AuthSessionManager.clearTokens()
-                            BackendAutoLoginManager.markLoggedOut("已退出当前连接")
-                            lastResult = "已退出当前连接。"
-                        },
-                        enabled = !isBusy,
-                        modifier = Modifier.weight(1f),
+                    DiagnosticsValueCard(
+                        title = "当前服务地址",
+                        value = RemoteServiceFactory.currentBaseUrl(),
+                        note = "用于同步照片、通知和生活记录。",
                     )
                 }
             }
 
-            DiagnosticsSection(
-                title = "操作结果",
-                subtitle = "最近一次连接结果。",
+            // ── Connection status ──
+            YingShiMistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .yingShiRouteReveal(),
             ) {
-                ResultBlock(text = lastResult)
+                Column(
+                    modifier = Modifier.padding(spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    Text(
+                        text = "连接状态",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                    )
+                    Text(
+                        text = "网络恢复后，若会话仍有效会自动恢复；若会话已失效，会保留缓存并提示重新登录。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                    YingShiStateLayer(
+                        title = "状态",
+                        body = autoLoginState.message,
+                        tone = connectionTone,
+                        actionLabel = autoLoginState.phase.displayLabel,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    DiagnosticsValueCard(
+                        title = "离线兜底",
+                        value = if (offlineAccessState.isReadOnly) "缓存只读中" else "实时连接优先",
+                        note = offlineAccessState.message ?: "Me、照片流、相册目录、通知和回收站支持持久化读缓存。",
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        YingShiPrimaryMistButton(
+                            text = "检查会话",
+                            onClick = {
+                                scope.launch {
+                                    isRunning = true
+                                    val outcome = BackendAutoLoginManager.loginDefault(
+                                        force = true,
+                                        reason = "manual_retry",
+                                    )
+                                    lastResult = outcome.message
+                                    isRunning = false
+                                }
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        DiagnosticsSecondaryButton(
+                            text = "退出连接",
+                            onClick = {
+                                AuthSessionManager.clearTokens()
+                                BackendAutoLoginManager.markLoggedOut("已退出当前连接。")
+                                lastResult = "已退出当前连接。"
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+
+            // ── Operation result ──
+            YingShiMistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .yingShiRouteReveal(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    Text(
+                        text = "操作结果",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.titleAccent,
+                    )
+                    Text(
+                        text = "最近一次连接结果。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                    ResultBlock(text = lastResult)
+                }
             }
         }
     }
@@ -197,7 +262,9 @@ private fun BackendDiagnosticsTopBar(
     val colors = YingShiThemeTokens.colors
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .yingShiSoftReveal(),
         horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -213,37 +280,7 @@ private fun BackendDiagnosticsTopBar(
 }
 
 @Composable
-private fun DiagnosticsSection(
-    title: String,
-    subtitle: String,
-    content: @Composable () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val colors = YingShiThemeTokens.colors
-
-    Surface(
-        shape = RoundedCornerShape(radius.xl),
-        color = colors.raisedSurface.copy(alpha = 0.96f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
-        shadowElevation = 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-            )
-            content()
-        }
-    }
-}
-
-@Composable
-private fun ValueCard(
+private fun DiagnosticsValueCard(
     title: String,
     value: String,
     note: String,
@@ -307,32 +344,24 @@ private fun ResultBlock(text: String) {
 }
 
 @Composable
-private fun BackendConnectionActionButton(
+private fun DiagnosticsSecondaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    emphasized: Boolean = false,
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
     Surface(
-        modifier = modifier.yingShiClickable(
+        modifier = modifier.yingShiHapticClickable(
             enabled = enabled,
             shape = shape,
             pressedScale = 0.96f,
             onClick = onClick,
         ),
         shape = shape,
-        color = when {
-            !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
-            emphasized -> colors.primaryContainer.copy(alpha = 0.86f)
-            else -> colors.sectionBackground.copy(alpha = 0.72f)
-        },
-        border = BorderStroke(
-            1.dp,
-            if (emphasized) colors.glassStroke.copy(alpha = 0.78f) else colors.dividerSoft.copy(alpha = 0.66f),
-        ),
+        color = colors.sectionBackground.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),
         shadowElevation = 0.dp,
     ) {
         Box(
@@ -342,11 +371,7 @@ private fun BackendConnectionActionButton(
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = when {
-                    !enabled -> colors.textSecondary.copy(alpha = 0.56f)
-                    emphasized -> colors.titleAccent
-                    else -> colors.textSecondary
-                },
+                color = if (enabled) colors.textSecondary else colors.textSecondary.copy(alpha = 0.56f),
             )
         }
     }
@@ -358,7 +383,7 @@ private fun CircleIconButton(
 ) {
     val colors = YingShiThemeTokens.colors
     Surface(
-        modifier = Modifier.yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
+        modifier = Modifier.yingShiHapticClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
         color = colors.raisedSurface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.66f)),

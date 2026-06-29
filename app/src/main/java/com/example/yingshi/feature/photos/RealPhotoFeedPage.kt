@@ -255,7 +255,7 @@ fun RealPhotoFeedPage(
                         )
                     ) {
                         is com.example.yingshi.data.remote.result.ApiResult.Success -> {
-                            notifyRealBackendContentChanged(
+                            notifyRealBackendContentChangedWithoutPhotoFeed(
                                 postIds = setOf(postId),
                                 mediaIds = selectedItems.map { it.mediaId }.toSet(),
                             )

@@ -101,7 +101,6 @@ private val RealBackendContentScopesWithoutPhotoFeed = setOf(
 )
 
 private val RealBackendPostScopes = setOf(
-    RealBackendRefreshScope.PHOTO_FEED,
     RealBackendRefreshScope.ALBUMS,
     RealBackendRefreshScope.POST_DETAIL,
     RealBackendRefreshScope.MEDIA_MANAGEMENT,

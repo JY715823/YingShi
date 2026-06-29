@@ -953,7 +953,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                         isSaving = false
                         if (firstFailure == null) {
                             if (successChanged) {
-                                notifyRealBackendContentChanged(
+                                notifyRealBackendContentChangedWithoutPhotoFeed(
                                     postIds = setOf(route.postId),
                                     mediaIds = (removedIds + finalIds).toSet(),
                                 )
@@ -1005,7 +1005,7 @@ private fun UnifiedRealPostMediaManagementScreen(
                                     SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
                                     SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
                                     SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
-                                    notifyRealBackendContentChanged(postIds = setOf(route.postId))
+                                    notifyRealBackendContentChangedWithoutPhotoFeed(postIds = setOf(route.postId))
                                     showDeleteCurrentPostConfirm = false
                                     isSaving = false
                                     Toast.makeText(context, "小相册已移入回收站", Toast.LENGTH_SHORT).show()

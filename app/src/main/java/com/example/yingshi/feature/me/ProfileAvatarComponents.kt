@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -96,5 +97,43 @@ fun ProfileAvatar(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun GradientRingAvatar(
+    name: String,
+    avatarUrl: String?,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = 100.dp,
+    ringWidth: Dp = 4.dp,
+) {
+    val colors = YingShiThemeTokens.colors
+    val ringSize = avatarSize + ringWidth * 2
+    val ringBrush = Brush.sweepGradient(
+        colors = listOf(
+            colors.primaryContainer,
+            colors.memoryAccent,
+            colors.goldAccent,
+            colors.glassStroke,
+            colors.primaryContainer,
+        ),
+    )
+
+    Box(
+        modifier = modifier.size(ringSize),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(ringBrush),
+        )
+        ProfileAvatar(
+            name = name,
+            avatarUrl = avatarUrl,
+            size = avatarSize,
+        )
     }
 }

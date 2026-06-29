@@ -344,6 +344,7 @@ fun RealTrashPageScreen(
             allUserIds = allCollaboratorUserIds,
         ).distinctBy { it.businessIdentityKey() }
     }
+    val pendingEntries = uiState.pendingEntries
     val showActorBadge = isAllCollaboratorsSelected(
         selectedUserIds = selectedCollaboratorUserIds,
         allUserIds = allCollaboratorUserIds,
@@ -385,6 +386,18 @@ fun RealTrashPageScreen(
         } else {
             showClearConfirm = true
         }
+    }
+
+    fun undoPendingEntry(pending: TrashPendingCleanupUiModel) {
+        viewModel.undoPendingCleanup(pending.entry.id, selectedType)
+        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+    }
+
+    fun purgePendingEntry(pending: TrashPendingCleanupUiModel) {
+        viewModel.purgePendingCleanupEntries(listOf(pending), selectedType)
+        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+        SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+        SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
     }
 
     LaunchedEffect(selectedTypeName) {
@@ -433,6 +446,23 @@ fun RealTrashPageScreen(
             (uiState.isLoading && uiState.entries.isEmpty()),
         onReconnect = { viewModel.refresh(selectedType) },
     )
+
+    if (showPendingCleanup) {
+        RealTrashPendingCleanupScreen(
+            pendingEntries = pendingEntries,
+            directory = collaboratorDirectory,
+            isLoading = uiState.isLoading && pendingEntries.isEmpty(),
+            isMutating = uiState.isMutating,
+            errorMessage = uiState.errorMessage,
+            statusMessage = uiState.statusMessage,
+            onBack = { onShowPendingCleanupChange(false) },
+            onRefresh = { viewModel.refresh(selectedType) },
+            onUndo = ::undoPendingEntry,
+            onPurge = ::purgePendingEntry,
+            modifier = modifier,
+        )
+        return
+    }
 
     if (selectedType.isRealMediaTrashType()) {
         val mediaEntries = entries.sortedByDescending { it.deletedAtMillis }
@@ -506,12 +536,14 @@ fun RealTrashPageScreen(
                 RealTrashCategoryActionRow(
                     selectedType = selectedType,
                     entryCount = entries.size,
+                    pendingCount = pendingEntries.size,
                     directory = collaboratorDirectory,
                     selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     isMutating = uiState.isMutating,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onOpenPendingCleanup = { onShowPendingCleanupChange(true) },
                     onToggleCollaborator = { userId ->
                         savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
                             currentSelection = selectedCollaboratorUserIds,
@@ -608,12 +640,14 @@ fun RealTrashPageScreen(
                 RealTrashCategoryActionRow(
                     selectedType = selectedType,
                     entryCount = entries.size,
+                    pendingCount = pendingEntries.size,
                     directory = collaboratorDirectory,
                     selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     isMutating = uiState.isMutating,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onOpenPendingCleanup = { onShowPendingCleanupChange(true) },
                     onToggleCollaborator = { userId ->
                         savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
                             currentSelection = selectedCollaboratorUserIds,
@@ -694,12 +728,14 @@ fun RealTrashPageScreen(
                 RealTrashCategoryActionRow(
                     selectedType = selectedType,
                     entryCount = entries.size,
+                    pendingCount = pendingEntries.size,
                     directory = collaboratorDirectory,
                     selectedCollaboratorUserIds = selectedCollaboratorUserIds,
                     menuExpanded = showCategoryMenu,
                     isMutating = uiState.isMutating,
                     onMenuExpandedChange = { showCategoryMenu = it },
                     onTypeSelected = { onSelectedTypeNameChange(it.name) },
+                    onOpenPendingCleanup = { onShowPendingCleanupChange(true) },
                     onToggleCollaborator = { userId ->
                         savedSelectedCollaboratorUserIds = toggleCollaboratorSelectionKeepingEmpty(
                             currentSelection = selectedCollaboratorUserIds,
@@ -798,10 +834,10 @@ fun RealTrashPageScreen(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("清空当前分类？") },
+            title = { Text("移出当前分类？") },
             text = {
                 Text(
-                    "将永久删除当前「${selectedType.label}」分类中的 ${uiState.entries.size} 项。属于媒体删除的项目会同时删除原文件；只从小相册移除的项目不会影响其他位置仍在使用的照片或视频。",
+                    "将把当前「${selectedType.label}」分类中的 ${entries.size} 项移到待清理。24 小时内可撤销，也可以在待清理页永久删除。",
                 )
             },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
@@ -809,12 +845,12 @@ fun RealTrashPageScreen(
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
                 TrashDialogActionButton(
-                    text = "清空当前分类",
+                    text = "移出回收站",
                     danger = true,
-                    enabled = uiState.entries.isNotEmpty() && !uiState.isMutating,
+                    enabled = entries.isNotEmpty() && !uiState.isMutating,
                     onClick = {
                         showClearConfirm = false
-                        viewModel.purgeEntries(
+                        viewModel.moveEntriesToPendingCleanup(
                             entries = entries,
                             selectedType = selectedType,
                         )
@@ -878,10 +914,10 @@ fun RealTrashPageScreen(
     if (showDeleteSelectedConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteSelectedConfirm = false },
-            title = { Text("删除选中项？") },
+            title = { Text("移出选中项？") },
             text = {
                 Text(
-                    "将永久删除当前选中的 ${selectedEntries.size} 项。属于媒体删除的项目会同时删除原文件；只从小相册移除的项目不会影响其他位置仍在使用的照片或视频。",
+                    "将把当前选中的 ${selectedEntries.size} 项移到待清理。24 小时内可撤销，也可以在待清理页永久删除。",
                 )
             },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
@@ -889,12 +925,12 @@ fun RealTrashPageScreen(
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
                 TrashDialogActionButton(
-                    text = "删除选中项",
+                    text = "移出选中项",
                     danger = true,
                     enabled = selectedEntries.isNotEmpty() && !uiState.isMutating,
                     onClick = {
                         showDeleteSelectedConfirm = false
-                        viewModel.purgeEntries(
+                        viewModel.moveEntriesToPendingCleanup(
                             entries = selectedEntries,
                             selectedType = selectedType,
                         )
@@ -1003,15 +1039,205 @@ private fun RealTrashEntryRow(
 }
 
 @Composable
+private fun RealTrashPendingCleanupScreen(
+    pendingEntries: List<TrashPendingCleanupUiModel>,
+    directory: CollaboratorDirectorySnapshot,
+    isLoading: Boolean,
+    isMutating: Boolean,
+    errorMessage: String?,
+    statusMessage: String?,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+    onUndo: (TrashPendingCleanupUiModel) -> Unit,
+    onPurge: (TrashPendingCleanupUiModel) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier.padding(horizontal = YingShiThemeTokens.spacing.md),
+        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+    ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RealTrashIconActionButton(text = "返回", enabled = !isMutating, onClick = onBack)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "待清理",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = YingShiThemeTokens.colors.textPrimary,
+                    )
+                    Text(
+                        text = if (pendingEntries.isEmpty()) {
+                            "没有等待清理的项目"
+                        } else {
+                            "${pendingEntries.size} 项将在 24 小时窗口结束后自动永久删除"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = YingShiThemeTokens.colors.textSecondary,
+                    )
+                }
+                RealTrashIconActionButton(text = "刷新", enabled = !isMutating, onClick = onRefresh)
+            }
+        }
+        statusMessage?.let { message ->
+            item { RealTrashSectionCard(title = "操作结果", body = message, emphasized = true) }
+        }
+        errorMessage?.let { message ->
+            item { RealTrashSectionCard(title = "请求失败", body = message) }
+        }
+        when {
+            isLoading -> {
+                item { RealTrashSectionCard(title = "读取中", body = "正在读取待清理项目…") }
+            }
+            pendingEntries.isEmpty() -> {
+                item { RealTrashCenteredEmptyState(text = "待清理为空") }
+            }
+            else -> {
+                items(
+                    items = pendingEntries.sortedBy { it.undoDeadlineMillis },
+                    key = { it.entry.id },
+                ) { pending ->
+                    RealTrashPendingCleanupRow(
+                        pending = pending,
+                        actorIdentity = resolveTrashActorIdentity(pending.entry, directory),
+                        isMutating = isMutating,
+                        onUndo = { onUndo(pending) },
+                        onPurge = { onPurge(pending) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RealTrashPendingCleanupRow(
+    pending: TrashPendingCleanupUiModel,
+    actorIdentity: CollaboratorIdentityUiModel?,
+    isMutating: Boolean,
+    onUndo: () -> Unit,
+    onPurge: () -> Unit,
+) {
+    var showPurgeConfirm by remember(pending.entry.id) { mutableStateOf(false) }
+    val entry = pending.entry
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+        color = YingShiThemeTokens.colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.70f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .aspectRatio(1f),
+                ) {
+                    RealTrashEntryPreview(entry = entry, modifier = Modifier.matchParentSize())
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xxs),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = entry.type.label,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = YingShiThemeTokens.colors.titleAccent,
+                        )
+                        actorIdentity?.let { CollaboratorMarkerBadge(identity = it, size = 18.dp) }
+                    }
+                    Text(
+                        text = entry.title,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = YingShiThemeTokens.colors.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "剩余 ${formatPendingCleanupRemaining(pending.undoDeadlineMillis)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = YingShiThemeTokens.colors.textSecondary,
+                    )
+                }
+            }
+            Text(
+                text = pendingCleanupDeleteCopy(entry),
+                style = MaterialTheme.typography.bodySmall,
+                color = YingShiThemeTokens.colors.textSecondary,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+            ) {
+                RealTrashIconActionButton(
+                    text = "撤销移出",
+                    icon = Icons.AutoMirrored.Filled.Undo,
+                    enabled = !isMutating,
+                    emphasized = true,
+                    onClick = onUndo,
+                )
+                RealTrashIconActionButton(
+                    text = "永久删除",
+                    icon = Icons.Filled.Delete,
+                    enabled = !isMutating,
+                    danger = true,
+                    onClick = { showPurgeConfirm = true },
+                )
+            }
+        }
+    }
+
+    if (showPurgeConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPurgeConfirm = false },
+            title = { Text("永久删除？") },
+            text = { Text(pendingCleanupDeleteCopy(entry) + " 此操作不能撤销。") },
+            containerColor = YingShiThemeTokens.colors.raisedSurface,
+            titleContentColor = YingShiThemeTokens.colors.titleAccent,
+            textContentColor = YingShiThemeTokens.colors.textSecondary,
+            confirmButton = {
+                TrashDialogActionButton(
+                    text = "永久删除",
+                    danger = true,
+                    enabled = !isMutating,
+                    onClick = {
+                        showPurgeConfirm = false
+                        onPurge()
+                    },
+                )
+            },
+            dismissButton = {
+                TrashDialogActionButton(text = "取消", onClick = { showPurgeConfirm = false })
+            },
+        )
+    }
+}
+
+@Composable
 private fun RealTrashCategoryActionRow(
     selectedType: TrashEntryType,
     entryCount: Int,
+    pendingCount: Int,
     directory: CollaboratorDirectorySnapshot,
     selectedCollaboratorUserIds: Set<String>,
     menuExpanded: Boolean,
     isMutating: Boolean,
     onMenuExpandedChange: (Boolean) -> Unit,
     onTypeSelected: (TrashEntryType) -> Unit,
+    onOpenPendingCleanup: () -> Unit,
     onToggleCollaborator: (String) -> Unit,
     selectionMode: Boolean,
     selectedCount: Int,
@@ -1037,10 +1263,20 @@ private fun RealTrashCategoryActionRow(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.titleAccent,
             )
-        } else {
+        }
+        if (!selectionMode && directory.all.isNotEmpty()) {
+            CollaboratorFilterChipRow(
+                directory = directory,
+                selectedUserIds = selectedCollaboratorUserIds,
+                onToggleCollaborator = onToggleCollaborator,
+                modifier = Modifier.padding(end = spacing.xxs),
+            )
+        }
+        Box(modifier = Modifier.weight(1f))
+        if (!selectionMode) {
             Box {
                 RealTrashIconActionButton(
-                    text = "菜单",
+                    text = "分类",
                     icon = Icons.Filled.Menu,
                     enabled = !isMutating,
                     onClick = { onMenuExpandedChange(true) },
@@ -1052,47 +1288,11 @@ private fun RealTrashCategoryActionRow(
                     TrashCategoryMenuTypes.forEach { type ->
                         DropdownMenuItem(
                             text = {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(
-                                            if (type == selectedType) {
-                                                colors.primaryContainer.copy(alpha = 0.64f)
-                                            } else {
-                                                colors.raisedSurface
-                                            },
-                                            androidx.compose.foundation.shape.RoundedCornerShape(
-                                                YingShiThemeTokens.radius.md,
-                                            ),
-                                        )
-                                        .padding(horizontal = spacing.xs, vertical = spacing.xxs),
-                                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = type.label,
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = if (type == selectedType) {
-                                                FontWeight.SemiBold
-                                            } else {
-                                                FontWeight.Medium
-                                            },
-                                        ),
-                                        color = if (type == selectedType) {
-                                            colors.titleAccent
-                                        } else {
-                                            colors.textPrimary
-                                        },
-                                    )
-                                    if (type == selectedType) {
-                                        Text(
-                                            text = "✓",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = colors.titleAccent,
-                                        )
-                                    }
-                                }
+                                RealTrashMenuRow(
+                                    text = type.label,
+                                    trailing = if (type == selectedType) "✓" else null,
+                                    selected = type == selectedType,
+                                )
                             },
                             onClick = {
                                 onMenuExpandedChange(false)
@@ -1100,17 +1300,23 @@ private fun RealTrashCategoryActionRow(
                             },
                         )
                     }
+                    if (pendingCount > 0) {
+                        DropdownMenuItem(
+                            text = {
+                                RealTrashMenuRow(
+                                    text = "待清理",
+                                    trailing = pendingCount.toString(),
+                                    selected = false,
+                                )
+                            },
+                            onClick = {
+                                onMenuExpandedChange(false)
+                                onOpenPendingCleanup()
+                            },
+                        )
+                    }
                 }
             }
-        }
-        Box(modifier = Modifier.weight(1f))
-        if (!selectionMode && directory.all.isNotEmpty()) {
-            CollaboratorFilterChipRow(
-                directory = directory,
-                selectedUserIds = selectedCollaboratorUserIds,
-                onToggleCollaborator = onToggleCollaborator,
-                modifier = Modifier.padding(end = spacing.xxs),
-            )
         }
         RealTrashIconActionButton(
             text = if (isMutating) "处理中" else "恢复",
@@ -1120,12 +1326,49 @@ private fun RealTrashCategoryActionRow(
             emphasized = true,
         )
         RealTrashIconActionButton(
-            text = "删除",
+            text = "移出",
             icon = Icons.Filled.Delete,
             enabled = (entryCount > 0 || selectionMode) && !isMutating,
             onClick = onRequestClearCurrent,
             danger = true,
         )
+    }
+}
+
+@Composable
+private fun RealTrashMenuRow(
+    text: String,
+    trailing: String?,
+    selected: Boolean,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (selected) colors.primaryContainer.copy(alpha = 0.64f) else colors.raisedSurface,
+                RoundedCornerShape(YingShiThemeTokens.radius.md),
+            )
+            .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = if (selected) colors.titleAccent else colors.textPrimary,
+        )
+        trailing?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+        }
     }
 }
 
@@ -1785,6 +2028,26 @@ private fun realTrashEntrySourceLine(entry: TrashEntryUiModel): String {
     }
 }
 
+private fun formatPendingCleanupRemaining(undoDeadlineMillis: Long): String {
+    val remainingMillis = (undoDeadlineMillis - System.currentTimeMillis()).coerceAtLeast(0L)
+    val hours = TimeUnit.MILLISECONDS.toHours(remainingMillis)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingMillis) % 60
+    return when {
+        hours > 0L -> "${hours}小时${minutes}分钟"
+        minutes > 0L -> "${minutes}分钟"
+        else -> "不足1分钟"
+    }
+}
+
+private fun pendingCleanupDeleteCopy(entry: TrashEntryUiModel): String {
+    return when (entry.type) {
+        TrashEntryType.MEDIA_SYSTEM_DELETED -> "永久删除后会清理媒体记录、评论、关系以及原文件和预览文件。"
+        TrashEntryType.LARGE_ALBUM_DELETED -> "永久删除后会清理大相册、小相册结构、评论和关系；媒体本体保留。"
+        TrashEntryType.SMALL_ALBUM_DELETED -> "永久删除后会清理小相册结构、评论和关系；媒体本体保留。"
+        TrashEntryType.MEDIA_REMOVED -> "永久删除后只确认小相册与媒体的关系删除；媒体本体保留。"
+    }
+}
+
 @Composable
 fun RealTrashDetailScreen(
     route: TrashDetailRoute,
@@ -2309,10 +2572,10 @@ private fun RealTrashMediaViewerDetailPagerContent(
     if (showPermanentDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showPermanentDeleteConfirm = false },
-            title = { Text("永久删除该回收站项目？") },
+            title = { Text("移出回收站？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
+                    "将把当前项目移到待清理。24 小时内可撤销，也可以在待清理页永久删除。",
                 )
             },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
@@ -2320,7 +2583,7 @@ private fun RealTrashMediaViewerDetailPagerContent(
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
                 TrashDialogActionButton(
-                    text = "永久删除",
+                    text = "移出回收站",
                     danger = true,
                     enabled = !isMutating,
                     onClick = {
@@ -2420,7 +2683,7 @@ private fun RealTrashMediaViewerDetailContent(
             }
             if (detail.canMoveOutOfTrash) {
                 RealTrashViewerOverlayButton(
-                    text = "删除",
+                    text = "移出",
                     destructive = true,
                     enabled = !isMutating,
                     onClick = { showPermanentDeleteConfirm = true },
@@ -2479,10 +2742,10 @@ private fun RealTrashMediaViewerDetailContent(
     if (showPermanentDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showPermanentDeleteConfirm = false },
-            title = { Text("永久删除该回收站项目？") },
+            title = { Text("移出回收站？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
+                    "将把当前项目移到待清理。24 小时内可撤销，也可以在待清理页永久删除。",
                 )
             },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
@@ -2490,7 +2753,7 @@ private fun RealTrashMediaViewerDetailContent(
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
                 TrashDialogActionButton(
-                    text = "永久删除",
+                    text = "移出回收站",
                     danger = true,
                     enabled = !isMutating,
                     onClick = {
@@ -2756,7 +3019,7 @@ private fun RealTrashViewerTopBar(
             if (canRemove) {
                 RealTrashViewerIconButton(
                     icon = Icons.Filled.Delete,
-                    contentDescription = "删除",
+                    contentDescription = "移出回收站",
                     destructive = true,
                     enabled = !isMutating,
                     onClick = onRemove,
@@ -3184,16 +3447,16 @@ private fun RealTrashPostViewerDetailContent(
     if (showPermanentDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showPermanentDeleteConfirm = false },
-            title = { Text("永久删除该回收站项目？") },
+            title = { Text("移出回收站？") },
             text = {
-                Text("确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。")
+                Text("将把当前小相册移到待清理。24 小时内可撤销，也可以在待清理页永久删除。")
             },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
             titleContentColor = YingShiThemeTokens.colors.titleAccent,
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
                 TrashDialogActionButton(
-                    text = "永久删除",
+                    text = "移出回收站",
                     danger = true,
                     enabled = !isMutating,
                     onClick = {
@@ -3429,7 +3692,7 @@ private fun RealTrashPostMediaViewerOverlay(
                 )
                 RealTrashViewerIconButton(
                     icon = Icons.Filled.Delete,
-                    contentDescription = "删除",
+                    contentDescription = "移出回收站",
                     destructive = true,
                     enabled = !isMutating,
                     onClick = onRequestDeletePost,
@@ -3632,7 +3895,7 @@ private fun RealTrashDetailContent(
                 }
                 if (detail.canMoveOutOfTrash) {
                     RealTrashIconActionButton(
-                        text = if (isMutating) "处理中" else "永久删除",
+                        text = if (isMutating) "处理中" else "移出回收站",
                         danger = true,
                         enabled = !isMutating,
                         onClick = { showPermanentDeleteConfirm = true },
@@ -3648,10 +3911,10 @@ private fun RealTrashDetailContent(
     if (showPermanentDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showPermanentDeleteConfirm = false },
-            title = { Text("永久删除该回收站项目？") },
+            title = { Text("移出回收站？") },
             text = {
                 Text(
-                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
+                    "将把当前项目移到待清理。24 小时内可撤销，也可以在待清理页永久删除。",
                 )
             },
             containerColor = YingShiThemeTokens.colors.raisedSurface,
@@ -3659,7 +3922,7 @@ private fun RealTrashDetailContent(
             textContentColor = YingShiThemeTokens.colors.textSecondary,
             confirmButton = {
                 TrashDialogActionButton(
-                    text = "永久删除",
+                    text = "移出回收站",
                     danger = true,
                     enabled = !isMutating,
                     onClick = {

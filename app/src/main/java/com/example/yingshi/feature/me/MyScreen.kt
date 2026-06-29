@@ -43,6 +43,7 @@ import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.ui.components.yingShiMemoryGlow
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
@@ -157,10 +158,11 @@ private fun SpaceIdentityCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ProfileAvatar(
+                GradientRingAvatar(
                     name = displayName,
                     avatarUrl = currentUser?.avatarUrl,
-                    modifier = Modifier.size(88.dp),
+                    avatarSize = 88.dp,
+                    modifier = Modifier.yingShiMemoryGlow(visible = true, warm = true),
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -235,10 +237,11 @@ private fun PartnerCard(
             horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ProfileAvatar(
+            GradientRingAvatar(
                 name = displayName,
                 avatarUrl = partner?.avatarUrl,
-                modifier = Modifier.size(50.dp),
+                avatarSize = 50.dp,
+                ringWidth = 2.dp,
             )
             Column(
                 modifier = Modifier.weight(1f),

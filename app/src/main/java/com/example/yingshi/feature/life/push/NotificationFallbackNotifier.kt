@@ -26,6 +26,7 @@ object NotificationFallbackNotifier {
             is ApiResult.Success -> {
                 val target = result.data
                     .asSequence()
+                    .filter { it.createdAtMillis > lastVersion }
                     .filterNot { it.actorIsCurrentUser }
                     .filterNot { it.isRead }
                     .filter { SettingsRepository.isPushEnabled(it.module, it.category) }
@@ -50,14 +51,12 @@ object NotificationFallbackNotifier {
                     data = target.toPushData(remoteNotificationVersion),
                     source = "sync-fallback",
                 )
-                if (shown) {
-                    prefs.edit()
-                        .putLong(KEY_LAST_REMOTE_VERSION, remoteNotificationVersion)
-                        .putString(KEY_LAST_NOTIFICATION_ID, target.notificationId)
-                        .apply()
-                }
+                prefs.edit()
+                    .putLong(KEY_LAST_REMOTE_VERSION, remoteNotificationVersion)
+                    .putString(KEY_LAST_NOTIFICATION_ID, target.notificationId)
+                    .apply()
                 Log.d(TAG, "Fallback notification checked: shown=$shown id=${target.notificationId}")
-                shown
+                true
             }
             is ApiResult.Error -> {
                 Log.w(TAG, "Failed to fetch notifications for fallback: ${result.message}", result.throwable)
@@ -78,6 +77,7 @@ object NotificationFallbackNotifier {
             put("notificationId", notificationId)
             put("module", module.orEmpty().ifBlank { "photos" })
             put("category", category.orEmpty())
+            actorUserId?.takeIf { it.isNotBlank() }?.let { put("actorUserId", it) }
             operationId?.takeIf { it.isNotBlank() }?.let { put("operationId", it) }
             groupId?.takeIf { it.isNotBlank() }?.let { put("groupId", it) }
             put("title", title)

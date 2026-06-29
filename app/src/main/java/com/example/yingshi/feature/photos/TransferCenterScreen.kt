@@ -96,7 +96,16 @@ private object TransferCenterStateStore {
     var firstVisibleItemScrollOffset: Int = 0
     val collapsedOperationIds: MutableSet<String> = linkedSetOf()
     val manuallyExpandedOperationIds: MutableSet<String> = linkedSetOf()
+    val seenProblemTaskIds: MutableSet<String> = linkedSetOf()
     var entranceNonce: Int = 0
+
+    fun markSeen(tasks: Iterable<SystemMediaUploadTaskUiModel>) {
+        tasks.filter { it.isTransferProblem() }.forEach { seenProblemTaskIds += it.taskId }
+    }
+
+    fun hasUnseenProblem(tasks: Iterable<SystemMediaUploadTaskUiModel>): Boolean {
+        return tasks.any { it.isTransferProblem() && it.taskId !in seenProblemTaskIds }
+    }
 }
 
 private data class TransferDateSection(
@@ -150,6 +159,9 @@ fun TransferCenterScreen(
             .values
             .filter { group -> group.all { it.isTerminal } }
             .forEach { group -> TransferCenterStateStore.collapsedOperationIds += group.first().operationId }
+    }
+    LaunchedEffect(tasks.map { task -> "${task.taskId}:${task.state}:${task.canRetry}" }) {
+        TransferCenterStateStore.markSeen(tasks)
     }
     LaunchedEffect(operationGroups.map { group -> group.first().operationId to group.all { it.isTerminal } }) {
         operationGroups
@@ -311,6 +323,7 @@ fun TransferCenterScreen(
                                 },
                                 onClearTask = {
                                     LocalSystemMediaBridgeRepository.dismissUploadTask(it)
+                                    TransferCenterStateStore.seenProblemTaskIds += it
                                     showNotice("已移除传输记录")
                                 },
                                 onOpen = { onOpenTaskMedia(it) },
@@ -386,7 +399,7 @@ private fun TransferOperationCard(
     val failureCount = tasks.count { it.state == UploadState.FAILURE }
     val cancelledCount = tasks.count { it.state == UploadState.CANCELLED }
     val problemTasks = tasks
-        .filter { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED || it.canRetry }
+        .filter { it.isTransferProblem() }
         .distinctBy { it.taskId }
     val totalCount = primaryTask.operationMediaCount.coerceAtLeast(tasks.size)
     val operationProgress = calculateTransferOperationProgressPercent(
@@ -487,7 +500,10 @@ private fun TransferOperationCard(
                                 TransferMediaTile(
                                     task = task,
                                     modifier = Modifier.weight(1f),
-                                    onOpen = { onOpen(task) },
+                                    onOpen = {
+                                        TransferCenterStateStore.markSeen(listOf(task))
+                                        onOpen(task)
+                                    },
                                     onPause = { onPauseTask(task.taskId) },
                                     onCancel = { onCancelTask(task.taskId) },
                                     onRetry = { onRetryTask(task.taskId) },
@@ -501,7 +517,10 @@ private fun TransferOperationCard(
                 if (problemTasks.isNotEmpty()) {
                     TransferActionPill(
                         text = if (showFailureDetails) "收起详情" else "查看失败",
-                        onClick = { showFailureDetails = !showFailureDetails },
+                        onClick = {
+                            showFailureDetails = !showFailureDetails
+                            TransferCenterStateStore.markSeen(problemTasks)
+                        },
                         modifier = Modifier.align(Alignment.End),
                     )
                 }
@@ -576,6 +595,7 @@ private fun TransferOperationCard(
                             } else {
                                 TransferCenterStateStore.collapsedOperationIds -= primaryTask.operationId
                                 TransferCenterStateStore.manuallyExpandedOperationIds += primaryTask.operationId
+                                TransferCenterStateStore.markSeen(problemTasks)
                             }
                         },
                     )
@@ -599,6 +619,14 @@ private fun TransferOperationCard(
             },
         )
     }
+}
+
+internal fun hasUnseenTransferProblem(tasks: Iterable<SystemMediaUploadTaskUiModel>): Boolean {
+    return TransferCenterStateStore.hasUnseenProblem(tasks)
+}
+
+private fun SystemMediaUploadTaskUiModel.isTransferProblem(): Boolean {
+    return state == UploadState.FAILURE || state == UploadState.CANCELLED || canRetry
 }
 
 @Composable

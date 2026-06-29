@@ -232,6 +232,7 @@ fun RemotePendingCleanup.toTrashPendingCleanupUiModel(): TrashPendingCleanupUiMo
     return TrashPendingCleanupUiModel(
         entry = item.toTrashEntryUiModel(),
         removedAtMillis = removedAtMillis,
+        undoDeadlineMillis = undoDeadlineMillis,
     )
 }
 

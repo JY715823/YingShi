@@ -3,27 +3,34 @@ package com.example.yingshi.feature.me
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,11 +42,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemotePartnerProfile
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
@@ -47,8 +60,13 @@ import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.result.isUnauthorized
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.BackendInlineNotice
-import com.example.yingshi.ui.components.ShellPage
+import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiMistCard
 import com.example.yingshi.ui.components.YingShiNoticeTone
+import com.example.yingshi.ui.components.YingShiPrimaryMistButton
+import com.example.yingshi.ui.components.YingShiTextField
+import com.example.yingshi.ui.components.yingShiRouteReveal
+import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -56,34 +74,29 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private const val TITLE_PROFILE = "\u4e2a\u4eba\u4e3b\u9875"
-private const val SUMMARY_PROFILE = ""
-private const val TITLE_EDIT = "\u7f16\u8f91\u8d44\u6599"
-private const val SUMMARY_EDIT = ""
-private const val TEXT_BIO_EMPTY = "\u6682\u672a\u8bbe\u7f6e\u7b80\u4ecb\u3002"
-private const val TITLE_PARTNER = "\u53e6\u4e00\u534a"
-private const val SUMMARY_PARTNER = "\u4e00\u8d77\u8bb0\u5f55\u3001\u4e00\u8d77\u56de\u770b\uff0c\u8fd9\u91cc\u662f\u4f60\u4eec\u5171\u540c\u7a7a\u95f4\u91cc\u7684\u53e6\u4e00\u4f4d\u3002"
-private const val TITLE_SHARED_SPACE = "\u6211\u4eec\u7684\u5c0f\u7a7a\u95f4"
-private const val SUMMARY_SHARED_SPACE = "\u76ee\u524d\u770b\u5230\u7684\u7167\u7247\u3001\u76f8\u518c\u3001\u5e16\u5b50\u548c\u8bc4\u8bba\uff0c\u90fd\u9ed8\u8ba4\u5c5e\u4e8e\u4f60\u4eec\u4e24\u4e2a\u4eba\u7684\u5171\u540c\u7a7a\u95f4\u3002"
-private const val LABEL_ACCOUNT = "\u8d26\u53f7"
-private const val LABEL_JOINED_AT = "\u52a0\u5165\u65f6\u95f4"
-private const val LABEL_PARTNER_ACCOUNT = "\u5bf9\u65b9\u8d26\u53f7"
-private const val LABEL_DISPLAY_NAME = "\u6635\u79f0"
-private const val LABEL_BIO = "\u7b80\u4ecb"
-private const val ACTION_EDIT = "\u7f16\u8f91\u8d44\u6599"
-private const val ACTION_CANCEL = "\u53d6\u6d88"
-private const val ACTION_SAVE = "\u4fdd\u5b58"
-private const val ACTION_SAVING = "\u4fdd\u5b58\u4e2d..."
-private const val ACTION_UPDATE_AVATAR = "\u66f4\u6362\u5934\u50cf"
-private const val ACTION_UPLOADING_AVATAR = "\u4e0a\u4f20\u5934\u50cf\u4e2d..."
-private const val MESSAGE_SAVED = "\u8d44\u6599\u5df2\u4fdd\u5b58"
-private const val MESSAGE_AVATAR_UPDATED = "\u5934\u50cf\u5df2\u66f4\u65b0"
-private const val MESSAGE_AVATAR_PICK_CANCELLED = "\u5df2\u53d6\u6d88\u9009\u62e9\u5934\u50cf"
-private const val MESSAGE_AVATAR_PICK_FAILED = "\u65e0\u6cd5\u8bfb\u53d6\u9009\u4e2d\u7684\u5934\u50cf"
-private const val TEXT_UNFILLED = "\u672a\u586b\u5199"
-private const val TEXT_UNRECORDED = "\u672a\u8bb0\u5f55"
+private const val TITLE_PROFILE = "个人主页"
+private const val TITLE_EDIT = "编辑资料"
+private const val TEXT_BIO_EMPTY = "暂未设置简介。"
+private const val TITLE_PARTNER = "另一半"
+private const val SUMMARY_PARTNER = "一起记录、一起回看，这里是你们共同空间里的另一位。"
+private const val LABEL_DISPLAY_NAME = "昵称"
+private const val LABEL_BIO = "简介"
+private const val ACTION_EDIT = "编辑资料"
+private const val ACTION_CANCEL = "取消"
+private const val ACTION_SAVE = "保存"
+private const val ACTION_SAVING = "保存中..."
+private const val ACTION_UPDATE_AVATAR = "更换头像"
+private const val ACTION_UPLOADING_AVATAR = "上传头像中..."
+private const val MESSAGE_SAVED = "资料已保存"
+private const val MESSAGE_AVATAR_UPDATED = "头像已更新"
+private const val MESSAGE_AVATAR_PICK_CANCELLED = "已取消选择头像"
+private const val MESSAGE_AVATAR_PICK_FAILED = "无法读取选中的头像"
+private const val MESSAGE_AVATAR_TOO_LARGE = "头像文件不能超过 10MB"
+private const val TEXT_UNFILLED = "未填写"
+private const val TEXT_UNRECORDED = "未记录"
 private const val FALLBACK_AVATAR_FILE_NAME = "avatar.jpg"
 private const val FALLBACK_AVATAR_MIME_TYPE = "image/jpeg"
+private const val MAX_AVATAR_FILE_SIZE_BYTES = 10L * 1024 * 1024
 
 data class PersonalProfileRoute(
     val source: String = "my-page",
@@ -92,6 +105,10 @@ data class PersonalProfileRoute(
 data class EditProfileRoute(
     val source: String = "personal-profile",
 )
+
+// ─────────────────────────────────────────────────────────────
+//  PersonalProfileScreen — 个人主页
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun PersonalProfileScreen(
@@ -105,60 +122,138 @@ fun PersonalProfileScreen(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val scrollState = rememberScrollState()
 
-    ShellPage(
-        title = "",
-        summary = "",
-        onBack = null,
+    YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
-        headerContent = {
-            ProfileInlineHeader(
-                title = TITLE_PROFILE,
-                onBack = onBack,
-            )
-        },
-        content = {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+        showWaves = true,
+        variant = com.example.yingshi.ui.components.YingShiBackdropVariant.ME,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState),
+        ) {
+            // ── Header: back + title ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-                    color = colors.raisedSurface.copy(alpha = 0.94f),
-                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clickable(onClick = onBack),
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.sectionBackground.copy(alpha = 0.80f),
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(spacing.md),
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(spacing.md),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            ProfileAvatar(
-                                name = currentUser.displayName,
-                                avatarUrl = currentUser.avatarUrl,
-                            )
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-                            ) {
-                                Text(
-                                    text = currentUser.displayName,
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                                    color = colors.textPrimary,
-                                )
-                                Text(
-                                    text = currentUser.account,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = colors.textSecondary,
-                                )
-                            }
-                        }
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "返回",
+                            tint = colors.titleAccent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = TITLE_PROFILE,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
 
+            // ── Profile card ──
+            YingShiMistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg)
+                    .yingShiRouteReveal(),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            ) {
+                Column {
+                    // Cover gradient bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(88.dp)
+                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        colors.primaryContainer.copy(alpha = 0.55f),
+                                        colors.memoryContainer.copy(alpha = 0.40f),
+                                        colors.glowWash.copy(alpha = 0.50f),
+                                    ),
+                                ),
+                            ),
+                    )
+
+                    // Avatar overlapping cover
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = (-44).dp)
+                            .padding(horizontal = spacing.xl),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        GradientRingAvatar(
+                            name = currentUser.displayName,
+                            avatarUrl = currentUser.avatarUrl,
+                            avatarSize = 100.dp,
+                        )
+                    }
+
+                    // Name + account + bio
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = (-32).dp)
+                            .padding(horizontal = spacing.xl),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                    ) {
                         Text(
-                            text = currentUser.bio?.takeIf { it.isNotBlank() } ?: TEXT_BIO_EMPTY,
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = currentUser.displayName,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = colors.textPrimary,
                         )
+                        Text(
+                            text = currentUser.account,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textSecondary,
+                        )
+                        if (!currentUser.bio.isNullOrBlank()) {
+                            Text(
+                                text = currentUser.bio,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = colors.textPrimary.copy(alpha = 0.85f),
+                                modifier = Modifier.padding(top = spacing.sm),
+                            )
+                        } else {
+                            Text(
+                                text = TEXT_BIO_EMPTY,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.textSecondary,
+                                modifier = Modifier.padding(top = spacing.xs),
+                            )
+                        }
+                    }
+
+                    // Status hints
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = (-24).dp)
+                            .padding(horizontal = spacing.xl),
+                        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                    ) {
                         if (isRefreshing) {
                             Text(
                                 text = "正在同步最新资料...",
@@ -180,33 +275,38 @@ fun PersonalProfileScreen(
                         }
                     }
                 }
-
-                PartnerSection(
-                    partner = currentUser.partner,
-                )
-
-                Button(
-                    onClick = onOpenEditProfile,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.primaryContainer,
-                        contentColor = colors.onPrimaryContainer,
-                        disabledContainerColor = colors.sectionBackground,
-                        disabledContentColor = colors.textSecondary,
-                    ),
-                    border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
-                ) {
-                    Text(ACTION_EDIT)
-                }
             }
-        },
-    )
+
+            // ── Partner section ──
+            PartnerSection(
+                partner = currentUser.partner,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg)
+                    .yingShiSoftReveal(),
+            )
+
+            // ── Edit button ──
+            YingShiPrimaryMistButton(
+                text = ACTION_EDIT,
+                onClick = onOpenEditProfile,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg)
+                    .padding(top = spacing.sm, bottom = spacing.xl),
+            )
+        }
+    }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  PartnerSection — 暖色差异化
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun PartnerSection(
     partner: RemotePartnerProfile?,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
@@ -214,33 +314,49 @@ private fun PartnerSection(
     val account = partner?.account?.takeIf { it.isNotBlank() } ?: TEXT_UNFILLED
     val bio = partner?.bio?.takeIf { it.isNotBlank() } ?: SUMMARY_PARTNER
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
+    YingShiMistCard(
+        modifier = modifier,
         shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-        color = colors.raisedSurface.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
+        color = colors.memoryWash.copy(alpha = 0.55f),
+        borderColor = colors.memoryAccent.copy(alpha = 0.18f),
     ) {
         Column(
             modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
+            // Header with heart icon
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = null,
+                    tint = colors.memoryAccent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = TITLE_PARTNER,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.memoryAccent,
+                )
+            }
+
+            // Partner avatar + info
             Row(
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ProfileAvatar(
+                GradientRingAvatar(
                     name = displayName,
                     avatarUrl = partner?.avatarUrl,
+                    avatarSize = 64.dp,
+                    ringWidth = 3.dp,
                 )
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(spacing.xxs),
                 ) {
-                    Text(
-                        text = TITLE_PARTNER,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.memoryAccent,
-                    )
                     Text(
                         text = displayName,
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -254,11 +370,19 @@ private fun PartnerSection(
                 }
             }
 
-            ProfileInfoRow(label = LABEL_PARTNER_ACCOUNT, value = account)
-            ProfileInfoRow(label = LABEL_BIO, value = bio)
+            // Bio
+            Text(
+                text = bio,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textPrimary.copy(alpha = 0.85f),
+            )
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  EditProfileScreen — 编辑资料
+// ─────────────────────────────────────────────────────────────
 
 @Composable
 fun EditProfileScreen(
@@ -278,6 +402,8 @@ fun EditProfileScreen(
     var isSaving by remember { mutableStateOf(false) }
     var isUploadingAvatar by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val scrollState = rememberScrollState()
+
     val avatarPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
@@ -286,6 +412,11 @@ fun EditProfileScreen(
             return@rememberLauncherForActivityResult
         }
         scope.launch {
+            val fileSize = uri.resolvePickedSizeBytes(context) ?: 0L
+            if (fileSize > MAX_AVATAR_FILE_SIZE_BYTES) {
+                onShowNotice(MESSAGE_AVATAR_TOO_LARGE, YingShiNoticeTone.WARNING)
+                return@launch
+            }
             isUploadingAvatar = true
             errorMessage = null
             val uploadResult = runCatching {
@@ -293,7 +424,7 @@ fun EditProfileScreen(
                     fileName = uri.resolvePickedDisplayName(context),
                     mimeType = context.contentResolver.getType(uri)?.takeIf { it.isNotBlank() }
                         ?: FALLBACK_AVATAR_MIME_TYPE,
-                    fileSizeBytes = uri.resolvePickedSizeBytes(context) ?: 0L,
+                    fileSizeBytes = fileSize,
                     openInputStream = {
                         context.contentResolver.openInputStream(uri) ?: error(MESSAGE_AVATAR_PICK_FAILED)
                     },
@@ -323,191 +454,312 @@ fun EditProfileScreen(
         }
     }
 
-    ShellPage(
-        title = "",
-        summary = "",
-        onBack = null,
+    YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
-        headerContent = {
-            ProfileInlineHeader(
-                title = TITLE_EDIT,
-                onBack = onBack,
-            )
-        },
-        content = {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(spacing.md),
-                    verticalAlignment = Alignment.CenterVertically,
+        showWaves = true,
+        variant = com.example.yingshi.ui.components.YingShiBackdropVariant.ME,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState),
+        ) {
+            // ── Header: back + title ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clickable(onClick = onBack),
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.sectionBackground.copy(alpha = 0.80f),
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
                 ) {
-                    ProfileAvatar(
-                        name = displayName.ifBlank { currentUser.displayName },
-                        avatarUrl = currentUser.avatarUrl,
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            avatarPickerLauncher.launch(
-                                PickVisualMediaRequest(
-                                    mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly,
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "返回",
+                            tint = colors.titleAccent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+                Text(
+                    text = TITLE_EDIT,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // ── Form card ──
+            YingShiMistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg)
+                    .yingShiRouteReveal(),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+            ) {
+                Column(
+                    modifier = Modifier.padding(spacing.xl),
+                    verticalArrangement = Arrangement.spacedBy(spacing.md),
+                ) {
+                    // Cover gradient bar (decorative top)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        colors.primaryContainer.copy(alpha = 0.45f),
+                                        colors.memoryContainer.copy(alpha = 0.35f),
+                                        colors.glowWash.copy(alpha = 0.40f),
+                                    ),
                                 ),
-                            )
-                        },
-                        enabled = !isSaving && !isUploadingAvatar,
-                    ) {
-                        Text(if (isUploadingAvatar) ACTION_UPLOADING_AVATAR else ACTION_UPDATE_AVATAR)
-                    }
-                }
-
-                OutlinedTextField(
-                    value = displayName,
-                    onValueChange = { newValue -> displayName = newValue },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(LABEL_DISPLAY_NAME) },
-                    singleLine = true,
-                    enabled = !isSaving && !isUploadingAvatar,
-                )
-                OutlinedTextField(
-                    value = bio,
-                    onValueChange = { newValue -> bio = newValue },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text(LABEL_BIO) },
-                    minLines = 4,
-                    maxLines = 6,
-                    enabled = !isSaving && !isUploadingAvatar,
-                )
-
-                errorMessage?.let {
-                    BackendInlineNotice(
-                        text = it,
-                        emphasized = true,
+                            ),
                     )
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                ) {
-                    OutlinedButton(
-                        onClick = onBack,
-                        enabled = !isSaving && !isUploadingAvatar,
-                        modifier = Modifier.weight(1f),
+                    // Centered avatar with gradient ring + tap to change
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = (-28).dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(ACTION_CANCEL)
-                    }
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                isSaving = true
-                                errorMessage = null
-                                when (
-                                    val result = RepositoryProvider.authRepository.updateCurrentUserProfile(
-                                        UpdateProfileRequestDto(
-                                            displayName = displayName.trim(),
-                                            bio = bio.trim().takeIf { it.isNotBlank() },
+                        Box(
+                            modifier = Modifier.clickable(
+                                enabled = !isSaving && !isUploadingAvatar,
+                                onClick = {
+                                    avatarPickerLauncher.launch(
+                                        PickVisualMediaRequest(
+                                            mediaType = ActivityResultContracts.PickVisualMedia.ImageOnly,
                                         ),
                                     )
-                                ) {
-                                    is ApiResult.Success -> {
-                                        onProfileSaved(result.data)
-                                        onShowNotice(MESSAGE_SAVED, YingShiNoticeTone.SUCCESS)
-                                        onBack()
-                                    }
-                                    is ApiResult.Error -> {
-                                        if (result.isUnauthorized()) {
-                                            onSessionExpired(result.message)
-                                        } else {
-                                            errorMessage = result.message
-                                        }
-                                    }
-                                    ApiResult.Loading -> Unit
-                                }
-                                isSaving = false
-                            }
-                        },
-                        enabled = !isSaving && !isUploadingAvatar && displayName.trim().isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.primaryContainer,
-                            contentColor = colors.onPrimaryContainer,
-                            disabledContainerColor = colors.sectionBackground,
-                            disabledContentColor = colors.textSecondary,
-                        ),
-                        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.72f)),
+                                },
+                            ),
+                        ) {
+                            GradientRingAvatar(
+                                name = displayName.ifBlank { currentUser.displayName },
+                                avatarUrl = currentUser.avatarUrl,
+                                avatarSize = 96.dp,
+                            )
+                        }
+                    }
+
+                    // "更换头像" hint
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = (-20).dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text(if (isSaving) ACTION_SAVING else ACTION_SAVE)
+                        Text(
+                            text = if (isUploadingAvatar) ACTION_UPLOADING_AVATAR else ACTION_UPDATE_AVATAR,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.titleAccent,
+                        )
+                    }
+
+                    // Name field
+                    YingShiTextField(
+                        value = displayName,
+                        onValueChange = { displayName = it },
+                        placeholder = "输入昵称",
+                        icon = Icons.Rounded.Person,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = spacing.xs),
+                        enabled = !isSaving && !isUploadingAvatar,
+                        singleLine = true,
+                    )
+
+                    // Bio field (multi-line, custom styled)
+                    EditBioField(
+                        value = bio,
+                        onValueChange = { bio = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isSaving && !isUploadingAvatar,
+                    )
+
+                    // Error message
+                    errorMessage?.let {
+                        BackendInlineNotice(
+                            text = it,
+                            emphasized = true,
+                        )
+                    }
+
+                    // Button row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = spacing.sm),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(
+                                    enabled = !isSaving && !isUploadingAvatar,
+                                    onClick = onBack,
+                                ),
+                            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                            color = colors.sectionBackground.copy(alpha = 0.82f),
+                            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(
+                                    horizontal = spacing.lg,
+                                    vertical = 14.dp,
+                                ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = ACTION_CANCEL,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                                    color = colors.textSecondary,
+                                )
+                            }
+                        }
+                        YingShiPrimaryMistButton(
+                            text = if (isSaving) ACTION_SAVING else ACTION_SAVE,
+                            onClick = {
+                                scope.launch {
+                                    isSaving = true
+                                    errorMessage = null
+                                    when (
+                                        val result = RepositoryProvider.authRepository.updateCurrentUserProfile(
+                                            UpdateProfileRequestDto(
+                                                displayName = displayName.trim(),
+                                                bio = bio.trim().takeIf { it.isNotBlank() },
+                                            ),
+                                        )
+                                    ) {
+                                        is ApiResult.Success -> {
+                                            onProfileSaved(result.data)
+                                            onShowNotice(MESSAGE_SAVED, YingShiNoticeTone.SUCCESS)
+                                            onBack()
+                                        }
+                                        is ApiResult.Error -> {
+                                            if (result.isUnauthorized()) {
+                                                onSessionExpired(result.message)
+                                            } else {
+                                                errorMessage = result.message
+                                            }
+                                        }
+                                        ApiResult.Loading -> Unit
+                                    }
+                                    isSaving = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = displayName.trim().isNotBlank(),
+                            loading = isSaving,
+                        )
                     }
                 }
             }
-        },
-    )
+
+            // Bottom spacer
+            Box(modifier = Modifier.padding(bottom = spacing.xl))
+        }
+    }
 }
 
-@Composable
-private fun ProfileInlineHeader(
-    title: String,
-    onBack: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
+// ─────────────────────────────────────────────────────────────
+//  EditBioField — multi-line styled text field
+// ─────────────────────────────────────────────────────────────
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
+@Composable
+private fun EditBioField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val colors = YingShiThemeTokens.colors
+    val radius = YingShiThemeTokens.radius
+    val spacing = YingShiThemeTokens.spacing
+    var isFocused by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.raisedSurface.copy(alpha = 0.82f),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isFocused) colors.glassStroke.copy(alpha = 0.92f) else colors.dividerSoft.copy(alpha = 0.82f),
+        ),
+        shadowElevation = 1.dp,
     ) {
-        Surface(
-            modifier = Modifier
-                .size(44.dp)
-                .clickable(onClick = onBack),
-            shape = RoundedCornerShape(14.dp),
-            color = colors.sectionBackground.copy(alpha = 0.80f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        Column(
+            modifier = Modifier.padding(horizontal = spacing.lg, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "返回",
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = null,
                     tint = colors.titleAccent,
                     modifier = Modifier.size(20.dp),
                 )
+                Text(
+                    text = LABEL_BIO,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textSecondary,
+                )
             }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.dividerSoft.copy(alpha = 0.50f)),
+            )
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { isFocused = it.isFocused },
+                enabled = enabled,
+                textStyle = TextStyle(
+                    fontSize = 15.sp,
+                    color = colors.textPrimary,
+                ),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (value.isBlank()) {
+                            Text(
+                                text = "写点什么介绍自己...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = colors.textSecondary.copy(alpha = 0.60f),
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+                minLines = 3,
+                maxLines = 6,
+            )
         }
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.headlineLarge,
-            color = colors.titleAccent,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
-@Composable
-private fun ProfileInfoRow(
-    label: String,
-    value: String,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.textSecondary,
-        )
-        Text(
-            text = value.ifBlank { TEXT_UNFILLED },
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.textPrimary,
-        )
-    }
-}
+// ─────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────
 
 private fun formatEpochMillis(epochMillis: Long?): String {
     if (epochMillis == null || epochMillis <= 0L) {
@@ -551,6 +803,10 @@ private fun Uri.resolvePickedSizeBytes(context: Context): Long? {
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Previews
+// ─────────────────────────────────────────────────────────────
 
 @Preview(showBackground = true)
 @Composable

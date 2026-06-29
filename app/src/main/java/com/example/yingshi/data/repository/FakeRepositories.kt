@@ -1193,7 +1193,7 @@ private fun com.example.yingshi.feature.photos.TrashPendingCleanupUiModel.toRemo
     return RemotePendingCleanup(
         trashItemId = entry.id,
         removedAtMillis = removedAtMillis,
-        undoDeadlineMillis = removedAtMillis + 24L * 60L * 60L * 1000L,
+        undoDeadlineMillis = undoDeadlineMillis,
         item = entry.toRemoteTrashItem(state = "pendingCleanup"),
     )
 }

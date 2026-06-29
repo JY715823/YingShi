@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -14,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.example.yingshi.MainActivity
 import com.example.yingshi.R
 import com.example.yingshi.app.AppNavigationRequests
+import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.feature.photos.SettingsRepository
 
 object PushNotificationPresenter {
@@ -30,12 +32,16 @@ object PushNotificationPresenter {
             Log.d(TAG, "Skip notification from $source: preference disabled module=${data["module"]}, category=${data["category"]}")
             return false
         }
+        if (data.isActorCurrentUser()) {
+            Log.d(TAG, "Skip notification from $source: actor is current user.")
+            return false
+        }
         if (!PushNotificationDeduper.shouldShow(appContext, data.dedupeKey())) {
             Log.d(TAG, "Skip duplicate notification from $source: route=${data["targetRoute"]}, category=${data["category"]}")
             return false
         }
         PushNotificationChannels.ensureSharedUpdatesChannel(appContext)
-        val notificationId = (data["occurredAtMillis"]?.toLongOrNull() ?: System.currentTimeMillis()).hashCode()
+        val notificationId = data.stableNotificationIntId()
         val title = data["title"].orEmpty().ifBlank { "映世有新提醒" }
         val body = data["body"].orEmpty().ifBlank { "对方刚更新了共享空间。" }
         val route = data["targetRoute"].orEmpty()
@@ -48,6 +54,9 @@ object PushNotificationPresenter {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            .setVibrate(longArrayOf(0L, 180L, 80L, 180L))
             .setAutoCancel(true)
             .setContentIntent(contentIntent(appContext, data))
             .build()
@@ -120,5 +129,19 @@ object PushNotificationPresenter {
             this["title"].orEmpty(),
             this["body"].orEmpty(),
         ).joinToString("|")
+    }
+
+    private fun Map<String, String>.stableNotificationIntId(): Int {
+        this["notificationId"]?.takeIf { it.isNotBlank() }?.let { return it.hashCode() }
+        this["operationId"]?.takeIf { it.isNotBlank() }?.let { return "operation:$it:${this["category"].orEmpty()}".hashCode() }
+        this["groupId"]?.takeIf { it.isNotBlank() }?.let { return "group:$it:${this["category"].orEmpty()}".hashCode() }
+        return (this["occurredAtMillis"]?.toLongOrNull() ?: System.currentTimeMillis()).hashCode()
+    }
+
+    private fun Map<String, String>.isActorCurrentUser(): Boolean {
+        val actorUserId = this["actorUserId"]?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val currentUserId = AuthSessionManager.getCurrentUserSnapshot()?.userId?.trim()?.takeIf { it.isNotBlank() }
+            ?: return false
+        return actorUserId == currentUserId
     }
 }
