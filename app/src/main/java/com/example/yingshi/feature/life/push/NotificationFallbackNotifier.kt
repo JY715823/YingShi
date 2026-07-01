@@ -55,7 +55,7 @@ object NotificationFallbackNotifier {
                     .putLong(KEY_LAST_REMOTE_VERSION, remoteNotificationVersion)
                     .putString(KEY_LAST_NOTIFICATION_ID, target.notificationId)
                     .apply()
-                Log.d(TAG, "Fallback notification checked: shown=$shown id=${target.notificationId}")
+                Log.e(TAG, ">>> Fallback notification checked: shown=$shown id=${target.notificationId} route=${target.targetRoute}")
                 true
             }
             is ApiResult.Error -> {
@@ -78,6 +78,7 @@ object NotificationFallbackNotifier {
             put("module", module.orEmpty().ifBlank { "photos" })
             put("category", category.orEmpty())
             actorUserId?.takeIf { it.isNotBlank() }?.let { put("actorUserId", it) }
+            actorDisplayName?.takeIf { it.isNotBlank() }?.let { put("actorDisplayName", it) }
             operationId?.takeIf { it.isNotBlank() }?.let { put("operationId", it) }
             groupId?.takeIf { it.isNotBlank() }?.let { put("groupId", it) }
             put("title", title)

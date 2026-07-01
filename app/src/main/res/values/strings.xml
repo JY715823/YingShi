@@ -2,5 +2,5 @@
     <string name="app_name">映世</string>
     <string name="life_console_widget_description">今日痕迹</string>
     <string name="life_people_widget_description">两个人的痕迹</string>
-    <string name="default_notification_channel_id">yingshi_shared_updates_heads_up_v4</string>
+    <string name="default_notification_channel_id">yingshi_shared_updates_heads_up_v8</string>
 </resources>

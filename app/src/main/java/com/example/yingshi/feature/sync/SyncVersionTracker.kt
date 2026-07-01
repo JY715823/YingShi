@@ -66,6 +66,8 @@ object SyncVersionTracker {
     @Volatile
     private var pendingImmediatePoll = false
     @Volatile
+    private var lastLocalMutationFcmSuppressAt: Long = 0L
+    @Volatile
     private var appInForeground = true
     private var appContext: Context? = null
 
@@ -143,7 +145,19 @@ object SyncVersionTracker {
         synchronized(pendingAutoClearModules) {
             pendingAutoClearModules[module] = System.currentTimeMillis() + LOCAL_MUTATION_ABSORB_MILLIS
         }
+        lastLocalMutationFcmSuppressAt = System.currentTimeMillis()
         requestImmediatePoll()
+    }
+
+    /**
+     * Returns true if a local mutation happened within the FCM suppression window.
+     * Used to suppress self-notifications: when the user uploads/deletes locally,
+     * the server may send an FCM back to the same user — this prevents showing it.
+     */
+    fun shouldSuppressLocalMutationFcm(): Boolean {
+        val ts = lastLocalMutationFcmSuppressAt
+        if (ts <= 0L) return false
+        return (System.currentTimeMillis() - ts) < LOCAL_MUTATION_SUPPRESS_FCM_MILLIS
     }
 
     fun reset() {
@@ -284,6 +298,7 @@ object SyncVersionTracker {
     private const val BACKGROUND_POLL_INTERVAL_MS = 30000L
     private const val BACKGROUND_FALLBACK_GRACE_MS = 2500L
     private const val LOCAL_MUTATION_ABSORB_MILLIS = 30_000L
+    private const val LOCAL_MUTATION_SUPPRESS_FCM_MILLIS = 60_000L
 }
 
 private fun SyncVersionsDto.effectiveNotificationVersion(): Long {

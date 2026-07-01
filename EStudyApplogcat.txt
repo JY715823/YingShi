@@ -1,0 +1,502 @@
+--------- beginning of main
+06-29 21:06:05.544 28283 28283 D _V_VH-D-NotifyUtils: isOverseaAppVoip notificationPkg:com.vortex getChannelId:clash_status_channel
+06-29 21:06:05.544 28283 28283 D _V_VH-D-WatchNotificationService: isPhoneNotifyIn:false,isPhoneMiss:false
+06-29 21:06:05.544 28283 28283 D _V_VH-D-WatchNotificationService: isImportant,-1
+06-29 21:06:05.544 28283 28283 D _V_VH-D-WatchNotificationService: notificationTitle is No**ed, notificationText is 0 **s↓, allowSendToWatch = true
+06-29 21:06:05.544 28283 28283 D _V_VH-D-OnlineDeviceManager: getBidSupportVersion: Bid = 4; mpids.get(i).version=9
+06-29 21:06:05.545 28283 28283 D _V_VH-D-WatchNotificationService: OnlineDeviceManager.getBidSupportVersion(BusinessIdType.BID_NOTIFY)：9
+06-29 21:06:05.545 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted isOngoingOrForeService: true,isOngoing:true,isSupportLiveUpdateEx:false
+06-29 21:06:05.545 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted ongoingSet: []
+06-29 21:06:05.545 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted category: null
+06-29 21:06:05.545 28283 28283 I _V_VH-D-WatchNotificationService: sbn.isOngoing
+06-29 21:06:05.594  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.594  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.594  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.594  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.644  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.644  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.644  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.644  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.694  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.694  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.695  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.695  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.744  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.744  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.745  4865  4865 D MiuiBubbleManager: onEntryUpdated: com.android.systemui.statusbar.notification.collection.NotificationEntry@76db9d6 true
+06-29 21:06:05.745  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.745  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+--------- beginning of system
+06-29 21:06:05.746  4865  4865 I MiuiBubbleSettings: com.vortex 0isAppEnableBubbleNotification: false
+06-29 21:06:05.746  4865  4865 D AlarmScheduler-fold: addAlarm, key=0|com.vortex|2131296559|null|10209, triggerTime=214895883
+06-29 21:06:05.747  4865  4865 D AlarmScheduler-TIMEOUT: addAlarm, key=0|com.vortex|2131296559|null|10209, triggerTime=798095884
+06-29 21:06:05.752  4865  5220 W ContextImpl: Calling a method in the system process without a qualified user: android.app.ContextImpl.bindService:2028 android.content.ContextWrapper.bindService:879 com.xiaomi.onetrack.api.at$b.handleMessage:70 android.os.Handler.dispatchMessage:107 android.os.Looper.loopOnce:249 
+06-29 21:06:05.756  2627 11124 W ActivityManager: Unable to start service Intent { cmp=com.miui.analytics/.onetrack.OneTrackService } U=0: not found
+06-29 21:06:05.757  2627 11124 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@a4d2753
+06-29 21:06:05.778  4865  4865 D NotificationHeaderExpandController: onExpansionChanged: progress =  0.0
+06-29 21:06:05.784  4865  4865 D AlertCoordinator: onViewBound, buzzBeep for 0|com.vortex|2131296559|null|10209
+06-29 21:06:05.794  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.795  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.796  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.796  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.844  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.845  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.845  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.845  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.856  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.857  2477  3750 I libsensor-displayalgo: the value of  REAL LUX200.047897
+06-29 21:06:05.857  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4152.641113,R:2137.572510,G:1522.551636,B:580.019714, lux: 200.047897
+06-29 21:06:05.857  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.857  2477  3750 I libsensor-displayalgo: the value of  REAL LUX199.614761
+06-29 21:06:05.857  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4145.140625,R:2130.072266,G:1517.551514,B:580.019714, lux: 199.614761
+06-29 21:06:05.857  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.857  2477  3750 I libsensor-displayalgo: the value of  REAL LUX200.304916
+06-29 21:06:05.858  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4150.141113,R:2132.572510,G:1517.551514,B:575.019531, lux: 200.304916
+06-29 21:06:05.904  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.905  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.906  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.906  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.944  4304  4304 W LanguageHelper: setPluralsVariables: 0
+06-29 21:06:05.944  4304  4304 W LanguageHelper: setPluralsVariables: end
+06-29 21:06:05.954  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.954  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.957  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:05.957  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:05.958  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.958  2477  3750 I libsensor-displayalgo: the value of  REAL LUX200.102386
+06-29 21:06:05.958  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4155.141113,R:2137.572510,G:1520.051636,B:580.019714, lux: 200.102386
+06-29 21:06:05.959  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.959  2477  3750 I libsensor-displayalgo: the value of  REAL LUX200.849380
+06-29 21:06:05.959  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4157.641113,R:2132.572510,G:1517.551514,B:575.019531, lux: 200.849380
+06-29 21:06:05.960  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.960  2477  3750 I libsensor-displayalgo: the value of  REAL LUX200.382248
+06-29 21:06:05.960  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4170.141602,R:2147.572998,G:1522.551636,B:585.019836, lux: 200.382248
+06-29 21:06:05.961  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:05.961  2477  3750 I libsensor-displayalgo: the value of  REAL LUX200.094772
+06-29 21:06:05.961  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4160.141113,R:2142.572754,G:1517.551514,B:580.019714, lux: 200.094772
+06-29 21:06:05.981 10979 11427 D JavaheapMonitor: Java heap used=12M max=512M, proc: com.android.browser
+06-29 21:06:05.981 10979 11427 V JavaheapMonitor: Check java heap usage finished! Next check delay: 300000
+06-29 21:06:06.004  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.004  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.006  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.006  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.034  5297  8322 D JavaheapMonitor: Java heap used=2M max=256M, proc: com.android.smspush
+06-29 21:06:06.034  5297  8322 V JavaheapMonitor: Check java heap usage finished! Next check delay: 300000
+06-29 21:06:06.054  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.054  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.056  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.056  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.058  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.058  2477  3750 I libsensor-displayalgo: the value of  REAL LUX202.014572
+06-29 21:06:06.058  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4187.642090,R:2152.572998,G:1530.052002,B:582.519775, lux: 202.014572
+06-29 21:06:06.059  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.059  2477  3750 I libsensor-displayalgo: the value of  REAL LUX201.675919
+06-29 21:06:06.059  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4182.642090,R:2150.072998,G:1532.552002,B:585.019836, lux: 201.675919
+06-29 21:06:06.060  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.060  2477  3750 I libsensor-displayalgo: the value of  REAL LUX202.559067
+06-29 21:06:06.060  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4195.142578,R:2152.572998,G:1530.052002,B:582.519775, lux: 202.559067
+06-29 21:06:06.061  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.061  2477  3750 I libsensor-displayalgo: the value of  REAL LUX202.513687
+06-29 21:06:06.062  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4202.642578,R:2160.073242,G:1530.052002,B:585.019836, lux: 202.513687
+06-29 21:06:06.062  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.062  2477  3750 I libsensor-displayalgo: the value of  REAL LUX203.362732
+06-29 21:06:06.062  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4202.642578,R:2155.073242,G:1537.552246,B:582.519775, lux: 203.362732
+06-29 21:06:06.104  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.104  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.105  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.106  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.122  2627  3757 I MiuiNetworkPolicy: bandwidth: 0 KB/s, Max bandwidth: 1402 KB/s
+06-29 21:06:06.154  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.154  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.156  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.156  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.158  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.159  2477  3750 I libsensor-displayalgo: the value of  REAL LUX205.286194
+06-29 21:06:06.159  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4247.644043,R:2185.074219,G:1557.552856,B:592.520142, lux: 205.286194
+06-29 21:06:06.159  2477  3750 I libsensor-displayalgo: ##### the value of lux: 203.362732, cct: 0.000000
+06-29 21:06:06.159  2477  3750 I libsensor-ssccalapi: value of set_lux: 203.362732
+06-29 21:06:06.159  2477  3750 I libsensor-ssccalapi: value of set cct: 0.000000
+06-29 21:06:06.159  2477  3750 I sensors : send_request:296,  send_request suid high 48dd16bd suid low 2c177798
+06-29 21:06:06.163  2477  3694 I sensors : handle_resp_cb:364, _fifo_resp not empty
+06-29 21:06:06.163  2477  3694 I sensors : handle_resp_cb:377,  handle_resp_cb suid high 48dd16bd suid low 2c177798,_fifo_resp.begin() 58aa21b0
+06-29 21:06:06.163  2477  3694 I sensors : handle_resp_cb:379, _fifo_resp still not empty
+06-29 21:06:06.164  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.164  2477  3750 I libsensor-displayalgo: the value of  REAL LUX205.576736
+06-29 21:06:06.164  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4255.144531,R:2185.074219,G:1552.552734,B:592.520142, lux: 205.576736
+06-29 21:06:06.205  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.205  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.206  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.207  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.256  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.256  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.258  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.258  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.258  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.258  2477  3750 I libsensor-displayalgo: the value of  REAL LUX206.380386
+06-29 21:06:06.258  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4262.644531,R:2187.574219,G:1560.052979,B:592.520142, lux: 206.380386
+06-29 21:06:06.259  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.259  2477  3750 I libsensor-displayalgo: the value of  REAL LUX206.659393
+06-29 21:06:06.259  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4265.145020,R:2187.574219,G:1557.552856,B:590.020020, lux: 206.659393
+06-29 21:06:06.260  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.260  2477  3750 I libsensor-displayalgo: the value of  REAL LUX207.404251
+06-29 21:06:06.260  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4282.645508,R:2197.574707,G:1570.053345,B:597.520264, lux: 207.404251
+06-29 21:06:06.261  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.261  2477  3750 I libsensor-displayalgo: the value of  REAL LUX208.200333
+06-29 21:06:06.261  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4295.145996,R:2205.074951,G:1575.053467,B:597.520264, lux: 208.200333
+06-29 21:06:06.304  2627  5673 I NetworkAccelerateSwitchService: EVENT_RSSI_POLL. mRssiPoll=true
+06-29 21:06:06.305  2627  5673 I NetworkAccelerateSwitchService: checkWifiRssiAndLinkSpeed mWifiFastFade:false mWifiFastFadeAdjustThreshold:false
+06-29 21:06:06.305  2627  5673 I NetworkAccelerateSwitchService: getAverageWifiRssi:63
+06-29 21:06:06.306  2627  5673 D NetworkAccelerateSwitchService: checkIntervalModeChange mMovementState:false mIntervalMode:0 mIsBadLinkLayerQoE:false mBadLinkLayerQoETimes = 0
+06-29 21:06:06.313  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.313  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.315  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.315  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.360  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.360  2477  3750 I libsensor-displayalgo: the value of  REAL LUX207.683197
+06-29 21:06:06.360  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4285.145508,R:2197.574707,G:1567.553223,B:595.020203, lux: 207.683197
+06-29 21:06:06.361  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.361  2477  3750 I libsensor-displayalgo: the value of  REAL LUX208.403732
+06-29 21:06:06.361  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4302.645996,R:2210.074951,G:1577.553589,B:600.020386, lux: 208.403732
+06-29 21:06:06.362  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.362  2477  3750 I libsensor-displayalgo: the value of  REAL LUX208.852661
+06-29 21:06:06.362  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4302.645996,R:2210.074951,G:1577.553589,B:595.020203, lux: 208.852661
+06-29 21:06:06.363  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.363  2477  3750 I libsensor-displayalgo: the value of  REAL LUX208.994476
+06-29 21:06:06.363  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4315.146484,R:2212.575195,G:1582.553711,B:605.020569, lux: 208.994476
+06-29 21:06:06.363  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.364  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.364  2477  3750 I libsensor-displayalgo: the value of  REAL LUX209.600586
+06-29 21:06:06.364  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.364  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4317.646484,R:2215.075195,G:1580.053589,B:597.520264, lux: 209.600586
+06-29 21:06:06.365  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.365  9224 10994 D JavaheapMonitor: Java heap used=17M max=256M, proc: com.miui.securitycenter.remote
+06-29 21:06:06.365  9224 10994 V JavaheapMonitor: Check java heap usage finished! Next check delay: 300000
+06-29 21:06:06.366  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.413  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.414  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.415  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.415  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.458  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.458  2477  3750 I libsensor-displayalgo: the value of  REAL LUX211.228607
+06-29 21:06:06.458  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4347.647461,R:2227.575684,G:1590.053955,B:602.520447, lux: 211.228607
+06-29 21:06:06.459  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.460  2477  3750 I libsensor-displayalgo: the value of  REAL LUX212.328903
+06-29 21:06:06.460  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4375.148438,R:2242.576172,G:1600.054321,B:610.020691, lux: 212.328903
+06-29 21:06:06.460  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.460  2477  3750 I libsensor-displayalgo: the value of  REAL LUX213.411545
+06-29 21:06:06.461  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4385.148926,R:2245.076172,G:1605.054443,B:607.520630, lux: 213.411545
+06-29 21:06:06.461  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.461  2477  3750 I libsensor-displayalgo: the value of  REAL LUX213.945389
+06-29 21:06:06.461  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4400.149414,R:2255.076660,G:1612.554688,B:612.520813, lux: 213.945389
+06-29 21:06:06.463  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.464  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.465  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.465  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.513  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.513  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.514  2627 11124 D FileUtils: Rounded bytes from 11702132736 to 16000000000
+06-29 21:06:06.516 10979 11117 D MemorySizeMonitor: Current memory: 106390KB, ratio: 0%, total: 11427864KB
+06-29 21:06:06.516 10979 11117 W MemorySizeMonitor: Memory threshold exceeded continuously! duration=3144940ms
+06-29 21:06:06.516 10979 11117 D MemorySizeMonitor: Skip report due to report interval (40001ms < 60000ms)
+06-29 21:06:06.517  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.517  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.530  4865  4865 D FocusPlugin: plugin onNotificationPosted: 0|com.vortex|2131296559|null|10209 com.vortex
+06-29 21:06:06.530  4865  4865 D FocusPlugin: 0|com.vortex|2131296559|null|10209 is not focus notification, isMedia: false
+06-29 21:06:06.539 28283 28283 D _V_VH-D-WatchNotificationService: onNotificationPosted sbn is StatusBarNotification(pkg=com.vortex user=UserHandle{0} id=2131296559 tag=null key=0|com.vortex|2131296559|null|10209: Notification(channel=clash_status_channel shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0xff1e4376 vis=PRIVATE))
+06-29 21:06:06.540 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable
+06-29 21:06:06.540 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable, packageName = com.vivo.health is enabled
+06-29 21:06:06.540 28283 28283 D _V_VH-D-WatchNotificationService: onNotificationPosted watch notify switch is true
+06-29 21:06:06.540 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable
+06-29 21:06:06.540 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable, packageName = com.vivo.health is enabled
+06-29 21:06:06.540 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted:StatusBarNotification(pkg=com.vortex user=UserHandle{0} id=2131296559 tag=null key=0|com.vortex|2131296559|null|10209: Notification(channel=clash_status_channel shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0xff1e4376 vis=PRIVATE));notificationPkg:com.vortex,postTime = 1782731491403
+06-29 21:06:06.540 28283 28283 D _V_VH-D-WatchNotificationService: isTencentmmVoip notificationPkg:com.vortex getChannelId:clash_status_channel
+06-29 21:06:06.540 28283 28283 D _V_VH-D-NotifyUtils: isOverseaAppVoip notificationPkg:com.vortex getChannelId:clash_status_channel
+06-29 21:06:06.540 28283 28283 D _V_VH-D-WatchNotificationService: isPhoneNotifyIn:false,isPhoneMiss:false
+06-29 21:06:06.540 28283 28283 D _V_VH-D-WatchNotificationService: isImportant,-1
+06-29 21:06:06.540 28283 28283 D _V_VH-D-WatchNotificationService: notificationTitle is No**ed, notificationText is 0 **s↓, allowSendToWatch = true
+06-29 21:06:06.540 28283 28283 D _V_VH-D-OnlineDeviceManager: getBidSupportVersion: Bid = 4; mpids.get(i).version=9
+06-29 21:06:06.540 28283 28283 D _V_VH-D-WatchNotificationService: OnlineDeviceManager.getBidSupportVersion(BusinessIdType.BID_NOTIFY)：9
+06-29 21:06:06.540 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted isOngoingOrForeService: true,isOngoing:true,isSupportLiveUpdateEx:false
+06-29 21:06:06.540 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted ongoingSet: []
+06-29 21:06:06.540 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted category: null
+06-29 21:06:06.540 28283 28283 I _V_VH-D-WatchNotificationService: sbn.isOngoing
+06-29 21:06:06.546 32743 32743 W [GT]HotPool#7: type=1400 audit(0.0:199417): avc:  denied  { getattr } for  path="/sys/kernel/tracing/trace_marker" dev="tracefs" ino=8649 scontext=u:r:untrusted_app:s0:c22,c257,c512,c768 tcontext=u:object_r:debugfs_trace_marker:s0 tclass=file permissive=0 app=com.tencent.mm
+06-29 21:06:06.556  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.556  2477  3750 I libsensor-displayalgo: the value of  REAL LUX213.756302
+06-29 21:06:06.556  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4402.649414,R:2260.076660,G:1610.054688,B:612.520813, lux: 213.756302
+06-29 21:06:06.556  2477  3750 I libsensor-displayalgo: ##### the value of lux: 213.756302, cct: 0.000000
+06-29 21:06:06.556  2477  3750 I libsensor-ssccalapi: value of set_lux: 213.756302
+06-29 21:06:06.556  2477  3750 I libsensor-ssccalapi: value of set cct: 0.000000
+06-29 21:06:06.556  2477  3750 I sensors : send_request:296,  send_request suid high 48dd16bd suid low 2c177798
+06-29 21:06:06.559  2477  3694 I sensors : handle_resp_cb:364, _fifo_resp not empty
+06-29 21:06:06.559  2477  3694 I sensors : handle_resp_cb:377,  handle_resp_cb suid high 48dd16bd suid low 2c177798,_fifo_resp.begin() 58aa21b0
+06-29 21:06:06.559  2477  3694 I sensors : handle_resp_cb:379, _fifo_resp still not empty
+06-29 21:06:06.561  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.561  2477  3750 I libsensor-displayalgo: the value of  REAL LUX213.726135
+06-29 21:06:06.561  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4400.149414,R:2257.576660,G:1615.054810,B:615.020874, lux: 213.726135
+06-29 21:06:06.562  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.562  2477  3750 I libsensor-displayalgo: the value of  REAL LUX213.669220
+06-29 21:06:06.562  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4402.649414,R:2265.076904,G:1617.554932,B:615.020874, lux: 213.669220
+06-29 21:06:06.562  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.562  2477  3750 I libsensor-displayalgo: the value of  REAL LUX214.514206
+06-29 21:06:06.562  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4407.649414,R:2252.576416,G:1615.054810,B:615.020874, lux: 214.514206
+06-29 21:06:06.562  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.562  2477  3750 I libsensor-displayalgo: the value of  REAL LUX214.679871
+06-29 21:06:06.562  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4417.649902,R:2260.076660,G:1620.055054,B:620.021057, lux: 214.679871
+06-29 21:06:06.563  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.563  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.563  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.563  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.613  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.613  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.613  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.613  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.658  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.658  2477  3750 I libsensor-displayalgo: the value of  REAL LUX214.847443
+06-29 21:06:06.658  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4420.149902,R:2267.576904,G:1622.555054,B:617.520935, lux: 214.847443
+06-29 21:06:06.663  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.663  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.664  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.664  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.702 32743 32743 W [GT]HotPool#7: type=1400 audit(0.0:199418): avc:  denied  { getattr } for  path="/dev/pmsg0" dev="tmpfs" ino=1212 scontext=u:r:untrusted_app:s0:c22,c257,c512,c768 tcontext=u:object_r:pmsg_device:s0 tclass=chr_file permissive=0 app=com.tencent.mm
+06-29 21:06:06.721  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.722  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.722  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.722  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.730  4865  4865 D MiuiBubbleManager: onEntryUpdated: com.android.systemui.statusbar.notification.collection.NotificationEntry@76db9d6 true
+06-29 21:06:06.732  4865  4865 I MiuiBubbleSettings: com.vortex 0isAppEnableBubbleNotification: false
+06-29 21:06:06.732  4865  4865 D AlarmScheduler-fold: addAlarm, key=0|com.vortex|2131296559|null|10209, triggerTime=214896869
+06-29 21:06:06.733  4865  4865 D AlarmScheduler-TIMEOUT: addAlarm, key=0|com.vortex|2131296559|null|10209, triggerTime=798096870
+06-29 21:06:06.737  4865  5220 W ContextImpl: Calling a method in the system process without a qualified user: android.app.ContextImpl.bindService:2028 android.content.ContextWrapper.bindService:879 com.xiaomi.onetrack.api.at$b.handleMessage:70 android.os.Handler.dispatchMessage:107 android.os.Looper.loopOnce:249 
+06-29 21:06:06.740  2627 11124 W ActivityManager: Unable to start service Intent { cmp=com.miui.analytics/.onetrack.OneTrackService } U=0: not found
+06-29 21:06:06.740  2627 11124 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@2073890
+06-29 21:06:06.752  4865  4865 D NotificationHeaderExpandController: onExpansionChanged: progress =  0.0
+06-29 21:06:06.756  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.756  2477  3750 I libsensor-displayalgo: the value of  REAL LUX214.622070
+06-29 21:06:06.756  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4407.649414,R:2257.576660,G:1617.554932,B:612.520813, lux: 214.622070
+06-29 21:06:06.757  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.757  2477  3750 I libsensor-displayalgo: the value of  REAL LUX215.678513
+06-29 21:06:06.757  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4425.150391,R:2262.576904,G:1622.555054,B:615.020874, lux: 215.678513
+06-29 21:06:06.757  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.757  2477  3750 I libsensor-displayalgo: the value of  REAL LUX216.087708
+06-29 21:06:06.757  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4435.150391,R:2265.076904,G:1627.555298,B:620.021057, lux: 216.087708
+06-29 21:06:06.760  1548  2591 I vendor.qti.hardware.display.composer-service: FrameNotifyProcess Sensor: notify citsensorservice to trigger cwb
+06-29 21:06:06.760  2477  2524 I libcitsensorservice@2.0-impl: msg_transfer
+06-29 21:06:06.761  2477  3744 I libsensor-parseRGB: request dump start
+06-29 21:06:06.761  4865  4865 D AlertCoordinator: onViewBound, buzzBeep for 0|com.vortex|2131296559|null|10209
+06-29 21:06:06.761  2477  3744 D vendor.xiaomi.sensor.citsensorservice@2.0-service: handle id:11 wxh:1280x2400 uwxuh:1080x2400 size: 9216000 fd:18 fd_meta:19 flags:0x4000228 usage:0x33  format:0x3 layer_count: 1 reserved_size = 0
+06-29 21:06:06.761  1548  2004 D SDM     : HWCSession::SetCWBOutputBuffer: CWB config passed by cwb_client : tappoint 1  CWB_ROI : (697.000000 3.000000 793.000000 99.000000)
+06-29 21:06:06.762  1548  3751 D SDM     : HWCSession::ProcessRequests: Successfully configured CWB buffer.
+06-29 21:06:06.770  1548  3751 D SDM     : HWCSession::ProcessRequests: Pushing release fence in fenece wait queue.
+06-29 21:06:06.771  1548  3751 D SDM     : HWCSession::ProcessRequests: Creating AsyncFenceWaits async thread.
+06-29 21:06:06.771  1548  3751 D SDM     : HWCSession::ProcessRequests: Remove current CWB request from the pending request queue.
+06-29 21:06:06.771  1548  3751 D SDM     : HWCSession::ProcessRequests: No pending cwb requests found in the queue.
+06-29 21:06:06.772  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.772  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.772  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.773  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.777  1548  1758 D SDM     : HWDeviceDRM::SetupConcurrentWriteback: Tear down the Concurrent Writeback topology
+06-29 21:06:06.782 32743 32743 W [GT]HotPool#7: type=1400 audit(0.0:199419): avc:  denied  { getattr } for  path="/sys/kernel/tracing/trace_marker" dev="tracefs" ino=8649 scontext=u:r:untrusted_app:s0:c22,c257,c512,c768 tcontext=u:object_r:debugfs_trace_marker:s0 tclass=file permissive=0 app=com.tencent.mm
+06-29 21:06:06.787  1548  3753 D SDM     : HWCSession::NotifyCWBStatus: Notify the client about buffer status 0.
+06-29 21:06:06.787  1548  3753 D SDM     : HWCSession::PerformFenceWaits: Remove current release fence from the pending fence wait queue.
+06-29 21:06:06.787  1548  3753 D SDM     : HWCSession::PerformFenceWaits: CWB fence queue is empty. No pending release fence to wait on.
+06-29 21:06:06.788  2477  3745 D libsensor-parseRGB: the value of RGB [32676092.683304 62034611.391457 28607769.887773]
+06-29 21:06:06.822  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.822  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.822  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.822  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.856  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:06.856  2477  3750 I libsensor-displayalgo: the value of  REAL LUX215.826508
+06-29 21:06:06.856  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4417.649902,R:2257.576660,G:1622.555054,B:610.020691, lux: 215.826508
+06-29 21:06:06.872  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.872  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.873  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.873  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.885  4817  5591 D JavaheapMonitor: Java heap used=33M max=256M, proc: com.android.phone
+06-29 21:06:06.885  4817  5591 V JavaheapMonitor: Check java heap usage finished! Next check delay: 300000
+06-29 21:06:06.922  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.922  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.923  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.923  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.972  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.972  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:06.973  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:06.973  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.022  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.023  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.023  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.023  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.072  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.072  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.073  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.073  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.097  4304  4304 W LanguageHelper: setPluralsVariables: 0
+06-29 21:06:07.097  4304  4304 W LanguageHelper: setPluralsVariables: end
+06-29 21:06:07.122  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.122  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.123  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.123  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.172  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.173  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.173  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.173  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.231  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.231  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.232  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.232  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.281  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.281  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.282  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.282  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.332  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.333  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.334  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.335  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.382  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.383  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.384  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.385  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.432  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.433  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.434  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.434  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.482  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.483  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.484  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.484  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.530 12246 13233 D MilletPolicy: active uid = 10209 type =8
+06-29 21:06:07.533  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.533  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.534  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.534  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.546 28283 28283 D _V_VH-D-WatchNotificationService: onNotificationPosted sbn is StatusBarNotification(pkg=com.vortex user=UserHandle{0} id=2131296559 tag=null key=0|com.vortex|2131296559|null|10209: Notification(channel=clash_status_channel shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0xff1e4376 vis=PRIVATE))
+06-29 21:06:07.547  4865  4865 D FocusPlugin: plugin onNotificationPosted: 0|com.vortex|2131296559|null|10209 com.vortex
+06-29 21:06:07.547 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable
+06-29 21:06:07.547  4865  4865 D FocusPlugin: 0|com.vortex|2131296559|null|10209 is not focus notification, isMedia: false
+06-29 21:06:07.547 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable, packageName = com.vivo.health is enabled
+06-29 21:06:07.548 28283 28283 D _V_VH-D-WatchNotificationService: onNotificationPosted watch notify switch is true
+06-29 21:06:07.548 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable
+06-29 21:06:07.548 28283 28283 I _V_VH-D-NotifyUtils: isHealthNotifyUserEnable, packageName = com.vivo.health is enabled
+06-29 21:06:07.549 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted:StatusBarNotification(pkg=com.vortex user=UserHandle{0} id=2131296559 tag=null key=0|com.vortex|2131296559|null|10209: Notification(channel=clash_status_channel shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0xff1e4376 vis=PRIVATE));notificationPkg:com.vortex,postTime = 1782731491403
+06-29 21:06:07.549 28283 28283 D _V_VH-D-WatchNotificationService: isTencentmmVoip notificationPkg:com.vortex getChannelId:clash_status_channel
+06-29 21:06:07.549 28283 28283 D _V_VH-D-NotifyUtils: isOverseaAppVoip notificationPkg:com.vortex getChannelId:clash_status_channel
+06-29 21:06:07.549 28283 28283 D _V_VH-D-WatchNotificationService: isPhoneNotifyIn:false,isPhoneMiss:false
+06-29 21:06:07.550 28283 28283 D _V_VH-D-WatchNotificationService: isImportant,-1
+06-29 21:06:07.550  2627 11124 D GreezeManager: FZ uid = 10278 reason =from system success !
+06-29 21:06:07.551 28283 28283 D _V_VH-D-WatchNotificationService: notificationTitle is No**ed, notificationText is 0 **s↓, allowSendToWatch = true
+06-29 21:06:07.551 28283 28283 D _V_VH-D-OnlineDeviceManager: getBidSupportVersion: Bid = 4; mpids.get(i).version=9
+06-29 21:06:07.551 28283 28283 D _V_VH-D-WatchNotificationService: OnlineDeviceManager.getBidSupportVersion(BusinessIdType.BID_NOTIFY)：9
+06-29 21:06:07.551 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted isOngoingOrForeService: true,isOngoing:true,isSupportLiveUpdateEx:false
+06-29 21:06:07.551 12246 13233 D MilletUtils: setUidState, uid = 10278 allow = false
+06-29 21:06:07.551 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted ongoingSet: []
+06-29 21:06:07.551 28283 28283 I _V_VH-D-WatchNotificationService: onNotificationPosted category: null
+06-29 21:06:07.551 28283 28283 I _V_VH-D-WatchNotificationService: sbn.isOngoing
+06-29 21:06:07.553  2627  3864 D GreezeManager: iso uid:10278 p:{29320} :true
+06-29 21:06:07.583  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.583  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.585  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.585  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.641  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.641  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.642  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.642  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.691  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.692  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.693  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.694  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.741  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.742  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.744  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.744  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.749  4865  4865 D MiuiBubbleManager: onEntryUpdated: com.android.systemui.statusbar.notification.collection.NotificationEntry@76db9d6 true
+06-29 21:06:07.752  4865  4865 I MiuiBubbleSettings: com.vortex 0isAppEnableBubbleNotification: false
+06-29 21:06:07.752  4865  4865 D AlarmScheduler-fold: addAlarm, key=0|com.vortex|2131296559|null|10209, triggerTime=214897889
+06-29 21:06:07.753  4865  4865 D AlarmScheduler-TIMEOUT: addAlarm, key=0|com.vortex|2131296559|null|10209, triggerTime=798097890
+06-29 21:06:07.757  4865  5220 W ContextImpl: Calling a method in the system process without a qualified user: android.app.ContextImpl.bindService:2028 android.content.ContextWrapper.bindService:879 com.xiaomi.onetrack.api.at$b.handleMessage:70 android.os.Handler.dispatchMessage:107 android.os.Looper.loopOnce:249 
+06-29 21:06:07.761  2627 11124 W ActivityManager: Unable to start service Intent { cmp=com.miui.analytics/.onetrack.OneTrackService } U=0: not found
+06-29 21:06:07.761  2627 11124 W ActivityManager: Unbind failed: could not find connection for android.os.BinderProxy@14f4dbc
+06-29 21:06:07.779  1548  2591 I vendor.qti.hardware.display.composer-service: FrameNotifyProcess Sensor: notify citsensorservice to trigger cwb
+06-29 21:06:07.779  2477  2521 I libcitsensorservice@2.0-impl: msg_transfer
+06-29 21:06:07.779  2477  3744 I libsensor-parseRGB: request dump start
+06-29 21:06:07.779  2477  3744 D vendor.xiaomi.sensor.citsensorservice@2.0-service: handle id:11 wxh:1280x2400 uwxuh:1080x2400 size: 9216000 fd:18 fd_meta:19 flags:0x4000228 usage:0x33  format:0x3 layer_count: 1 reserved_size = 0
+06-29 21:06:07.780  1548  2016 D SDM     : HWCSession::SetCWBOutputBuffer: CWB config passed by cwb_client : tappoint 1  CWB_ROI : (697.000000 3.000000 793.000000 99.000000)
+06-29 21:06:07.781  1548  3751 D SDM     : HWCSession::ProcessRequests: Successfully configured CWB buffer.
+06-29 21:06:07.783  4865  4865 D NotificationHeaderExpandController: onExpansionChanged: progress =  0.0
+06-29 21:06:07.790  1548  3751 D SDM     : HWCSession::ProcessRequests: Pushing release fence in fenece wait queue.
+06-29 21:06:07.790  1548  3751 D SDM     : HWCSession::ProcessRequests: Creating AsyncFenceWaits async thread.
+06-29 21:06:07.790  1548  3751 D SDM     : HWCSession::ProcessRequests: Remove current CWB request from the pending request queue.
+06-29 21:06:07.790  1548  3751 D SDM     : HWCSession::ProcessRequests: No pending cwb requests found in the queue.
+06-29 21:06:07.791  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.791  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.792  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.792  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.796  1548  1758 D SDM     : HWDeviceDRM::SetupConcurrentWriteback: Tear down the Concurrent Writeback topology
+06-29 21:06:07.800  4865  4865 D AlertCoordinator: onViewBound, buzzBeep for 0|com.vortex|2131296559|null|10209
+06-29 21:06:07.806  1548  3753 D SDM     : HWCSession::NotifyCWBStatus: Notify the client about buffer status 0.
+06-29 21:06:07.806  1548  3753 D SDM     : HWCSession::PerformFenceWaits: Remove current release fence from the pending fence wait queue.
+06-29 21:06:07.806  1548  3753 D SDM     : HWCSession::PerformFenceWaits: CWB fence queue is empty. No pending release fence to wait on.
+06-29 21:06:07.806  2477  3745 D libsensor-parseRGB: the value of RGB [32676092.683304 62034611.391457 28607769.887773]
+06-29 21:06:07.850  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.851  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.853  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.853  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.858  2477  3750 I libsensor-displayalgo: the value of channelCali C:445.578849,R:220.942876,G:150.307282,B:74.317389,scales C:1.003892,R:1.042281,G:1.021610,B:1.069866
+06-29 21:06:07.858  2477  3750 I libsensor-displayalgo: the value of  REAL LUX216.008926
+06-29 21:06:07.858  2477  3750 D libsensor-displayalgo: brightness:222.000000,R:32676092.683304,G:62034611.391457,B:28607769.887773,EVENT C:4432.650391,R:2267.576904,G:1627.555298,B:617.520935, lux: 216.008926
+06-29 21:06:07.898  2313  2313 I wificond: station_bandwidth: (
+06-29 21:06:07.899  2627  3759 D MiuiWifiCommonBase: band: 4, compensate: 0
+06-29 21:06:07.900  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.900  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.902  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.902  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.905  2627  5369 I NetworkBoostStatusManager: handle: 102
+06-29 21:06:07.905  2627  5369 I NetworkBoostStatusManager: interfaceOnCapabilitiesChanged interface name:wlan0
+06-29 21:06:07.908  2627 13419 D WifiScoreReportInjector: mCcaBusyRate change to 0; mBeaconLostRate change to 0
+06-29 21:06:07.910 10019 10463 I NetBusNetworkMonitor: onCapabilitiesChanged WIFI isPrimary = true
+06-29 21:06:07.910  5430 18253 I IDMManager: onCapabilitiesChanged: network is 103
+06-29 21:06:07.910  4817  4899 E PhoneAdapter: get ntnphones failed, exception: java.lang.IllegalStateException: Default phones haven't been made yet!
+06-29 21:06:07.911  5430 18253 I IDMManager: network is not MiuiCarSoftAp
+06-29 21:06:07.920  2627  3759 E WifiScoreReportInjector: current network is in roaming environment
+06-29 21:06:07.920  2627  3759 E WifiScoreReportInjector: current network is portal, disabled fast switch in weak
+06-29 21:06:07.920  2627  3759 E WifiClientModeImpl[184566463:wlan0]: Failed to get mlo info
+06-29 21:06:07.921 10019 10463 I NetBusNetworkMonitor: gateway=10.%#*.%((.254
+06-29 21:06:07.921  2627  3772 D ConnectivityServiceImpl: teardown wifi type 1 state: CONNECTED primary: true
+06-29 21:06:07.921  2627  3772 D ConnectivityServiceImpl: nai type 1 state: CONNECTED primary: true
+06-29 21:06:07.922  2627  3772 D ConnectivityServiceImpl: teardown wifi type 1 state: CONNECTED primary: true
+06-29 21:06:07.922  2627  3772 D ConnectivityServiceImpl: nai type 1 state: CONNECTED primary: true
+06-29 21:06:07.923 10019 10463 I NetBusNetworkMonitor: addConnectNetworkInterface mediumType:256, detail:NetworkDetailInfo{mIsConnected=false, mIsSupportTdls=true, mNetworkType=0, mIpAddress=10.%#).$$).87, mIfName=wlan0, mGateway=10.%#*.%((.254, mNetmask=255.%('.#.0, mSsid=C**nt}
+06-29 21:06:07.923 10019 10463 I NetBusNetworkMonitor: onCapabilitiesChanged WIFI handle=445787328525, mediumType=256, ifName=wlan0
+06-29 21:06:07.923  2627  3772 D ConnectivityService: NetReassign [no changes] [c 0] [a 1] [i 1]
+06-29 21:06:07.924  7930 25450 I NearbyMediums: Wifi changed new SSID: "CTBU-student"
+06-29 21:06:07.924  7930 25450 I NearbyMediums: WifiLanConnectivityInfo is not changed, skip notify.
+06-29 21:06:07.950  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.951  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:07.952  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:07.953  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.001  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.001  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.003  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.003  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.050  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.050  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.050  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.051  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.100  8638  9104 D JavaheapMonitor: Java heap used=13M max=512M, proc: com.android.providers.media.module
+06-29 21:06:08.100  8638  9104 V JavaheapMonitor: Check java heap usage finished! Next check delay: 300000
+06-29 21:06:08.109  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.110  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.111  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.111  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.159  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.160  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.161  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.162  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.209  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.210  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.211  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.211  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.250 10826 10826 I adbd    : in ShellService: export ANDROID_LOG_TAGS=''; exec logcat '-d' '-t' '500'
+06-29 21:06:08.260  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.261  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:06:08.262  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:06:08.262  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0

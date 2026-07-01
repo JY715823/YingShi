@@ -55,6 +55,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -65,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
 import com.example.yingshi.data.model.RemoteLifeConsoleHistory
 import com.example.yingshi.data.model.RemoteLifeConsoleHistoryDay
@@ -81,9 +84,13 @@ import com.example.yingshi.feature.photos.toAppContentMediaSource
 import com.example.yingshi.feature.photos.TrashDialogActionButton
 import com.example.yingshi.ui.components.ShellPage
 import com.example.yingshi.ui.components.TitleTabs
+import com.example.yingshi.ui.components.YingShiBackdropVariant
+import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiMistCard
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
+import com.example.yingshi.ui.components.yingShiRouteReveal
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
 import com.example.yingshi.feature.sync.StaleBanner
 import com.example.yingshi.feature.sync.SyncModule
@@ -116,6 +123,8 @@ fun LifeConsoleScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
     val scope = rememberCoroutineScope()
     val zoneId = "Asia/Shanghai"
     var snapshot by remember { mutableStateOf<RemoteLifeConsoleToday?>(null) }
@@ -129,6 +138,7 @@ fun LifeConsoleScreen(
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableStateOf(0) }
     var pendingDeleteTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var contentVisible by remember { mutableStateOf(false) }
     val currentHistoryRange by rememberUpdatedState(historyRange)
 
     fun showNotice(
@@ -152,6 +162,7 @@ fun LifeConsoleScreen(
                     snapshot = today
                     actionMessage = null
                     LifeConsoleWidgetProvider.applySnapshot(context.applicationContext, today)
+                    contentVisible = true
                 }
                 is ApiResult.Error -> actionMessage = result.message
                 ApiResult.Loading -> Unit
@@ -261,7 +272,11 @@ fun LifeConsoleScreen(
     }
     BackHandler(onBack = onBack)
 
-    Box(modifier = modifier.fillMaxSize()) {
+    YingShiMistBackground(
+        modifier = modifier.fillMaxSize(),
+        showWaves = true,
+        variant = YingShiBackdropVariant.LIFE,
+    ) {
         ShellPage(
             title = "今日痕迹",
             summary = "",
@@ -270,7 +285,7 @@ fun LifeConsoleScreen(
             headerContent = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LifeConsolePillAction(
@@ -281,15 +296,15 @@ fun LifeConsoleScreen(
                             loadHistory(historyRange.limitDays)
                         },
                         enabled = !isLoading && !isHistoryLoading,
-                        containerColor = YingShiThemeTokens.colors.primaryContainer.copy(alpha = 0.78f),
-                        contentColor = YingShiThemeTokens.colors.titleAccent,
+                        containerColor = colors.primaryContainer.copy(alpha = 0.78f),
+                        contentColor = colors.titleAccent,
                     )
                     LifeConsolePillAction(
                         text = "历史记录",
                         onClick = { showHistoryPage = true },
                         enabled = !isHistoryLoading,
-                        containerColor = YingShiThemeTokens.colors.sectionBackground.copy(alpha = 0.90f),
-                        contentColor = YingShiThemeTokens.colors.titleAccent,
+                        containerColor = colors.sectionBackground.copy(alpha = 0.90f),
+                        contentColor = colors.titleAccent,
                     )
                 }
                 if (actionMessage != null) {
@@ -322,9 +337,10 @@ fun LifeConsoleScreen(
                     }
                 }
                 snapshot == null -> {
-                    Text(
-                        text = "今天还没有记录。",
-                        color = colors.textSecondary,
+                    LifeConsoleTodayEmptyState(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp),
                     )
                 }
                 else -> {
@@ -334,6 +350,7 @@ fun LifeConsoleScreen(
                         isBusy = isLoading,
                         initialSlotKey = initialSlotKey,
                         initialMediaId = initialMediaId,
+                        contentVisible = contentVisible,
                         onOpenMedia = { media ->
                             context.startActivity(LifeMediaQuickViewerActivity.intent(context, media))
                         },
@@ -350,6 +367,7 @@ fun LifeConsoleScreen(
                     BowelCard(
                         snapshot = today,
                         isBusy = isLoading,
+                        contentVisible = contentVisible,
                         onAdd = {
                             val restored = snapshot ?: return@BowelCard
                             val optimistic = restored.withOptimisticBowelDelta(delta = 1) ?: return@BowelCard
@@ -417,7 +435,7 @@ fun LifeConsoleScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(top = YingShiThemeTokens.spacing.md),
+                .padding(top = spacing.md),
         )
     }
 
@@ -475,6 +493,39 @@ fun LifeConsoleScreen(
 }
 
 @Composable
+private fun LifeConsoleTodayEmptyState(modifier: Modifier = Modifier) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+                tint = colors.textSecondary.copy(alpha = 0.50f),
+            )
+            Text(
+                text = "今天还没有痕迹",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                color = colors.textSecondary.copy(alpha = 0.72f),
+            )
+            Text(
+                text = "拍下今天的第一张照片吧",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary.copy(alpha = 0.56f),
+            )
+        }
+    }
+}
+
+@Composable
 private fun LifeConsoleHistoryPage(
     history: RemoteLifeConsoleHistory?,
     isLoading: Boolean,
@@ -488,51 +539,57 @@ private fun LifeConsoleHistoryPage(
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .padding(horizontal = spacing.lg, vertical = spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
+    YingShiMistBackground(
+        modifier = modifier.fillMaxSize(),
+        showWaves = true,
+        variant = YingShiBackdropVariant.LIFE,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            LifeConsoleBackButton(onClick = onBack)
-            Text(
-                text = "历史记录",
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LifeConsoleBackButton(onClick = onBack)
+                Text(
+                    text = "历史记录",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.titleAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LifeConsolePillAction(
+                    text = "刷新",
+                    icon = Icons.Filled.Refresh,
+                    onClick = onRefresh,
+                    enabled = !isLoading,
+                    containerColor = colors.primaryContainer.copy(alpha = 0.82f),
+                    contentColor = colors.titleAccent,
+                )
+            }
+            if (!actionMessage.isNullOrBlank()) {
+                Text(
+                    text = actionMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            LifeConsoleHistoryPanel(
+                history = history,
+                isLoading = isLoading,
+                selectedRange = selectedRange,
+                onRangeChange = onRangeChange,
+                onOpenMedia = onOpenMedia,
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.titleAccent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            LifeConsolePillAction(
-                text = "刷新",
-                icon = Icons.Filled.Refresh,
-                onClick = onRefresh,
-                enabled = !isLoading,
-                containerColor = colors.primaryContainer.copy(alpha = 0.82f),
-                contentColor = colors.titleAccent,
             )
         }
-        if (!actionMessage.isNullOrBlank()) {
-            Text(
-                text = actionMessage,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        LifeConsoleHistoryPanel(
-            history = history,
-            isLoading = isLoading,
-            selectedRange = selectedRange,
-            onRangeChange = onRangeChange,
-            onOpenMedia = onOpenMedia,
-            modifier = Modifier.weight(1f),
-        )
     }
 }
 
@@ -603,6 +660,19 @@ private fun LifeConsoleHistoryPanel(
                 }
             }
         }
+        // History stats summary
+        if (history != null) {
+            val totalDays = maxOf(history.personDays.size, history.mealDays.size, history.bowelDays.size)
+            if (totalDays > 0) {
+                Text(
+                    text = "共 $totalDays 天记录",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(bottom = spacing.xxs),
+                )
+            }
+        }
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
@@ -632,51 +702,14 @@ private fun LifeConsoleHistoryPanel(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
                             history.bowelDays.forEach { day ->
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = colors.raisedSurface.copy(alpha = 0.82f),
-                                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
-                                        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
-                                    ) {
-                                        Text(
-                                            text = day.displayLabel,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = colors.titleAccent,
-                                        )
-                                        day.users.forEach { user ->
-                                            val name = when (user.userId) {
-                                                history.currentUser.userId -> history.currentUser.displayName
-                                                history.partner?.userId -> history.partner.displayName
-                                                else -> user.userId
-                                            }
-                                            Text(
-                                                text = buildString {
-                                                    append(name)
-                                                    append(" · ")
-                                                    append(user.count)
-                                                    append(" 次")
-                                                    if (user.eventTimesMillis.isNotEmpty()) {
-                                                        append(" · ")
-                                                        append(
-                                                            user.eventTimesMillis
-                                                                .takeLast(4)
-                                                                .joinToString(" / ") { formatTime(it) },
-                                                        )
-                                                    }
-                                                },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = colors.textSecondary,
-                                            )
-                                        }
-                                    }
-                                }
+                                LifeConsoleHistoryBowelDayCard(
+                                    day = day,
+                                    currentUser = history.currentUser,
+                                    partner = history.partner,
+                                )
                             }
                         }
                     }
@@ -691,7 +724,7 @@ private fun LifeConsoleHistoryPanel(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(spacing.md),
                         ) {
                             days.forEach { day ->
                                 LifeConsoleHistoryDaySection(
@@ -710,21 +743,21 @@ private fun LifeConsoleHistoryPanel(
 }
 
 @Composable
-private fun LifeConsoleHistoryDaySection(
-    day: RemoteLifeConsoleHistoryDay,
-    selfLabel: String,
-    partnerLabel: String,
-    onOpenMedia: (RemoteMedia) -> Unit,
+private fun LifeConsoleHistoryBowelDayCard(
+    day: RemoteLifeConsoleBowelHistoryDay,
+    currentUser: com.example.yingshi.data.model.RemoteLifeConsoleUser,
+    partner: com.example.yingshi.data.model.RemoteLifeConsoleUser?,
 ) {
     val colors = YingShiThemeTokens.colors
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = colors.raisedSurface.copy(alpha = 0.82f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    YingShiMistCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.md),
     ) {
         Column(
-            modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
                 text = day.displayLabel,
@@ -732,7 +765,60 @@ private fun LifeConsoleHistoryDaySection(
                 fontWeight = FontWeight.SemiBold,
                 color = colors.titleAccent,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md)) {
+            day.users.forEach { user ->
+                val name = when (user.userId) {
+                    currentUser.userId -> currentUser.displayName
+                    partner?.userId -> partner.displayName
+                    else -> user.userId
+                }
+                Text(
+                    text = buildString {
+                        append(name)
+                        append(" · ")
+                        append(user.count)
+                        append(" 次")
+                        if (user.eventTimesMillis.isNotEmpty()) {
+                            append(" · ")
+                            append(
+                                user.eventTimesMillis
+                                    .takeLast(4)
+                                    .joinToString(" / ") { formatTime(it) },
+                            )
+                        }
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LifeConsoleHistoryDaySection(
+    day: RemoteLifeConsoleHistoryDay,
+    selfLabel: String,
+    partnerLabel: String,
+    onOpenMedia: (RemoteMedia) -> Unit,
+) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    YingShiMistCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.md),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = day.displayLabel,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.titleAccent,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.md)) {
                 LifeConsoleHistoryMediaColumn(
                     title = selfLabel,
                     mediaItems = day.selfMedia,
@@ -758,9 +844,11 @@ private fun LifeConsoleHistoryMediaColumn(
     onOpenMedia: (RemoteMedia) -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
     ) {
         Text(
             text = title,
@@ -773,7 +861,7 @@ private fun LifeConsoleHistoryMediaColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1.08f)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(radius.sm))
                     .background(colors.sectionBackground.copy(alpha = 0.78f)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -784,15 +872,15 @@ private fun LifeConsoleHistoryMediaColumn(
                 )
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(spacing.xxs + 2.dp)) {
                 mediaItems.chunked(2).forEach { rowItems ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.xxs + 2.dp)) {
                         rowItems.forEach { media ->
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(radius.sm))
                                     .background(colors.sectionBackground.copy(alpha = 0.78f)),
                             ) {
                                 LifeMediaPreview(
@@ -819,17 +907,35 @@ private fun LifeConsoleHistoryMediaColumn(
 private fun LifeConsoleHistoryEmptyState(
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
     Box(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 180.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = "还没有历史记录",
-            style = MaterialTheme.typography.bodyMedium,
-            color = YingShiThemeTokens.colors.textSecondary.copy(alpha = 0.72f),
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Refresh,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = colors.textSecondary.copy(alpha = 0.46f),
+            )
+            Text(
+                text = "还没有历史记录",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary.copy(alpha = 0.72f),
+            )
+            Text(
+                text = "上传照片后会自动出现在这里",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary.copy(alpha = 0.52f),
+            )
+        }
     }
 }
 
@@ -838,7 +944,8 @@ private fun LifeConsoleBackButton(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(14.dp)
+    val radius = YingShiThemeTokens.radius
+    val shape = RoundedCornerShape(radius.sm)
     Surface(
         modifier = Modifier
             .size(44.dp)
@@ -865,19 +972,24 @@ private fun LifeConsoleGrid(
     isBusy: Boolean,
     initialSlotKey: String?,
     initialMediaId: String?,
+    contentVisible: Boolean,
     onOpenMedia: (RemoteMedia) -> Unit,
     onUpload: (String) -> Unit,
     onDelete: (String, String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md)) {
+    val spacing = YingShiThemeTokens.spacing
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.md)) {
             LifeMediaFrame(
                 title = "人物 · 我",
                 slotKey = LifeConsoleSlotKeys.PERSON_SELF,
                 slot = snapshot.personSelf,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .yingShiRouteReveal(visible = contentVisible),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.PERSON_SELF },
+                accentGradient = LifePersonGradient,
                 onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
@@ -886,22 +998,28 @@ private fun LifeConsoleGrid(
                 title = "人物 · 对方",
                 slotKey = LifeConsoleSlotKeys.PERSON_PARTNER,
                 slot = snapshot.personPartner,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .yingShiRouteReveal(visible = contentVisible),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.PERSON_PARTNER },
+                accentGradient = LifePersonGradient,
                 onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(spacing.md)) {
             LifeMediaFrame(
                 title = "吃饭 · 我",
                 slotKey = LifeConsoleSlotKeys.MEAL_SELF,
                 slot = snapshot.mealSelf,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .yingShiRouteReveal(visible = contentVisible),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.MEAL_SELF },
+                accentGradient = LifeMealGradient,
                 onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
@@ -910,9 +1028,12 @@ private fun LifeConsoleGrid(
                 title = "吃饭 · 对方",
                 slotKey = LifeConsoleSlotKeys.MEAL_PARTNER,
                 slot = snapshot.mealPartner,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .yingShiRouteReveal(visible = contentVisible),
                 isBusy = isBusy,
                 initialMediaId = initialMediaId.takeIf { initialSlotKey == LifeConsoleSlotKeys.MEAL_PARTNER },
+                accentGradient = LifeMealGradient,
                 onOpenMedia = onOpenMedia,
                 onUpload = onUpload,
                 onDelete = onDelete,
@@ -929,11 +1050,13 @@ private fun LifeMediaFrame(
     modifier: Modifier = Modifier,
     isBusy: Boolean,
     initialMediaId: String?,
+    accentGradient: List<Color>? = null,
     onOpenMedia: (RemoteMedia) -> Unit,
     onUpload: (String) -> Unit,
     onDelete: (String, String) -> Unit,
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     val targetInitialPage = remember(slotKey, initialMediaId, slot.mediaItems) {
         slot.mediaItems.indexOfFirst { it.mediaId == initialMediaId }.coerceAtLeast(0)
@@ -950,90 +1073,105 @@ private fun LifeMediaFrame(
         }
     }
     val currentMedia = slot.mediaItems.getOrNull(pagerState.currentPage.coerceAtMost((slot.mediaItems.size - 1).coerceAtLeast(0)))
-    Surface(
+    YingShiMistCard(
         modifier = modifier,
-        shape = shape,
-        color = colors.raisedSurface.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.64f)),
+        shape = RoundedCornerShape(radius.lg),
     ) {
-        Column(
-            modifier = Modifier.padding(YingShiThemeTokens.spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.titleAccent,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "${slot.mediaItems.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.textSecondary,
+        Box {
+            // Accent gradient overlay
+            if (accentGradient != null) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = accentGradient,
+                                center = Offset(0f, 0f),
+                                radius = 400f,
+                            ),
+                        )
+                        .clip(RoundedCornerShape(radius.lg)),
                 )
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.82f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(colors.sectionBackground.copy(alpha = 0.82f)),
+            Column(
+                modifier = Modifier.padding(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
             ) {
-                if (slot.mediaItems.isEmpty()) {
-                    EmptyFrame(title = title)
-                } else {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                    ) { page ->
-                        val media = slot.mediaItems[page]
-                        LifeMediaPreview(
-                            media = media,
-                            onClick = { onOpenMedia(media) },
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.titleAccent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${slot.mediaItems.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textSecondary,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.82f)
+                        .clip(RoundedCornerShape(radius.sm))
+                        .background(colors.sectionBackground.copy(alpha = 0.82f)),
+                ) {
+                    if (slot.mediaItems.isEmpty()) {
+                        EmptyFrame(title = title)
+                    } else {
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize(),
+                        ) { page ->
+                            val media = slot.mediaItems[page]
+                            LifeMediaPreview(
+                                media = media,
+                                onClick = { onOpenMedia(media) },
+                            )
+                        }
                     }
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = if (slot.mediaItems.isEmpty()) "今天还没有" else "${pagerState.currentPage + 1}/${slot.mediaItems.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.textSecondary,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (slot.editable) {
-                        LifeConsoleSmallIconButton(
-                            icon = Icons.Filled.Upload,
-                            contentDescription = "上传",
-                            onClick = { onUpload(slot.category) },
-                            enabled = !isBusy,
-                            containerColor = colors.softGreenContainer.copy(alpha = 0.86f),
-                            contentColor = colors.softGreenAction,
-                        )
-                        LifeConsoleSmallIconButton(
-                            icon = Icons.Filled.Delete,
-                            contentDescription = "删除",
-                            onClick = {
-                                currentMedia?.mediaId?.let { mediaId ->
-                                    onDelete(slot.category, mediaId)
-                                }
-                            },
-                            enabled = !isBusy && currentMedia != null,
-                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f),
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                            borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.20f),
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = if (slot.mediaItems.isEmpty()) "今天还没有" else "${pagerState.currentPage + 1}/${slot.mediaItems.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textSecondary,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.xxs + 2.dp)) {
+                        if (slot.editable) {
+                            LifeConsoleSmallIconButton(
+                                icon = Icons.Filled.Upload,
+                                contentDescription = "上传",
+                                onClick = { onUpload(slot.category) },
+                                enabled = !isBusy,
+                                containerColor = colors.softGreenContainer.copy(alpha = 0.86f),
+                                contentColor = colors.softGreenAction,
+                            )
+                            LifeConsoleSmallIconButton(
+                                icon = Icons.Filled.Delete,
+                                contentDescription = "删除",
+                                onClick = {
+                                    currentMedia?.mediaId?.let { mediaId ->
+                                        onDelete(slot.category, mediaId)
+                                    }
+                                },
+                                enabled = !isBusy && currentMedia != null,
+                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f),
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                                borderColor = MaterialTheme.colorScheme.error.copy(alpha = 0.20f),
+                            )
+                        }
                     }
                 }
             }
@@ -1074,23 +1212,28 @@ private fun LifeMediaPreview(
 @Composable
 private fun EmptyFrame(title: String) {
     val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing.xxs + 2.dp),
         ) {
             Icon(
                 imageVector = if (title.contains("吃饭")) Icons.Filled.Restaurant else Icons.Filled.Add,
                 contentDescription = null,
-                tint = colors.textSecondary.copy(alpha = 0.70f),
+                modifier = Modifier.size(24.dp),
+                tint = colors.textSecondary.copy(alpha = 0.54f),
             )
             Text(
-                text = "今天还没有",
+                text = when {
+                    title.contains("吃饭") -> "记录今天的一餐"
+                    else -> "拍下今天的瞬间"
+                },
                 style = MaterialTheme.typography.labelMedium,
-                color = colors.textSecondary,
+                color = colors.textSecondary.copy(alpha = 0.68f),
             )
         }
     }
@@ -1100,18 +1243,23 @@ private fun EmptyFrame(title: String) {
 private fun BowelCard(
     snapshot: RemoteLifeConsoleToday,
     isBusy: Boolean,
+    contentVisible: Boolean,
     onAdd: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = colors.softGreenContainer.copy(alpha = 0.62f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    YingShiMistCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .yingShiRouteReveal(visible = contentVisible),
+        shape = RoundedCornerShape(radius.lg),
+        color = colors.softGreenContainer.copy(alpha = 0.48f),
     ) {
         Column(
-            modifier = Modifier.padding(YingShiThemeTokens.spacing.md),
-            verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.sm),
+            modifier = Modifier.padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1124,7 +1272,7 @@ private fun BowelCard(
                     fontWeight = FontWeight.SemiBold,
                     color = colors.titleAccent,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xxs + 2.dp)) {
                     LifeConsoleSmallIconButton(
                         icon = Icons.Filled.Remove,
                         contentDescription = "减一次",
@@ -1170,7 +1318,9 @@ private fun LifeConsolePillAction(
     enabled: Boolean = true,
 ) {
     val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val shape = RoundedCornerShape(radius.capsule)
     Surface(
         modifier = modifier.yingShiClickable(
             enabled = enabled,
@@ -1184,8 +1334,8 @@ private fun LifeConsolePillAction(
         shadowElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = spacing.sm + 2.dp, vertical = spacing.sm - 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xxs + 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (icon != null) {
@@ -1216,7 +1366,8 @@ private fun LifeConsoleSmallIconButton(
     borderColor: Color = YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.62f),
 ) {
     val colors = YingShiThemeTokens.colors
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val radius = YingShiThemeTokens.radius
+    val shape = RoundedCornerShape(radius.capsule)
     Surface(
         modifier = Modifier
             .size(44.dp)
@@ -1314,6 +1465,18 @@ private val LifeFramePalette = PhotoThumbnailPalette(
     start = Color(0xFFE8EEF7),
     end = Color(0xFFD6E0EC),
     accent = Color(0xFF526A86),
+)
+
+private val LifePersonGradient = listOf(
+    Color(0xFF4A7CBA).copy(alpha = 0.06f),
+    Color(0xFF4A7CBA).copy(alpha = 0.03f),
+    Color.Transparent,
+)
+
+private val LifeMealGradient = listOf(
+    Color(0xFFC4874A).copy(alpha = 0.06f),
+    Color(0xFFC4874A).copy(alpha = 0.03f),
+    Color.Transparent,
 )
 
 private object LifeConsoleSlotKeys {

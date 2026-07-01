@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unified frosted glass backdrop: subtle translucent panel to visually connect scattered widget elements -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer glow / shadow -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="28dp" />
+            <solid android:color="#18A8D0F0" />
+        </shape>
+    </item>
+    <!-- Main translucent body with blue-tinted gradient -->
+    <item
+        android:left="1.5dp"
+        android:top="1.5dp"
+        android:right="1.5dp"
+        android:bottom="1.5dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="26dp" />
+            <gradient
+                android:startColor="#28E8F4FF"
+                android:endColor="#18D8ECF8"
+                android:angle="135" />
+        </shape>
+    </item>
+    <!-- Hairline border -->
+    <item
+        android:left="2dp"
+        android:top="2dp"
+        android:right="2dp"
+        android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="25dp" />
+            <stroke
+                android:width="0.6dp"
+                android:color="#20A0C0E0" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+    <!-- Inner glow -->
+    <item
+        android:left="3dp"
+        android:top="3dp"
+        android:right="3dp"
+        android:bottom="3dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="24dp" />
+            <gradient
+                android:startColor="#10FFFFFF"
+                android:centerColor="#00FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:angle="135" />
+        </shape>
+    </item>
+</layer-list>

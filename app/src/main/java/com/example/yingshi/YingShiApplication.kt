@@ -26,7 +26,7 @@ class YingShiApplication : Application(), ImageLoaderFactory {
         BackendDebugConfig.init(applicationContext)
         NetworkConnectivityMonitor.init(applicationContext)
         SettingsRepository.init(applicationContext)
-        PushNotificationChannels.ensureSharedUpdatesChannel(applicationContext)
+        PushNotificationChannels.ensureChannels(applicationContext)
         VideoPreloadWorker.schedulePeriodic(applicationContext)
         preloadSystemMediaCache(applicationContext)
         PushTokenRegistrar.registerCurrentTokenIfPossible(applicationContext)

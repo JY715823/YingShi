@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#B0183B4B" />
-    <corners android:radius="6dp" />
+<!-- Overlay chip: dark semi-transparent capsule for floating meta -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="100dp" />
+    <gradient
+        android:startColor="#C0183040"
+        android:endColor="#A0102030"
+        android:angle="135" />
+    <stroke
+        android:width="0.5dp"
+        android:color="#30FFFFFF" />
 </shape>

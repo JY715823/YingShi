@@ -351,7 +351,7 @@ internal object LifeConsoleWidgetController {
         if (media == null) {
             setViewVisibility(views.imageId, View.GONE)
             setViewVisibility(views.emptyId, View.VISIBLE)
-            setTextViewText(views.emptyId, "今天还没有")
+            setTextViewText(views.emptyId, emptyHintFor(slotKey))
             return
         }
 
@@ -399,12 +399,31 @@ internal object LifeConsoleWidgetController {
         return latestTimeMillis?.let { "最近 ${formatTime(it)}" } ?: "今天还没有"
     }
 
+    private fun emptyHintFor(slotKey: LifeConsoleWidgetSlotKey): String {
+        return if (slotKey.editable) "点击记录" else "对方还没记录"
+    }
+
     private fun formatTime(timeMillis: Long): String {
+        val now = System.currentTimeMillis()
+        val diffMs = now - timeMillis
+        val diffMin = diffMs / 60_000
+        if (diffMin < 1) return "刚刚"
+        if (diffMin < 60) return "${diffMin}分钟前"
+        val today = LocalDate.now(ZoneId.of("Asia/Shanghai"))
+        val targetDate = Date(timeMillis).toInstant().atZone(ZoneId.of("Asia/Shanghai")).toLocalDate()
+        return if (targetDate == today) {
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timeMillis))
+        } else {
+            SimpleDateFormat("MM/dd", Locale.getDefault()).format(Date(timeMillis))
+        }
+    }
+
+    private fun formatAbsoluteTime(timeMillis: Long): String {
         return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timeMillis))
     }
 
     private fun updateStatus(prefix: String): String {
-        return "$prefix ${formatTime(System.currentTimeMillis())}"
+        return "$prefix ${formatAbsoluteTime(System.currentTimeMillis())}"
     }
 
     private fun slotKeyOrNull(value: String): LifeConsoleWidgetSlotKey? {

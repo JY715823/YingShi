@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -16,77 +15,124 @@ import com.example.yingshi.MainActivity
 import com.example.yingshi.R
 import com.example.yingshi.app.AppNavigationRequests
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.feature.life.LifePushDispatchActivity
 import com.example.yingshi.feature.photos.SettingsRepository
+import com.example.yingshi.feature.sync.SyncVersionTracker
 
 object PushNotificationPresenter {
     private const val TAG = "PushNotificationPresenter"
-    private const val CHANNEL_ID = PushNotificationChannels.SHARED_UPDATES_CHANNEL_ID
 
     fun show(context: Context, data: Map<String, String>, source: String): Boolean {
         val appContext = context.applicationContext
+        val route = data["targetRoute"].orEmpty()
+        val category = data["category"].orEmpty()
+        val module = data["module"].orEmpty()
+
+        // ── CRITICAL: use Log.e so the message always appears in logcat ──
+        Log.e(TAG, ">>> show() called from=$source module=$module category=$category route=$route")
+
         if (!canPostNotifications(appContext)) {
-            Log.w(TAG, "Skip notification from $source: POST_NOTIFICATIONS is not granted.")
+            Log.e(TAG, "BLOCKED: cannot post notifications (permission/channel disabled)")
             return false
         }
-        if (!SettingsRepository.isPushEnabled(data["module"], data["category"])) {
-            Log.d(TAG, "Skip notification from $source: preference disabled module=${data["module"]}, category=${data["category"]}")
+        if (!SettingsRepository.isPushEnabled(module, category)) {
+            Log.d(TAG, "Skip from $source: preference disabled module=$module, category=$category")
             return false
         }
         if (data.isActorCurrentUser()) {
-            Log.d(TAG, "Skip notification from $source: actor is current user.")
+            Log.d(TAG, "Skip from $source: actor is current user.")
             return false
         }
-        if (!PushNotificationDeduper.shouldShow(appContext, data.dedupeKey())) {
-            Log.d(TAG, "Skip duplicate notification from $source: route=${data["targetRoute"]}, category=${data["category"]}")
+
+        // ── Cross-path dedup: per (route + notificationId) ────────────────
+        // Different events have different notificationIds, so they pass through
+        // even if they share the same route. Only the exact same notification
+        // delivered via both FCM and sync-fallback is deduplicated (2-min window).
+        val rawNotificationId = data["notificationId"].orEmpty()
+        if (route.isNotBlank() && !PushNotificationDeduper.claimRouteNotification(appContext, route, rawNotificationId)) {
+            Log.e(TAG, "BLOCKED: duplicate notification route=$route notifId=$rawNotificationId source=$source")
             return false
         }
-        PushNotificationChannels.ensureSharedUpdatesChannel(appContext)
-        val notificationId = data.stableNotificationIntId()
+
+        PushNotificationChannels.ensureChannels(appContext)
+        val notificationId = data.stableNotificationIntId(appContext)
         val title = data["title"].orEmpty().ifBlank { "映世有新提醒" }
         val body = data["body"].orEmpty().ifBlank { "对方刚更新了共享空间。" }
-        val route = data["targetRoute"].orEmpty()
-        val category = data["category"].orEmpty()
-        Log.d(TAG, "Showing notification from $source: id=$notificationId, route=$route, category=$category, mediaId=${route.substringAfter("photos:media:", "")}")
-        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+        Log.e(TAG, "POSTING notification from=$source id=$notificationId route=$route title=$title")
+
+        // Route life:trace and life:bowel to vibrating channel, everything else to general channel
+        val isLifeRoute = route == "life:trace" || route == "life:bowel"
+        val channelId = if (isLifeRoute) {
+            PushNotificationChannels.LIFE_TRACE_CHANNEL_ID
+        } else {
+            PushNotificationChannels.SHARED_UPDATES_CHANNEL_ID
+        }
+
+        // Diagnostic: verify channel configuration
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val ch = nm.getNotificationChannel(channelId)
+            Log.e(TAG, "CHANNEL: id=$channelId importance=${ch?.importance} vibrate=${ch?.shouldVibrate()} sound=${ch?.sound}")
+        }
+
+        val contentPI = contentIntent(appContext, data)
+
+        // NOTE: Do NOT use setDefaults() or setVibrate() — they conflict with
+        // channel settings on OEM ROMs (MIUI, ColorOS, etc.), causing vibration
+        // failure and heads-up suppression. All sound/vibration is configured
+        // at the channel level only (see PushNotificationChannels).
+        //
+        // setFullScreenIntent() is used for life routes to force MIUI to show
+        // heads-up banners. MIUI suppresses IMPORTANCE_HIGH heads-up unless the
+        // app is manually whitelisted or the notification uses fullScreenIntent.
+        // When screen is on → shows as heads-up banner. When screen is off →
+        // launches the dispatch activity directly (good UX: user sees the photo).
+        val notification = NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
-            .setVibrate(longArrayOf(0L, 180L, 80L, 180L))
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .apply {
+                if (isLifeRoute) {
+                    setFullScreenIntent(contentPI, true)
+                }
+            }
             .setAutoCancel(true)
-            .setContentIntent(contentIntent(appContext, data))
+            .setContentIntent(contentPI)
             .build()
         NotificationManagerCompat.from(appContext).notify(notificationId, notification)
-        Log.d(TAG, "Notification posted successfully from $source: id=$notificationId")
+        Log.e(TAG, "POSTED notification from=$source id=$notificationId channel=$channelId")
         return true
     }
 
     private fun contentIntent(context: Context, data: Map<String, String>): PendingIntent {
         val route = data["targetRoute"].orEmpty()
         val category = data["category"].orEmpty()
-        val action = when {
-            route.startsWith("photos:small-album:") -> AppNavigationRequests.ACTION_OPEN_SMALL_ALBUM
-            route.startsWith("photos") -> AppNavigationRequests.ACTION_OPEN_PHOTO_FEED
-            route == "life:bowel" -> AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE
-            route == "life:trace" -> AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE
-            else -> AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE
-        }
         val mediaId = route.substringAfter("photos:media:", missingDelimiterValue = "").takeIf { it.isNotBlank() }
         val postId = route.substringAfter("photos:small-album:", missingDelimiterValue = "").takeIf { it.isNotBlank() }
         val autoOpenComment = category.equals("comment", ignoreCase = true)
-        Log.d(TAG, "Building contentIntent: route=$route, action=$action, mediaId=$mediaId, postId=$postId, autoOpenComment=$autoOpenComment")
-        val intent = Intent(context, MainActivity::class.java).apply {
-            this.action = action
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("targetRoute", route)
-            putExtra("category", category)
-            mediaId?.let { putExtra(AppNavigationRequests.EXTRA_PHOTO_FEED_MEDIA_ID, it) }
-            postId?.let { putExtra(AppNavigationRequests.EXTRA_SMALL_ALBUM_ID, it) }
-            putExtra(AppNavigationRequests.EXTRA_AUTO_OPEN_COMMENT, autoOpenComment)
+
+        val isLifeRoute = route == "life:trace" || route == "life:bowel"
+
+        val intent = if (isLifeRoute) {
+            LifePushDispatchActivity.intent(context, route, category)
+        } else {
+            val action = when {
+                route.startsWith("photos:small-album:") -> AppNavigationRequests.ACTION_OPEN_SMALL_ALBUM
+                route.startsWith("photos") -> AppNavigationRequests.ACTION_OPEN_PHOTO_FEED
+                else -> AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE
+            }
+            Intent(context, MainActivity::class.java).apply {
+                this.action = action
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("targetRoute", route)
+                putExtra("category", category)
+                mediaId?.let { putExtra(AppNavigationRequests.EXTRA_PHOTO_FEED_MEDIA_ID, it) }
+                postId?.let { putExtra(AppNavigationRequests.EXTRA_SMALL_ALBUM_ID, it) }
+                putExtra(AppNavigationRequests.EXTRA_AUTO_OPEN_COMMENT, autoOpenComment)
+            }
         }
         return PendingIntent.getActivity(
             context,
@@ -98,27 +144,30 @@ object PushNotificationPresenter {
 
     private fun canPostNotifications(context: Context): Boolean {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
-            Log.w(TAG, "Notifications are disabled for app.")
+            Log.e(TAG, "Notifications are disabled for app.")
             return false
         }
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
+            Log.e(TAG, "POST_NOTIFICATIONS permission not granted.")
             return false
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val channel = manager.getNotificationChannel(CHANNEL_ID)
-            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) {
-                Log.w(TAG, "Notification channel is disabled: $CHANNEL_ID")
-                return false
+            for (channelId in listOf(PushNotificationChannels.SHARED_UPDATES_CHANNEL_ID, PushNotificationChannels.LIFE_TRACE_CHANNEL_ID)) {
+                val channel = manager.getNotificationChannel(channelId)
+                if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) {
+                    Log.e(TAG, "Notification channel is disabled: $channelId")
+                    return false
+                }
             }
         }
         return true
     }
 
-    private fun Map<String, String>.dedupeKey(): String {
+    private fun Map<String, String>.dedupeKey(context: Context): String {
         this["notificationId"]?.takeIf { it.isNotBlank() }?.let { return "notification:$it" }
         this["operationId"]?.takeIf { it.isNotBlank() }?.let { return "operation:$it:${this["category"].orEmpty()}" }
         this["groupId"]?.takeIf { it.isNotBlank() }?.let { return "group:$it:${this["category"].orEmpty()}" }
@@ -131,7 +180,7 @@ object PushNotificationPresenter {
         ).joinToString("|")
     }
 
-    private fun Map<String, String>.stableNotificationIntId(): Int {
+    private fun Map<String, String>.stableNotificationIntId(context: Context): Int {
         this["notificationId"]?.takeIf { it.isNotBlank() }?.let { return it.hashCode() }
         this["operationId"]?.takeIf { it.isNotBlank() }?.let { return "operation:$it:${this["category"].orEmpty()}".hashCode() }
         this["groupId"]?.takeIf { it.isNotBlank() }?.let { return "group:$it:${this["category"].orEmpty()}".hashCode() }

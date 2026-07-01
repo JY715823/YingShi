@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.life
 
+import android.content.ContentUris
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.media.ExifInterface
@@ -7,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.util.Log
 import android.widget.Toast
 import com.example.yingshi.data.model.CreateUploadTokenPayload
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
@@ -33,6 +35,8 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 object LifeConsoleUploadBridge {
+    private const val TAG = "LifeConsoleUpload"
+
     suspend fun uploadMedia(
         context: Context,
         category: String,
@@ -103,6 +107,8 @@ object LifeConsoleUploadBridge {
             importedAtMillis = nowMillis,
             preference = SettingsRepository.getSettingsState().mediaTimePreference,
         )
+        val sourceItemId = resolveMediaStoreId(context, uri)
+        val fingerprint = buildSourceFingerprint(fileName, fileSizeBytes, uri.toString())
         return UploadMetadata(
             fileName = fileName,
             mimeType = mimeType,
@@ -115,6 +121,8 @@ object LifeConsoleUploadBridge {
             capturedAtMillis = resolvedTime.capturedAtMillis,
             importedAtMillis = resolvedTime.importedAtMillis,
             displayTimeSource = resolvedTime.displayTimeSource,
+            sourceFingerprint = fingerprint,
+            sourceItemId = sourceItemId,
         )
     }
 
@@ -208,6 +216,63 @@ object LifeConsoleUploadBridge {
         return getLong(columnIndex)
     }
 
+    private fun resolveMediaStoreId(context: Context, uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns._ID),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                    cursor.getLong(0).toString()
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
+    }
+
+    private fun buildSourceFingerprint(displayName: String, fileSizeBytes: Long, uriString: String): String {
+        val raw = "$displayName:$fileSizeBytes:$uriString"
+        return raw.hashCode().toLong().toString(16)
+    }
+
+    /**
+     * Removes media entries that the system camera app saved to the device gallery (DCIM/Camera)
+     * during a recent capture. Runs after upload completes so the media scanner has had time to index.
+     */
+    fun cleanupCameraDuplicatesFromGallery(context: Context) {
+        val cutoff = System.currentTimeMillis() / 1000 - 30
+        val resolver = context.contentResolver
+        var deleted = 0
+        for (uri in listOf(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        )) {
+            runCatching {
+                resolver.query(
+                    uri,
+                    arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED),
+                    "${MediaStore.MediaColumns.DATE_ADDED} >= ?",
+                    arrayOf(cutoff.toString()),
+                    null,
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(0)
+                        val deleteUri = ContentUris.withAppendedId(uri, id)
+                        runCatching { resolver.delete(deleteUri, null, null) }
+                        deleted++
+                    }
+                }
+            }
+        }
+        if (deleted > 0) {
+            Log.i(TAG, "Cleaned up $deleted camera duplicate(s) from system gallery")
+        }
+    }
+
     private data class UploadMetadata(
         val fileName: String,
         val mimeType: String,
@@ -220,6 +285,8 @@ object LifeConsoleUploadBridge {
         val capturedAtMillis: Long?,
         val importedAtMillis: Long,
         val displayTimeSource: String,
+        val sourceFingerprint: String? = null,
+        val sourceItemId: String? = null,
     ) {
         fun toTokenPayload(): CreateUploadTokenPayload {
             return CreateUploadTokenPayload(
@@ -234,6 +301,9 @@ object LifeConsoleUploadBridge {
                 capturedAtMillis = capturedAtMillis,
                 importedAtMillis = importedAtMillis,
                 displayTimeSource = displayTimeSource,
+                sourceFingerprint = sourceFingerprint,
+                operationType = "life_console",
+                sourceItemId = sourceItemId,
             )
         }
     }
@@ -253,6 +323,7 @@ object LifeConsoleUploadRuntime {
         BackendDebugConfig.init(appContext)
         LifeConsoleWidgetProvider.refreshAll(appContext)
         Toast.makeText(appContext, "正在后台上传", Toast.LENGTH_SHORT).show()
+        val isCameraCapture = uris.any { it.toString().contains("/life-console-capture/") }
         uploadScope.launch {
             when (val result = LifeConsoleUploadBridge.uploadMedia(appContext, category, uris)) {
                 is ApiResult.Success -> {
@@ -268,6 +339,10 @@ object LifeConsoleUploadRuntime {
                     LifeConsoleWidgetProvider.refreshAll(appContext)
                 }
                 ApiResult.Loading -> Unit
+            }
+            if (isCameraCapture) {
+                kotlinx.coroutines.delay(5_000)
+                LifeConsoleUploadBridge.cleanupCameraDuplicatesFromGallery(appContext)
             }
         }
     }

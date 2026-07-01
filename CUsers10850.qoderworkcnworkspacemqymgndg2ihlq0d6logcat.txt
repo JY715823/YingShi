@@ -1,0 +1,35 @@
+--------- beginning of main
+06-29 21:05:49.155  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.155  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.156  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.156  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.205  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.205  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.205  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.205  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.255  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.255  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.255  1473  4434 I sensors-hal: ssc_conn_event_cb:705, event[0] sensor:proximity Proximity Sensor Wakeup msg_id=769, ts=3711040077706
+06-29 21:05:49.255  1473  4434 I sensors-hal: ssc_conn_event_cb:705, event[1] sensor:proximity Proximity Sensor Wakeup msg_id=1031, ts=3711040158267
+06-29 21:05:49.255  1473  4434 E libprotobuf-native: [libprotobuf ERROR external/protobuf/src/google/protobuf/message_lite.cc:123] Can't parse message of type "sns_proximity_event_recurrent" because it is missing required fields: (cannot determine missing fields for lite message)
+06-29 21:05:49.255  1473  4434 I sensors-hal: handle_sns_client_event:82, $$$ prox_recurrent_event: ts=193279389896170, , subsys-tick=3711040158267, debug count=2195, near_far=0
+06-29 21:05:49.256  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.256  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.300  2627  5371 D SLM-SRV-SLAService: checktemp temperature = 35604 temperature_average = 35579 isPerformanceMode = false thermal_enable_slm = true
+06-29 21:05:49.305  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.305  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.305  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.305  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.357  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.357  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.359  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.359  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.414  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.414  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.416  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.416  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.450 10826 10826 I adbd    : in ShellService: export ANDROID_LOG_TAGS=''; exec logcat '-t' '500'
+06-29 21:05:49.464  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.465  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0
+06-29 21:05:49.466  4304  4304 I Launcher.DeviceConfigs: getMiuiWidgetSizeSpec(2, 2, false) = (431, 506)
+06-29 21:05:49.466  4304  4304 D Launcher.Widget: name = AppWidgetProviderInfo(UserHandle{0}/ComponentInfo{com.growing.topwidgets/com.growing.topwidgets.widgets.SmallWidget}), scale = 1.0

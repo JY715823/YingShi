@@ -2,13 +2,13 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#EDF9FF"
+    android:background="@drawable/widget_backdrop"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="12dp">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="34dp"
+        android:layout_height="38dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
@@ -19,8 +19,8 @@
             android:layout_weight="1"
             android:gravity="center_vertical"
             android:text="人物痕迹"
-            android:textColor="#183B4B"
-            android:textSize="18sp"
+            android:textColor="#2962FF"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <TextView
@@ -49,6 +49,14 @@
             android:textStyle="bold" />
     </LinearLayout>
 
+    <!-- Gradient accent bar under main title -->
+    <TextView
+        android:layout_width="72dp"
+        android:layout_height="3dp"
+        android:layout_marginTop="1dp"
+        android:background="@drawable/widget_title_accent"
+        android:text="" />
+
     <LinearLayout
         style="@style/LifePeopleWidgetFrame"
         android:layout_marginTop="8dp">
@@ -61,7 +69,7 @@
             <TextView
                 android:id="@+id/widget_person_partner_empty"
                 style="@style/LifeConsoleWidgetEmpty"
-                android:text="今天还没有" />
+                android:text="对方还没记录" />
 
             <TextView
                 android:id="@+id/widget_person_partner_open"
@@ -99,7 +107,7 @@
             <TextView
                 android:id="@+id/widget_person_self_empty"
                 style="@style/LifeConsoleWidgetEmpty"
-                android:text="今天还没有" />
+                android:text="点击记录" />
 
             <TextView
                 android:id="@+id/widget_person_self_open"

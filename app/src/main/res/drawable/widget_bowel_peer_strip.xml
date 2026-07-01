@@ -1,8 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#F3FBFE" />
-    <stroke
-        android:width="1dp"
-        android:color="#BDEFFF" />
-    <corners android:radius="5dp" />
-</shape>
+<!-- Bowel peer strip: subtle inner panel with soft gradient -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Base fill -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="20dp" />
+            <gradient
+                android:startColor="#E8F6FC"
+                android:endColor="#D4EEF6"
+                android:angle="180" />
+        </shape>
+    </item>
+    <!-- Top highlight -->
+    <item
+        android:left="1dp"
+        android:top="1dp"
+        android:right="1dp"
+        android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="19dp" />
+            <gradient
+                android:startColor="#50FFFFFF"
+                android:centerColor="#00FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:angle="90" />
+        </shape>
+    </item>
+    <!-- Thin border -->
+    <item
+        android:left="1dp"
+        android:top="1dp"
+        android:right="1dp"
+        android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="19dp" />
+            <stroke
+                android:width="0.6dp"
+                android:color="#4098D0E0" />
+            <solid android:color="#00000000" />
+        </shape>
+    </item>
+</layer-list>

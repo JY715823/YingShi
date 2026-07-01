@@ -60,12 +60,14 @@ class LifeMediaQuickViewerActivity : ComponentActivity() {
 
         val payload = LifeMediaQuickViewerPayload.fromIntent(intent)
         val launchedFromWidget = intent.getBooleanExtra(EXTRA_LAUNCHED_FROM_WIDGET, false)
+        val launchedFromPush = intent.getBooleanExtra(LifePushDispatchActivity.EXTRA_LAUNCHED_FROM_PUSH, false)
+        val isolatedFinish = launchedFromWidget || launchedFromPush
         setContent {
             YingShiTheme {
                 LifeMediaQuickViewerScreen(
                     payload = payload,
                     onClose = {
-                        if (launchedFromWidget) {
+                        if (isolatedFinish) {
                             finishAndRemoveTask()
                         } else {
                             finish()

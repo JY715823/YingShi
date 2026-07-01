@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.life
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,15 +15,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DashboardCustomize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,9 +38,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
+import com.example.yingshi.ui.components.YingShiMistCard
 import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.ui.components.yingShiRouteReveal
+import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import java.util.Calendar
+import java.util.Locale
 
 @Composable
 fun LifeScreen(
@@ -41,25 +54,48 @@ fun LifeScreen(
     onOpenLedger: () -> Unit = {},
     onOpenChatViewer: () -> Unit = {},
 ) {
+    val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+
+    var currentTimeLabel by remember { mutableStateOf("") }
+    var currentDateLabel by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val calendar = Calendar.getInstance()
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        currentTimeLabel = when (hour) {
+            in 5..11 -> "早安"
+            in 12..17 -> "午安"
+            else -> "晚安"
+        }
+        val month = calendar.get(Calendar.MONTH) + 1
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+        val dayOfWeek = calendar.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.LONG, Locale.CHINA)
+        currentDateLabel = "${month}月${day}日 $dayOfWeek"
+    }
 
     YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
-        showWaves = false,
+        showWaves = true,
         variant = YingShiBackdropVariant.LIFE,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp)
-                .padding(top = 16.dp, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(horizontal = spacing.lg)
+                .padding(top = spacing.lg, bottom = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .yingShiSoftReveal(visible = true),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+            ) {
                 Text(
                     text = "映世",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                     color = colors.textSecondary.copy(alpha = 0.72f),
                 )
                 Text(
@@ -67,13 +103,20 @@ fun LifeScreen(
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.titleAccent,
                 )
+                if (currentTimeLabel.isNotEmpty()) {
+                    Text(
+                        text = "$currentTimeLabel · $currentDateLabel",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.textSecondary.copy(alpha = 0.80f),
+                    )
+                }
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 LifeEntryCard(
                     title = "记账",
@@ -81,7 +124,9 @@ fun LifeScreen(
                     status = "进入账本",
                     accent = LifeEntryAccent.GREEN,
                     icon = Icons.Rounded.AccountBalanceWallet,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .yingShiRouteReveal(visible = true),
                     onClick = onOpenLedger,
                 )
                 LifeEntryCard(
@@ -90,7 +135,9 @@ fun LifeScreen(
                     status = "打开记录",
                     accent = LifeEntryAccent.WARM,
                     icon = Icons.Rounded.ChatBubbleOutline,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .yingShiRouteReveal(visible = true),
                     onClick = onOpenChatViewer,
                 )
                 LifeEntryCard(
@@ -99,7 +146,9 @@ fun LifeScreen(
                     status = "查看今天",
                     accent = LifeEntryAccent.BLUE,
                     icon = Icons.Rounded.DashboardCustomize,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .yingShiRouteReveal(visible = true),
                     onClick = onOpenLifeConsole,
                 )
             }
@@ -117,8 +166,10 @@ private fun LifeEntryCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
+
     val accentContainer = when (accent) {
         LifeEntryAccent.BLUE -> colors.primaryContainer.copy(alpha = 0.76f)
         LifeEntryAccent.GREEN -> colors.softGreenContainer.copy(alpha = 0.94f)
@@ -129,21 +180,33 @@ private fun LifeEntryCard(
         LifeEntryAccent.GREEN -> colors.softGreenAction
         LifeEntryAccent.WARM -> colors.memoryAccent
     }
+    val accentGlow = when (accent) {
+        LifeEntryAccent.BLUE -> colors.primaryContainer
+        LifeEntryAccent.GREEN -> colors.softGreenAction
+        LifeEntryAccent.WARM -> colors.memoryAccent
+    }
 
-    Surface(
+    YingShiMistCard(
         modifier = modifier
             .fillMaxWidth()
             .yingShiClickable(shape = RoundedCornerShape(radius.lg), onClick = onClick),
-        shape = RoundedCornerShape(radius.lg),
-        color = colors.raisedSurface.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.54f)),
-        shadowElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            accentGlow.copy(alpha = 0.07f),
+                            colors.glowWash.copy(alpha = 0.04f),
+                            Color.Transparent,
+                        ),
+                        center = Offset.Zero,
+                        radius = 480f,
+                    ),
+                )
+                .padding(horizontal = spacing.lg, vertical = spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Surface(
@@ -156,13 +219,13 @@ private fun LifeEntryCard(
                     contentDescription = null,
                     tint = accentContent,
                     modifier = Modifier
-                        .padding(12.dp)
-                        .size(30.dp),
+                        .padding(spacing.sm)
+                        .size(28.dp),
                 )
             }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(spacing.xxs),
             ) {
                 Text(
                     text = title,
@@ -181,24 +244,18 @@ private fun LifeEntryCard(
             }
             Surface(
                 shape = RoundedCornerShape(radius.capsule),
-                color = accentContainer,
-                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.48f)),
+                color = accentContainer.copy(alpha = 0.60f),
+                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.40f)),
             ) {
                 Text(
                     text = status,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = accentContent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                imageVector = Icons.Rounded.ChevronRight,
-                contentDescription = null,
-                tint = colors.titleAccent.copy(alpha = 0.72f),
-                modifier = Modifier.size(24.dp),
-            )
         }
     }
 }

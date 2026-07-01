@@ -525,10 +525,13 @@ fun SettingsScreen(
                                         )
                                         YingShiStateLayer(
                                             title = "通知权限",
-                                            body = if (notificationPermissionValue == "已开启") {
-                                                "系统通知已开启，点这里可进入系统通知设置。"
-                                            } else {
-                                                "点击向系统申请通知权限；如果曾经拒绝，可进入系统设置重新开启。"
+                                            body = when {
+                                                notificationPermissionValue == "已开启" && isMiui() ->
+                                                    "系统通知已开启。小米手机需在此页额外开启「悬浮通知」才能弹出横幅提醒。"
+                                                notificationPermissionValue == "已开启" ->
+                                                    "系统通知已开启，点这里可进入系统通知设置。"
+                                                else ->
+                                                    "点击向系统申请通知权限；如果曾经拒绝，可进入系统设置重新开启。"
                                             },
                                             tone = if (notificationPermissionValue == "已开启") YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
                                             actionLabel = notificationPermissionValue,
@@ -734,6 +737,19 @@ private fun resolveNotificationPermissionStatus(context: Context): String {
         notificationsEnabled -> "已开启"
         else -> "已关闭"
     }
+}
+
+/** Detect MIUI (Xiaomi/Redmi custom ROM). MIUI suppresses heads-up notifications unless the user manually enables "悬浮通知". */
+private fun isMiui(): Boolean {
+    val result: Boolean = try {
+        val clazz = Class.forName("android.os.SystemProperties")
+        val get = clazz.getMethod("get", String::class.java)
+        val value = get.invoke(null, "ro.miui.ui.version.name") as? String
+        value != null && value.isNotBlank()
+    } catch (e: Exception) {
+        false
+    }
+    return result
 }
 
 // ── Private composables ──

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vibrant gradient accent bar: blue → cyan → green, placed under main titles -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="2dp" />
+    <gradient
+        android:startColor="#2979FF"
+        android:centerColor="#00BCD4"
+        android:endColor="#00E676"
+        android:angle="0" />
+</shape>

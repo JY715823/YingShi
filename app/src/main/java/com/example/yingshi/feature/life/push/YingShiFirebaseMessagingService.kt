@@ -9,7 +9,7 @@ import com.google.firebase.messaging.RemoteMessage
 class YingShiFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "onNewToken: token prefix=${token.take(12)}")
+        Log.e(TAG, ">>> onNewToken: token prefix=${token.take(12)}")
         PushTokenRegistrar.registerToken(applicationContext, token)
     }
 
@@ -18,14 +18,20 @@ class YingShiFirebaseMessagingService : FirebaseMessagingService() {
         val eventType = message.data["type"] ?: message.data["event"]
         val hasNotification = message.notification != null
         val dataSize = message.data.size
-        Log.d(TAG, "onMessageReceived: eventType=$eventType, hasNotification=$hasNotification, dataSize=$dataSize, dataKeys=${message.data.keys.toList()}")
+        // Use Log.e so this ALWAYS appears in logcat (Log.d may be filtered on some devices)
+        Log.e(TAG, ">>> onMessageReceived: eventType=$eventType, hasNotification=$hasNotification, dataSize=$dataSize, dataKeys=${message.data.keys.toList()}")
         if (eventType == LIFE_CONSOLE_CHANGED) {
-            Log.d(TAG, "Received life console change push; refreshing widgets.")
+            Log.e(TAG, "Received life console change push; refreshing widgets.")
             LifeConsoleWidgetProvider.refreshAll(applicationContext)
         }
         SyncVersionTracker.requestImmediatePoll()
+        // NOTE: Removed blanket 60s FCM suppression after local mutations.
+        // The server's targetTokensFor() already excludes the actor's own tokens,
+        // and PushNotificationPresenter.isActorCurrentUser() provides a per-notification
+        // safety net. The old suppression was too aggressive — it blocked ALL incoming
+        // FCMs (including legitimate partner notifications) for 60s after any local action.
         val shown = PushNotificationPresenter.show(applicationContext, message.data, source = "fcm")
-        Log.d(TAG, "onMessageReceived: notification shown=$shown")
+        Log.e(TAG, ">>> onMessageReceived result: shown=$shown")
     }
 
     private companion object {
