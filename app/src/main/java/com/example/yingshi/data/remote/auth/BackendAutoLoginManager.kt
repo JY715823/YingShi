@@ -1,5 +1,6 @@
 package com.example.yingshi.data.remote.auth
 
+import com.example.yingshi.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -13,7 +14,7 @@ enum class BackendAutoLoginPhase {
 data class BackendAutoLoginUiState(
     val phase: BackendAutoLoginPhase = BackendAutoLoginPhase.Idle,
     val message: String = "尚未尝试会话恢复",
-    val account: String = DEFAULT_PRIMARY_ACCOUNT,
+    val account: String = BuildConfig.DEFAULT_PRIMARY_ACCOUNT,
     val lastReason: String = "",
     val lastAttemptAtMillis: Long? = null,
 ) {
@@ -27,14 +28,16 @@ data class BackendAutoLoginOutcome(
     val displayName: String? = null,
 )
 
-const val DEFAULT_PRIMARY_ACCOUNT = "1085060329@qq.com"
-const val DEFAULT_SECONDARY_ACCOUNT = "2926315047@qq.com"
-const val DEFAULT_TEMP_PASSWORD = "123456"
+// Default values from BuildConfig — email addresses available in all build types,
+// password only in debug (empty string in release).
+val DEFAULT_PRIMARY_ACCOUNT: String get() = BuildConfig.DEFAULT_PRIMARY_ACCOUNT
+val DEFAULT_SECONDARY_ACCOUNT: String get() = BuildConfig.DEFAULT_SECONDARY_ACCOUNT
+val DEFAULT_TEMP_PASSWORD: String get() = BuildConfig.DEFAULT_TEMP_PASSWORD
 
 object BackendAutoLoginManager {
-    const val DEFAULT_DEMO_ACCOUNT = DEFAULT_PRIMARY_ACCOUNT
-    const val DEFAULT_DEMO_PASSWORD = DEFAULT_TEMP_PASSWORD
-    const val SECONDARY_DEMO_ACCOUNT = DEFAULT_SECONDARY_ACCOUNT
+    val DEFAULT_DEMO_ACCOUNT: String get() = BuildConfig.DEFAULT_PRIMARY_ACCOUNT
+    val DEFAULT_DEMO_PASSWORD: String get() = BuildConfig.DEFAULT_TEMP_PASSWORD
+    val SECONDARY_DEMO_ACCOUNT: String get() = BuildConfig.DEFAULT_SECONDARY_ACCOUNT
 
     private val state = MutableStateFlow(BackendAutoLoginUiState(account = DEFAULT_PRIMARY_ACCOUNT))
 

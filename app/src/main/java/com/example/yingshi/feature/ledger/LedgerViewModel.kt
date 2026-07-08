@@ -121,6 +121,11 @@ class LedgerViewModel(
             }
             observeCatalog()
         }
+        viewModelScope.launch {
+            repository.syncErrors.collect { error ->
+                _uiState.update { it.copy(message = error) }
+            }
+        }
     }
 
     fun refreshBookCreatorsFromCollaborators() {
@@ -968,7 +973,9 @@ class LedgerViewModel(
                     message = previous.message,
                 )
             }.collect { state ->
-                _uiState.value = state
+                _uiState.update { current ->
+                    state.copy(message = current.message ?: state.message)
+                }
             }
         }
         observeSearch(_uiState.value.searchFilter)
@@ -1033,8 +1040,9 @@ class LedgerViewModel(
     companion object {
         private fun createLedgerRepository(application: Application): LedgerRepository {
             val dao = LedgerDatabase.getInstance(application).ledgerDao()
+            val prefs = LedgerPreferencesStore(application)
             val syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                RemoteLedgerSyncBridge()
+                RemoteLedgerSyncBridge(prefs = prefs)
             } else {
                 com.example.yingshi.feature.ledger.data.NoOpLedgerSyncBridge
             }

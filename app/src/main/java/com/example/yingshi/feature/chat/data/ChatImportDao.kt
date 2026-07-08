@@ -14,6 +14,9 @@ interface ChatImportDao {
     @Query("SELECT * FROM imported_participants ORDER BY chatId ASC, participantId ASC")
     suspend fun getAllParticipants(): List<ImportedParticipantEntity>
 
+    @Query("SELECT * FROM imported_participants WHERE chatId = :chatId ORDER BY participantId ASC")
+    suspend fun getAllParticipantsForChat(chatId: Long): List<ImportedParticipantEntity>
+
     @Query("SELECT * FROM imported_messages ORDER BY chatId ASC, timestamp ASC, messageLocalId ASC")
     suspend fun getAllMessages(): List<ImportedMessageEntity>
 
@@ -30,7 +33,7 @@ interface ChatImportDao {
     suspend fun insertParticipants(participants: List<ImportedParticipantEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMessages(messages: List<ImportedMessageEntity>)
+    suspend fun insertMessages(messages: List<ImportedMessageEntity>): List<Long>
 
     @Query("DELETE FROM imported_message_search")
     suspend fun clearMessageSearch()
@@ -206,6 +209,9 @@ interface ChatImportDao {
     )
     suspend fun getMessageIdentityRows(chatId: Long): List<ImportedMessageIdentityRow>
 
+    @Query("SELECT COUNT(*) FROM imported_messages WHERE chatId = :chatId")
+    suspend fun getMessageCountForChat(chatId: Long): Int
+
     @Query(
         """
         SELECT messageLocalId, messageStableKey, sourceMessageId, fallbackSignature
@@ -280,6 +286,18 @@ interface ChatImportDao {
         """
         SELECT participantId, chatId, participantStableKey, uid, uin, displayName, avatarLocalPath, avatarMimeType, isSelf, lastSeenAtMillis
         FROM imported_participants
+        WHERE chatId = :chatId AND participantStableKey IN (:stableKeys)
+        """,
+    )
+    suspend fun findParticipantsByStableKeys(
+        chatId: Long,
+        stableKeys: List<String>,
+    ): List<ImportedParticipantEntity>
+
+    @Query(
+        """
+        SELECT participantId, chatId, participantStableKey, uid, uin, displayName, avatarLocalPath, avatarMimeType, isSelf, lastSeenAtMillis
+        FROM imported_participants
         WHERE chatId = :chatId AND participantStableKey = :participantStableKey
         LIMIT 1
         """,
@@ -295,8 +313,29 @@ interface ChatImportDao {
     @Update
     suspend fun updateParticipant(participant: ImportedParticipantEntity)
 
+    @Update
+    suspend fun updateParticipants(participants: List<ImportedParticipantEntity>)
+
     @Query("SELECT COUNT(*) FROM imported_messages WHERE chatId = :chatId")
     suspend fun countMessages(chatId: Long): Int
+
+    @Query(
+        """
+        SELECT messageLocalId, messageStableKey, sourceMessageId, fallbackSignature
+        FROM imported_messages
+        WHERE chatId = :chatId AND messageStableKey IN (:stableKeys)
+        """,
+    )
+    suspend fun findMessageIdentitiesByStableKeys(
+        chatId: Long,
+        stableKeys: List<String>,
+    ): List<ImportedMessageIdentityRow>
+
+    @Query("DELETE FROM imported_resources WHERE messageLocalId IN (:messageLocalIds)")
+    suspend fun deleteResourcesForMessages(messageLocalIds: List<Long>)
+
+    @Query("DELETE FROM imported_message_search WHERE messageLocalId IN (:messageLocalIds)")
+    suspend fun deleteMessageSearches(messageLocalIds: List<Long>)
 
     @Query(
         """

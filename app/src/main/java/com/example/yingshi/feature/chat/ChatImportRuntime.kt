@@ -60,13 +60,8 @@ object ChatImportRuntime {
                 runCatching {
                     val repository = ImportedChatRepository(
                         appContext = appContext,
-                        syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                            RemoteChatSyncBridge()
-                        } else {
-                            NoOpChatSyncBridge
-                        },
+                        syncBridge = NoOpChatSyncBridge,
                     )
-                    repository.hydrateFromRemoteIfNeeded()
                     repository.importFromZip(uri) { progress ->
                         _state.value = _state.value.copy(
                             isRunning = true,

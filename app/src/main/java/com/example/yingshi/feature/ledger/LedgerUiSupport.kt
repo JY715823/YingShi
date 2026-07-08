@@ -29,7 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -130,7 +130,7 @@ val LedgerDivider = YingShiDividerSoft
 val LedgerGlassStroke = YingShiGlassStroke
 val LedgerGlowWash = YingShiGlowWash
 val LedgerMuted = YingShiTextSecondary
-val LedgerSubtleText = YingShiTextSecondary
+val LedgerSubtleText = Color(0xFF3D5260)
 
 fun ledgerColor(raw: Long): Color = Color(raw)
 
@@ -230,7 +230,7 @@ fun accountIcon(type: LedgerAccountType): ImageVector = when (type) {
 
 object LedgerActionIcons {
     val Add = Icons.Default.Add
-    val Back = Icons.Default.ArrowBack
+    val Back = Icons.AutoMirrored.Filled.ArrowBack
     val Menu = Icons.Default.Menu
     val Expense = Icons.Default.ArrowDownward
     val Income = Icons.Default.ArrowUpward

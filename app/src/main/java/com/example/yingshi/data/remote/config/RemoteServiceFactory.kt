@@ -4,6 +4,7 @@ import com.example.yingshi.data.remote.api.AlbumApi
 import com.example.yingshi.data.remote.api.AuthApi
 import com.example.yingshi.data.remote.api.CommentApi
 import com.example.yingshi.data.remote.api.ChatApi
+import com.example.yingshi.feature.chat.data.ChatMediaApi
 import com.example.yingshi.data.remote.api.HealthApi
 import com.example.yingshi.data.remote.api.LedgerApi
 import com.example.yingshi.data.remote.api.LifeConsoleApi
@@ -109,6 +110,8 @@ object RemoteServiceFactory {
         get() = createService()
     val chatApi: ChatApi
         get() = createService()
+    val chatMediaApi: ChatMediaApi
+        get() = createUploadService()
     val notificationApi: NotificationApi
         get() = createService()
     val trashApi: TrashApi

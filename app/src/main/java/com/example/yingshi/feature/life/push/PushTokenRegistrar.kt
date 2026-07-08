@@ -29,6 +29,10 @@ object PushTokenRegistrar {
     private const val PLATFORM_ANDROID = "android"
     private const val MAX_RETRY_COUNT = 5
     private const val BASE_RETRY_DELAY_MS = 5000L
+    private const val DEDUP_PREFS_NAME = "push_token_refresh"
+    private const val DEDUP_KEY_LAST_TOKEN = "last_token"
+    private const val DEDUP_KEY_LAST_REPORT_AT = "last_report_at"
+    private const val DEDUP_WINDOW_MS = 5L * 60 * 1000 // 5 minutes
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _diagnosticState = MutableStateFlow(PushTokenDiagnosticState())
@@ -98,6 +102,21 @@ object PushTokenRegistrar {
             )
             return
         }
+        // De-dup: skip network call if same token was reported within 5 minutes
+        val prefs = appContext.getSharedPreferences(DEDUP_PREFS_NAME, Context.MODE_PRIVATE)
+        val lastToken = prefs.getString(DEDUP_KEY_LAST_TOKEN, null)
+        val lastReportAt = prefs.getLong(DEDUP_KEY_LAST_REPORT_AT, 0L)
+        val now = System.currentTimeMillis()
+        if (trimmedToken == lastToken && now - lastReportAt < DEDUP_WINDOW_MS) {
+            isRegistering = false
+            _diagnosticState.value = PushTokenDiagnosticState(
+                status = "已注册",
+                detail = "本机 token 已是最新。",
+                retryCount = 0,
+            )
+            Log.d(TAG, "Skip registration: token unchanged and reported ${now - lastReportAt}ms ago")
+            return
+        }
         val account = AuthSessionManager.getCurrentUserSnapshot()?.account
             ?: AuthSessionManager.getLastSignedInAccount()
             ?: "当前账号"
@@ -119,6 +138,10 @@ object PushTokenRegistrar {
                     SettingsRepository.refreshPushDiagnosticsFromRemote()
                     currentRetryCount = 0
                     isRegistering = false
+                    prefs.edit()
+                        .putString(DEDUP_KEY_LAST_TOKEN, trimmedToken)
+                        .putLong(DEDUP_KEY_LAST_REPORT_AT, System.currentTimeMillis())
+                        .apply()
                     _diagnosticState.value = PushTokenDiagnosticState(
                         status = "已注册",
                         detail = "本机已注册为 $account 的推送设备。token 前缀：${trimmedToken.take(12)}",

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Timelapse
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,6 +80,7 @@ fun LedgerRecurringScreen(
     var showEditor by rememberSaveable { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<LedgerRecurringRule?>(null) }
     var actionRule by remember { mutableStateOf<LedgerRecurringRule?>(null) }
+    var pendingDeleteRule by remember { mutableStateOf<LedgerRecurringRule?>(null) }
 
     LaunchedEffect(uiState.currentBookId) {
         onRefresh()
@@ -100,11 +102,11 @@ fun LedgerRecurringScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-                Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(18.dp))
+                Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(20.dp))
             }
             Row(
                 modifier = Modifier
@@ -116,7 +118,7 @@ fun LedgerRecurringScreen(
                 LedgerBookTitleWithCreator(
                     title = uiState.bookName,
                     creatorUserId = uiState.bookCreatorUserId,
-                    textStyle = MaterialTheme.typography.titleMedium,
+                    textStyle = MaterialTheme.typography.titleLarge,
                     textColor = Color.Unspecified,
                     fontWeight = FontWeight.Bold,
                     avatarSize = 16.dp,
@@ -200,9 +202,31 @@ fun LedgerRecurringScreen(
                 )
                 add(
                     LedgerSheetAction("删除规则", destructive = true) {
-                        onDeleteRule(rule.id)
+                        pendingDeleteRule = rule
                     },
                 )
+            },
+        )
+    }
+    pendingDeleteRule?.let { rule ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteRule = null },
+            title = { Text("确认删除") },
+            text = { Text("确定要删除周期规则「${recurringRuleTitle(rule)}」吗？删除后无法恢复。") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        onDeleteRule(rule.id)
+                        pendingDeleteRule = null
+                    },
+                ) {
+                    Text("删除", color = LedgerExpenseRed)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { pendingDeleteRule = null }) {
+                    Text("取消")
+                }
             },
         )
     }
@@ -234,14 +258,14 @@ private fun LedgerRecurringSectionCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = LedgerRaisedSurface,
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(8.dp))
                 Text("($count)", color = LedgerMuted, style = MaterialTheme.typography.bodySmall)
             }
@@ -464,7 +488,7 @@ private fun LedgerRecurringRuleEditorSheet(
                     text = if (initial == null) "新增周期规则" else "编辑周期规则",
                     modifier = Modifier.weight(1f),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
                 LedgerDialogActionButton(
@@ -653,7 +677,7 @@ private fun <T> LedgerRecurringSegmentRow(
     onSelect: (T) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             chips.forEach { (value, text) ->
                 LedgerSegmentChip(
@@ -684,7 +708,7 @@ private fun LedgerRecurringPickerRow(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(12.dp))
             Text(
                 text = value,

@@ -15,6 +15,7 @@ import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.feature.photos.VideoPreloadWorker
 import com.example.yingshi.feature.photos.preloadSystemMediaCache
 import com.example.yingshi.feature.life.push.PushNotificationChannels
+import com.example.yingshi.feature.life.push.PushTokenRefreshWorker
 import com.example.yingshi.feature.life.push.PushTokenRegistrar
 import com.example.yingshi.feature.sync.SyncVersionTracker
 
@@ -28,6 +29,7 @@ class YingShiApplication : Application(), ImageLoaderFactory {
         SettingsRepository.init(applicationContext)
         PushNotificationChannels.ensureChannels(applicationContext)
         VideoPreloadWorker.schedulePeriodic(applicationContext)
+        PushTokenRefreshWorker.schedulePeriodic(applicationContext)
         preloadSystemMediaCache(applicationContext)
         PushTokenRegistrar.registerCurrentTokenIfPossible(applicationContext)
         SyncVersionTracker.init(applicationContext)

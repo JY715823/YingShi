@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -28,6 +29,7 @@ class ChatImportForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var observeJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wakeLockRenewalJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -86,6 +88,7 @@ class ChatImportForegroundService : Service() {
 
     override fun onDestroy() {
         observeJob?.cancel()
+        wakeLockRenewalJob?.cancel()
         releaseWakeLock()
         scope.cancel()
         super.onDestroy()
@@ -155,9 +158,24 @@ class ChatImportForegroundService : Service() {
             setReferenceCounted(false)
             acquire(2 * 60 * 60 * 1000L)
         }
+        wakeLockRenewalJob?.cancel()
+        wakeLockRenewalJob = scope.launch {
+            while (true) {
+                delay(90 * 60 * 1000L) // 90 minutes
+                wakeLock?.let { lock ->
+                    if (lock.isHeld) lock.release()
+                }
+                wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "YingShi:ChatImport").apply {
+                    setReferenceCounted(false)
+                    acquire(2 * 60 * 60 * 1000L)
+                }
+            }
+        }
     }
 
     private fun releaseWakeLock() {
+        wakeLockRenewalJob?.cancel()
+        wakeLockRenewalJob = null
         wakeLock?.takeIf { it.isHeld }?.release()
         wakeLock = null
     }

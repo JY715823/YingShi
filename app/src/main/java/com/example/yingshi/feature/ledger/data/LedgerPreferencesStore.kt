@@ -34,9 +34,20 @@ class LedgerPreferencesStore(
         }.apply()
     }
 
+    fun getLastSyncVersionMillis(): Long = preferences.getLong(KEY_LAST_SYNC_VERSION, 0L)
+
+    fun setLastSyncVersionMillis(version: Long) {
+        preferences.edit().putLong(KEY_LAST_SYNC_VERSION, version).apply()
+    }
+
+    fun clearLastSyncVersion() {
+        preferences.edit().remove(KEY_LAST_SYNC_VERSION).apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "ledger_preferences"
         private const val KEY_DEFAULT_BOOK_ID = "default_book_id"
+        private const val KEY_LAST_SYNC_VERSION = "last_sync_version"
 
         fun resolveDefaultBookId(
             storedBookId: String?,

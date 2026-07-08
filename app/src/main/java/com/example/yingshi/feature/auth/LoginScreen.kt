@@ -62,9 +62,7 @@ import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.model.RemoteLoginChallenge
 import com.example.yingshi.data.model.RemoteLoginSession
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.DEFAULT_PRIMARY_ACCOUNT
-import com.example.yingshi.data.remote.auth.DEFAULT_SECONDARY_ACCOUNT
-import com.example.yingshi.data.remote.auth.DEFAULT_TEMP_PASSWORD
+import com.example.yingshi.BuildConfig
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.dto.LoginRequestDto
@@ -130,9 +128,9 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
 
     var account by rememberSaveable {
-        mutableStateOf(AuthSessionManager.getLastSignedInAccount() ?: DEFAULT_PRIMARY_ACCOUNT)
+        mutableStateOf(AuthSessionManager.getLastSignedInAccount() ?: BuildConfig.DEFAULT_PRIMARY_ACCOUNT)
     }
-    var password by rememberSaveable { mutableStateOf(DEFAULT_TEMP_PASSWORD) }
+    var password by rememberSaveable { mutableStateOf(BuildConfig.DEFAULT_TEMP_PASSWORD) }
     var verificationCode by rememberSaveable { mutableStateOf("") }
     var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
     var baseUrlInput by rememberSaveable(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
@@ -493,7 +491,7 @@ fun LoginScreen(
                     selectedAccount = account,
                     onSelect = { selected ->
                         account = selected
-                        password = DEFAULT_TEMP_PASSWORD
+                        password = BuildConfig.DEFAULT_TEMP_PASSWORD
                         errorMessage = null
                     },
                 )
@@ -731,8 +729,8 @@ private fun PresetAccountRow(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         listOf(
-            DEFAULT_PRIMARY_ACCOUNT to "账号 A",
-            DEFAULT_SECONDARY_ACCOUNT to "账号 B",
+            BuildConfig.DEFAULT_PRIMARY_ACCOUNT to "账号 A",
+            BuildConfig.DEFAULT_SECONDARY_ACCOUNT to "账号 B",
         ).forEach { (account, label) ->
             val selected = selectedAccount.trim().equals(account, ignoreCase = true)
             Column(

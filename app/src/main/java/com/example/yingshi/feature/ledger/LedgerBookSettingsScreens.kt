@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,7 +93,7 @@ fun LedgerBooksScreen(
             item {
                 Surface(
                     color = LedgerRaisedSurface,
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(
@@ -113,7 +114,7 @@ fun LedgerBooksScreen(
                 }
             }
             item {
-                Text("可用账本", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
+                Text("可用账本", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
             }
             items(uiState.books, key = { it.id }) { book ->
                 LedgerBookRow(
@@ -125,7 +126,7 @@ fun LedgerBooksScreen(
             }
             if (uiState.archivedBooks.isNotEmpty()) {
                 item {
-                    Text("已归档", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
+                    Text("已归档", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
                 }
                 items(uiState.archivedBooks, key = { it.id }) { book ->
                     LedgerBookRow(
@@ -207,6 +208,7 @@ fun LedgerSettingsScreen(
 ) {
     var showBookPicker by rememberSaveable { mutableStateOf(false) }
     var accountPickerBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     LedgerPageScaffold(title = "记账设置", onBack = onBack) {
         LazyColumn(
@@ -264,10 +266,16 @@ fun LedgerSettingsScreen(
                     LedgerStaticSettingRow(
                         title = "自定义背景",
                         subtitle = "选择一张喜欢的图，作为账本背景。",
+                        onClick = {
+                            android.widget.Toast.makeText(context, "即将上线", android.widget.Toast.LENGTH_SHORT).show()
+                        },
                     )
                     LedgerStaticSettingRow(
                         title = "小组件",
                         subtitle = "在桌面快速查看这个月的小账。",
+                        onClick = {
+                            android.widget.Toast.makeText(context, "即将上线", android.widget.Toast.LENGTH_SHORT).show()
+                        },
                     )
                 }
             }
@@ -311,7 +319,7 @@ private fun LedgerBookRow(
 ) {
     Surface(
         color = if (archived) LedgerGroupedHeader else LedgerRaisedSurface,
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
@@ -342,7 +350,7 @@ private fun LedgerBookRow(
                 ) {
                     Text(
                         text = book.name,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -414,7 +422,7 @@ private fun LedgerBookEditorSheet(
                 label = { Text("账本名称") },
                 singleLine = true,
             )
-            Text("模板", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text("模板", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             if (initial == null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -445,7 +453,7 @@ private fun LedgerBookEditorSheet(
                     )
                 }
             }
-            Text("主题色", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text("主题色", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -477,7 +485,7 @@ private fun LedgerSettingsSection(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         color = LedgerRaisedSurface,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -487,7 +495,7 @@ private fun LedgerSettingsSection(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             content()
@@ -593,7 +601,7 @@ private fun LedgerLabelBadge(
             text = text,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             color = color,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -612,7 +620,7 @@ private fun LedgerSheetHeader(
         Text(
             text = "取消",
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .clickable(onClick = onDismiss)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             color = LedgerMuted,
@@ -621,13 +629,13 @@ private fun LedgerSheetHeader(
         Text(
             text = title,
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
         )
         Text(
             text = "保存",
             modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .clickable(onClick = onConfirm)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             color = LedgerHeaderGreen,

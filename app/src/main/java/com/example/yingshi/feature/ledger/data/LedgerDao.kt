@@ -200,6 +200,44 @@ interface LedgerDao {
 
     @Query(
         """
+        SELECT t.* FROM ledger_transactions t
+        LEFT JOIN ledger_categories c ON t.categoryId = c.id
+        LEFT JOIN ledger_accounts a ON t.accountId = a.id
+        LEFT JOIN ledger_accounts ta ON t.toAccountId = ta.id
+        WHERE t.bookId = :bookId
+        AND t.deletedAtMillis IS NULL
+        AND (
+            :keyword = ''
+            OR t.remark LIKE '%' || :keyword || '%'
+            OR CAST(t.amountCents AS TEXT) LIKE '%' || :keyword || '%'
+            OR c.name LIKE '%' || :keyword || '%'
+            OR a.name LIKE '%' || :keyword || '%'
+            OR IFNULL(ta.name, '') LIKE '%' || :keyword || '%'
+        )
+        AND (:typeFilter = '' OR t.type = :typeFilter)
+        AND (:categoryId = '' OR t.categoryId = :categoryId)
+        AND (:accountId = '' OR t.accountId = :accountId OR t.toAccountId = :accountId)
+        AND (:startDateMillis = -1 OR t.occurredAtMillis >= :startDateMillis)
+        AND (:endDateMillis = -1 OR t.occurredAtMillis <= :endDateMillis)
+        AND (:minAmountCents = -1 OR t.amountCents >= :minAmountCents)
+        AND (:maxAmountCents = -1 OR t.amountCents <= :maxAmountCents)
+        ORDER BY t.occurredAtMillis DESC
+        """,
+    )
+    fun searchTransactionsFiltered(
+        bookId: String,
+        keyword: String,
+        typeFilter: String,
+        categoryId: String,
+        accountId: String,
+        startDateMillis: Long,
+        endDateMillis: Long,
+        minAmountCents: Long,
+        maxAmountCents: Long,
+    ): Flow<List<LedgerTransactionEntity>>
+
+    @Query(
+        """
         SELECT * FROM ledger_budgets
         WHERE bookId = :bookId
         AND period = :period
@@ -308,8 +346,8 @@ interface LedgerDao {
     @Query("DELETE FROM ledger_budgets WHERE id = :budgetId")
     suspend fun deleteBudget(budgetId: String)
 
-    @Query("DELETE FROM ledger_deleted_items WHERE itemId = :itemId")
-    suspend fun permanentlyDeleteDeletedItem(itemId: String)
+    @Query("DELETE FROM ledger_transactions WHERE id = :transactionId")
+    suspend fun hardDeleteTransaction(transactionId: String)
 
     @Query("DELETE FROM ledger_recurring_occurrences")
     suspend fun clearRecurringOccurrences()
@@ -469,4 +507,75 @@ interface LedgerDao {
             snapshot.recurringOccurrences.forEach { insertRecurringOccurrence(it) }
         }
     }
+
+    // ── Changelog operations ──────────────────────────────────────────
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChangelogEntry(entry: LedgerSyncChangelogEntity)
+
+    @Query("SELECT * FROM ledger_sync_changelog ORDER BY changedAtMillis ASC")
+    suspend fun getAllChangelogEntries(): List<LedgerSyncChangelogEntity>
+
+    @Query("DELETE FROM ledger_sync_changelog WHERE id IN (:ids)")
+    suspend fun deleteChangelogEntries(ids: List<Long>)
+
+    @Query("DELETE FROM ledger_sync_changelog")
+    suspend fun clearChangelog()
+
+    // ── Upsert operations for sync (no balance tracking) ──────────────
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBook(book: LedgerBookEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCategory(category: LedgerCategoryEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAccount(account: LedgerAccountEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertTransaction(transaction: LedgerTransactionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertBudget(budget: LedgerBudgetEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCategoryBudget(categoryBudget: LedgerCategoryBudgetEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDeletedItem(deletedItem: LedgerDeletedItemEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRecurringRule(rule: LedgerRecurringRuleEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRecurringOccurrence(occurrence: LedgerRecurringOccurrenceEntity)
+
+    // ── Get-by-id for sync changelog building ─────────────────────────
+
+    @Query("SELECT * FROM ledger_category_budgets WHERE id = :id LIMIT 1")
+    suspend fun getCategoryBudget(id: String): LedgerCategoryBudgetEntity?
+
+    @Query("SELECT * FROM ledger_deleted_items WHERE id = :id LIMIT 1")
+    suspend fun getDeletedItem(id: String): LedgerDeletedItemEntity?
+
+    @Query("SELECT * FROM ledger_recurring_occurrences WHERE id = :id LIMIT 1")
+    suspend fun getRecurringOccurrenceById(id: String): LedgerRecurringOccurrenceEntity?
+
+    // ── Hard-delete operations for sync ────────────────────────────────
+
+    @Query("DELETE FROM ledger_books WHERE id = :bookId")
+    suspend fun hardDeleteBook(bookId: String)
+
+    @Query("DELETE FROM ledger_categories WHERE id = :categoryId")
+    suspend fun hardDeleteCategory(categoryId: String)
+
+    @Query("DELETE FROM ledger_accounts WHERE id = :accountId")
+    suspend fun hardDeleteAccount(accountId: String)
+
+    @Query("DELETE FROM ledger_deleted_items WHERE id = :id")
+    suspend fun hardDeleteDeletedItem(id: String)
+
+    @Query("DELETE FROM ledger_recurring_occurrences WHERE id = :id")
+    suspend fun hardDeleteRecurringOccurrence(id: String)
 }

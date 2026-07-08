@@ -43,6 +43,7 @@ class ImportedChatRepository(
     private val pageLoadSize = 50
     private val maintenancePrefs = appContext.getSharedPreferences("chat_import_maintenance", Context.MODE_PRIVATE)
     private val readingAnchorPrefs = appContext.getSharedPreferences("chat_import_reading_anchor", Context.MODE_PRIVATE)
+    private val checkpointPrefs = appContext.getSharedPreferences("chat_import_checkpoints", Context.MODE_PRIVATE)
     private val importsBaseDir = (baseDir ?: appContext.filesDir.resolve("chat-imports")).apply { mkdirs() }
     private val importsTempDir = (tempDir ?: appContext.cacheDir.resolve("chat-imports-temp")).apply { mkdirs() }
     @Volatile
@@ -520,49 +521,17 @@ class ImportedChatRepository(
 
             onProgress(ChatImportProgress("parse", "正在读取聊天消息", 0, totalMessages))
 
+            val checkpointKey = sourceDisplayName ?: uri.toString()
+            val completedChunks = loadCheckpoint(checkpointKey)
+
             val senderUidSet = linkedSetOf<String>()
             val nonSelfParticipantUids = linkedSetOf<String>()
             val nonSelfParticipantUins = linkedSetOf<String>()
             val warnings = linkedSetOf<String>()
             var skippedMessageCount = 0
             var processed = 0
-            chunkFiles.sortedBy { it.name }.forEach { chunkFile ->
-                chunkFile.useLines(Charsets.UTF_8) { lines ->
-                    lines.filter { it.isNotBlank() }.forEachIndexed { index, line ->
-                        runCatching {
-                            parsePreparedMessage(
-                                line = line,
-                                selfUid = manifest.chatInfo?.selfUid,
-                                selfUin = manifest.chatInfo?.selfUin,
-                            )
-                        }.onSuccess { prepared ->
-                            senderUidSet += listOfNotNull(prepared.senderUid)
-                            if (!prepared.isSelf) {
-                                prepared.senderUid?.takeIf { it.isNotBlank() }?.let(nonSelfParticipantUids::add)
-                                prepared.senderUin?.takeIf { it.isNotBlank() }?.let(nonSelfParticipantUins::add)
-                            }
-                        }.onFailure { throwable ->
-                            skippedMessageCount += 1
-                            warnings += buildWarning(
-                                kind = "message_parse",
-                                detail = "分片 ${chunkFile.name} 第 ${index + 1} 条消息解析失败，已跳过",
-                                cause = throwable,
-                            )
-                        }
-                        processed += 1
-                        if (processed % 200 == 0 || processed == totalMessages) {
-                            onProgress(
-                                ChatImportProgress(
-                                    stage = "parse",
-                                    message = "正在解析消息",
-                                    current = processed,
-                                    total = totalMessages,
-                                ),
-                            )
-                        }
-                    }
-                }
-            }
+
+            val sortedChunks = chunkFiles.sortedBy { it.name }
 
             val chatType = manifest.chatInfo?.type?.toImportedChatType() ?: ImportedChatType.UNKNOWN
             val privatePeerIdentity = resolvePrivatePeerIdentity(
@@ -665,7 +634,46 @@ class ImportedChatRepository(
 
             val storageAvatarPaths = mutableMapOf<String, StoredAvatarPayload>()
             var importedProgress = 0
-            chunkFiles.sortedBy { it.name }.forEach { chunkFile ->
+
+            // Validate checkpoint: if the chat has no messages, the checkpoint is stale
+            // (e.g., DB was wiped since the checkpoint was saved). Clear it to force full re-import.
+            val validatedCompletedChunks = if (completedChunks.isNotEmpty() && dao.getMessageCountForChat(chatId) == 0) {
+                clearCheckpoint(checkpointKey)
+                emptySet()
+            } else {
+                completedChunks
+            }
+
+            // Pre-load existing message identities for this chat (for merge detection)
+            val existingIdentityByStableKey: Map<String, ImportedMessageIdentityRow> =
+                dao.getMessageIdentityRows(chatId).associateBy { row -> row.messageStableKey }
+
+            // Pre-load existing participants for this chat
+            val participantMap = mutableMapOf<String, ImportedParticipantEntity>()
+            val allParticipants = dao.getAllParticipantsForChat(chatId)
+            allParticipants.forEach { p -> participantMap[p.participantStableKey] = p }
+
+            for (chunkFile in sortedChunks) {
+                // Checkpoint: skip already-completed chunks
+                if (chunkFile.name in validatedCompletedChunks) {
+                    val chunkLineCount = runCatching {
+                        chunkFile.useLines { lines -> lines.count { it.isNotBlank() } }
+                    }.getOrDefault(0)
+                    importedProgress += chunkLineCount
+                    processed += chunkLineCount
+                    continue
+                }
+
+                // === Phase 1: Parse all messages in this chunk (single pass) ===
+                data class ChunkMessage(
+                    val prepared: PreparedMessage,
+                    val identity: ImportedMessageIdentityRow?,
+                    val messageStableKey: String,
+                    val previewPresentation: ImportedMessagePresentation,
+                )
+
+                val chunkMessages = mutableListOf<ChunkMessage>()
+
                 chunkFile.useLines(Charsets.UTF_8) { lines ->
                     lines.filter { it.isNotBlank() }.forEachIndexed { index, line ->
                         val prepared = runCatching {
@@ -675,164 +683,199 @@ class ImportedChatRepository(
                                 selfUin = manifest.chatInfo?.selfUin,
                             )
                         }.getOrElse { throwable ->
+                            skippedMessageCount += 1
                             importedProgress += 1
-                            if (importedProgress % 100 == 0 || importedProgress == totalMessages) {
-                                onProgress(
-                                    ChatImportProgress(
-                                        stage = "import",
-                                        message = "正在写入本地数据库",
-                                        current = importedProgress,
-                                        total = totalMessages,
-                                    ),
-                                )
-                            }
+                            processed += 1
                             if (warnings.none { it.contains("[message_parse]") }) {
                                 warnings += buildWarning(
                                     kind = "message_parse",
-                                    detail = "有部分消息在写入阶段再次解析失败，已跳过",
+                                    detail = "分片 ${chunkFile.name} 第 ${index + 1} 条消息解析失败，已跳过",
                                     cause = throwable,
                                 )
                             }
                             return@forEachIndexed
                         }
 
-                        database.withTransaction {
-                            val identity = resolveExistingMessageIdentity(
-                                chatId = chatId,
-                                prepared = prepared,
-                                chatStableKey = resolvedStableKey,
-                            )
-                            val messageStableKey = buildMessageStableKey(resolvedStableKey, prepared.sourceMessageId, prepared.fallbackSignature)
-                            val existingMessage = identity?.messageLocalId?.let { existingMessageLocalId ->
-                                dao.getMessageByLocalId(existingMessageLocalId)
-                            }
-                            val previewPresentation = buildImportedMessagePresentation(
-                                type = prepared.type,
-                                text = prepared.text,
-                                rawContentJson = prepared.rawContentJson,
-                                rawMessageJson = prepared.rawMessageJson,
-                                replyPreviewText = prepared.replyPreviewText,
-                                jsonTitle = prepared.jsonTitle,
-                                jsonSummary = prepared.jsonSummary,
-                                callSummary = prepared.callSummary,
-                                system = prepared.system,
-                                recalled = prepared.recalled,
-                                qFaceCatalog = qFaceCatalog,
-                            )
-                            val messageEntity = ImportedMessageEntity(
-                                messageLocalId = identity?.messageLocalId ?: 0L,
-                                chatId = chatId,
-                                messageStableKey = messageStableKey,
-                                sourceMessageId = preferString(prepared.sourceMessageId, existingMessage?.sourceMessageId),
-                                fallbackSignature = prepared.fallbackSignature.ifBlank { existingMessage?.fallbackSignature.orEmpty() },
-                                sourceSeq = preferString(prepared.seq, existingMessage?.sourceSeq),
-                                timestamp = prepared.timestamp.takeIf { it > 0L } ?: existingMessage?.timestamp ?: 0L,
-                                timeIso = preferString(prepared.timeIso, existingMessage?.timeIso),
-                                senderUid = preferString(prepared.senderUid, existingMessage?.senderUid),
-                                senderUin = preferString(prepared.senderUin, existingMessage?.senderUin),
-                                senderDisplayName = preferString(prepared.senderDisplayName, existingMessage?.senderDisplayName).orEmpty(),
-                                senderNickname = preferString(prepared.senderNickname, existingMessage?.senderNickname),
-                                senderRemark = preferString(prepared.senderRemark, existingMessage?.senderRemark),
-                                isSelf = prepared.isSelf || (existingMessage?.isSelf == true),
-                                type = preferString(prepared.type, existingMessage?.type).orEmpty(),
-                                text = preferString(prepared.text, existingMessage?.text).orEmpty(),
-                                html = preferString(prepared.html, existingMessage?.html),
-                                rawContentJson = preferJson(prepared.rawContentJson, existingMessage?.rawContentJson),
-                                rawMessageJson = preferJson(prepared.rawMessageJson, existingMessage?.rawMessageJson),
-                                replyToSourceMessageId = preferString(prepared.replyToSourceMessageId, existingMessage?.replyToSourceMessageId),
-                                replyReferenceMessageId = preferString(prepared.replyReferenceMessageId, existingMessage?.replyReferenceMessageId),
-                                replyPreviewText = preferString(prepared.replyPreviewText, existingMessage?.replyPreviewText),
-                                replyReferenceSenderUin = preferString(prepared.replyReferenceSenderUin, existingMessage?.replyReferenceSenderUin),
-                                replyReferenceSenderName = preferString(prepared.replyReferenceSenderName, existingMessage?.replyReferenceSenderName),
-                                replyReferenceTimestampSeconds = prepared.replyReferenceTimestampSeconds ?: existingMessage?.replyReferenceTimestampSeconds,
-                                replyReferenceContent = preferString(prepared.replyReferenceContent, existingMessage?.replyReferenceContent),
-                                jsonTitle = preferString(prepared.jsonTitle, existingMessage?.jsonTitle),
-                                jsonSummary = preferString(prepared.jsonSummary, existingMessage?.jsonSummary),
-                                jsonPreviewUrl = preferString(prepared.jsonPreviewUrl, existingMessage?.jsonPreviewUrl),
-                                callSummary = preferString(prepared.callSummary, existingMessage?.callSummary),
-                                recalled = prepared.recalled || (existingMessage?.recalled == true),
-                                system = prepared.system || (existingMessage?.system == true),
-                                searchText = mergeSearchText(prepared.searchText, existingMessage?.searchText),
-                            )
-                            val messageLocalId = if (identity == null) {
-                                insertedCount += 1
-                                dao.insertMessage(messageEntity)
-                            } else {
-                                mergedCount += 1
-                                dao.updateMessage(messageEntity)
-                                messageEntity.messageLocalId
-                            }
+                        // Collect sender info (single pass - replaces old pass 1)
+                        senderUidSet += listOfNotNull(prepared.senderUid)
+                        if (!prepared.isSelf) {
+                            prepared.senderUid?.takeIf { it.isNotBlank() }?.let(nonSelfParticipantUids::add)
+                            prepared.senderUin?.takeIf { it.isNotBlank() }?.let(nonSelfParticipantUins::add)
+                        }
 
-                            val participantResult = upsertParticipant(
-                                chatId = chatId,
-                                prepared = prepared,
-                                avatars = avatarMap,
-                                avatarCache = storageAvatarPaths,
+                        val messageStableKey = buildMessageStableKey(resolvedStableKey, prepared.sourceMessageId, prepared.fallbackSignature)
+                        val identity = existingIdentityByStableKey[messageStableKey]
+                            ?: prepared.sourceMessageId?.let { sid ->
+                                existingIdentityByStableKey.values.firstOrNull { it.sourceMessageId == sid }
+                            }
+                            ?: existingIdentityByStableKey.values.firstOrNull { it.fallbackSignature == prepared.fallbackSignature }
+                        val previewPresentation = buildImportedMessagePresentation(
+                            type = prepared.type,
+                            text = prepared.text,
+                            rawContentJson = prepared.rawContentJson,
+                            rawMessageJson = prepared.rawMessageJson,
+                            replyPreviewText = prepared.replyPreviewText,
+                            jsonTitle = prepared.jsonTitle,
+                            jsonSummary = prepared.jsonSummary,
+                            callSummary = prepared.callSummary,
+                            system = prepared.system,
+                            recalled = prepared.recalled,
+                            qFaceCatalog = qFaceCatalog,
+                        )
+
+                        chunkMessages += ChunkMessage(prepared, identity, messageStableKey, previewPresentation)
+
+                        importedProgress += 1
+                        processed += 1
+                    }
+                }
+
+                if (chunkMessages.isEmpty()) {
+                    saveCheckpoint(checkpointKey, chunkFile.name)
+                    continue
+                }
+
+                // === Phase 2: Copy resource files OUTSIDE the DB transaction ===
+                val resourcesByChunkMessage = mutableMapOf<ChunkMessage, List<CopiedResource>>()
+
+                for (cm in chunkMessages) {
+                    val reusedExistingResourceIds = mutableSetOf<Long>()
+                    val existingResources = if (cm.identity == null) {
+                        emptyList()
+                    } else {
+                        dao.getResourcesForMessage(cm.identity.messageLocalId)
+                    }
+                    val copiedResources = cm.prepared.resources.mapIndexedNotNull { ordinal, resource ->
+                        val reusedResource = findReusableResourceEntity(
+                            existing = existingResources,
+                            usedResourceIds = reusedExistingResourceIds,
+                            prepared = resource,
+                            ordinal = ordinal,
+                            chatStorageDir = chatStorageDir,
+                        )
+                        if (reusedResource != null) {
+                            reusedExistingResourceIds += reusedResource.resourceLocalId
+                            return@mapIndexedNotNull CopiedResource(
+                                type = resource.type,
+                                renderKind = resource.renderKind,
+                                originalFileName = resource.fileName,
+                                storedFileName = reusedResource.storedFileName,
+                                originalRelativePath = resource.originalRelativePath,
+                                storedRelativePath = reusedResource.storedRelativePath,
+                                mimeType = resource.mimeType,
+                                md5 = resource.md5,
+                                sizeBytes = resource.sizeBytes,
+                                width = resource.width,
+                                height = resource.height,
+                                durationSeconds = resource.durationSeconds,
+                            )
+                        }
+                        val copyAttempt = runCatching {
+                            copyResourceFile(
+                                importRoot = importRoot,
                                 chatStorageDir = chatStorageDir,
+                                prepared = cm.prepared,
+                                resource = resource,
+                                ordinal = ordinal,
                             )
-                            if (participantResult.avatarCopied) {
-                                copiedAvatarCount += 1
-                            }
-                            if (participantResult.avatarFailed) {
-                                failedAvatarCount += 1
-                                warnings += buildWarning(
-                                    kind = "avatar_copy",
-                                    detail = "发送者 ${prepared.senderDisplayName.ifBlank { prepared.senderUin ?: "未知" }} 的头像处理失败，已回退默认头像",
-                                    cause = null,
-                                )
-                            }
-
-                            val existingResources = if (identity == null) {
-                                emptyList()
-                            } else {
-                                dao.getResourcesForMessage(messageLocalId)
-                            }
-                            val reusedExistingResourceIds = mutableSetOf<Long>()
-                            val copiedResources = prepared.resources.mapIndexedNotNull { ordinal, resource ->
-                                val reusedResource = findReusableResourceEntity(
-                                    existing = existingResources,
-                                    usedResourceIds = reusedExistingResourceIds,
-                                    prepared = resource,
-                                    ordinal = ordinal,
-                                    chatStorageDir = chatStorageDir,
-                                )
-                                if (reusedResource != null) {
-                                    reusedExistingResourceIds += reusedResource.resourceLocalId
-                                    return@mapIndexedNotNull reusedResource
-                                }
-                                val copyAttempt = runCatching {
-                                    copyResourceFile(
-                                        importRoot = importRoot,
-                                        chatStorageDir = chatStorageDir,
-                                        prepared = prepared,
-                                        resource = resource,
-                                        ordinal = ordinal,
-                                    )
-                                }
-                                copyAttempt.exceptionOrNull()?.let { throwable ->
-                                    missingResourceCount += 1
+                        }
+                        copyAttempt.exceptionOrNull()?.let { throwable ->
+                            missingResourceCount += 1
+                            warnings += buildWarning(
+                                kind = "resource_copy",
+                                detail = "消息资源复制失败，已按缺失资源导入",
+                                cause = throwable,
+                            )
+                        }
+                        val copied = copyAttempt.getOrNull()
+                        if (copied == null) {
+                            if (copyAttempt.isSuccess) {
+                                missingResourceCount += 1
+                                if (warnings.none { it.contains("[resource_missing]") }) {
                                     warnings += buildWarning(
-                                        kind = "resource_copy",
-                                        detail = "消息资源复制失败，已按缺失资源导入",
-                                        cause = throwable,
+                                        kind = "resource_missing",
+                                        detail = "有资源文件缺失，相关消息将以降级形式显示",
+                                        cause = null,
                                     )
                                 }
-                                val copied = copyAttempt.getOrNull()
-                                if (copied == null) {
-                                    if (copyAttempt.isSuccess) {
-                                        missingResourceCount += 1
-                                        warnings += buildWarning(
-                                            kind = "resource_missing",
-                                            detail = "有资源文件缺失，相关消息将以降级形式显示",
-                                            cause = null,
-                                        )
-                                    }
-                                    return@mapIndexedNotNull null
-                                }
-                                copiedResourceCount += 1
+                            }
+                            return@mapIndexedNotNull null
+                        }
+                        copiedResourceCount += 1
+                        copied
+                    }
+                    resourcesByChunkMessage[cm] = copiedResources
+                }
+
+                // === Phase 3: Single DB transaction for the entire chunk ===
+                database.withTransaction {
+                    val newMessages = mutableListOf<ImportedMessageEntity>()
+                    val updateMessages = mutableListOf<ImportedMessageEntity>()
+                    val allResourceEntities = mutableListOf<ImportedResourceEntity>()
+                    val allSearchEntries = mutableListOf<ImportedMessageSearchEntity>()
+                    val newParticipants = mutableListOf<ImportedParticipantEntity>()
+                    val updateParticipants = mutableListOf<ImportedParticipantEntity>()
+                    val touchedMessageIds = mutableListOf<Long>()
+
+                    for (cm in chunkMessages) {
+                        val existingMessage = cm.identity?.messageLocalId?.let { existingMessageLocalId ->
+                            dao.getMessageByLocalId(existingMessageLocalId)
+                        }
+                        val messageEntity = ImportedMessageEntity(
+                            messageLocalId = cm.identity?.messageLocalId ?: 0L,
+                            chatId = chatId,
+                            messageStableKey = cm.messageStableKey,
+                            sourceMessageId = preferString(cm.prepared.sourceMessageId, existingMessage?.sourceMessageId),
+                            fallbackSignature = cm.prepared.fallbackSignature.ifBlank { existingMessage?.fallbackSignature.orEmpty() },
+                            sourceSeq = preferString(cm.prepared.seq, existingMessage?.sourceSeq),
+                            timestamp = cm.prepared.timestamp.takeIf { it > 0L } ?: existingMessage?.timestamp ?: 0L,
+                            timeIso = preferString(cm.prepared.timeIso, existingMessage?.timeIso),
+                            senderUid = preferString(cm.prepared.senderUid, existingMessage?.senderUid),
+                            senderUin = preferString(cm.prepared.senderUin, existingMessage?.senderUin),
+                            senderDisplayName = preferString(cm.prepared.senderDisplayName, existingMessage?.senderDisplayName).orEmpty(),
+                            senderNickname = preferString(cm.prepared.senderNickname, existingMessage?.senderNickname),
+                            senderRemark = preferString(cm.prepared.senderRemark, existingMessage?.senderRemark),
+                            isSelf = cm.prepared.isSelf || (existingMessage?.isSelf == true),
+                            type = preferString(cm.prepared.type, existingMessage?.type).orEmpty(),
+                            text = preferString(cm.prepared.text, existingMessage?.text).orEmpty(),
+                            html = preferString(cm.prepared.html, existingMessage?.html),
+                            rawContentJson = preferJson(cm.prepared.rawContentJson, existingMessage?.rawContentJson),
+                            rawMessageJson = preferJson(cm.prepared.rawMessageJson, existingMessage?.rawMessageJson),
+                            replyToSourceMessageId = preferString(cm.prepared.replyToSourceMessageId, existingMessage?.replyToSourceMessageId),
+                            replyReferenceMessageId = preferString(cm.prepared.replyReferenceMessageId, existingMessage?.replyReferenceMessageId),
+                            replyPreviewText = preferString(cm.prepared.replyPreviewText, existingMessage?.replyPreviewText),
+                            replyReferenceSenderUin = preferString(cm.prepared.replyReferenceSenderUin, existingMessage?.replyReferenceSenderUin),
+                            replyReferenceSenderName = preferString(cm.prepared.replyReferenceSenderName, existingMessage?.replyReferenceSenderName),
+                            replyReferenceTimestampSeconds = cm.prepared.replyReferenceTimestampSeconds ?: existingMessage?.replyReferenceTimestampSeconds,
+                            replyReferenceContent = preferString(cm.prepared.replyReferenceContent, existingMessage?.replyReferenceContent),
+                            jsonTitle = preferString(cm.prepared.jsonTitle, existingMessage?.jsonTitle),
+                            jsonSummary = preferString(cm.prepared.jsonSummary, existingMessage?.jsonSummary),
+                            jsonPreviewUrl = preferString(cm.prepared.jsonPreviewUrl, existingMessage?.jsonPreviewUrl),
+                            callSummary = preferString(cm.prepared.callSummary, existingMessage?.callSummary),
+                            recalled = cm.prepared.recalled || (existingMessage?.recalled == true),
+                            system = cm.prepared.system || (existingMessage?.system == true),
+                            searchText = mergeSearchText(cm.prepared.searchText, existingMessage?.searchText),
+                        )
+                        if (cm.identity == null) {
+                            insertedCount += 1
+                            newMessages += messageEntity
+                        } else {
+                            mergedCount += 1
+                            updateMessages += messageEntity
+                        }
+
+                        val messageLocalId = cm.identity?.messageLocalId ?: 0L
+                        touchedMessageIds += messageLocalId
+
+                        // Build resource/search entities only for MERGED messages (known ID).
+                        // For NEW messages, defer until insertMessages() returns generated IDs.
+                        if (cm.identity != null) {
+                            val existingResources = dao.getResourcesForMessage(messageLocalId)
+                            val freshCopiedResources = resourcesByChunkMessage[cm].orEmpty()
+                            val freshResourceEntities = freshCopiedResources.mapIndexed { index, copied ->
                                 ImportedResourceEntity(
-                                    messageLocalId = messageLocalId,
-                                    ordinal = ordinal,
+                                    messageLocalId = 0L,
+                                    ordinal = index,
                                     type = copied.type.name,
                                     renderKind = copied.renderKind.name,
                                     originalFileName = copied.originalFileName,
@@ -849,39 +892,144 @@ class ImportedChatRepository(
                             }
                             val resourceEntities = mergeResourceEntities(
                                 messageLocalId = messageLocalId,
-                                fresh = copiedResources,
+                                fresh = freshResourceEntities,
                                 existing = existingResources,
                             )
-                            dao.deleteResourcesForMessage(messageLocalId)
-                            if (resourceEntities.isNotEmpty()) {
-                                dao.insertResources(resourceEntities)
-                            }
+                            allResourceEntities += resourceEntities
 
-                            dao.deleteMessageSearch(messageLocalId)
-                            dao.replaceMessageSearch(
-                                ImportedMessageSearchEntity(
-                                    messageLocalId = messageLocalId,
-                                    chatId = chatId,
-                                    messageStableKey = messageStableKey,
-                                    searchText = previewPresentation.searchText,
-                                ),
+                            allSearchEntries += ImportedMessageSearchEntity(
+                                messageLocalId = messageLocalId,
+                                chatId = chatId,
+                                messageStableKey = cm.messageStableKey,
+                                searchText = cm.previewPresentation.searchText,
                             )
                         }
 
-                        importedProgress += 1
-                        if (importedProgress % 100 == 0 || importedProgress == totalMessages) {
-                            onProgress(
-                                ChatImportProgress(
-                                    stage = "import",
-                                    message = "正在写入本地数据库",
-                                    current = importedProgress,
-                                    total = totalMessages,
-                                ),
+                        // Participant upsert
+                        val pKey = buildParticipantStableKey(cm.prepared.senderUid, cm.prepared.senderUin, cm.prepared.senderDisplayName)
+                        val existingParticipant = participantMap[pKey]
+                        if (existingParticipant == null) {
+                            val result = upsertParticipant(
+                                chatId = chatId,
+                                prepared = cm.prepared,
+                                avatars = avatarMap,
+                                avatarCache = storageAvatarPaths,
+                                chatStorageDir = chatStorageDir,
                             )
+                            if (result.avatarCopied) copiedAvatarCount += 1
+                            if (result.avatarFailed) {
+                                failedAvatarCount += 1
+                                warnings += buildWarning(
+                                    kind = "avatar_copy",
+                                    detail = "发送者 ${cm.prepared.senderDisplayName.ifBlank { cm.prepared.senderUin ?: "未知" }} 的头像处理失败，已回退默认头像",
+                                    cause = null,
+                                )
+                            }
+                        } else {
+                            val avatarKey = cm.prepared.senderUin?.takeIf { avatarMap.containsKey(it) }
+                            val storedAvatar = avatarKey?.let { uin ->
+                                storageAvatarPaths[uin] ?: copyAvatarPayload(
+                                    chatStorageDir = chatStorageDir,
+                                    uin = uin,
+                                    payload = avatarMap.getValue(uin),
+                                )?.also { storageAvatarPaths[uin] = it; copiedAvatarCount += 1 }
+                            }
+                            val avatarPath = storedAvatar?.absolutePath ?: existingParticipant.avatarLocalPath
+                            val avatarMime = storedAvatar?.mimeType ?: existingParticipant.avatarMimeType
+                            val updated = existingParticipant.copy(
+                                uid = preferString(cm.prepared.senderUid, existingParticipant.uid),
+                                uin = preferString(cm.prepared.senderUin, existingParticipant.uin),
+                                displayName = preferString(cm.prepared.senderDisplayName, existingParticipant.displayName).orEmpty(),
+                                avatarLocalPath = avatarPath,
+                                avatarMimeType = avatarMime,
+                                isSelf = cm.prepared.isSelf || existingParticipant.isSelf,
+                                lastSeenAtMillis = maxOf(existingParticipant.lastSeenAtMillis, cm.prepared.timestamp),
+                            )
+                            updateParticipants += updated
+                            participantMap[pKey] = updated
                         }
                     }
+
+                    // Execute batch DB operations
+                    if (newMessages.isNotEmpty()) {
+                        val generatedIds = dao.insertMessages(newMessages)
+                        // Build resource and search entities for NEW messages using generated IDs
+                        newMessages.forEachIndexed { index, msg ->
+                            val generatedId = generatedIds.getOrElse(index) { 0L }
+                            if (generatedId > 0L) {
+                                val cm = chunkMessages.firstOrNull {
+                                    it.identity == null && it.messageStableKey == msg.messageStableKey
+                                }
+                                if (cm != null) {
+                                    val freshCopied = resourcesByChunkMessage[cm].orEmpty()
+                                    allResourceEntities += freshCopied.mapIndexed { ord, copied ->
+                                        ImportedResourceEntity(
+                                            messageLocalId = generatedId,
+                                            ordinal = ord,
+                                            type = copied.type.name,
+                                            renderKind = copied.renderKind.name,
+                                            originalFileName = copied.originalFileName,
+                                            storedFileName = copied.storedFileName,
+                                            originalRelativePath = copied.originalRelativePath,
+                                            storedRelativePath = copied.storedRelativePath,
+                                            mimeType = copied.mimeType,
+                                            md5 = copied.md5,
+                                            sizeBytes = copied.sizeBytes,
+                                            width = copied.width,
+                                            height = copied.height,
+                                            durationSeconds = copied.durationSeconds,
+                                        )
+                                    }
+                                    allSearchEntries += ImportedMessageSearchEntity(
+                                        messageLocalId = generatedId,
+                                        chatId = chatId,
+                                        messageStableKey = cm.messageStableKey,
+                                        searchText = cm.previewPresentation.searchText,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (updateMessages.isNotEmpty()) {
+                        dao.updateMessages(updateMessages)
+                    }
+                    // Delete old resources/search for touched messages (merged only), then batch insert
+                    val validTouchedIds = touchedMessageIds.filter { it > 0L }
+                    if (validTouchedIds.isNotEmpty()) {
+                        dao.deleteResourcesForMessages(validTouchedIds)
+                        dao.deleteMessageSearches(validTouchedIds)
+                    }
+                    if (allResourceEntities.isNotEmpty()) {
+                        dao.insertResources(allResourceEntities)
+                    }
+                    if (allSearchEntries.isNotEmpty()) {
+                        dao.replaceMessageSearchEntries(allSearchEntries)
+                    }
+                    if (newParticipants.isNotEmpty()) {
+                        dao.insertParticipants(newParticipants)
+                    }
+                    if (updateParticipants.isNotEmpty()) {
+                        dao.updateParticipants(updateParticipants)
+                    }
+                }
+
+                // Checkpoint after chunk completion
+                saveCheckpoint(checkpointKey, chunkFile.name)
+
+                if (importedProgress % 200 == 0 || importedProgress >= totalMessages) {
+                    onProgress(
+                        ChatImportProgress(
+                            stage = "import",
+                            message = "正在写入本地数据库",
+                            current = importedProgress,
+                            total = totalMessages,
+                        ),
+                    )
                 }
             }
+
+            // Clear checkpoint data after successful import
+            clearCheckpoint(checkpointKey)
 
             database.withTransaction {
                 val latestMessage = dao.getLatestMessage(chatId)
@@ -961,6 +1109,20 @@ class ImportedChatRepository(
                 putLong("chat_${anchor.chatId}_saved_at", anchor.savedAtMillis)
             }
         }
+    }
+
+    private fun loadCheckpoint(key: String): Set<String> {
+        return checkpointPrefs.getStringSet("chunks_$key", emptySet())?.toSet() ?: emptySet()
+    }
+
+    private fun saveCheckpoint(key: String, chunkName: String) {
+        val current = loadCheckpoint(key).toMutableSet()
+        current.add(chunkName)
+        checkpointPrefs.edit { putStringSet("chunks_$key", current) }
+    }
+
+    private fun clearCheckpoint(key: String) {
+        checkpointPrefs.edit { remove("chunks_$key") }
     }
 
     private suspend fun upsertParticipant(

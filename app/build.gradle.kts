@@ -50,7 +50,23 @@ gradle.taskGraph.whenReady {
 
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
 }
+
+// Load signing configuration from keystore.properties (if exists)
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val signingProps = if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.readLines()
+        .filter { it.contains("=") && !it.trimStart().startsWith("#") }
+        .associate { line ->
+            val idx = line.indexOf("=")
+            line.substring(0, idx).trim() to line.substring(idx + 1).trim()
+        }
+} else {
+    emptyMap()
+}
+val hasSigningConfig = signingProps.containsKey("storeFile")
+val resolvedStoreFile = if (hasSigningConfig) rootProject.file(signingProps["storeFile"]!!) else null
 
 android {
     namespace = "com.example.yingshi"
@@ -68,6 +84,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Default account emails for UI pre-fill (not security-sensitive)
+        buildConfigField("String", "DEFAULT_PRIMARY_ACCOUNT", "\"1085060329@qq.com\"")
+        buildConfigField("String", "DEFAULT_SECONDARY_ACCOUNT", "\"2926315047@qq.com\"")
     }
 
     compileOptions {
@@ -78,9 +98,22 @@ android {
         compose = true
         buildConfig = true
     }
+
+    signingConfigs {
+        create("release") {
+            if (hasSigningConfig) {
+                storeFile = resolvedStoreFile
+                storePassword = signingProps["storePassword"]
+                keyAlias = signingProps["keyAlias"]
+                keyPassword = signingProps["keyPassword"]
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"${normalizeDebugApiBaseUrl(defaultDebugApiBaseUrl)}\"")
+            buildConfigField("String", "DEFAULT_TEMP_PASSWORD", "\"123456\"")
         }
         create("profile") {
             initWith(getByName("release"))
@@ -88,7 +121,9 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
+            isShrinkResources = false
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"${normalizeDebugApiBaseUrl(defaultDebugApiBaseUrl)}\"")
+            buildConfigField("String", "DEFAULT_TEMP_PASSWORD", "\"123456\"")
         }
         create("optimizedDebug") {
             initWith(getByName("release"))
@@ -96,15 +131,22 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = false
             isMinifyEnabled = false
+            isShrinkResources = false
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"${normalizeDebugApiBaseUrl(defaultDebugApiBaseUrl)}\"")
+            buildConfigField("String", "DEFAULT_TEMP_PASSWORD", "\"123456\"")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
             buildConfigField("String", "DEFAULT_API_BASE_URL", "\"$releaseApiBaseUrl\"")
+            buildConfigField("String", "DEFAULT_TEMP_PASSWORD", "\"\"")
         }
     }
 }
@@ -137,6 +179,7 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.crashlytics)
     implementation("com.github.xxinPro:SilkDecoder:1.0")
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.room.runtime)

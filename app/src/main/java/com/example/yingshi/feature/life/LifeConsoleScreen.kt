@@ -1059,7 +1059,12 @@ private fun LifeMediaFrame(
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     val targetInitialPage = remember(slotKey, initialMediaId, slot.mediaItems) {
-        slot.mediaItems.indexOfFirst { it.mediaId == initialMediaId }.coerceAtLeast(0)
+        if (initialMediaId != null) {
+            slot.mediaItems.indexOfFirst { it.mediaId == initialMediaId }.coerceAtLeast(0)
+        } else {
+            // Default to the latest (last) media item
+            (slot.mediaItems.size - 1).coerceAtLeast(0)
+        }
     }
     val pagerState = rememberPagerState(
         initialPage = targetInitialPage.coerceAtMost((slot.mediaItems.size - 1).coerceAtLeast(0)),

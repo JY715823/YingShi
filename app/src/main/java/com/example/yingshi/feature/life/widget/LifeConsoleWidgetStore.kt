@@ -20,6 +20,7 @@ internal object LifeConsoleWidgetStore {
     private const val KEY_SNAPSHOT_JSON = "snapshot_json"
     private const val KEY_STATUS = "status"
     private const val KEY_INDEX_PREFIX = "index_"
+    private const val KEY_COUNT_PREFIX = "count_"
     private const val THUMB_TARGET_PX = 720
 
     private val gson = Gson()
@@ -50,7 +51,7 @@ internal object LifeConsoleWidgetStore {
     fun currentIndex(context: Context, slotKey: LifeConsoleWidgetSlotKey, itemCount: Int): Int {
         if (itemCount <= 0) return 0
         return prefs(context)
-            .getInt(KEY_INDEX_PREFIX + slotKey.storageKey, 0)
+            .getInt(KEY_INDEX_PREFIX + slotKey.storageKey, itemCount - 1)
             .coerceIn(0, itemCount - 1)
     }
 
@@ -202,8 +203,17 @@ internal object LifeConsoleWidgetStore {
         val editor = prefs(context).edit()
         LifeConsoleWidgetSlotKey.entries.forEach { slotKey ->
             val count = snapshot.slot(slotKey).mediaItems.size
-            val index = currentIndex(context, slotKey, count)
-            editor.putInt(KEY_INDEX_PREFIX + slotKey.storageKey, index)
+            val key = KEY_INDEX_PREFIX + slotKey.storageKey
+            val countKey = KEY_COUNT_PREFIX + slotKey.storageKey
+            val prevCount = prefs(context).getInt(countKey, 0)
+            if (count != prevCount && count > 0) {
+                // Media list changed (sync): jump to the latest item
+                editor.putInt(key, count - 1)
+            } else if (count <= 0) {
+                editor.remove(key)
+            }
+            // else: count unchanged — keep user's current position
+            editor.putInt(countKey, count)
         }
         editor.apply()
     }

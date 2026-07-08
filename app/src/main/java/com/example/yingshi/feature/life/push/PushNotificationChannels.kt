@@ -9,17 +9,23 @@ import android.os.Build
 import android.util.Log
 
 object PushNotificationChannels {
-    /** Non-vibrating channel for general notifications (photos, system, etc.) */
-    const val SHARED_UPDATES_CHANNEL_ID = "yingshi_shared_updates_heads_up_v8"
+    /** Vibrating channel for general notifications (photos, system, etc.) — v9: vibration enabled for all */
+    const val SHARED_UPDATES_CHANNEL_ID = "yingshi_shared_updates_heads_up_v9"
 
     /** Vibrating channel for life trace notifications (人物痕迹 / 吃饭 / 排便) */
-    const val LIFE_TRACE_CHANNEL_ID = "yingshi_life_trace_v8"
+    const val LIFE_TRACE_CHANNEL_ID = "yingshi_life_trace_v9"
+
+    // Historical channel IDs that should be cleaned up on upgrade
+    private val DEPRECATED_CHANNEL_IDS = listOf(
+        "yingshi_shared_updates_heads_up_v8",
+        "yingshi_life_trace_v8",
+    )
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // --- General channel (no vibration, heads-up) ---
+        // --- General channel (vibration enabled, heads-up) ---
         manager.getNotificationChannel(SHARED_UPDATES_CHANNEL_ID)?.let { existing ->
             if (existing.importance < NotificationManager.IMPORTANCE_HIGH) {
                 Log.e("PushChannels", "General channel importance too low (${existing.importance}), recreating.")
@@ -32,7 +38,8 @@ object PushNotificationChannels {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = "照片和生活模块的共享提醒"
-            enableVibration(false)
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0L, 180L, 80L, 180L)
             enableLights(true)
             setShowBadge(true)
             setSound(
@@ -74,6 +81,14 @@ object PushNotificationChannels {
             )
         }
         manager.createNotificationChannel(traceChannel)
+
+        // --- Cleanup deprecated channels (v8 and earlier) ---
+        DEPRECATED_CHANNEL_IDS.forEach { oldId ->
+            manager.getNotificationChannel(oldId)?.let {
+                Log.e("PushChannels", "Cleaning up deprecated channel: $oldId")
+                manager.deleteNotificationChannel(oldId)
+            }
+        }
 
         // Diagnostic: verify channels after creation — use Log.e for visibility
         val general = manager.getNotificationChannel(SHARED_UPDATES_CHANNEL_ID)

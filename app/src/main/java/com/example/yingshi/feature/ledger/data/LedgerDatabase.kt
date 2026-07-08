@@ -20,8 +20,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LedgerDeletedItemEntity::class,
         LedgerRecurringRuleEntity::class,
         LedgerRecurringOccurrenceEntity::class,
+        LedgerSyncChangelogEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(LedgerTypeConverters::class)
@@ -38,7 +39,7 @@ abstract class LedgerDatabase : RoomDatabase() {
                     context.applicationContext,
                     LedgerDatabase::class.java,
                     "yingshi-ledger.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
         }
     }
@@ -93,46 +94,63 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS ledger_sync_changelog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                tableName TEXT NOT NULL,
+                rowId TEXT NOT NULL,
+                isDelete INTEGER NOT NULL DEFAULT 0,
+                changedAtMillis INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ledger_sync_changelog_tableName ON ledger_sync_changelog(tableName)")
+    }
+}
+
 class LedgerTypeConverters {
     @TypeConverter
     fun transactionTypeToString(value: LedgerTransactionType): String = value.name
 
     @TypeConverter
     fun stringToTransactionType(value: String): LedgerTransactionType =
-        LedgerTransactionType.valueOf(value)
+        LedgerTransactionType.entries.firstOrNull { it.name == value } ?: LedgerTransactionType.EXPENSE
 
     @TypeConverter
     fun categoryTypeToString(value: LedgerCategoryType): String = value.name
 
     @TypeConverter
     fun stringToCategoryType(value: String): LedgerCategoryType =
-        LedgerCategoryType.valueOf(value)
+        LedgerCategoryType.entries.firstOrNull { it.name == value } ?: LedgerCategoryType.EXPENSE
 
     @TypeConverter
     fun accountTypeToString(value: LedgerAccountType): String = value.name
 
     @TypeConverter
     fun stringToAccountType(value: String): LedgerAccountType =
-        LedgerAccountType.valueOf(value)
+        LedgerAccountType.entries.firstOrNull { it.name == value } ?: LedgerAccountType.OTHER
 
     @TypeConverter
     fun budgetPeriodToString(value: LedgerBudgetPeriod): String = value.name
 
     @TypeConverter
     fun stringToBudgetPeriod(value: String): LedgerBudgetPeriod =
-        LedgerBudgetPeriod.valueOf(value)
+        LedgerBudgetPeriod.entries.firstOrNull { it.name == value } ?: LedgerBudgetPeriod.MONTH
 
     @TypeConverter
     fun deletedItemTypeToString(value: LedgerDeletedItemType): String = value.name
 
     @TypeConverter
     fun stringToDeletedItemType(value: String): LedgerDeletedItemType =
-        LedgerDeletedItemType.valueOf(value)
+        LedgerDeletedItemType.entries.firstOrNull { it.name == value } ?: LedgerDeletedItemType.TRANSACTION
 
     @TypeConverter
     fun recurringFrequencyToString(value: LedgerRecurringFrequency): String = value.name
 
     @TypeConverter
     fun stringToRecurringFrequency(value: String): LedgerRecurringFrequency =
-        LedgerRecurringFrequency.valueOf(value)
+        LedgerRecurringFrequency.entries.firstOrNull { it.name == value } ?: LedgerRecurringFrequency.DAILY
 }

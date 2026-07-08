@@ -82,11 +82,11 @@ object PushNotificationPresenter {
         // failure and heads-up suppression. All sound/vibration is configured
         // at the channel level only (see PushNotificationChannels).
         //
-        // setFullScreenIntent() is used for life routes to force MIUI to show
-        // heads-up banners. MIUI suppresses IMPORTANCE_HIGH heads-up unless the
-        // app is manually whitelisted or the notification uses fullScreenIntent.
+        // setFullScreenIntent() is applied to ALL notifications to force MIUI/EMUI
+        // to show heads-up banners (QQ/WeChat style). Without it, IMPORTANCE_HIGH
+        // alone is often suppressed on OEM ROMs.
         // When screen is on → shows as heads-up banner. When screen is off →
-        // launches the dispatch activity directly (good UX: user sees the photo).
+        // launches the target activity directly.
         val notification = NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
@@ -94,11 +94,7 @@ object PushNotificationPresenter {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .apply {
-                if (isLifeRoute) {
-                    setFullScreenIntent(contentPI, true)
-                }
-            }
+            .setFullScreenIntent(contentPI, true)
             .setAutoCancel(true)
             .setContentIntent(contentPI)
             .build()

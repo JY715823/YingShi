@@ -35,11 +35,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.Timelapse
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -205,6 +208,7 @@ fun LedgerScreen(
         drawerContent = {
             LedgerDrawer(
                 uiState = uiState,
+                currentRoute = route,
                 onNavigate = {
                     route = it.name
                     scope.launch { drawerState.close() }
@@ -632,6 +636,7 @@ private fun LedgerHomeScreen(
                             LedgerEmptyState(
                                 title = "当月暂无账单",
                                 summary = "点右下角记一笔，账单会按日期自动分组。",
+                                onAdd = onAdd,
                             )
                         }
                     } else {
@@ -675,19 +680,19 @@ private fun LedgerHomeScreen(
                 .size(58.dp)
                 .yingShiClickable(
                     shape = CircleShape,
-                    pressedScale = 0.94f,
+                    pressedScale = 0.90f,
                     onClick = onAdd,
                 ),
             shape = CircleShape,
-            color = LedgerPrimaryAction,
+            color = LedgerHeaderGreen,
             border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.82f)),
-            shadowElevation = 2.dp,
+            shadowElevation = 8.dp,
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = LedgerActionIcons.Add,
                     contentDescription = "记一笔",
-                    tint = LedgerOnPrimaryAction,
+                    tint = LedgerRaisedSurface,
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -777,8 +782,8 @@ private fun LedgerHomeHeader(
             .fillMaxWidth()
             .background(LedgerGroupedHeader)
             .statusBarsPadding()
-            .padding(horizontal = 14.dp)
-            .padding(top = 6.dp, bottom = 14.dp),
+            .padding(horizontal = 10.dp)
+            .padding(top = 8.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
@@ -815,7 +820,7 @@ private fun LedgerHomeHeader(
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Surface(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(24.dp),
                     color = LedgerRaisedSurface.copy(alpha = 0.88f),
                     border = BorderStroke(1.dp, LedgerGlassStroke),
                 ) {
@@ -900,19 +905,19 @@ private fun LedgerHeaderMetric(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.padding(start = 14.dp, bottom = 4.dp),
+        modifier = modifier.padding(start = 12.dp, bottom = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             text = title,
             color = LedgerMuted,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
             text = value,
             color = LedgerHeaderGreen,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
     }
@@ -953,7 +958,7 @@ private fun LedgerQuickActionsRow(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(LedgerPrimaryAction),
+                            .background(LedgerGreenSoft),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -987,13 +992,14 @@ private fun LedgerDayGroupCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = LedgerRaisedSurface,
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                     .background(LedgerGroupedHeader)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1005,21 +1011,46 @@ private fun LedgerDayGroupCard(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
-                    text = "收 ${formatAmountValue(income)}",
-                    color = LedgerSubtleText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.ArrowUpward,
+                        contentDescription = "收入",
+                        tint = LedgerIncomeGreen,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        text = "收 $currencySymbol${formatAmountValue(income)}",
+                        color = LedgerIncomeGreen,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 Spacer(Modifier.width(20.dp))
-                Text(
-                    text = "支 ${formatAmountValue(expense)}",
-                    color = LedgerSubtleText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.ArrowDownward,
+                        contentDescription = "支出",
+                        tint = LedgerExpenseRed,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        text = "支 $currencySymbol${formatAmountValue(expense)}",
+                        color = LedgerExpenseRed,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
-            transactions.forEach { transaction ->
+            transactions.forEachIndexed { index, transaction ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 14.dp),
+                        thickness = 0.5.dp,
+                        color = LedgerDivider,
+                    )
+                }
                 LedgerTransactionListRow(
                     transaction = transaction,
                     currencySymbol = currencySymbol,
@@ -1039,14 +1070,14 @@ fun LedgerTransactionListRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .yingShiClickable(enabled = onClick != null, onClick = { onClick?.invoke() })
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(40.dp)
                 .clip(CircleShape)
                 .background((transaction.category?.color?.let(::ledgerColor) ?: LedgerHeaderGreen).copy(alpha = 0.92f)),
             contentAlignment = Alignment.Center,
@@ -1059,7 +1090,7 @@ fun LedgerTransactionListRow(
                 },
                 contentDescription = null,
                 tint = LedgerRaisedSurface,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
         Column(modifier = Modifier.weight(1f)) {
@@ -1090,9 +1121,9 @@ fun LedgerTransactionListRow(
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = when (transaction.type) {
-                    LedgerTransactionType.EXPENSE -> "-${formatAmountValue(transaction.amountCents)}"
-                    LedgerTransactionType.INCOME -> formatAmountValue(transaction.amountCents)
-                    LedgerTransactionType.TRANSFER -> formatAmountValue(transaction.amountCents)
+                    LedgerTransactionType.EXPENSE -> "-$currencySymbol${formatAmountValue(transaction.amountCents)}"
+                    LedgerTransactionType.INCOME -> "+$currencySymbol${formatAmountValue(transaction.amountCents)}"
+                    LedgerTransactionType.TRANSFER -> "$currencySymbol${formatAmountValue(transaction.amountCents)}"
                 },
                 color = when (transaction.type) {
                     LedgerTransactionType.EXPENSE -> LedgerExpenseRed
@@ -1188,6 +1219,7 @@ private fun LedgerMoreSheetAction(
 @Composable
 private fun LedgerDrawer(
     uiState: LedgerUiState,
+    currentRoute: String,
     onNavigate: (LedgerRoute) -> Unit,
 ) {
     Surface(
@@ -1229,18 +1261,18 @@ private fun LedgerDrawer(
                 }
             }
             drawerSection("功能")
-            drawerItem("日历", "calendar", LedgerRoute.CALENDAR, onNavigate)
-            drawerItem("搜索", "search", LedgerRoute.SEARCH, onNavigate)
-            drawerItem("统计", "stats", LedgerRoute.STATS, onNavigate)
+            drawerItem("日历", "calendar", LedgerRoute.CALENDAR, currentRoute, onNavigate)
+            drawerItem("搜索", "search", LedgerRoute.SEARCH, currentRoute, onNavigate)
+            drawerItem("统计", "stats", LedgerRoute.STATS, currentRoute, onNavigate)
             drawerSection("管理")
-            drawerItem("账本管理", "wallet", LedgerRoute.BOOKS, onNavigate)
-            drawerItem("资产管理", "asset", LedgerRoute.ASSETS, onNavigate)
-            drawerItem("分类管理", "category", LedgerRoute.CATEGORIES, onNavigate)
-            drawerItem("预算管理", "budget", LedgerRoute.BUDGET, onNavigate)
-            drawerItem("周期记账", "timelapse", LedgerRoute.RECURRING, onNavigate)
-            drawerItem("记账导入", "import", LedgerRoute.IMPORT, onNavigate)
-            drawerItem("记账设置", "settings", LedgerRoute.SETTINGS, onNavigate)
-            drawerItem("回收站", "trash", LedgerRoute.TRASH, onNavigate)
+            drawerItem("账本管理", "wallet", LedgerRoute.BOOKS, currentRoute, onNavigate)
+            drawerItem("资产管理", "asset", LedgerRoute.ASSETS, currentRoute, onNavigate)
+            drawerItem("分类管理", "category", LedgerRoute.CATEGORIES, currentRoute, onNavigate)
+            drawerItem("预算管理", "budget", LedgerRoute.BUDGET, currentRoute, onNavigate)
+            drawerItem("周期记账", "timelapse", LedgerRoute.RECURRING, currentRoute, onNavigate)
+            drawerItem("记账导入", "import", LedgerRoute.IMPORT, currentRoute, onNavigate)
+            drawerItem("记账设置", "settings", LedgerRoute.SETTINGS, currentRoute, onNavigate)
+            drawerItem("回收站", "trash", LedgerRoute.TRASH, currentRoute, onNavigate)
         }
     }
 }
@@ -1260,15 +1292,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.drawerItem(
     title: String,
     iconKey: String,
     route: LedgerRoute,
+    currentRoute: String,
     onNavigate: (LedgerRoute) -> Unit,
 ) {
     item {
+        val isSelected = currentRoute == route.name
         NavigationDrawerItem(
             label = { Text(title, style = MaterialTheme.typography.bodyMedium) },
-            selected = false,
-            icon = { Icon(ledgerIcon(iconKey), contentDescription = null, modifier = Modifier.size(18.dp)) },
+            selected = isSelected,
+            icon = { Icon(ledgerIcon(iconKey), contentDescription = null, modifier = Modifier.size(20.dp)) },
             onClick = { onNavigate(route) },
             colors = NavigationDrawerItemDefaults.colors(
+                selectedContainerColor = LedgerPrimaryAction,
+                selectedIconColor = LedgerHeaderGreen,
                 unselectedContainerColor = Color.Transparent,
                 unselectedIconColor = LedgerHeaderGreen,
             ),
@@ -1293,11 +1329,11 @@ fun LedgerPageScaffold(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-                Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(24.dp))
+                Icon(LedgerActionIcons.Back, contentDescription = "返回", modifier = Modifier.size(20.dp))
             }
             Box(
                 modifier = Modifier.weight(1f),
@@ -1306,7 +1342,7 @@ fun LedgerPageScaffold(
                 LedgerBookTitleWithCreator(
                     title = title,
                     creatorUserId = creatorUserId,
-                    textStyle = MaterialTheme.typography.titleMedium,
+                    textStyle = MaterialTheme.typography.titleLarge,
                     textColor = Color.Unspecified,
                     fontWeight = FontWeight.Bold,
                     avatarSize = 16.dp,
@@ -1505,7 +1541,7 @@ private fun LedgerImportSummaryCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = if (preview.invalidCount > 0) LedgerMemoryWash else LedgerGlowWash,
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(24.dp),
         border = BorderStroke(
             1.dp,
             if (preview.invalidCount > 0) LedgerMemoryContainer else LedgerGlassStroke.copy(alpha = 0.72f),
@@ -1558,7 +1594,7 @@ private fun LedgerImportPreviewRowCard(row: LedgerImportPreviewRow) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = if (valid) LedgerRaisedSurface else LedgerMemoryWash,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, if (valid) LedgerDivider.copy(alpha = 0.72f) else LedgerMemoryContainer),
     ) {
         Row(
@@ -1605,11 +1641,11 @@ private fun LedgerImportPreviewRowCard(row: LedgerImportPreviewRow) {
 }
 
 @Composable
-private fun LedgerEmptyState(title: String, summary: String) {
+private fun LedgerEmptyState(title: String, summary: String, onAdd: (() -> Unit)? = null) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 40.dp),
+            .padding(horizontal = 20.dp, vertical = 80.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -1620,10 +1656,27 @@ private fun LedgerEmptyState(title: String, summary: String) {
                 .background(LedgerGreenSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.Timelapse, contentDescription = null, tint = LedgerHeaderGreen, modifier = Modifier.size(28.dp))
+            Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = LedgerHeaderGreen, modifier = Modifier.size(28.dp))
         }
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(summary, style = MaterialTheme.typography.bodySmall, color = LedgerSubtleText, textAlign = TextAlign.Center)
+        if (onAdd != null) {
+            Spacer(Modifier.height(6.dp))
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(18.dp))
+                    .clickable { onAdd() },
+                color = LedgerHeaderGreen,
+            ) {
+                Text(
+                    text = "立即记账",
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                    color = LedgerRaisedSurface,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
