@@ -36,6 +36,10 @@ data class RemoteMedia(
     val recordOwnerUserId: String? = null,
     val uploadedByUserId: String? = null,
     val access: List<RemoteMediaAccess> = emptyList(),
+    // FR-18: optional location tag (nullable for backward compat)
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
 ) {
     val postIds: List<String>
         get() = smallAlbumIds

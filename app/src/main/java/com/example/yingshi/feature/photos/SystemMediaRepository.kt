@@ -6,7 +6,6 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
@@ -24,8 +23,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 interface SystemMediaRepository {
-    fun peekCachedMedia(): List<SystemMediaItem>?
+    fun peekCachedMedia(maxAgeMillis: Long = 0L): List<SystemMediaItem>?
     suspend fun loadMedia(forceRefresh: Boolean = false): List<SystemMediaItem>
+    suspend fun loadAlbums(): List<SystemMediaAlbum>
 }
 
 internal fun preloadSystemMediaCache(context: Context) {
@@ -39,8 +39,11 @@ internal fun preloadSystemMediaCache(context: Context) {
     }
 }
 
-internal fun invalidateSystemMediaMetadataCache(context: Context? = null) {
-    LocalSystemMediaQueryCache.invalidate(context)
+internal fun invalidateSystemMediaMetadataCache(
+    context: Context? = null,
+    clearDisk: Boolean = false,
+) {
+    LocalSystemMediaQueryCache.invalidate(context, clearDisk)
 }
 
 class LocalSystemMediaRepository(
@@ -51,9 +54,9 @@ class LocalSystemMediaRepository(
     ),
 ) : SystemMediaRepository {
 
-    override fun peekCachedMedia(): List<SystemMediaItem>? {
+    override fun peekCachedMedia(maxAgeMillis: Long): List<SystemMediaItem>? {
         LocalSystemMediaBridgeRepository.warmPersistentImportOverlay(appContext)
-        return LocalSystemMediaQueryCache.peek(appContext)
+        return LocalSystemMediaQueryCache.peek(appContext, maxAgeMillis)
     }
 
     override suspend fun loadMedia(forceRefresh: Boolean): List<SystemMediaItem> {
@@ -62,7 +65,7 @@ class LocalSystemMediaRepository(
             throw SecurityException("Missing system media permission.")
         }
         if (!forceRefresh) {
-            LocalSystemMediaQueryCache.peek(appContext)?.let { return it }
+            LocalSystemMediaQueryCache.peek(appContext, maxAgeMillis = 0L)?.let { return it }
         }
         val localItems = dataSource.queryMedia()
             .sortedByDescending { it.displayTimeMillis }
@@ -71,6 +74,19 @@ class LocalSystemMediaRepository(
             .also { items ->
                 LocalSystemMediaQueryCache.store(appContext, items)
             }
+    }
+
+    override suspend fun loadAlbums(): List<SystemMediaAlbum> {
+        if (!hasSystemMediaReadAccess(appContext)) {
+            return emptyList()
+        }
+        val cachedItems = LocalSystemMediaQueryCache.peek(appContext, maxAgeMillis = 0L)
+        val items = cachedItems ?: run {
+            val localItems = dataSource.queryMedia().sortedByDescending { it.displayTimeMillis }
+            LocalSystemMediaQueryCache.store(appContext, localItems)
+            localItems
+        }
+        return items.groupAlbumsFromItems()
     }
 
     private suspend fun List<SystemMediaItem>.withAppImportStatus(allowRemoteRefresh: Boolean): List<SystemMediaItem> {
@@ -110,23 +126,34 @@ class LocalSystemMediaRepository(
             val status = statuses[item.stableImportSourceFingerprint()]
                 ?: statuses[item.stableImportMetadataSourceFingerprint()]
             if (status == null) {
-                LocalSystemMediaBridgeRepository.forgetImportStatus(item)
-                return@map item.copy(
-                    importedAppMediaId = null,
-                    linkedSmallAlbumIds = emptyList(),
-                    linkedPostIds = emptyList(),
+                // API 未匹配时，先查本地 overlay 缓存，保留已知的导入状态
+                val localStatus = LocalSystemMediaBridgeRepository.peekImportStatus(item)
+                if (localStatus != null) {
+                    item.copy(
+                        importedAppMediaId = localStatus.first,
+                        linkedSmallAlbumIds = localStatus.second,
+                        linkedPostIds = localStatus.second,
+                    )
+                } else {
+                    LocalSystemMediaBridgeRepository.forgetImportStatus(item)
+                    item.copy(
+                        importedAppMediaId = null,
+                        linkedSmallAlbumIds = emptyList(),
+                        linkedPostIds = emptyList(),
+                    )
+                }
+            } else {
+                LocalSystemMediaBridgeRepository.rememberImportStatus(
+                    item = item,
+                    appMediaId = status.first,
+                    smallAlbumIds = status.second,
+                )
+                item.copy(
+                    importedAppMediaId = status.first,
+                    linkedSmallAlbumIds = status.second,
+                    linkedPostIds = status.second,
                 )
             }
-            LocalSystemMediaBridgeRepository.rememberImportStatus(
-                item = item,
-                appMediaId = status.first,
-                smallAlbumIds = status.second,
-            )
-            item.copy(
-                importedAppMediaId = status.first,
-                linkedSmallAlbumIds = status.second,
-                linkedPostIds = status.second,
-            )
         }
     }
 }
@@ -140,27 +167,54 @@ interface SystemMediaDataSource {
 private object LocalSystemMediaQueryCache {
     private const val PreferencesName = "system_media_metadata_cache"
     private const val ItemsKey = "items_json"
-    private const val MaxCachedItems = 2000
+    private const val StoredAtKey = "stored_at_millis"
+    private const val MaxCachedItems = 10000
 
     private var memoryItems: List<SystemMediaItem>? = null
+    private var memoryStoredAtMillis: Long = 0L
+    private var cachedContext: Context? = null
 
-    fun peek(context: Context): List<SystemMediaItem>? {
-        memoryItems?.let { return it }
-        val restoredItems = readFromDisk(context)
+    @Synchronized
+    fun peek(context: Context, maxAgeMillis: Long = 0L): List<SystemMediaItem>? {
+        cachedContext = context.applicationContext
+        memoryItems?.let { items ->
+            if (maxAgeMillis <= 0L || System.currentTimeMillis() - memoryStoredAtMillis <= maxAgeMillis) {
+                return items
+            }
+            return null
+        }
+        val prefs = preferences(context)
+        val storedAt = prefs.getLong(StoredAtKey, 0L)
+        if (maxAgeMillis > 0L && storedAt > 0L && System.currentTimeMillis() - storedAt > maxAgeMillis) {
+            return null
+        }
+        val restoredItems = readFromDisk(prefs) ?: return null
         memoryItems = restoredItems
+        memoryStoredAtMillis = storedAt
         return restoredItems
     }
 
+    @Synchronized
     fun store(context: Context, items: List<SystemMediaItem>) {
+        cachedContext = context.applicationContext
         val normalizedItems = items.take(MaxCachedItems)
+        val now = System.currentTimeMillis()
         memoryItems = normalizedItems
-        writeToDisk(context, normalizedItems)
+        memoryStoredAtMillis = now
+        writeToDisk(context, normalizedItems, now)
     }
 
-    fun invalidate(context: Context? = null) {
+    @Synchronized
+    fun invalidate(context: Context? = null, clearDisk: Boolean = false) {
         memoryItems = null
-        context?.let {
-            preferences(it).edit().remove(ItemsKey).apply()
+        memoryStoredAtMillis = 0L
+        val effectiveContext = context ?: cachedContext
+        effectiveContext?.let { ctx ->
+            if (clearDisk) {
+                preferences(ctx).edit().clear().apply()
+            } else {
+                preferences(ctx).edit().remove(ItemsKey).remove(StoredAtKey).apply()
+            }
         }
     }
 
@@ -168,8 +222,8 @@ private object LocalSystemMediaQueryCache {
         return context.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
     }
 
-    private fun readFromDisk(context: Context): List<SystemMediaItem>? {
-        val raw = preferences(context).getString(ItemsKey, null)?.takeIf { it.isNotBlank() }
+    private fun readFromDisk(prefs: SharedPreferences): List<SystemMediaItem>? {
+        val raw = prefs.getString(ItemsKey, null)?.takeIf { it.isNotBlank() }
             ?: return null
         return runCatching {
             val array = JSONArray(raw)
@@ -184,10 +238,14 @@ private object LocalSystemMediaQueryCache {
     private fun writeToDisk(
         context: Context,
         items: List<SystemMediaItem>,
+        storedAtMillis: Long,
     ) {
         val array = JSONArray()
         items.forEach { item -> array.put(item.toCacheJson()) }
-        preferences(context).edit().putString(ItemsKey, array.toString()).apply()
+        preferences(context).edit()
+            .putString(ItemsKey, array.toString())
+            .putLong(StoredAtKey, storedAtMillis)
+            .apply()
     }
 
     private fun SystemMediaItem.toCacheJson(): JSONObject {
@@ -209,7 +267,6 @@ private object LocalSystemMediaQueryCache {
             .put("width", width)
             .put("height", height)
             .put("aspectRatio", aspectRatio.toDouble())
-            .put("importedAppMediaId", importedAppMediaId)
             .put("linkedSmallAlbumIds", JSONArray(linkedSmallAlbumIds))
             .put("videoDurationMillis", videoDurationMillis)
             .put("uploadedByUserId", uploadedByUserId)
@@ -420,40 +477,21 @@ class MediaStoreSystemMediaDataSource(
 
 }
 
-private fun paletteForSystemMediaId(mediaStoreId: Long): PhotoThumbnailPalette {
-    val palettes = listOf(
-        PhotoThumbnailPalette(
-            start = Color(0xFFB8D8F8),
-            end = Color(0xFF7EA6DF),
-            accent = Color(0xFFE8F2FF),
-        ),
-        PhotoThumbnailPalette(
-            start = Color(0xFFF5D2C3),
-            end = Color(0xFFE7A08D),
-            accent = Color(0xFFFFF0E8),
-        ),
-        PhotoThumbnailPalette(
-            start = Color(0xFFCFE5B9),
-            end = Color(0xFF84B38A),
-            accent = Color(0xFFEFF8E1),
-        ),
-        PhotoThumbnailPalette(
-            start = Color(0xFFD8D0F2),
-            end = Color(0xFF8FA0D8),
-            accent = Color(0xFFF0EDFF),
-        ),
-        PhotoThumbnailPalette(
-            start = Color(0xFFE7CFB4),
-            end = Color(0xFFB98B63),
-            accent = Color(0xFFF7E8D4),
-        ),
-        PhotoThumbnailPalette(
-            start = Color(0xFFC5D1DA),
-            end = Color(0xFF8095A7),
-            accent = Color(0xFFE7F0F6),
-        ),
-    )
-    return palettes[(mediaStoreId % palettes.size).toInt()]
+private fun List<SystemMediaItem>.groupAlbumsFromItems(): List<SystemMediaAlbum> {
+    val bucketMap = mutableMapOf<String?, MutableList<SystemMediaItem>>()
+    forEach { item ->
+        bucketMap.getOrPut(item.bucketName) { mutableListOf() }.add(item)
+    }
+    return bucketMap.map { (bucketName, items) ->
+        val cover = items.firstOrNull()
+        SystemMediaAlbum(
+            bucketName = bucketName,
+            displayName = bucketName ?: "未分组",
+            mediaCount = items.size,
+            coverUri = cover?.uri,
+            coverMediaType = cover?.type ?: SystemMediaType.IMAGE,
+        )
+    }.sortedByDescending { it.mediaCount }
 }
 
 private data class SystemMediaDateParts(
@@ -481,9 +519,6 @@ private fun android.database.Cursor.getStringOrEmpty(index: Int): String {
     return if (index < 0 || isNull(index)) "" else getString(index)
 }
 
-private fun android.database.Cursor.getLongOrNull(index: Int): Long? {
-    return if (index < 0 || isNull(index)) null else getLong(index)
-}
 
 private fun android.database.Cursor.getIntOrNull(index: Int): Int? {
     return if (index < 0 || isNull(index)) null else getInt(index)

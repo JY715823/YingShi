@@ -14,11 +14,24 @@ data class RemoteLifeConsoleMediaSlot(
     val mediaItems: List<RemoteMedia>,
 )
 
+// Round 7: 单条大便事件 (今日页大便页每条单独展示)
+data class RemoteLifeConsoleBowelEvent(
+    val bowelEventId: String,
+    val userId: String,
+    val occurredAtMillis: Long,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
+)
+
 data class RemoteLifeConsoleBowelUserSummary(
     val userId: String,
     val count: Int,
     val latestOccurredAtMillis: Long?,
     val eventTimesMillis: List<Long>,
+    val latestLocationLabel: String? = null,
+    // Round 7: 当日所有大便事件列表 (含完整位置信息), 用于今日页大便页每条单独展示
+    val events: List<RemoteLifeConsoleBowelEvent>? = null,
 )
 
 data class RemoteLifeConsoleBowelSummary(
@@ -42,12 +55,14 @@ data class RemoteLifeConsoleHistoryDay(
     val displayLabel: String,
     val selfMedia: List<RemoteMedia>,
     val partnerMedia: List<RemoteMedia>,
+    val locationLabel: String? = null,
 )
 
 data class RemoteLifeConsoleBowelHistoryDay(
     val date: String,
     val displayLabel: String,
     val users: List<RemoteLifeConsoleBowelUserSummary>,
+    val locationLabel: String? = null,
 )
 
 data class RemoteLifeConsoleHistory(

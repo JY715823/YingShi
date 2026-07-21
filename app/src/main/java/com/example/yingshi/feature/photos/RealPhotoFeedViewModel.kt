@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 data class RealPhotoFeedUiState(
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val isSilentlyRefreshing: Boolean = false,
     val loadMoreErrorMessage: String? = null,
     val isDeleting: Boolean = false,
     val isOfflineReadOnly: Boolean = false,
@@ -110,6 +111,7 @@ class RealPhotoFeedViewModel(
                 val nextStatusMessage = if (showBlockingLoading) null else it.statusMessage
                 it.copy(
                     isLoading = showBlockingLoading,
+                    isSilentlyRefreshing = !showBlockingLoading,
                     isLoadingMore = false,
                     loadMoreErrorMessage = null,
                     isOfflineReadOnly = nextOfflineReadOnly,
@@ -130,6 +132,7 @@ class RealPhotoFeedViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
+                            isSilentlyRefreshing = false,
                             isOfflineReadOnly = false,
                             errorMessage = null,
                             statusMessage = null,
@@ -155,6 +158,7 @@ class RealPhotoFeedViewModel(
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
+                                isSilentlyRefreshing = false,
                                 isOfflineReadOnly = false,
                                 errorMessage = result.toBackendUiMessage("读取照片流失败。"),
                             )
@@ -162,7 +166,10 @@ class RealPhotoFeedViewModel(
                         completion.complete(false)
                     }
                 }
-                ApiResult.Loading -> completion.complete(false)
+                ApiResult.Loading -> {
+                    _uiState.update { it.copy(isSilentlyRefreshing = false) }
+                    completion.complete(false)
+                }
             }
             if (refreshVersion == requestVersion) {
                 refreshJob = null
@@ -199,6 +206,7 @@ class RealPhotoFeedViewModel(
                 it.copy(
                     isLoading = false,
                     isLoadingMore = false,
+                    isSilentlyRefreshing = false,
                     loadMoreErrorMessage = null,
                     isOfflineReadOnly = hasVisibleItems,
                     tokenMissing = false,
@@ -398,7 +406,7 @@ class RealPhotoFeedViewModel(
                     deletedIds.forEach { mediaId ->
                         LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(mediaId)
                     }
-                    invalidateSystemMediaMetadataCache()
+                    invalidateSystemMediaMetadataCache(clearDisk = true)
                 }
                 notifyRealBackendContentChangedWithoutPhotoFeed(mediaIds = deletedIds)
             }
@@ -444,6 +452,7 @@ class RealPhotoFeedViewModel(
             it.copy(
                 isLoading = false,
                 isLoadingMore = false,
+                isSilentlyRefreshing = false,
                 isOfflineReadOnly = isOfflineReadOnly,
                 tokenMissing = false,
                 hasMore = if (isOfflineReadOnly) false else cachedFeed.hasMore,

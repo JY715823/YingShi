@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.geometry.Rect
 
 @Immutable
 data class PhotoFeedSelectionState(
@@ -79,12 +80,19 @@ data class PhotoFeedScrubberYearMarker(
 )
 
 @Immutable
+data class HeroOrigin(
+    val mediaId: String,
+    val boundsInRoot: Rect,
+)
+
+@Immutable
 data class PhotoViewerRoute(
     val mediaItems: List<PhotoFeedItem>,
     val initialIndex: Int,
     val sourceLabel: String,
     val showSmallAlbumSegments: Boolean = false,
     val sourceSmallAlbumRoute: SmallAlbumDetailRoute? = null,
+    val heroOrigin: HeroOrigin? = null,
 ) {
     val showPostSegments: Boolean
         get() = showSmallAlbumSegments
@@ -136,3 +144,6 @@ data class ViewerRelatedSmallAlbumUiModel(
 )
 
 typealias ViewerRelatedPostUiModel = ViewerRelatedSmallAlbumUiModel
+
+// PhotosRootDialogState, CreateAlbumDraft, TrashUiState, PhotosRootTrashParams, PhotosRootSelectionParams
+// → moved to PhotosRootViewModel.kt

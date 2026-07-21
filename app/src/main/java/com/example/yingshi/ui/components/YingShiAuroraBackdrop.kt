@@ -1,5 +1,11 @@
 package com.example.yingshi.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -7,6 +13,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -18,6 +25,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.example.yingshi.ui.theme.YingShiColors
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlin.math.PI
+import kotlin.math.sin
 
 enum class YingShiBackdropVariant {
     SHELL,
@@ -38,6 +47,17 @@ fun YingShiAuroraBackdrop(
     val spec = remember(variant, colors) {
         yingShiAuroraSpec(variant = variant, colors = colors)
     }
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val infiniteTransition = rememberInfiniteTransition(label = "aurora")
+    val breathPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "sparkleBreath",
+    )
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -293,16 +313,18 @@ fun YingShiAuroraBackdrop(
                 val x = width * ((index * 29 + 17) % 100) / 100f
                 val y = height * ((index * 13 + 23) % 100) / 100f
                 val isWarm = index % 5 == 0
+                val phaseOffset = (index * 0.7f) % (2 * PI).toFloat()
+                val breathMultiplier = if (motionEnabled) {
+                    (0.55f + 0.45f * sin(breathPhase + phaseOffset)).coerceIn(0.15f, 1f)
+                } else {
+                    1f
+                }
                 drawCircle(
                     color = if (isWarm) {
-                        spec.warmSparkle.copy(alpha = spec.warmSparkleAlpha)
+                        spec.warmSparkle.copy(alpha = spec.warmSparkleAlpha * breathMultiplier)
                     } else {
                         spec.coolSparkle.copy(
-                            alpha = if (index % 3 == 0) {
-                                spec.coolSparkleAlphaStrong
-                            } else {
-                                spec.coolSparkleAlphaSoft
-                            },
+                            alpha = (if (index % 3 == 0) spec.coolSparkleAlphaStrong else spec.coolSparkleAlphaSoft) * breathMultiplier,
                         )
                     },
                     radius = if (index % 4 == 0) 4.4f else 2.2f,
@@ -357,28 +379,28 @@ private fun yingShiAuroraSpec(
 ): YingShiAuroraSpec = when (variant) {
     YingShiBackdropVariant.AUTH -> YingShiAuroraSpec(
         gradient = listOf(
-            Color(0xFFF9FDFF),
-            Color(0xFFEAF8FF),
-            Color(0xFFE8F5EF),
-            Color(0xFFFFEEE2),
-            Color(0xFFF7FCFF),
+            Color(0xFFF6FDFF),
+            colors.glowWash.copy(alpha = 0.90f),
+            colors.sectionBackground.copy(alpha = 0.80f),
+            colors.memoryWash.copy(alpha = 0.75f),
+            Color(0xFFF4FCFF),
         ),
-        topLeftGlow = listOf(Color(0xD6FBFFFF), Color(0x36FBFFFF), Color.Transparent),
-        topRightGlow = listOf(Color(0xC2FFD8B8), Color(0x2BFFD8B8), Color.Transparent),
-        bottomRightGlow = listOf(Color(0xB8FFAFD7), Color(0x2EFFAFD7), Color.Transparent),
-        bottomLeftGlow = listOf(Color(0xA261F2DF), Color(0x1D61F2DF), Color.Transparent),
-        centerGlow = listOf(Color(0x9EFFFFFF), Color(0x28FFFFFF), Color.Transparent),
-        upperAurora = listOf(Color(0x12FFFFFF), Color(0x76FFF4DF), Color(0x20BEEBFF), Color(0x10FFFFFF)),
-        lowerAurora = listOf(Color(0x10FFFFFF), Color(0x5BCFFFF7), Color(0x55FFDBBC), Color(0x10FFFFFF)),
-        glassSweep = listOf(Color.Transparent, Color(0xB7FFFFFF), Color(0x66D8FFF7), Color.Transparent),
+        topLeftGlow = listOf(colors.glowWash.copy(alpha = 0.92f), colors.glowWash.copy(alpha = 0.30f), Color.Transparent),
+        topRightGlow = listOf(colors.goldAccent.copy(alpha = 0.55f), colors.goldAccent.copy(alpha = 0.12f), Color.Transparent),
+        bottomRightGlow = listOf(colors.memoryWash.copy(alpha = 0.80f), colors.memoryWash.copy(alpha = 0.22f), Color.Transparent),
+        bottomLeftGlow = listOf(colors.glassStroke.copy(alpha = 0.50f), colors.glassStroke.copy(alpha = 0.10f), Color.Transparent),
+        centerGlow = listOf(colors.raisedSurface.copy(alpha = 0.50f), colors.raisedSurface.copy(alpha = 0.10f), Color.Transparent),
+        upperAurora = listOf(colors.raisedSurface.copy(alpha = 0.06f), colors.glowWash.copy(alpha = 0.52f), colors.glassStroke.copy(alpha = 0.18f), colors.raisedSurface.copy(alpha = 0.05f)),
+        lowerAurora = listOf(colors.raisedSurface.copy(alpha = 0.05f), colors.glowWash.copy(alpha = 0.40f), colors.memoryWash.copy(alpha = 0.38f), colors.raisedSurface.copy(alpha = 0.05f)),
+        glassSweep = listOf(Color.Transparent, colors.raisedSurface.copy(alpha = 0.80f), colors.glowWash.copy(alpha = 0.50f), Color.Transparent),
         goldTrace = listOf(Color.Transparent, Color(0xD4F7CE83), Color.Transparent),
-        petalVeil = listOf(Color(0x34FFFFFF), Color(0x12FFFFFF), Color(0x26FFC6E0)),
-        lowerBloom = listOf(Color(0x20FFFFFF), Color(0x16D2FFF0), Color(0x3AFFD5B8)),
+        petalVeil = listOf(colors.raisedSurface.copy(alpha = 0.18f), colors.memoryWash.copy(alpha = 0.10f), colors.glassStroke.copy(alpha = 0.12f)),
+        lowerBloom = listOf(colors.raisedSurface.copy(alpha = 0.10f), colors.glowWash.copy(alpha = 0.12f), colors.memoryWash.copy(alpha = 0.28f)),
         warmSparkle = Color(0xFFFFF7E8),
-        warmSparkleAlpha = 0.46f,
+        warmSparkleAlpha = 0.52f,
         coolSparkle = Color.White,
-        coolSparkleAlphaStrong = 0.34f,
-        coolSparkleAlphaSoft = 0.18f,
+        coolSparkleAlphaStrong = 0.38f,
+        coolSparkleAlphaSoft = 0.20f,
     )
 
     YingShiBackdropVariant.PHOTOS -> YingShiAuroraSpec(
@@ -412,7 +434,7 @@ private fun yingShiAuroraSpec(
             Color(0xFFF8FCFF),
             Color(0xFFEDF8FF),
             colors.glowWash.copy(alpha = 0.98f),
-            colors.memoryWash.copy(alpha = 0.62f),
+            colors.memoryWash.copy(alpha = 0.82f),
             Color(0xFFF8FCFF),
         ),
         topLeftGlow = listOf(Color(0xD5EFFBFF), Color(0x42D2F5FF), Color.Transparent),
@@ -420,14 +442,14 @@ private fun yingShiAuroraSpec(
         bottomRightGlow = listOf(Color(0xABFFE1EA), Color(0x2ADDF2FF), Color.Transparent),
         bottomLeftGlow = listOf(Color(0x90D8F6FF), Color(0x20D8F6FF), Color.Transparent),
         centerGlow = listOf(Color(0x95FFFFFF), Color(0x22FFFFFF), Color.Transparent),
-        upperAurora = listOf(Color(0x10FFFFFF), Color(0x6AFFF5E8), Color(0x24D7F2FF), Color(0x08FFFFFF)),
-        lowerAurora = listOf(Color(0x08FFFFFF), Color(0x58D6FFF6), Color(0x4CFFE1CF), Color(0x08FFFFFF)),
+        upperAurora = listOf(Color(0x10FFFFFF), colors.memoryWash.copy(alpha = 0.42f), Color(0x24D7F2FF), Color(0x08FFFFFF)),
+        lowerAurora = listOf(Color(0x08FFFFFF), Color(0x58D6FFF6), colors.memoryWash.copy(alpha = 0.30f), Color(0x08FFFFFF)),
         glassSweep = listOf(Color.Transparent, Color(0xB0FFFFFF), Color(0x62D8F6FF), Color.Transparent),
-        goldTrace = listOf(Color.Transparent, Color(0xC8F7D39A), Color.Transparent),
+        goldTrace = listOf(Color.Transparent, Color(0xE0F7C88A), Color.Transparent),
         petalVeil = listOf(Color(0x34FFFFFF), Color(0x14FFFFFF), Color(0x26FFD8E6)),
-        lowerBloom = listOf(Color(0x1AFFFFFF), Color(0x14D8FFF3), Color(0x30FFE0C7)),
+        lowerBloom = listOf(Color(0x1AFFFFFF), Color(0x14D8FFF3), Color(0x3CFFE0C7)),
         warmSparkle = Color(0xFFFFFAF2),
-        warmSparkleAlpha = 0.38f,
+        warmSparkleAlpha = 0.52f,
         coolSparkle = Color.White,
         coolSparkleAlphaStrong = 0.30f,
         coolSparkleAlphaSoft = 0.16f,

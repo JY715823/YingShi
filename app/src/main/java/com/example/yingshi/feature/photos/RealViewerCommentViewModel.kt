@@ -3,8 +3,6 @@ package com.example.yingshi.feature.photos
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.yingshi.data.model.CommentListState
-import com.example.yingshi.data.model.toCommentListState
 import com.example.yingshi.data.repository.AuthRepository
 import com.example.yingshi.data.repository.CommentRepository
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -14,10 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private const val ViewerCommentNoticeVisibleMillis = 1800L
 
 data class RealViewerCommentUiState(
     val currentUserId: String? = null,
@@ -31,50 +26,39 @@ class RealViewerCommentViewModel(
     private val _uiState = MutableStateFlow(RealViewerCommentUiState())
     val uiState: StateFlow<RealViewerCommentUiState> = _uiState.asStateFlow()
 
+    private val commentThreadManager = CommentThreadManager(
+        scope = viewModelScope,
+        commentRepository = RepositoryProvider.commentRepository,
+        currentUserIdProvider = { _uiState.value.currentUserId },
+        commentThreadsProvider = { _uiState.value.commentThreads },
+        commentThreadsUpdater = { newThreads ->
+            _uiState.update { it.copy(commentThreads = newThreads) }
+        },
+        onMutationSuccess = { mediaId ->
+            notifyRealBackendCommentChanged(
+                postIds = getRelatedPostIds(),
+                mediaIds = setOf(mediaId),
+            )
+        },
+    )
+
     init {
         loadCurrentUser()
     }
 
-    fun ensureMediaComments(mediaId: String) {
-        val existing = _uiState.value.commentThreads[mediaId]
-        if (existing != null && (existing.isLoading || existing.comments.isNotEmpty())) return
-        loadMediaComments(mediaId)
-    }
+    fun ensureMediaComments(mediaId: String) = commentThreadManager.ensureMediaComments(mediaId)
 
-    fun retryMediaComments(mediaId: String) {
-        loadMediaComments(mediaId)
-    }
+    fun loadMediaComments(mediaId: String) = commentThreadManager.loadMediaComments(mediaId)
 
-    fun createMediaComment(mediaId: String, content: String) {
-        val normalized = content.trim()
-        if (normalized.isEmpty()) return
-        mutateMediaComments(
-            mediaId = mediaId,
-            successMessage = "评论已发送。",
-            onSuccess = {
-                NotificationCenterLocalStore.pushMediaCommentNotification(
-                    mediaId = mediaId,
-                    comment = normalized,
-                )
-            },
-        ) {
-            commentRepository.createMediaComment(mediaId, normalized)
-        }
-    }
+    fun createMediaComment(mediaId: String, content: String) = commentThreadManager.createMediaComment(mediaId, content)
 
-    fun updateMediaComment(mediaId: String, commentId: String, content: String) {
-        val normalized = content.trim()
-        if (normalized.isEmpty()) return
-        mutateMediaComments(mediaId, "评论已更新。") {
-            commentRepository.updateComment(commentId, normalized)
-        }
-    }
+    fun updateMediaComment(mediaId: String, commentId: String, content: String) = commentThreadManager.updateMediaComment(mediaId, commentId, content)
 
-    fun deleteMediaComment(mediaId: String, commentId: String) {
-        mutateMediaComments(mediaId, "评论已删除。", deletedCommentId = commentId) {
-            commentRepository.deleteComment(commentId)
-        }
-    }
+    fun deleteMediaComment(mediaId: String, commentId: String) = commentThreadManager.deleteMediaComment(mediaId, commentId)
+
+    fun retryMediaComments(mediaId: String) = commentThreadManager.retryMediaComments(mediaId)
+
+    fun loadMoreMediaComments(mediaId: String) = commentThreadManager.loadMoreMediaComments(mediaId)
 
     private fun loadCurrentUser() {
         if (!AuthSessionManager.isLoggedIn) return
@@ -87,118 +71,7 @@ class RealViewerCommentViewModel(
         }
     }
 
-    private fun loadMediaComments(mediaId: String, successMessage: String? = null) {
-        viewModelScope.launch {
-            _uiState.update { state ->
-                state.copy(
-                    commentThreads = state.commentThreads + (
-                        mediaId to state.commentThreads[mediaId].orEmpty().copy(
-                            isLoading = true,
-                            isMutating = false,
-                            errorMessage = null,
-                            statusMessage = successMessage,
-                        )
-                    ),
-                )
-            }
-            val commentState = commentRepository.getMediaComments(mediaId, page = 1, size = 50).toCommentListState()
-            _uiState.update { state ->
-                state.copy(
-                    commentThreads = state.commentThreads + (
-                        mediaId to commentState.toViewerThreadUiState(
-                            currentUserId = state.currentUserId,
-                            successMessage = successMessage,
-                        )
-                    ),
-                )
-            }
-            clearMediaCommentStatusLater(mediaId, successMessage)
-        }
-    }
-
-    private fun mutateMediaComments(
-        mediaId: String,
-        successMessage: String,
-        deletedCommentId: String? = null,
-        onSuccess: (() -> Unit)? = null,
-        block: suspend () -> ApiResult<*>,
-    ) {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.update { state ->
-                state.copy(
-                    commentThreads = state.commentThreads + (
-                        mediaId to state.commentThreads[mediaId].orEmpty().copy(
-                            errorMessage = "登录状态缺失，请重新登录。",
-                        )
-                    ),
-                )
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { state ->
-                state.copy(
-                    commentThreads = state.commentThreads + (
-                        mediaId to state.commentThreads[mediaId].orEmpty().copy(
-                            isMutating = true,
-                            errorMessage = null,
-                        )
-                    ),
-                )
-            }
-            when (val result = block()) {
-                is ApiResult.Success -> {
-                    onSuccess?.invoke()
-                    notifyRealBackendCommentChanged(
-                        mediaIds = setOf(mediaId),
-                    )
-                    if (deletedCommentId != null) {
-                        _uiState.update { state ->
-                            state.copy(
-                                commentThreads = state.commentThreads + (
-                                    mediaId to state.commentThreads[mediaId].orEmpty().copy(
-                                        comments = state.commentThreads[mediaId].orEmpty().comments
-                                            .filterNot { comment -> comment.id == deletedCommentId },
-                                        isMutating = false,
-                                        statusMessage = successMessage,
-                                    )
-                                ),
-                            )
-                        }
-                    }
-                    loadMediaComments(mediaId, successMessage)
-                }
-                is ApiResult.Error -> {
-                    _uiState.update { state ->
-                        state.copy(
-                            commentThreads = state.commentThreads + (
-                                mediaId to state.commentThreads[mediaId].orEmpty().copy(
-                                    isMutating = false,
-                                    errorMessage = result.toBackendUiMessage("媒体评论操作失败。"),
-                                )
-                            ),
-                        )
-                    }
-                }
-                ApiResult.Loading -> Unit
-            }
-        }
-    }
-
-    private fun clearMediaCommentStatusLater(mediaId: String, expectedMessage: String?) {
-        if (expectedMessage == null) return
-        viewModelScope.launch {
-            delay(ViewerCommentNoticeVisibleMillis)
-            _uiState.update { state ->
-                val current = state.commentThreads[mediaId] ?: return@update state
-                if (current.statusMessage == expectedMessage) {
-                    state.copy(commentThreads = state.commentThreads + (mediaId to current.copy(statusMessage = null)))
-                } else {
-                    state
-                }
-            }
-        }
-    }
+    private fun getRelatedPostIds(): Set<String> = emptySet()
 
     companion object {
         fun factory(): ViewModelProvider.Factory {
@@ -210,25 +83,4 @@ class RealViewerCommentViewModel(
             }
         }
     }
-}
-
-private fun CommentListState.toViewerThreadUiState(
-    currentUserId: String?,
-    successMessage: String?,
-): RealCommentThreadUiState {
-    val mappedComments = comments
-        .filterNot { it.isDeleted }
-        .map { it.toCommentUiModel(currentUserId) }
-        .sortedByDescending { it.createdAtMillis }
-    return RealCommentThreadUiState(
-        comments = mappedComments,
-        isLoading = isLoading,
-        isMutating = false,
-        errorMessage = errorMessage,
-        statusMessage = successMessage,
-    )
-}
-
-private fun RealCommentThreadUiState?.orEmpty(): RealCommentThreadUiState {
-    return this ?: RealCommentThreadUiState()
 }

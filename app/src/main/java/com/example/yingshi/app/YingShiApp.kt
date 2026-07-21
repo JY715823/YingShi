@@ -9,8 +9,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +63,7 @@ import com.example.yingshi.feature.chat.ImportedChatScreen
 import com.example.yingshi.feature.home.HomeScreen
 import com.example.yingshi.feature.life.LifeConsoleScreen
 import com.example.yingshi.feature.life.LifeScreen
+import com.example.yingshi.feature.life.LifeSubRoute
 import com.example.yingshi.feature.life.push.PushTokenRegistrar
 import com.example.yingshi.feature.ledger.LedgerScreen
 import com.example.yingshi.feature.sync.SyncModule
@@ -102,6 +106,8 @@ import com.example.yingshi.feature.photos.GlobalPhotoFeedPageStateStore
 import com.example.yingshi.feature.photos.PhotoThumbnailPalette
 import com.example.yingshi.feature.photos.PhotosRootScreen
 import com.example.yingshi.feature.photos.PhotosRootSelectionUiState
+import com.example.yingshi.feature.photos.PhotosRootTrashParams
+import com.example.yingshi.feature.photos.PhotosRootSelectionParams
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.PostDetailScreen
 import com.example.yingshi.feature.photos.SettingsRoute
@@ -130,6 +136,7 @@ import androidx.compose.material3.TextButton
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.navigation.RootDestination
 import com.example.yingshi.ui.components.AppShellScaffold
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
@@ -163,20 +170,8 @@ fun YingShiApp() {
     var pendingQuickAddImportPreview by remember {
         mutableStateOf<SystemMediaImportPreview?>(null)
     }
-    var ledgerRouteActive by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var chatViewerRouteActive by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var lifeConsoleRouteActive by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var ledgerOpenAddNonce by rememberSaveable {
-        mutableIntStateOf(0)
-    }
-    var ledgerOpenHomeNonce by rememberSaveable {
-        mutableIntStateOf(0)
+    var lifeSubRoute by remember {
+        mutableStateOf<LifeSubRoute>(LifeSubRoute.Life)
     }
     var photoViewerRoute by remember {
         mutableStateOf<PhotoViewerRoute?>(null)
@@ -359,9 +354,7 @@ fun YingShiApp() {
     }
 
     fun clearProtectedUiRoutes() {
-        ledgerRouteActive = false
-        chatViewerRouteActive = false
-        lifeConsoleRouteActive = false
+        lifeSubRoute = LifeSubRoute.Life
         photoViewerRoute = null
         systemMediaRoute = null
         systemMediaViewerRoute = null
@@ -642,28 +635,19 @@ fun YingShiApp() {
     LaunchedEffect(openLifeConsoleNonce) {
         if (openLifeConsoleNonce <= 0) return@LaunchedEffect
         selectedDestinationName = RootDestination.LIFE.name
-        ledgerRouteActive = false
-        chatViewerRouteActive = false
-        lifeConsoleRouteActive = true
+        lifeSubRoute = LifeSubRoute.Console
     }
 
     LaunchedEffect(openLedgerRequestNonce) {
         if (openLedgerRequestNonce <= 0) return@LaunchedEffect
         selectedDestinationName = RootDestination.LIFE.name
-        lifeConsoleRouteActive = false
-        chatViewerRouteActive = false
-        ledgerOpenAddNonce = 0
-        ledgerOpenHomeNonce += 1
-        ledgerRouteActive = true
+        lifeSubRoute = LifeSubRoute.Ledger
     }
 
     LaunchedEffect(openLedgerAddRequestNonce) {
         if (openLedgerAddRequestNonce <= 0) return@LaunchedEffect
         selectedDestinationName = RootDestination.LIFE.name
-        lifeConsoleRouteActive = false
-        chatViewerRouteActive = false
-        ledgerRouteActive = true
-        ledgerOpenAddNonce += 1
+        lifeSubRoute = LifeSubRoute.LedgerAdd
     }
 
     LaunchedEffect(openPhotoFeedRequestNonce) {
@@ -1003,14 +987,12 @@ fun YingShiApp() {
             photoViewerRoute = null
         }
     }
-    if (lifeConsoleRouteActive) {
+    if (lifeSubRoute != LifeSubRoute.Life) {
         BackHandler {
-            lifeConsoleRouteActive = false
-        }
-    }
-    if (chatViewerRouteActive) {
-        BackHandler {
-            chatViewerRouteActive = false
+            when (lifeSubRoute) {
+                is LifeSubRoute.LedgerAdd -> lifeSubRoute = LifeSubRoute.Ledger
+                else -> lifeSubRoute = LifeSubRoute.Life
+            }
         }
     }
     if (systemMediaViewerRoute != null) {
@@ -1031,7 +1013,6 @@ fun YingShiApp() {
     if (trashDetailRoute != null) {
         BackHandler {
             trashDetailRoute = null
-            restoreNotificationCenter()
         }
     }
     if (postDetailRoute != null) {
@@ -1100,9 +1081,7 @@ fun YingShiApp() {
         systemMediaRoute == null &&
         systemMediaViewerRoute == null &&
         createPostRoute == null &&
-        !ledgerRouteActive &&
-        !chatViewerRouteActive &&
-        !lifeConsoleRouteActive &&
+        lifeSubRoute == LifeSubRoute.Life &&
         !isProfileFlowActive
     ) {
         BackHandler {
@@ -1132,9 +1111,7 @@ fun YingShiApp() {
             postDetailRoute == null &&
             gearEditRoute == null &&
             mediaManagementRoute == null &&
-            !ledgerRouteActive &&
-            !chatViewerRouteActive &&
-            !lifeConsoleRouteActive &&
+            lifeSubRoute == LifeSubRoute.Life &&
             !isProfileFlowActive &&
             !photoSelectionShellState.isActive &&
             !showQuickAddSheet
@@ -1171,9 +1148,7 @@ fun YingShiApp() {
         backendDiagnosticsRoute == null &&
         cacheManagementRoute == null &&
         !isProfileFlowActive &&
-        !ledgerRouteActive &&
-        !chatViewerRouteActive &&
-        !lifeConsoleRouteActive
+        lifeSubRoute == LifeSubRoute.Life
     val showPhotoSelectionBottomBar = showRootBottomBar &&
         selectedDestination == RootDestination.PHOTOS &&
         photosTopDestinationName == PhotosTopDestination.PHOTOS.name &&
@@ -1205,12 +1180,26 @@ fun YingShiApp() {
             showBottomBar = showRootBottomBar,
             bottomBarOverride = if (showPhotoSelectionBottomBar) {
                 {
-                    PhotoSelectionBottomBar(
-                        selectedCount = photoSelectionShellState.selectedCount,
-                        writeEnabled = photoSelectionShellState.writeEnabled,
-                        deleteInFlight = photoSelectionShellState.isDeleting,
-                        onAction = ::dispatchPhotoSelectionAction,
-                    )
+                    val motionEnabled = rememberYingShiMotionEnabled()
+                    val animDuration = if (motionEnabled) 250 else 0
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = slideInVertically(
+                            initialOffsetY = { it },
+                            animationSpec = tween(durationMillis = animDuration),
+                        ) + fadeIn(animationSpec = tween(durationMillis = animDuration)),
+                        exit = slideOutVertically(
+                            targetOffsetY = { it },
+                            animationSpec = tween(durationMillis = 200),
+                        ) + fadeOut(animationSpec = tween(durationMillis = 200)),
+                    ) {
+                        PhotoSelectionBottomBar(
+                            selectedCount = photoSelectionShellState.selectedCount,
+                            writeEnabled = photoSelectionShellState.writeEnabled,
+                            deleteInFlight = photoSelectionShellState.isDeleting,
+                            onAction = ::dispatchPhotoSelectionAction,
+                        )
+                    }
                 }
             } else {
                 null
@@ -1231,27 +1220,21 @@ fun YingShiApp() {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
                         selectedDestinationName = RootDestination.LIFE.name
-                        lifeConsoleRouteActive = false
-                        chatViewerRouteActive = false
-                        ledgerRouteActive = true
+                        lifeSubRoute = LifeSubRoute.Ledger
                     }
 
                     item.isLifeConsoleTarget() -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
                         selectedDestinationName = RootDestination.LIFE.name
-                        ledgerRouteActive = false
-                        chatViewerRouteActive = false
-                        lifeConsoleRouteActive = true
+                        lifeSubRoute = LifeSubRoute.Console
                     }
 
                     item.isLifeChatTarget() -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
                         selectedDestinationName = RootDestination.LIFE.name
-                        ledgerRouteActive = false
-                        lifeConsoleRouteActive = false
-                        chatViewerRouteActive = true
+                        lifeSubRoute = LifeSubRoute.Chat
                     }
 
                     // 3. 回收站 — 有具体条目跳详情，否则跳回收站列表
@@ -1491,13 +1474,10 @@ fun YingShiApp() {
                             SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
                             SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
                             SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.SYSTEM_MEDIA)
                             trashDetailRoute = null
-                            if (mediaIds.isNotEmpty()) {
-                                requestPhotoFeedRestoreLocate(mediaIds)
-                            } else {
-                                selectedDestinationName = RootDestination.PHOTOS.name
-                                photosTopDestinationName = PhotosTopDestination.PHOTOS.name
-                            }
+                            // 恢复后留在回收站列表，不跳转到照片页
+                            // 小相册恢复只恢复引用关系，不会删除里面的照片
                         },
                         onShowNotice = ::showAppNotice,
                     )
@@ -1522,11 +1502,7 @@ fun YingShiApp() {
                         },
                         onOpenLedger = {
                             selectedDestinationName = RootDestination.LIFE.name
-                            lifeConsoleRouteActive = false
-                            chatViewerRouteActive = false
-                            ledgerOpenAddNonce = 0
-                            ledgerOpenHomeNonce += 1
-                            ledgerRouteActive = true
+                            lifeSubRoute = LifeSubRoute.Ledger
                         },
                         onOpenNotifications = {
                             notificationCenterRoute = NotificationCenterRoute(source = "home-bell")
@@ -1534,98 +1510,81 @@ fun YingShiApp() {
                     )
                     RootDestination.PHOTOS -> PhotosRootScreen(
                         selectedTopDestinationName = photosTopDestinationName,
-                        onSelectedTopDestinationChange = { photosTopDestinationName = it },
-                        trashSelectedTypeName = trashSelectedTypeName,
-                        onTrashSelectedTypeNameChange = { trashSelectedTypeName = it },
-                        trashShowPendingCleanup = trashShowPendingCleanup,
-                        onTrashShowPendingCleanupChange = {
-                            trashShowPendingCleanup = it
-                        },
-                        trashSelectionMode = trashSelectionModeState,
-                        onTrashSelectionModeChange = { trashSelectionModeState = it },
-                        trashSelectedEntryIds = trashSelectedEntryIdsState,
-                        onTrashSelectedEntryIdsChange = { trashSelectedEntryIdsState = it },
-                        onOpenViewer = {
-                            if (!photosOverlayActive) {
-                                photoViewerRoute = it
-                                latestPhotoViewerRoute = it
-                            }
-                        },
-                        onOpenPostDetail = { if (!photosOverlayActive) postDetailRoute = it },
-                        onOpenTrashDetail = { if (!photosOverlayActive) trashDetailRoute = it },
-                        onTrashRestoreTargetMediaIds = { mediaIds ->
-                            if (mediaIds.isNotEmpty()) {
-                                requestPhotoFeedRestoreLocate(mediaIds)
-                            }
-                        },
-                        onOpenSystemMedia = {
+                        hasTransferFailure = false,
+                        runningTransferCount = 0,
+                        onSystemMediaClick = {
                             if (!photosOverlayActive) {
                                 systemMediaRoute = SystemMediaRoute()
                             }
                         },
-                        onOpenTransferCenter = {
+                        onTransferClick = {
                             if (!photosOverlayActive) {
                                 transferCenterRoute = TransferCenterRoute(source = "photos-top-bar")
                             }
                         },
-                        onOpenCreatePost = {
+                        selectedSectionInitial = null,
+                        trashParams = PhotosRootTrashParams(
+                            selectedTypeName = trashSelectedTypeName,
+                        ),
+                        selectionParams = PhotosRootSelectionParams(
+                            onAddedMediaToPost = { route: Any? -> (route as? PostDetailPlaceholderRoute)?.let(openPostDetailAfterAdd) },
+                            photoFeedScrollTrigger = photoFeedScrollTrigger.toLong(),
+                            photoSelectionClearTrigger = photoSelectionClearTrigger.toLong(),
+                        ),
+                        onOpenViewer = { route ->
                             if (!photosOverlayActive) {
-                                createPostRoute = it
+                                photoViewerRoute = route
                             }
                         },
-                        onAddedMediaToPost = openPostDetailAfterAdd,
-                        photoFeedScrollTrigger = photoFeedScrollTrigger,
-                        photoSelectionClearTrigger = photoSelectionClearTrigger,
-                        onPhotoSelectionShellStateChange = { photoSelectionShellState = it },
-                        photoSelectionAction = photoSelectionAction,
-                        photoSelectionActionNonce = photoSelectionActionNonce,
-                        inlineVideoAutoPlayEnabled = photoViewerRoute == null,
+                        onOpenPostDetail = { route ->
+                            if (!photosOverlayActive) {
+                                postDetailRoute = route
+                            }
+                        },
+                        onOpenTrashDetail = { route ->
+                            if (!photosOverlayActive) {
+                                photosTopDestinationName = PhotosTopDestination.TRASH.name
+                                trashDetailRoute = route
+                            }
+                        },
+                        onOpenCreatePost = { route ->
+                            if (!photosOverlayActive) {
+                                createPostRoute = route
+                            }
+                        },
+                        onAddedMediaToPost = { route ->
+                            openPostDetailAfterAdd(route)
+                        },
+                        onSelectedTopDestinationChange = { newName ->
+                            photosTopDestinationName = newName
+                        },
                     )
                     RootDestination.LIFE -> {
-                        if (ledgerRouteActive) {
-                            LedgerScreen(
-                                openHomeNonce = ledgerOpenHomeNonce,
-                                openAddNonce = ledgerOpenAddNonce,
-                                onCloseLedger = { ledgerRouteActive = false },
+                        when (lifeSubRoute) {
+                            is LifeSubRoute.Ledger -> LedgerScreen(
+                                onCloseLedger = { lifeSubRoute = LifeSubRoute.Life },
                                 modifier = Modifier.fillMaxSize(),
                             )
-                        } else if (lifeConsoleRouteActive) {
-                            LifeConsoleScreen(
+                            is LifeSubRoute.LedgerAdd -> LedgerScreen(
+                                openAddNonce = LifeSubRoute.LedgerAdd.hashCode(),
+                                onCloseLedger = { lifeSubRoute = LifeSubRoute.Ledger },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            is LifeSubRoute.Console -> LifeConsoleScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 initialSlotKey = AppNavigationRequests.lifeConsoleSlotKey,
                                 initialMediaId = AppNavigationRequests.lifeConsoleMediaId,
-                                onBack = { lifeConsoleRouteActive = false },
+                                onBack = { lifeSubRoute = LifeSubRoute.Life },
                                 onOpenLedgerAdd = {
-                                    lifeConsoleRouteActive = false
-                                    chatViewerRouteActive = false
-                                    ledgerRouteActive = true
-                                    ledgerOpenAddNonce += 1
+                                    lifeSubRoute = LifeSubRoute.LedgerAdd
                                 },
                             )
-                        } else if (chatViewerRouteActive) {
-                            ImportedChatScreen(
+                            is LifeSubRoute.Chat -> ImportedChatScreen(
                                 modifier = Modifier.fillMaxSize(),
-                                onBack = { chatViewerRouteActive = false },
+                                onBack = { lifeSubRoute = LifeSubRoute.Life },
                             )
-                        } else {
-                            LifeScreen(
-                                onOpenLifeConsole = {
-                                    ledgerRouteActive = false
-                                    chatViewerRouteActive = false
-                                    lifeConsoleRouteActive = true
-                                },
-                                onOpenLedger = {
-                                    ledgerOpenAddNonce = 0
-                                    ledgerOpenHomeNonce += 1
-                                    chatViewerRouteActive = false
-                                    lifeConsoleRouteActive = false
-                                    ledgerRouteActive = true
-                                },
-                                onOpenChatViewer = {
-                                    ledgerRouteActive = false
-                                    lifeConsoleRouteActive = false
-                                    chatViewerRouteActive = true
-                                },
+                            is LifeSubRoute.Life -> LifeScreen(
+                                onNavigate = { lifeSubRoute = it },
                             )
                         }
                     }
@@ -1921,8 +1880,7 @@ fun YingShiApp() {
                         onClick = {
                             showQuickAddSheet = false
                             selectedDestinationName = RootDestination.LIFE.name
-                            ledgerRouteActive = true
-                            ledgerOpenAddNonce += 1
+                            lifeSubRoute = LifeSubRoute.LedgerAdd
                         },
                     ) {
                         Text(text = "记一笔")

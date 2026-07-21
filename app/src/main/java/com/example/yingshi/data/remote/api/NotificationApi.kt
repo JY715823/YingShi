@@ -12,6 +12,7 @@ interface NotificationApi {
     @GET("api/notifications")
     suspend fun getNotifications(
         @Query("limit") limit: Int? = null,
+        @Query("cursor") cursor: String? = null,
     ): ApiEnvelopeDto<List<NotificationDto>>
 
     @GET("api/notifications/{notificationId}")

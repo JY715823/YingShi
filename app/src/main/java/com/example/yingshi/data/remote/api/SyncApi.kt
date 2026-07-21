@@ -9,6 +9,7 @@ data class SyncVersionsDto(
     val trashVersion: Long,
     val notificationVersion: Long = 0L,
     val lifeConsoleVersion: Long,
+    val chatVersion: Long = 0L,
     val serverTimeMillis: Long,
 )
 

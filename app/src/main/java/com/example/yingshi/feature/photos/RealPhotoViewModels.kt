@@ -62,6 +62,8 @@ data class RealCommentThreadUiState(
     val isMutating: Boolean = false,
     val errorMessage: String? = null,
     val statusMessage: String? = null,
+    val hasMore: Boolean = false,
+    val currentPage: Int = 1,
 ) {
     val isEmpty: Boolean
         get() = !isLoading && comments.isEmpty() && errorMessage == null
@@ -407,6 +409,74 @@ class AlbumPageRealViewModel(
                 current
             } else {
                 current.copy(statusMessage = null)
+            }
+        }
+    }
+
+    fun moveSmallAlbums(
+        targetAlbumId: String,
+        smallAlbumIds: List<String>,
+    ) {
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能切换小相册所属大相册。") }
+            return
+        }
+        if (smallAlbumIds.isEmpty()) return
+        val sourceAlbumId = _uiState.value.selectedAlbumId ?: return
+        if (sourceAlbumId == targetAlbumId) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isAlbumMutating = true,
+                    errorMessage = null,
+                    postsErrorMessage = null,
+                )
+            }
+            when (val result = albumRepository.moveSmallAlbums(targetAlbumId, smallAlbumIds)) {
+                is ApiResult.Success -> {
+                    val nextPostsByAlbumId = cachedDirectorySnapshot?.postsByAlbumId.orEmpty()
+                        .mapValues { (albumId, posts) ->
+                            if (albumId == sourceAlbumId) {
+                                posts.filterNot { it.postId in smallAlbumIds }
+                            } else {
+                                posts
+                            }
+                        }
+                    val nextRemoteAlbums = cachedDirectorySnapshot?.albums ?: emptyList()
+                    withContext(Dispatchers.IO) {
+                        persistAlbumDirectory(
+                            albums = nextRemoteAlbums,
+                            postsByAlbumId = nextPostsByAlbumId,
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isAlbumMutating = false,
+                            posts = if (sourceAlbumId == it.selectedAlbumId) {
+                                it.posts.filterNot { post -> post.id in smallAlbumIds }
+                            } else {
+                                it.posts
+                            },
+                            statusMessage = "已将 ${smallAlbumIds.size} 个小相册移动到目标大相册。",
+                        )
+                    }
+                    notifyRealBackendContentChanged(postIds = smallAlbumIds.toSet())
+                    if (sourceAlbumId == _uiState.value.selectedAlbumId) {
+                        loadAlbumPosts(
+                            albumId = sourceAlbumId,
+                            showBlockingIndicator = false,
+                        )
+                    }
+                }
+                is ApiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isAlbumMutating = false,
+                            errorMessage = result.toBackendUiMessage("切换小相册所属大相册失败。"),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
             }
         }
     }
@@ -843,7 +913,8 @@ private fun String.shouldAutoDismiss(): Boolean {
     return startsWith("已将大相册改名为「") ||
         this == "已更新这个大相册的简介。" ||
         this == "已更新这个大相册的信息。" ||
-        this == "已将大相册移入回收站，可在回收站整组恢复。"
+        this == "已将大相册移入回收站，可在回收站整组恢复。" ||
+        endsWith("个小相册移动到目标大相册。")
 }
 
 private fun buildCachedAlbumsFromUi(
@@ -883,6 +954,24 @@ class PostDetailRealViewModel(
     private val _uiState = MutableStateFlow(PostDetailRealUiState(isLoading = true))
     val uiState: StateFlow<PostDetailRealUiState> = _uiState.asStateFlow()
 
+    private val commentThreadManager = CommentThreadManager(
+        scope = viewModelScope,
+        commentRepository = commentRepository,
+        currentUserIdProvider = { _uiState.value.currentUserId },
+        commentThreadsProvider = { _uiState.value.mediaComments },
+        commentThreadsUpdater = { newThreads ->
+            _uiState.update { it.copy(mediaComments = newThreads) }
+        },
+        onMutationSuccess = { mediaId ->
+            notifyRealBackendCommentChanged(
+                postIds = setOf(route.postId),
+                mediaIds = setOf(mediaId),
+            )
+            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
+        },
+    )
+
     init {
         refresh()
     }
@@ -892,12 +981,19 @@ class PostDetailRealViewModel(
             val cachedDetail = withContext(Dispatchers.IO) { readCachedPostDetail() }
             val cachedAlbumTitleById = withContext(Dispatchers.IO) { readCachedAlbumTitleMap() }
             if (cachedDetail != null && _uiState.value.detail == null) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = null,
-                    detail = cachedDetail.toPostDetailUiModel(cachedAlbumTitleById),
-                    currentUserId = AuthSessionManager.getCurrentUserSnapshot()?.userId,
-                )
+                try {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = null,
+                        detail = cachedDetail.toPostDetailUiModel(cachedAlbumTitleById),
+                        currentUserId = AuthSessionManager.getCurrentUserSnapshot()?.userId,
+                    )
+                } catch (e: Exception) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        errorMessage = "缓存数据解析失败，请尝试刷新。",
+                    )
+                }
             }
             if (!AuthSessionManager.isLoggedIn) {
                 val loginOutcome = BackendAutoLoginManager.loginDefault(
@@ -935,19 +1031,26 @@ class PostDetailRealViewModel(
                     withContext(Dispatchers.IO) {
                         writeCachedPostDetail(result.data)
                     }
-                    val detail = result.data.toPostDetailUiModel(albumTitleById)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        detail = detail,
-                        currentUserId = currentUser?.userId,
-                        postComments = _uiState.value.postComments.copy(
-                            comments = emptyList(),
-                            errorMessage = null,
-                            statusMessage = null,
-                        ),
-                        mediaComments = emptyMap(),
-                    )
-                    loadPostComments()
+                    try {
+                        val detail = result.data.toPostDetailUiModel(albumTitleById)
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            detail = detail,
+                            currentUserId = currentUser?.userId,
+                            postComments = _uiState.value.postComments.copy(
+                                comments = emptyList(),
+                                errorMessage = null,
+                                statusMessage = null,
+                            ),
+                            mediaComments = emptyMap(),
+                        )
+                        loadPostComments()
+                    } catch (e: Exception) {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            errorMessage = "小相册数据解析失败：${e.message ?: "未知错误"}",
+                        )
+                    }
                 }
                 is ApiResult.Error -> {
                     _uiState.update { state ->
@@ -966,15 +1069,54 @@ class PostDetailRealViewModel(
         loadPostComments()
     }
 
-    fun ensureMediaComments(mediaId: String) {
-        val current = _uiState.value.mediaComments[mediaId]
-        if (current != null && (current.isLoading || current.comments.isNotEmpty())) return
-        loadMediaComments(mediaId)
+    fun loadMorePostComments() {
+        val current = _uiState.value.postComments
+        if (!current.hasMore || current.isLoading) return
+        val nextPage = current.currentPage + 1
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    postComments = it.postComments.copy(isLoading = true, errorMessage = null),
+                )
+            }
+            when (val result = commentRepository.getPostComments(route.postId, page = nextPage)) {
+                is ApiResult.Success -> {
+                    val newComments = result.data.comments
+                        .filterNot { it.isDeleted }
+                        .map { it.toCommentUiModel(_uiState.value.currentUserId) }
+                    val existingIds = current.comments.map { it.id }.toSet()
+                    val deduplicated = newComments.filterNot { it.id in existingIds }
+                    _uiState.update { state ->
+                        state.copy(
+                            postComments = state.postComments.copy(
+                                comments = state.postComments.comments + deduplicated,
+                                isLoading = false,
+                                hasMore = result.data.hasMore,
+                                currentPage = result.data.page,
+                            ),
+                        )
+                    }
+                }
+                is ApiResult.Error -> {
+                    _uiState.update { state ->
+                        state.copy(
+                            postComments = state.postComments.copy(
+                                isLoading = false,
+                                errorMessage = result.toBackendUiMessage("加载更多评论失败。"),
+                            ),
+                        )
+                    }
+                }
+                ApiResult.Loading -> Unit
+            }
+        }
     }
 
-    fun retryMediaComments(mediaId: String) {
-        loadMediaComments(mediaId)
-    }
+    fun ensureMediaComments(mediaId: String) = commentThreadManager.ensureMediaComments(mediaId)
+
+    fun retryMediaComments(mediaId: String) = commentThreadManager.retryMediaComments(mediaId)
+
+    fun loadMoreMediaComments(mediaId: String) = commentThreadManager.loadMoreMediaComments(mediaId)
 
     fun handleExternalCommentMutation(event: RealBackendMutationEvent) {
         if (!_uiState.value.detailMediaIds().let { mediaIds ->
@@ -994,7 +1136,7 @@ class PostDetailRealViewModel(
         } else {
             loadedMediaIds.intersect(event.mediaIds)
         }
-        targetMediaIds.forEach(::loadMediaComments)
+        targetMediaIds.forEach(commentThreadManager::loadMediaComments)
     }
 
     fun createPostComment(content: String) {
@@ -1016,19 +1158,12 @@ class PostDetailRealViewModel(
     fun createMediaComment(mediaId: String, content: String) {
         val normalized = content.trim()
         if (normalized.isEmpty()) return
-        mutateMediaComments(
+        NotificationCenterLocalStore.pushMediaCommentNotification(
             mediaId = mediaId,
-            successMessage = "评论已发送。",
-            onSuccess = {
-                NotificationCenterLocalStore.pushMediaCommentNotification(
-                    mediaId = mediaId,
-                    comment = normalized,
-                    postId = route.postId,
-                )
-            },
-        ) {
-            commentRepository.createMediaComment(mediaId, normalized)
-        }
+            comment = normalized,
+            postId = route.postId,
+        )
+        commentThreadManager.createMediaComment(mediaId, content)
     }
 
     fun updatePostComment(commentId: String, content: String) {
@@ -1040,11 +1175,7 @@ class PostDetailRealViewModel(
     }
 
     fun updateMediaComment(mediaId: String, commentId: String, content: String) {
-        val normalized = content.trim()
-        if (normalized.isEmpty()) return
-        mutateMediaComments(mediaId, "评论已更新。") {
-            commentRepository.updateComment(commentId, normalized)
-        }
+        commentThreadManager.updateMediaComment(mediaId, commentId, content)
     }
 
     fun deletePostComment(commentId: String) {
@@ -1054,9 +1185,7 @@ class PostDetailRealViewModel(
     }
 
     fun deleteMediaComment(mediaId: String, commentId: String) {
-        mutateMediaComments(mediaId, "评论已删除。", deletedCommentId = commentId) {
-            commentRepository.deleteComment(commentId)
-        }
+        commentThreadManager.deleteMediaComment(mediaId, commentId)
     }
 
     private fun loadPostComments(successMessage: String? = null) {
@@ -1081,38 +1210,6 @@ class PostDetailRealViewModel(
                 )
             }
             clearPostCommentStatusLater(successMessage)
-        }
-    }
-
-    private fun loadMediaComments(
-        mediaId: String,
-        successMessage: String? = null,
-    ) {
-        viewModelScope.launch {
-            _uiState.update { state ->
-                state.copy(
-                    mediaComments = state.mediaComments + (
-                        mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                            isLoading = true,
-                            isMutating = false,
-                            errorMessage = null,
-                            statusMessage = successMessage,
-                        )
-                    ),
-                )
-            }
-            val commentState = commentRepository.getMediaComments(mediaId).toCommentListState()
-            _uiState.update { state ->
-                state.copy(
-                    mediaComments = state.mediaComments + (
-                        mediaId to commentState.toThreadUiState(
-                            currentUserId = state.currentUserId,
-                            successMessage = successMessage,
-                        )
-                    ),
-                )
-            }
-            clearMediaCommentStatusLater(mediaId, successMessage)
         }
     }
 
@@ -1170,78 +1267,6 @@ class PostDetailRealViewModel(
         }
     }
 
-    private fun mutateMediaComments(
-        mediaId: String,
-        successMessage: String,
-        deletedCommentId: String? = null,
-        onSuccess: (() -> Unit)? = null,
-        block: suspend () -> ApiResult<*>,
-    ) {
-        if (!AuthSessionManager.isLoggedIn) {
-            _uiState.update { state ->
-                state.copy(
-                    mediaComments = state.mediaComments + (
-                        mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                            errorMessage = "登录状态缺失，请重新登录。",
-                        )
-                    ),
-                )
-            }
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { state ->
-                state.copy(
-                    mediaComments = state.mediaComments + (
-                        mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                            isMutating = true,
-                            errorMessage = null,
-                        )
-                    ),
-                )
-            }
-            when (val result = block()) {
-                is ApiResult.Success -> {
-                    onSuccess?.invoke()
-                    notifyRealBackendCommentChanged(
-                        postIds = setOf(route.postId),
-                        mediaIds = setOf(mediaId),
-                    )
-                    SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
-                    SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
-                    if (deletedCommentId != null) {
-                        _uiState.update { state ->
-                            state.copy(
-                                mediaComments = state.mediaComments + (
-                                    mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                                        comments = state.mediaComments[mediaId].orEmpty().comments
-                                            .filterNot { comment -> comment.id == deletedCommentId },
-                                        isMutating = false,
-                                        statusMessage = successMessage,
-                                    )
-                                ),
-                            )
-                        }
-                    }
-                    loadMediaComments(mediaId, successMessage)
-                }
-                is ApiResult.Error -> {
-                    _uiState.update { state ->
-                        state.copy(
-                            mediaComments = state.mediaComments + (
-                                mediaId to state.mediaComments[mediaId].orEmpty().copy(
-                                    isMutating = false,
-                                    errorMessage = result.toBackendUiMessage("评论操作失败。"),
-                                )
-                            ),
-                        )
-                    }
-                }
-                ApiResult.Loading -> Unit
-            }
-        }
-    }
-
     private fun clearPostCommentStatusLater(expectedMessage: String?) {
         if (expectedMessage == null) return
         viewModelScope.launch {
@@ -1251,21 +1276,6 @@ class PostDetailRealViewModel(
                     it.copy(postComments = it.postComments.copy(statusMessage = null))
                 } else {
                     it
-                }
-            }
-        }
-    }
-
-    private fun clearMediaCommentStatusLater(mediaId: String, expectedMessage: String?) {
-        if (expectedMessage == null) return
-        viewModelScope.launch {
-            delay(CommentNoticeVisibleMillis)
-            _uiState.update { state ->
-                val current = state.mediaComments[mediaId] ?: return@update state
-                if (current.statusMessage == expectedMessage) {
-                    state.copy(mediaComments = state.mediaComments + (mediaId to current.copy(statusMessage = null)))
-                } else {
-                    state
                 }
             }
         }

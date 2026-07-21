@@ -16,6 +16,14 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Round 8 第十四轮: ACCESS_MEDIA_LOCATION — Android 10+ 必须声明此权限才能从 MediaStore/Photo Picker
+         读取照片的 EXIF GPS 坐标. 没有此权限时, MediaProvider 会主动 redact EXIF GPS 字节范围,
+         导致相册上传永远读不到位置 (即使照片本身有 GPS). 这是一个 install-time 权限 (普通权限),
+         不需要运行时请求, 装上就自动生效. -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <!-- FR-19: Location used by LifeConsole for tagging media/bowel events; silently skipped when not granted. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:name=".YingShiApplication"
@@ -30,6 +38,11 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="@string/default_notification_channel_id" />
+
+        <!-- Round 7: 高德地图 Android key (位置选择页 E2) -->
+        <meta-data
+            android:name="com.amap.api.v2.apikey"
+            android:value="${AMAP_API_KEY}" />
 
         <activity
             android:name=".MainActivity"
@@ -65,6 +78,14 @@
             android:label="@string/life_console_widget_description"
             android:excludeFromRecents="true"
             android:taskAffinity="${applicationId}.widget"
+            android:theme="@style/Theme.YingShi" />
+
+        <!-- Round 7 阶段 7: 位置选择页 -->
+        <activity
+            android:name=".feature.life.LifeLocationPickerActivity"
+            android:exported="false"
+            android:label="选择位置"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.YingShi" />
 
         <activity

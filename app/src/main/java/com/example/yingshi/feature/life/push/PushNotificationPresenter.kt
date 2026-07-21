@@ -77,16 +77,24 @@ object PushNotificationPresenter {
 
         val contentPI = contentIntent(appContext, data)
 
-        // NOTE: Do NOT use setDefaults() or setVibrate() — they conflict with
-        // channel settings on OEM ROMs (MIUI, ColorOS, etc.), causing vibration
-        // failure and heads-up suppression. All sound/vibration is configured
-        // at the channel level only (see PushNotificationChannels).
+        // ── Heads-up + vibration strategy for OEM ROMs (MIUI, ColorOS, etc.) ──
         //
-        // setFullScreenIntent() is applied to ALL notifications to force MIUI/EMUI
-        // to show heads-up banners (QQ/WeChat style). Without it, IMPORTANCE_HIGH
-        // alone is often suppressed on OEM ROMs.
-        // When screen is on → shows as heads-up banner. When screen is off →
-        // launches the target activity directly.
+        // setFullScreenIntent() is REMOVED — it was intended to force MIUI/EMUI
+        // to show heads-up banners, but it actually suppresses them on MIUI.
+        // setFullScreenIntent is designed for incoming-call-style full-screen
+        // notifications, not heads-up. On MIUI, it causes the notification to be
+        // treated as a full-screen alert, showing only a status bar icon without
+        // the heads-up popup card.
+        //
+        // Instead, we use the standard heads-up recipe:
+        //   1. Channel IMPORTANCE_HIGH (set in PushNotificationChannels)
+        //   2. setPriority(PRIORITY_HIGH) + setCategory(CATEGORY_MESSAGE)
+        //   3. setVibrate() on the builder — MIUI requires explicit vibration
+        //      on the builder, not just the channel, to trigger heads-up
+        //      (QQ/WeChat do the same on Android)
+        //
+        // When screen is on → heads-up banner. When screen is off → notification
+        // appears on lock screen / ambient display.
         val notification = NotificationCompat.Builder(appContext, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
@@ -94,7 +102,7 @@ object PushNotificationPresenter {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setFullScreenIntent(contentPI, true)
+            .setVibrate(longArrayOf(0L, 180L, 80L, 180L))
             .setAutoCancel(true)
             .setContentIntent(contentPI)
             .build()

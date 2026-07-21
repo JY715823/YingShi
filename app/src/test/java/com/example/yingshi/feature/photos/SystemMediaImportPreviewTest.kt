@@ -1,8 +1,5 @@
 package com.example.yingshi.feature.photos
 
-import android.net.Uri
-import android.net.UriTestDouble
-import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -147,37 +144,178 @@ class SystemMediaImportPreviewTest {
         assertFalse(preview.timeNoticeItems.isNotEmpty())
     }
 
-    private fun sampleSystemMediaItem(
-        id: String,
-        mediaStoreId: Long,
-        capturedAtMillis: Long? = 1_780_600_000_000L,
-        fileModifiedAtMillis: Long? = 1_780_601_000_000L,
-    ): SystemMediaItem {
-        return SystemMediaItem(
-            id = id,
-            mediaStoreId = mediaStoreId,
-            uri = UriTestDouble("content://media/external/images/media/$mediaStoreId"),
-            type = SystemMediaType.IMAGE,
-            mimeType = "image/jpeg",
-            displayName = "$id.jpg",
-            bucketName = "Camera",
-            displayTimeMillis = capturedAtMillis ?: fileModifiedAtMillis ?: 1_780_800_000_000L,
-            capturedAtMillis = capturedAtMillis,
-            fileModifiedAtMillis = fileModifiedAtMillis,
-            displayTimeSource = capturedAtMillis?.let { DisplayTimeSourceOriginal } ?: DisplayTimeSourceImported,
-            displayYear = 2026,
-            displayMonth = 6,
-            displayDay = 7,
-            width = 1080,
-            height = 1440,
-            aspectRatio = 0.75f,
-            palette = PhotoThumbnailPalette(
-                start = Color(0xFF112233),
-                end = Color(0xFF223344),
-                accent = Color(0xFF335577),
-            ),
-            linkedPostIds = emptyList(),
-            sizeBytes = 2_048_000L,
+    @Test
+    fun mixedBatchClassifiesAllThreeStatesCorrectly() {
+        val alreadyImported = sampleSystemMediaItem(
+            id = "img-imported",
+            mediaStoreId = 701L,
         )
+        val fresh = sampleSystemMediaItem(
+            id = "img-fresh",
+            mediaStoreId = 702L,
+        )
+        val duplicateOfFresh = sampleSystemMediaItem(
+            id = "img-dup",
+            mediaStoreId = 702L,
+        )
+
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = listOf(alreadyImported, fresh, duplicateOfFresh),
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { item ->
+                if (item.mediaStoreId == 701L) "media-existing" else null
+            },
+        )
+
+        assertEquals(3, preview.requestedCount)
+        assertEquals(1, preview.importableCount)
+        assertEquals(2, preview.duplicateCount)
+        assertEquals(
+            listOf(SystemMediaImportDuplicateReason.ALREADY_IMPORTED, SystemMediaImportDuplicateReason.DUPLICATE_IN_SELECTION),
+            preview.duplicateItems.map { it.reason },
+        )
+        assertEquals(3, preview.importableCount + preview.duplicateCount)
+    }
+
+    @Test
+    fun allItemsInAlreadyImportedGroupAreMarked() {
+        val first = sampleSystemMediaItem(
+            id = "img-a",
+            mediaStoreId = 801L,
+        )
+        val second = sampleSystemMediaItem(
+            id = "img-b",
+            mediaStoreId = 801L,
+        )
+
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = listOf(first, second),
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { _ -> "media-existing" },
+        )
+
+        assertEquals(0, preview.importableCount)
+        assertEquals(2, preview.duplicateCount)
+        assertEquals(
+            listOf(
+                SystemMediaImportDuplicateReason.ALREADY_IMPORTED,
+                SystemMediaImportDuplicateReason.ALREADY_IMPORTED,
+            ),
+            preview.duplicateItems.map { it.reason },
+        )
+    }
+
+    @Test
+    fun multipleIndependentGroupsKeepOrder() {
+        val first = sampleSystemMediaItem(
+            id = "img-1",
+            mediaStoreId = 901L,
+        )
+        val second = sampleSystemMediaItem(
+            id = "img-2",
+            mediaStoreId = 902L,
+        )
+
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = listOf(first, second),
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { null },
+        )
+
+        assertEquals(2, preview.importableCount)
+        assertEquals(0, preview.duplicateCount)
+        assertEquals(listOf("img-1", "img-2"), preview.importableItems.map { it.id })
+    }
+
+    @Test
+    fun emptyInputReturnsEmptyPreview() {
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = emptyList(),
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { null },
+        )
+
+        assertEquals(0, preview.requestedCount)
+        assertEquals(0, preview.importableCount)
+        assertEquals(0, preview.duplicateCount)
+        assertFalse(preview.hasImportableItems)
+    }
+
+    @Test
+    fun allAlreadyImportedReturnsNoImportableItems() {
+        val first = sampleSystemMediaItem(
+            id = "img-1",
+            mediaStoreId = 1001L,
+        )
+        val second = sampleSystemMediaItem(
+            id = "img-2",
+            mediaStoreId = 1002L,
+        )
+
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = listOf(first, second),
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { _ -> "media-existing" },
+        )
+
+        assertFalse(preview.hasImportableItems)
+        assertEquals(0, preview.importableCount)
+        assertEquals(2, preview.duplicateCount)
+    }
+
+    @Test
+    fun pickedItemUsesMetadataKeyPath() {
+        val first = sampleSystemMediaItem(
+            id = "picked-abc-123",
+            mediaStoreId = 0L,
+            displayName = "vacation.jpg",
+            sizeBytes = 1_000_000L,
+        )
+        val duplicate = sampleSystemMediaItem(
+            id = "picked-xyz-456",
+            mediaStoreId = 1L,
+            displayName = "vacation.jpg",
+            sizeBytes = 1_000_000L,
+        )
+
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = listOf(first, duplicate),
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { null },
+        )
+
+        assertEquals(1, preview.importableCount)
+        assertEquals(1, preview.duplicateCount)
+        assertEquals(
+            SystemMediaImportDuplicateReason.DUPLICATE_IN_SELECTION,
+            preview.duplicateItems.single().reason,
+        )
+    }
+
+    @Test
+    fun requestedCountReflectsOriginalInputSize() {
+        val items = (1..5).map { idx ->
+            sampleSystemMediaItem(
+                id = "img-$idx",
+                mediaStoreId = 1100L + idx,
+            )
+        }
+
+        val preview = buildSystemMediaImportPreview(
+            mediaItems = items,
+            preference = MediaTimePreference.CAPTURED_FIRST,
+            importedAtBaseMillis = 1_780_800_000_000L,
+            knownAppMediaIdForSource = { null },
+        )
+
+        assertEquals(5, preview.requestedCount)
+        assertEquals(5, preview.importableCount)
+        assertEquals(0, preview.duplicateCount)
     }
 }

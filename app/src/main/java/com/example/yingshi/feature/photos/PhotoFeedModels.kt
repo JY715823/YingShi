@@ -56,6 +56,11 @@ data class PhotoFeedItem(
     val importedAtMillis: Long? = null,
     val displayTimeSource: String? = null,
     val mediaSource: AppContentMediaSource? = null,
+    // Round 8 第十五轮: 拍摄地点 (来自 EXIF GPS, 服务端高德逆地理编码生成)
+    val locationLabel: String? = null,
+    // Round 8 第十六轮: 地点经纬度 (GCJ-02), 用于点击地点胶囊跳地图页修改
+    val locationLat: Double? = null,
+    val locationLng: Double? = null,
 ) {
     val postIds: List<String>
         get() = smallAlbumIds

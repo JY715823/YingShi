@@ -1,6 +1,7 @@
 package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
+import com.example.yingshi.data.cache.AppReadCacheStore
 import com.example.yingshi.data.model.ConfirmUploadPayload
 import com.example.yingshi.data.model.CreateAlbumPayload
 import com.example.yingshi.data.model.CreatePostPayload
@@ -45,13 +46,16 @@ import com.example.yingshi.data.remote.dto.CreateAlbumRequestDto
 import com.example.yingshi.data.remote.dto.CreateCommentRequestDto
 import com.example.yingshi.data.remote.dto.CreateUploadTokenRequestDto
 import com.example.yingshi.data.remote.dto.CreatePostRequestDto
+import com.example.yingshi.data.remote.dto.LifeConsoleBowelEventRequestDto
 import com.example.yingshi.data.remote.dto.LifeConsoleMediaRequestDto
 import com.example.yingshi.data.remote.dto.LoginRequestDto
 import com.example.yingshi.data.remote.dto.MediaImportStatusRequestDto
+import com.example.yingshi.data.remote.dto.MoveSmallAlbumsRequestDto
 import com.example.yingshi.data.remote.dto.RememberedLoginRequestDto
 import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
 import com.example.yingshi.data.remote.dto.ResendLoginChallengeRequestDto
+import com.example.yingshi.data.remote.dto.UpdateLocationRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.dto.UpdateAlbumRequestDto
 import com.example.yingshi.data.remote.dto.VerifyLoginChallengeRequestDto
@@ -59,6 +63,7 @@ import com.example.yingshi.data.remote.dto.AddPostMediaRequestDto
 import com.example.yingshi.data.remote.dto.SetPostCoverRequestDto
 import com.example.yingshi.data.remote.dto.UpdateCommentRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostBasicInfoRequestDto
+import com.example.yingshi.data.remote.dto.UpdatePostMediaBatchRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePostMediaOrderRequestDto
 import com.example.yingshi.data.remote.dto.UpdatePushPreferenceRequestDto
 import com.example.yingshi.data.remote.mapper.toRemoteModel
@@ -358,6 +363,27 @@ class RealPostRepository(
         )
     }
 
+    override suspend fun updatePostMediaBatch(
+        postId: String,
+        removeMediaIds: List<String>,
+    ): ApiResult<RemotePostDetail> {
+        return runCatching {
+            postApi.updatePostMediaBatch(
+                smallAlbumId = postId,
+                request = UpdatePostMediaBatchRequestDto(removeMediaIds = removeMediaIds),
+            ).data.toRemoteDetail()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "POST_MEDIA_BATCH_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "批量移除媒体失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
     override suspend fun deleteSmallAlbum(smallAlbumId: String): ApiResult<RemoteTrashItem> {
         return runCatching {
             postApi.deleteSmallAlbum(smallAlbumId = smallAlbumId).data.toRemoteModel()
@@ -470,9 +496,43 @@ class RealAlbumRepository(
         postId: String,
         payload: UpdatePostAlbumsPayload,
     ): ApiResult<RemotePostSummary> {
-        return ApiResult.Error(
-            code = "NOT_IMPLEMENTED",
-            message = "当前无法切换所属大相册，请稍后重试。",
+        return when (val result = moveSmallAlbums(
+            targetAlbumId = payload.albumId,
+            smallAlbumIds = listOf(postId),
+        )) {
+            is ApiResult.Success -> ApiResult.Success(result.data.firstOrNull() ?: RemotePostSummary(
+                postId = postId,
+                title = "",
+                summary = "",
+                contributorLabel = null,
+                displayTimeMillis = 0L,
+                albumId = payload.albumId,
+                coverMediaId = null,
+                mediaCount = 0,
+            ))
+            is ApiResult.Error -> result
+            ApiResult.Loading -> ApiResult.Loading
+        }
+    }
+
+    override suspend fun moveSmallAlbums(
+        targetAlbumId: String,
+        smallAlbumIds: List<String>,
+    ): ApiResult<List<RemotePostSummary>> {
+        return runCatching {
+            albumApi.moveSmallAlbums(
+                targetAlbumId = targetAlbumId,
+                request = MoveSmallAlbumsRequestDto(smallAlbumIds = smallAlbumIds),
+            ).data.map { it.toRemoteSummary() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "ALBUM_MOVE_SMALL_ALBUMS_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "切换小相册所属大相册失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
         )
     }
 }
@@ -601,9 +661,9 @@ class RealCommentRepository(
 class RealNotificationRepository(
     private val notificationApi: NotificationApi,
 ) : NotificationRepository {
-    override suspend fun getNotifications(limit: Int?): ApiResult<List<RemoteNotification>> {
+    override suspend fun getNotifications(limit: Int?, cursor: String?): ApiResult<List<RemoteNotification>> {
         return runCatching {
-            notificationApi.getNotifications(limit = limit).data.map { it.toRemoteModel() }
+            notificationApi.getNotifications(limit = limit, cursor = cursor).data.map { it.toRemoteModel() }
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -848,6 +908,10 @@ class RealUploadRepository(
                     operationTitle = payload.operationTitle,
                     operationMediaCount = payload.operationMediaCount,
                     sourceItemId = payload.sourceItemId,
+                    domain = payload.domain,
+                    latitude = payload.latitude,
+                    longitude = payload.longitude,
+                    locationLabel = payload.locationLabel,
                 ),
             ).data.toRemoteModel().also { token ->
                 uploadTokens[token.uploadId] = token
@@ -1288,6 +1352,11 @@ private fun backendRequestErrorMessage(
 class RealLifeConsoleRepository(
     private val lifeConsoleApi: LifeConsoleApi,
 ) : LifeConsoleRepository {
+
+    companion object {
+        private const val CACHE_MAX_AGE_MILLIS = 7 * 24 * 60 * 60 * 1000L // 7 天
+    }
+
     override suspend fun getToday(
         date: String?,
         zoneId: String,
@@ -1295,13 +1364,21 @@ class RealLifeConsoleRepository(
         return runCatching {
             lifeConsoleApi.getToday(date = date, zoneId = zoneId).data.toRemoteModel()
         }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "LIFE_CONSOLE_TODAY_REQUEST_FAILED",
-                    message = backendRequestErrorMessage(it, "读取今日痕迹失败，请稍后重试。"),
-                    throwable = it,
-                )
+            onSuccess = { data ->
+                AppReadCacheStore.writeLifeConsoleToday(data)
+                ApiResult.Success(data)
+            },
+            onFailure = { throwable ->
+                val cached = AppReadCacheStore.readLifeConsoleToday()
+                if (cached != null && !isCacheExpired(cached.cachedAtMillis)) {
+                    ApiResult.Success(cached.payload, isFromCache = true)
+                } else {
+                    ApiResult.Error(
+                        code = "LIFE_CONSOLE_TODAY_REQUEST_FAILED",
+                        message = backendRequestErrorMessage(throwable, "读取今日痕迹失败，请稍后重试。"),
+                        throwable = throwable,
+                    )
+                }
             },
         )
     }
@@ -1316,15 +1393,27 @@ class RealLifeConsoleRepository(
                 limitDays = limitDays,
             ).data.toRemoteModel()
         }.fold(
-            onSuccess = { ApiResult.Success(it) },
-            onFailure = {
-                ApiResult.Error(
-                    code = "LIFE_CONSOLE_HISTORY_REQUEST_FAILED",
-                    message = backendRequestErrorMessage(it, "读取痕迹历史失败，请稍后重试。"),
-                    throwable = it,
-                )
+            onSuccess = { data ->
+                AppReadCacheStore.writeLifeConsoleHistory(data)
+                ApiResult.Success(data)
+            },
+            onFailure = { throwable ->
+                val cached = AppReadCacheStore.readLifeConsoleHistory()
+                if (cached != null && !isCacheExpired(cached.cachedAtMillis)) {
+                    ApiResult.Success(cached.payload, isFromCache = true)
+                } else {
+                    ApiResult.Error(
+                        code = "LIFE_CONSOLE_HISTORY_REQUEST_FAILED",
+                        message = backendRequestErrorMessage(throwable, "读取痕迹历史失败，请稍后重试。"),
+                        throwable = throwable,
+                    )
+                }
             },
         )
+    }
+
+    private fun isCacheExpired(cachedAtMillis: Long): Boolean {
+        return System.currentTimeMillis() - cachedAtMillis > CACHE_MAX_AGE_MILLIS
     }
 
     override suspend fun addMedia(
@@ -1368,9 +1457,75 @@ class RealLifeConsoleRepository(
         )
     }
 
-    override suspend fun addBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+    // Round 7 阶段 7: 更新媒体位置
+    override suspend fun updateMediaLocation(
+        mediaId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleToday> {
         return runCatching {
-            lifeConsoleApi.addBowelEvent().data.toRemoteModel()
+            lifeConsoleApi.updateMediaLocation(
+                mediaId = mediaId,
+                request = UpdateLocationRequestDto(
+                    latitude = latitude,
+                    longitude = longitude,
+                    locationLabel = locationLabel,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_UPDATE_MEDIA_LOCATION_FAILED",
+                    message = backendRequestErrorMessage(it, "更新位置失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    // Round 7 阶段 7: 更新大便事件位置
+    override suspend fun updateBowelEventLocation(
+        eventId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleBowelMutation> {
+        return runCatching {
+            lifeConsoleApi.updateBowelEventLocation(
+                eventId = eventId,
+                request = UpdateLocationRequestDto(
+                    latitude = latitude,
+                    longitude = longitude,
+                    locationLabel = locationLabel,
+                ),
+            ).data.toRemoteModel()
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_CONSOLE_UPDATE_BOWEL_LOCATION_FAILED",
+                    message = backendRequestErrorMessage(it, "更新位置失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun addBowelEvent(
+        zoneId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleBowelMutation> {
+        return runCatching {
+            val body = LifeConsoleBowelEventRequestDto(
+                latitude = latitude,
+                longitude = longitude,
+                locationLabel = locationLabel,
+            )
+            lifeConsoleApi.addBowelEvent(zoneId, body).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -1383,9 +1538,11 @@ class RealLifeConsoleRepository(
         )
     }
 
-    override suspend fun deleteLatestBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+    override suspend fun deleteLatestBowelEvent(
+        zoneId: String,
+    ): ApiResult<RemoteLifeConsoleBowelMutation> {
         return runCatching {
-            lifeConsoleApi.deleteLatestBowelEvent().data.toRemoteModel()
+            lifeConsoleApi.deleteLatestBowelEvent(zoneId).data.toRemoteModel()
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {

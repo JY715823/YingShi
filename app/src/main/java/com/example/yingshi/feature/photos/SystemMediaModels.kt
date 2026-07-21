@@ -14,6 +14,15 @@ enum class SystemMediaFilter(
     UNIMPORTED("未导入"),
 }
 
+@Immutable
+data class SystemMediaAlbum(
+    val bucketName: String?,
+    val displayName: String,
+    val mediaCount: Int,
+    val coverUri: Uri?,
+    val coverMediaType: SystemMediaType,
+)
+
 enum class SystemMediaType(
     val label: String,
 ) {
@@ -72,7 +81,10 @@ data class SystemMediaViewerRoute(
 data class SystemMediaUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    val isBackgroundRefreshing: Boolean = false,
     val selectedFilter: SystemMediaFilter = SystemMediaFilter.ALL,
+    val selectedAlbum: SystemMediaAlbum? = null,
+    val albums: List<SystemMediaAlbum> = emptyList(),
     val allItems: List<SystemMediaItem> = emptyList(),
     val filteredItems: List<SystemMediaItem> = emptyList(),
     val errorMessage: String? = null,

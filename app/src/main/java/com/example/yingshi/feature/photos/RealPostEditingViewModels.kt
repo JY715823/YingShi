@@ -227,6 +227,9 @@ class RealGearEditViewModel(
                             currentItems = snapshot.mediaItems,
                             latestItems = latestMediaItems,
                             previousBaselineIds = previousBaselineIds,
+                            currentIdSelector = { it.id },
+                            latestIdSelector = { it.id },
+                            transformLatest = { it.copy(isCover = false) },
                         )
                     }
                     val nextCoverId = when {
@@ -314,21 +317,14 @@ class RealGearEditViewModel(
                     var firstFailure: String? = null
                     var mediaChanged = false
                     val removedIds = initialMediaIds.filterNot { finalMediaIds.contains(it) }
-                    removedIds.forEach { mediaId ->
-                        when (
-                            val deleteResult = RepositoryProvider.mediaRepository.deleteMediaFromPost(
-                                smallAlbumId = route.postId,
-                                mediaId = mediaId,
-                                deleteMode = "directory",
-                            )
-                        ) {
+                    if (removedIds.isNotEmpty()) {
+                        when (val batchResult = postRepository.updatePostMediaBatch(route.postId, removedIds)) {
                             is ApiResult.Success -> {
                                 mediaChanged = true
-                                committedMediaIds = committedMediaIds.filterNot { it == mediaId }
+                                committedMediaIds = committedMediaIds.filterNot { removedIds.contains(it) }
+                                committedCoverMediaId = batchResult.data.coverMediaId
                             }
-                            is ApiResult.Error -> if (firstFailure == null) {
-                                firstFailure = deleteResult.toBackendUiMessage("移除媒体失败。")
-                            }
+                            is ApiResult.Error -> firstFailure = batchResult.toBackendUiMessage("批量移除媒体失败。")
                             ApiResult.Loading -> Unit
                         }
                     }
@@ -734,24 +730,3 @@ private fun RealGearEditUiState.recalculate(
     )
 }
 
-private fun mergeMediaDraftWithRemoteAdditions(
-    currentItems: List<ManagedPostMediaUiModel>,
-    latestItems: List<ManagedPostMediaUiModel>,
-    previousBaselineIds: Collection<String>,
-): List<ManagedPostMediaUiModel> {
-    val currentIds = currentItems.mapTo(linkedSetOf()) { it.id }
-    val latestById = latestItems.associateBy { it.id }
-    return buildList {
-        currentItems.forEach { item ->
-            add(
-                latestById[item.id]?.copy(isCover = false)
-                    ?: item.copy(isCover = false),
-            )
-        }
-        latestItems.forEach { media ->
-            if (media.id !in currentIds && media.id !in previousBaselineIds) {
-                add(media.copy(isCover = false))
-            }
-        }
-    }
-}

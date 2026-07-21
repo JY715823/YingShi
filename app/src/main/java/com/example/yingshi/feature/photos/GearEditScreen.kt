@@ -143,10 +143,13 @@ fun GearEditScreen(
         val nextItems = if (!localMediaDirty && !localCoverDirty) {
             repoMediaItems.map(ManagedPostMediaUiModel::toPostMediaListItem)
         } else {
-            mergeDraftPostMediaWithRepoAdditions(
+            mergeMediaDraftWithRemoteAdditions(
                 currentItems = mediaItems,
                 latestItems = repoMediaItems,
                 previousBaselineIds = previousBaselineIds,
+                currentIdSelector = { it.id },
+                latestIdSelector = { it.id },
+                transformLatest = { it.toPostMediaListItem() },
             )
         }
         val nextCoverId = when {
@@ -343,7 +346,7 @@ fun GearEditScreen(
                 Text(
                     text = "请选择一个大相册",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
+                    color = colors.destructive,
                 )
             }
             AlbumSelectionFlow(
@@ -368,7 +371,7 @@ fun GearEditScreen(
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             GearEditActionButton(
                 text = if (isSaving) "保存中…" else "保存",
@@ -434,7 +437,7 @@ fun GearEditScreen(
                     if (systemDeleteImpact.sharedMediaCount > 0) {
                         Text(
                             text = "其中有 ${systemDeleteImpact.sharedMediaCount} 张媒体同时属于其他小相册，会带来 ${systemDeleteImpact.affectedOtherPostCount} 个其他小相册的全局影响。",
-                            color = MaterialTheme.colorScheme.error,
+                            color = colors.destructive,
                         )
                     } else if (systemDeleteImpact.mediaCount > 0) {
                         Text("当前小相册共有 ${systemDeleteImpact.mediaCount} 张媒体会进入本地系统删流程。")
@@ -476,6 +479,7 @@ private fun RealGearEditScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
     val context = LocalContext.current
     val sessionKey = realBackendSessionKey("real-gear-edit-${route.postId}")
     val viewModel: RealGearEditViewModel = viewModel(
@@ -654,7 +658,7 @@ private fun RealGearEditScreen(
                 Text(
                     text = "请选择一个大相册",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
+                    color = colors.destructive,
                 )
             }
             AlbumSelectionFlow(
@@ -674,7 +678,7 @@ private fun RealGearEditScreen(
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             GearEditActionButton(
                 text = if (uiState.isSaving) "保存中…" else "保存",
@@ -726,7 +730,6 @@ private fun RealGearEditScreen(
     }
 
     if (showDeletePostDialog) {
-        val colors = YingShiThemeTokens.colors
         AlertDialog(
             onDismissRequest = { showDeletePostDialog = false },
             containerColor = colors.raisedSurface,
@@ -868,27 +871,6 @@ private fun GearEditTextSection(
     }
 }
 
-private fun mergeDraftPostMediaWithRepoAdditions(
-    currentItems: List<PostMediaListItem>,
-    latestItems: List<ManagedPostMediaUiModel>,
-    previousBaselineIds: Collection<String>,
-): List<PostMediaListItem> {
-    val currentIds = currentItems.mapTo(linkedSetOf()) { it.id }
-    val latestById = latestItems.associateBy { it.id }
-    return buildList {
-        currentItems.forEach { item ->
-            add(
-                latestById[item.id]?.toPostMediaListItem() ?: item,
-            )
-        }
-        latestItems.forEach { media ->
-            if (media.id !in currentIds && media.id !in previousBaselineIds) {
-                add(media.toPostMediaListItem())
-            }
-        }
-    }
-}
-
 @Composable
 private fun GearEditMediaPreviewSection(
     items: List<PostMediaListItem>,
@@ -930,13 +912,16 @@ private fun GearEditMediaPreviewSection(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     rowItems.forEach { item ->
-                        Box(
+                        Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(YingShiThemeTokens.radius.lg))
-                                .background(colors.sectionBackground.copy(alpha = 0.62f)),
+                                .aspectRatio(1f),
+                            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
+                            color = colors.glassSurfaceBase.copy(alpha = 0.55f),
+                            border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.52f)),
+                            shadowElevation = 2.dp,
                         ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
                             PostMediaListThumbnail(
                                 item = item,
                                 modifier = Modifier.fillMaxSize(),
@@ -955,10 +940,11 @@ private fun GearEditMediaPreviewSection(
                                         text = "封面$coverRank",
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = Color.White,
+                                        color = colors.onPrimaryContainer,
                                     )
                                 }
                             }
+                        }
                         }
                     }
                     if (rowItems.size == 1) {
@@ -1186,7 +1172,7 @@ private fun GearEditEntryRow(
     danger: Boolean = false,
     onClick: () -> Unit,
 ) {
-    if (title.contains("缓存") || title.contains("缂撳瓨")) {
+    if (title.contains("缓存")) {
         return
     }
     val spacing = YingShiThemeTokens.spacing
@@ -1197,7 +1183,7 @@ private fun GearEditEntryRow(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
         color = if (danger) {
-            MaterialTheme.colorScheme.error.copy(alpha = 0.06f)
+            colors.destructive.copy(alpha = 0.06f)
         } else {
             colors.sectionBackground.copy(alpha = 0.62f)
         },
@@ -1209,7 +1195,7 @@ private fun GearEditEntryRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = if (danger) MaterialTheme.colorScheme.error else colors.titleAccent,
+                color = if (danger) colors.destructive else colors.titleAccent,
             )
             Text(
                 text = subtitle,
@@ -1238,14 +1224,14 @@ private fun GearEditActionButton(
         shape = shape,
         color = when {
             !enabled -> colors.sectionBackground.copy(alpha = 0.46f)
-            danger -> MaterialTheme.colorScheme.error.copy(alpha = 0.10f)
+            danger -> colors.destructive.copy(alpha = 0.10f)
             emphasized -> colors.primaryContainer.copy(alpha = 0.88f)
             else -> colors.sectionBackground.copy(alpha = 0.72f)
         },
         border = BorderStroke(
             1.dp,
             when {
-                danger -> MaterialTheme.colorScheme.error.copy(alpha = 0.28f)
+                danger -> colors.destructive.copy(alpha = 0.28f)
                 emphasized -> colors.glassStroke.copy(alpha = 0.84f)
                 else -> colors.dividerSoft.copy(alpha = 0.68f)
             },
@@ -1261,7 +1247,7 @@ private fun GearEditActionButton(
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = when {
                     !enabled -> colors.textSecondary.copy(alpha = 0.58f)
-                    danger -> MaterialTheme.colorScheme.error
+                    danger -> colors.destructive
                     emphasized -> colors.titleAccent
                     else -> colors.textSecondary
                 },

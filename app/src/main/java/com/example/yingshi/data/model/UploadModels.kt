@@ -26,6 +26,11 @@ data class CreateUploadTokenPayload(
     val operationTitle: String? = null,
     val operationMediaCount: Int? = null,
     val sourceItemId: String? = null,
+    val domain: String? = null,
+    // FR-18: optional location fields
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
 )
 
 data class ConfirmUploadPayload(

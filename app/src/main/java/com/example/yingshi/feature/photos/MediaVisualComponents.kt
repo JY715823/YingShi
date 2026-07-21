@@ -32,7 +32,8 @@ internal fun YingShiMediaFrame(
     memoryActive: Boolean = false,
     topScrimAlpha: Float = 0.18f,
     bottomGlowAlpha: Float = 0.18f,
-    borderAlpha: Float = 0.54f,
+    borderAlpha: Float = 0.62f,
+    selectedBorderColor: Color? = null,
 ) {
     val colors = YingShiThemeTokens.colors
     Box(modifier = modifier.clip(shape)) {
@@ -72,7 +73,7 @@ internal fun YingShiMediaFrame(
                     width = if (selected || memoryActive) 1.5.dp else 1.dp,
                     color = when {
                         memoryActive -> colors.memoryAccent.copy(alpha = 0.34f)
-                        selected -> colors.primaryContainer.copy(alpha = 0.58f)
+                        selected -> selectedBorderColor ?: colors.primaryContainer.copy(alpha = 0.58f)
                         else -> colors.glassStroke.copy(alpha = borderAlpha)
                     },
                     shape = shape,
@@ -84,7 +85,7 @@ internal fun YingShiMediaFrame(
                 .padding(1.dp)
                 .border(
                     width = 1.dp,
-                    color = colors.viewerText.copy(alpha = if (memoryActive) 0.22f else 0.14f),
+                    color = colors.viewerText.copy(alpha = if (memoryActive) 0.28f else 0.18f),
                     shape = shape,
                 ),
         )

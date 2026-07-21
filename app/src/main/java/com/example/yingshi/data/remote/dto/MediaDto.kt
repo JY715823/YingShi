@@ -36,6 +36,10 @@ data class MediaDto(
     val createdAtMillis: Long? = null,
     val smallAlbumIds: List<String>? = null,
     val access: List<MediaAccessDto>? = null,
+    // FR-18: optional location tag (nullable for backward compat with older server responses)
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
 ) {
     val postIds: List<String>
         get() = smallAlbumIds.orEmpty()

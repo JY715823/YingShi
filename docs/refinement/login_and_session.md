@@ -4,9 +4,10 @@
 
 - Module key: `login_and_session`
 - Status: `closed`
-- Last updated: `2026-06-09`
+- Last updated: `2026-07-08`
 - Primary surfaces: `android | server | shared`
 - Linked server brief: `none`
+- Refine2 status: `completed` (2026-07-08, 3 rounds, 7 FRs, 29/29 AC pass)
 
 ## Module Goal
 - User value: 让双人账号登录更像正式产品，支持真实 QQ 邮箱验证码验证，会话失效时能保留缓存只读并给出清晰反馈。

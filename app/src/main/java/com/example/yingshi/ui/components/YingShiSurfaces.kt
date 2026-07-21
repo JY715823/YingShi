@@ -31,6 +31,12 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -54,6 +61,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
@@ -82,7 +90,7 @@ fun YingShiMistBackground(
         variant = variant,
     ) {
         if (showWaves) {
-            MistWaveCanvas(modifier = Modifier.matchParentSize())
+            MistWaveCanvas(modifier = Modifier.fillMaxSize())
         }
         content()
     }
@@ -351,6 +359,8 @@ fun YingShiMistCard(
     shape: Shape? = null,
     color: Color? = null,
     borderColor: Color? = null,
+    borderless: Boolean = false,
+    elevation: Dp = 2.dp,
     content: @Composable () -> Unit,
 ) {
     val resolvedShape = shape ?: RoundedCornerShape(YingShiThemeTokens.radius.lg)
@@ -359,8 +369,9 @@ fun YingShiMistCard(
         shape = resolvedShape,
         color = color ?: YingShiThemeTokens.colors.raisedSurface.copy(alpha = 0.94f),
         tonalElevation = 0.dp,
-        shadowElevation = 2.dp,
-        border = BorderStroke(1.dp, borderColor ?: YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.70f)),
+        shadowElevation = elevation,
+        border = if (borderless) null
+                 else BorderStroke(1.dp, borderColor ?: YingShiThemeTokens.colors.dividerSoft.copy(alpha = 0.70f)),
         content = content,
     )
 }
@@ -415,6 +426,17 @@ fun YingShiPrimaryMistButton(
 ) {
     val colors = YingShiThemeTokens.colors
     val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
+    val shimmerTransition = rememberInfiniteTransition(label = "btnShimmer")
+    val shimmerOffset by shimmerTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmerOffset",
+    )
+
     Surface(
         modifier = modifier
             .yingShiClickable(
@@ -446,6 +468,24 @@ fun YingShiPrimaryMistButton(
                 .padding(contentPadding),
             contentAlignment = Alignment.Center,
         ) {
+            // Shimmer sweep overlay
+            if (enabled && !loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.18f),
+                                    Color.Transparent,
+                                ),
+                                start = Offset(shimmerOffset * 3f - 1f, 0f),
+                                end = Offset(shimmerOffset * 3f, 0f),
+                            ),
+                        ),
+                )
+            }
             if (loading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(22.dp),
@@ -511,15 +551,22 @@ private fun varFocusedField(
     val spacing = YingShiThemeTokens.spacing
     var isFocused by remember { mutableStateOf(false) }
 
+    val focusShadowElevation = if (isFocused) 4.dp else 1.dp
+    val iconTint = if (isFocused) colors.goldAccent else colors.titleAccent
+
     Surface(
-        modifier = modifier,
+        modifier = modifier.shadow(
+            elevation = focusShadowElevation,
+            shape = RoundedCornerShape(radius.lg),
+            ambientColor = if (isFocused) colors.glassStroke.copy(alpha = 0.15f) else Color.Transparent,
+            spotColor = if (isFocused) colors.glassStroke.copy(alpha = 0.10f) else Color.Transparent,
+        ),
         shape = RoundedCornerShape(radius.lg),
-        color = colors.raisedSurface.copy(alpha = 0.82f),
+        color = if (isFocused) colors.raisedSurface.copy(alpha = 0.92f) else colors.raisedSurface.copy(alpha = 0.82f),
         border = BorderStroke(
-            width = 1.dp,
+            width = if (isFocused) 1.5.dp else 1.dp,
             color = if (isFocused) colors.glassStroke.copy(alpha = 0.92f) else colors.dividerSoft.copy(alpha = 0.82f),
         ),
-        shadowElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier
@@ -531,7 +578,7 @@ private fun varFocusedField(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = colors.titleAccent,
+                tint = iconTint,
                 modifier = Modifier.size(27.dp),
             )
             Box(

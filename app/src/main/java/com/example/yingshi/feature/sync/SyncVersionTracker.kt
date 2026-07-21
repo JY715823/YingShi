@@ -28,6 +28,7 @@ enum class SyncModule {
     TRASH,
     NOTIFICATIONS,
     LIFE_CONSOLE,
+    SYSTEM_MEDIA,
 }
 
 data class SyncStaleState(
@@ -36,6 +37,7 @@ data class SyncStaleState(
     val trashStale: Boolean = false,
     val notificationsStale: Boolean = false,
     val lifeConsoleStale: Boolean = false,
+    val systemMediaStale: Boolean = false,
 ) {
     fun isStale(module: SyncModule): Boolean = when (module) {
         SyncModule.PHOTO_FEED -> photoFeedStale
@@ -43,6 +45,7 @@ data class SyncStaleState(
         SyncModule.TRASH -> trashStale
         SyncModule.NOTIFICATIONS -> notificationsStale
         SyncModule.LIFE_CONSOLE -> lifeConsoleStale
+        SyncModule.SYSTEM_MEDIA -> systemMediaStale
     }
 }
 
@@ -136,12 +139,18 @@ object SyncVersionTracker {
                 SyncModule.TRASH -> current.copy(trashStale = false)
                 SyncModule.NOTIFICATIONS -> current.copy(notificationsStale = false)
                 SyncModule.LIFE_CONSOLE -> current.copy(lifeConsoleStale = false)
+                SyncModule.SYSTEM_MEDIA -> current.copy(systemMediaStale = false)
             }
         }
     }
 
     fun markLocalMutation(module: SyncModule) {
         Log.d(TAG, "markLocalMutation($module)")
+        if (module == SyncModule.SYSTEM_MEDIA) {
+            // SYSTEM_MEDIA has no remote version; set stale directly so the SystemMediaViewModel refreshes.
+            _staleState.update { it.copy(systemMediaStale = true) }
+            return
+        }
         synchronized(pendingAutoClearModules) {
             pendingAutoClearModules[module] = System.currentTimeMillis() + LOCAL_MUTATION_ABSORB_MILLIS
         }
@@ -191,6 +200,7 @@ object SyncVersionTracker {
                 SyncModule.TRASH -> local.copy(trashVersion = remote.trashVersion)
                 SyncModule.NOTIFICATIONS -> local.copy(notificationVersion = remote.effectiveNotificationVersion())
                 SyncModule.LIFE_CONSOLE -> local.copy(lifeConsoleVersion = remote.lifeConsoleVersion)
+                SyncModule.SYSTEM_MEDIA -> local // no remote version; stale flag is managed directly
             }
         } ?: remote
     }
@@ -237,6 +247,7 @@ object SyncVersionTracker {
             trashStale = remote.trashVersion > updatedLocal.trashVersion,
             notificationsStale = remote.effectiveNotificationVersion() > updatedLocal.effectiveNotificationVersion(),
             lifeConsoleStale = remote.lifeConsoleVersion > updatedLocal.lifeConsoleVersion,
+            systemMediaStale = _staleState.value.systemMediaStale,
         )
         val previous = _staleState.value
         val ctx = appContext

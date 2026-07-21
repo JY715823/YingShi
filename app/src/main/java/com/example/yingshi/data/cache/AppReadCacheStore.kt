@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import android.content.Context
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteCurrentUser
+import com.example.yingshi.data.model.RemoteLifeConsoleHistory
+import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.model.RemoteNotification
 import com.example.yingshi.data.model.RemotePostDetail
@@ -72,6 +74,8 @@ object AppReadCacheStore {
     private const val NOTIFICATION_DETAIL_SCOPE = "notification-detail"
     private const val TRASH_LIST_SCOPE = "trash-list"
     private const val TRASH_DETAIL_SCOPE = "trash-detail"
+    private const val LIFE_CONSOLE_TODAY_SCOPE = "life-console-today"
+    private const val LIFE_CONSOLE_HISTORY_SCOPE = "life-console-history"
 
     private val gson = Gson()
     private val lock = Any()
@@ -316,6 +320,42 @@ object AppReadCacheStore {
             }
             return cleared
         }
+    }
+
+    // ---- LifeConsole 缓存 ----
+
+    fun readLifeConsoleToday(): CachedPayload<RemoteLifeConsoleToday>? {
+        return read(
+            scope = LIFE_CONSOLE_TODAY_SCOPE,
+            userId = null,
+            payloadType = RemoteLifeConsoleToday::class.java,
+        )
+    }
+
+    fun writeLifeConsoleToday(payload: RemoteLifeConsoleToday) {
+        write(
+            scope = LIFE_CONSOLE_TODAY_SCOPE,
+            userId = null,
+            payload = payload,
+            payloadType = RemoteLifeConsoleToday::class.java,
+        )
+    }
+
+    fun readLifeConsoleHistory(): CachedPayload<RemoteLifeConsoleHistory>? {
+        return read(
+            scope = LIFE_CONSOLE_HISTORY_SCOPE,
+            userId = null,
+            payloadType = RemoteLifeConsoleHistory::class.java,
+        )
+    }
+
+    fun writeLifeConsoleHistory(payload: RemoteLifeConsoleHistory) {
+        write(
+            scope = LIFE_CONSOLE_HISTORY_SCOPE,
+            userId = null,
+            payload = payload,
+            payloadType = RemoteLifeConsoleHistory::class.java,
+        )
     }
 
     private fun cacheDirectoryOrNull(): File? {

@@ -88,6 +88,9 @@ android {
         // Default account emails for UI pre-fill (not security-sensitive)
         buildConfigField("String", "DEFAULT_PRIMARY_ACCOUNT", "\"1085060329@qq.com\"")
         buildConfigField("String", "DEFAULT_SECONDARY_ACCOUNT", "\"2926315047@qq.com\"")
+
+        // Round 7: 高德地图 Android key (位置选择页 E2)
+        manifestPlaceholders["AMAP_API_KEY"] = "d4f794bb299372394f06fe512949adba"
     }
 
     compileOptions {
@@ -184,8 +187,13 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.play.services.location)
+    // Round 7: 高德地图 SDK 合并包 (3D地图+定位+搜索), 位置选择页 E2
+    implementation(libs.amap.sdk)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.room.testing)

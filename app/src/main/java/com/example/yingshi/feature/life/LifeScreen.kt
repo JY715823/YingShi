@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +33,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.chat.data.ChatImportDatabase
+import com.example.yingshi.feature.ledger.data.LedgerDatabase
 import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
 import com.example.yingshi.ui.components.YingShiMistCard
@@ -44,35 +53,112 @@ import com.example.yingshi.ui.components.yingShiRouteReveal
 import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import java.util.Calendar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.time.LocalDateTime
+import java.time.format.TextStyle
 import java.util.Locale
 
 @Composable
 fun LifeScreen(
     modifier: Modifier = Modifier,
-    onOpenLifeConsole: () -> Unit = {},
-    onOpenLedger: () -> Unit = {},
-    onOpenChatViewer: () -> Unit = {},
+    onNavigate: (LifeSubRoute) -> Unit = {},
 ) {
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val context = LocalContext.current
 
     var currentTimeLabel by remember { mutableStateOf("") }
     var currentDateLabel by remember { mutableStateOf("") }
 
+    // 动态摘要状态：null = 加载中（显示静态文案），非null = 已加载
+    var traceSummary by remember { mutableStateOf<String?>(null) }
+    var ledgerSummary by remember { mutableStateOf<String?>(null) }
+    var chatSummary by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        currentTimeLabel = when (hour) {
+        val now = LocalDateTime.now()
+        currentTimeLabel = when (now.hour) {
             in 5..11 -> "早安"
             in 12..17 -> "午安"
             else -> "晚安"
         }
-        val month = calendar.get(Calendar.MONTH) + 1
-        val day = calendar.get(Calendar.DAY_OF_MONTH)
-        val dayOfWeek = calendar.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.LONG, Locale.CHINA)
-        currentDateLabel = "${month}月${day}日 $dayOfWeek"
+        currentDateLabel = "${now.monthValue}月${now.dayOfMonth}日 ${now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.CHINA)}"
     }
+
+    // FR-6: ON_RESUME 时重新计算问候语，跨时段自动更新
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val now = LocalDateTime.now()
+                currentTimeLabel = when (now.hour) {
+                    in 5..11 -> "早安"
+                    in 12..17 -> "午安"
+                    else -> "晚安"
+                }
+                currentDateLabel = "${now.monthValue}月${now.dayOfMonth}日 ${now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.CHINA)}"
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 今日痕迹摘要：从 API 获取今日媒体数量
+    LaunchedEffect(Unit) {
+        try {
+            val result = withContext(Dispatchers.IO) {
+                RepositoryProvider.lifeConsoleRepository.getToday()
+            }
+            if (result is ApiResult.Success) {
+                val today = result.data
+                val totalMedia = today.personSelf.mediaItems.size +
+                    today.personPartner.mediaItems.size +
+                    today.mealSelf.mediaItems.size +
+                    today.mealPartner.mediaItems.size
+                traceSummary = if (totalMedia > 0) "今日 ${totalMedia} 张" else "今天还没有痕迹"
+            }
+        } catch (_: Throwable) {
+            // 降级为静态文案
+        }
+    }
+
+    // 记账摘要：从 Room 获取交易数量
+    LaunchedEffect(Unit) {
+        try {
+            val totalCount = withContext(Dispatchers.IO) {
+                val dao = LedgerDatabase.getInstance(context).ledgerDao()
+                val books = dao.getAllBooks().filter { !it.isDeleted }
+                books.sumOf { dao.countTransactionsByBook(it.id) }
+            }
+            ledgerSummary = if (totalCount > 0) "共 ${totalCount} 笔记录" else "还没有记录"
+        } catch (_: Throwable) {
+            // 降级为静态文案
+        }
+    }
+
+    // 聊天摘要：从 Room 获取消息总数
+    LaunchedEffect(Unit) {
+        try {
+            val stats = withContext(Dispatchers.IO) {
+                val chatDao = ChatImportDatabase.getInstance(context).chatImportDao()
+                val chats = chatDao.getAllChats()
+                val totalMessages = chats.sumOf { chatDao.getMessageCountForChat(it.chatId) }
+                Pair(chats.size, totalMessages)
+            }
+            val (chatCount, totalMessages) = stats
+            chatSummary = when {
+                chatCount == 0 -> "还没有导入"
+                totalMessages > 0 -> "${totalMessages} 条消息"
+                else -> "${chatCount} 个对话"
+            }
+        } catch (_: Throwable) {
+            // 降级为静态文案
+        }
+    }
+
+    val ledgerStatus = ledgerSummary ?: "进入账本"
+    val ledgerSubtitle = ledgerSummary?.let { "账本、预算和每一笔生活开销" } ?: "账本、预算和每一笔生活开销"
 
     YingShiMistBackground(
         modifier = modifier.fillMaxSize(),
@@ -120,36 +206,36 @@ fun LifeScreen(
             ) {
                 LifeEntryCard(
                     title = "记账",
-                    summary = "账本、预算和每一笔生活开销",
-                    status = "进入账本",
+                    summary = ledgerSubtitle,
+                    status = ledgerStatus,
                     accent = LifeEntryAccent.GREEN,
                     icon = Icons.Rounded.AccountBalanceWallet,
                     modifier = Modifier
                         .weight(1f)
                         .yingShiRouteReveal(visible = true),
-                    onClick = onOpenLedger,
+                    onClick = { onNavigate(LifeSubRoute.Ledger) },
                 )
                 LifeEntryCard(
                     title = "聊天记录",
                     summary = "本地离线回看旧对话",
-                    status = "打开记录",
+                    status = chatSummary ?: "打开记录",
                     accent = LifeEntryAccent.WARM,
                     icon = Icons.Rounded.ChatBubbleOutline,
                     modifier = Modifier
                         .weight(1f)
                         .yingShiRouteReveal(visible = true),
-                    onClick = onOpenChatViewer,
+                    onClick = { onNavigate(LifeSubRoute.Chat) },
                 )
                 LifeEntryCard(
                     title = "今日痕迹",
                     summary = "照片、饭点和今天留下的小记录",
-                    status = "查看今天",
+                    status = traceSummary ?: "查看今天",
                     accent = LifeEntryAccent.BLUE,
                     icon = Icons.Rounded.DashboardCustomize,
                     modifier = Modifier
                         .weight(1f)
                         .yingShiRouteReveal(visible = true),
-                    onClick = onOpenLifeConsole,
+                    onClick = { onNavigate(LifeSubRoute.Console) },
                 )
             }
         }

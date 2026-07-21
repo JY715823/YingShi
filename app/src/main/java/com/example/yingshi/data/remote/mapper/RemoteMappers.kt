@@ -3,6 +3,7 @@ package com.example.yingshi.data.remote.mapper
 import com.example.yingshi.data.model.RemoteAlbum
 import com.example.yingshi.data.model.RemoteComment
 import com.example.yingshi.data.model.RemoteCommentPage
+import com.example.yingshi.data.model.RemoteLifeConsoleBowelEvent
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelMutation
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelHistoryDay
 import com.example.yingshi.data.model.RemoteLifeConsoleBowelSummary
@@ -29,6 +30,7 @@ import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
+import com.example.yingshi.data.remote.dto.LifeConsoleBowelEventDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelMutationResponseDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelHistoryDayDto
 import com.example.yingshi.data.remote.dto.LifeConsoleBowelSummaryDto
@@ -84,6 +86,9 @@ fun MediaDto.toRemoteModel(): RemoteMedia {
         recordOwnerUserId = recordOwnerUserId,
         uploadedByUserId = uploadedByUserId,
         access = accessItems,
+        latitude = latitude,
+        longitude = longitude,
+        locationLabel = locationLabel,
     )
 }
 
@@ -105,12 +110,27 @@ fun LifeConsoleMediaSlotDto.toRemoteModel(): RemoteLifeConsoleMediaSlot {
     )
 }
 
+fun LifeConsoleBowelEventDto.toRemoteModel(): RemoteLifeConsoleBowelEvent {
+    return RemoteLifeConsoleBowelEvent(
+        bowelEventId = bowelEventId,
+        userId = userId,
+        occurredAtMillis = occurredAtMillis,
+        latitude = latitude,
+        longitude = longitude,
+        locationLabel = locationLabel,
+    )
+}
+
 fun LifeConsoleBowelUserSummaryDto.toRemoteModel(): RemoteLifeConsoleBowelUserSummary {
     return RemoteLifeConsoleBowelUserSummary(
         userId = userId,
         count = count,
         latestOccurredAtMillis = latestOccurredAtMillis,
         eventTimesMillis = eventTimesMillis,
+        latestLocationLabel = latestLocationLabel,
+        // Round 8 Bug 修复: 之前漏映射 events 字段, 导致客户端 events 永远为 null,
+        // 大便页加号点击后 UI 看不到新事件 ("闪一下什么都没发生"), 历史页大便卡片也是空。
+        events = events?.map(LifeConsoleBowelEventDto::toRemoteModel),
     )
 }
 
@@ -140,6 +160,7 @@ fun LifeConsoleHistoryDayDto.toRemoteModel(): RemoteLifeConsoleHistoryDay {
         displayLabel = displayLabel,
         selfMedia = selfMedia.map(MediaDto::toRemoteModel),
         partnerMedia = partnerMedia.map(MediaDto::toRemoteModel),
+        locationLabel = locationLabel,
     )
 }
 
@@ -148,6 +169,7 @@ fun LifeConsoleBowelHistoryDayDto.toRemoteModel(): RemoteLifeConsoleBowelHistory
         date = date,
         displayLabel = displayLabel,
         users = users.map(LifeConsoleBowelUserSummaryDto::toRemoteModel),
+        locationLabel = locationLabel,
     )
 }
 

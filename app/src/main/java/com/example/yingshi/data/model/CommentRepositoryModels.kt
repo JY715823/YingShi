@@ -14,6 +14,8 @@ data class CommentListState(
     val isLoading: Boolean = false,
     val errorCode: String? = null,
     val errorMessage: String? = null,
+    val hasMore: Boolean = false,
+    val currentPage: Int = 1,
 ) {
     val isEmpty: Boolean
         get() = !isLoading && errorCode == null && comments.isEmpty()
@@ -22,7 +24,11 @@ data class CommentListState(
 fun ApiResult<RemoteCommentPage>.toCommentListState(): CommentListState {
     return when (this) {
         is ApiResult.Loading -> CommentListState(isLoading = true)
-        is ApiResult.Success -> CommentListState(comments = data.comments.filterNot { it.isDeleted })
+        is ApiResult.Success -> CommentListState(
+            comments = data.comments.filterNot { it.isDeleted },
+            hasMore = data.hasMore,
+            currentPage = data.page,
+        )
         is ApiResult.Error -> CommentListState(
             errorCode = code,
             errorMessage = message,

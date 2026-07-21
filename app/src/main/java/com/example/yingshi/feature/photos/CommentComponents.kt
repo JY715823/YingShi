@@ -1,6 +1,15 @@
 package com.example.yingshi.feature.photos
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -12,9 +21,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +62,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlin.math.roundToInt
 
@@ -65,12 +77,13 @@ fun CommentInputBar(
     darkMode: Boolean = false,
     requestFocusOnShow: Boolean = false,
     elevated: Boolean = false,
+    value: TextFieldValue = TextFieldValue(""),
+    onValueChange: (TextFieldValue) -> Unit = {},
 ) {
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
-    var value by rememberSaveable(stateKey) { mutableStateOf("") }
-    val sendEnabled = value.trim().isNotEmpty()
+    val sendEnabled = value.text.trim().isNotEmpty()
     val containerColor = when {
         darkMode && elevated -> colors.viewerSurface.copy(alpha = 0.92f)
         darkMode -> colors.viewerSurface.copy(alpha = 0.72f)
@@ -119,7 +132,7 @@ fun CommentInputBar(
         ) {
             BasicTextField(
                 value = value,
-                onValueChange = { value = it },
+                onValueChange = onValueChange,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
@@ -134,7 +147,7 @@ fun CommentInputBar(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        if (value.isBlank()) {
+                        if (value.text.isBlank()) {
                             Text(
                                 text = placeholder,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -151,10 +164,10 @@ fun CommentInputBar(
             text = "发送",
             enabled = sendEnabled,
             onClick = {
-                val trimmed = value.trim()
+                val trimmed = value.text.trim()
                 if (trimmed.isNotEmpty()) {
                     onSend(trimmed)
-                    value = ""
+                    onValueChange(TextFieldValue(""))
                 }
             },
             darkMode = darkMode,
@@ -203,6 +216,7 @@ fun CommentListItem(
     }
     val editFocusRequester = remember(comment.id) { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val motionEnabled = rememberYingShiMotionEnabled()
     val activeBackground = when {
         selectionMode && darkMode -> colors.viewerAccent.copy(alpha = 0.14f)
         selectionMode -> colors.primaryContainer.copy(alpha = 0.42f)
@@ -342,9 +356,12 @@ fun CommentListItem(
             }
         }
 
-        if (showInlineActionMenu && menuPositionProvider != null) {
+        val menuTransition = remember { MutableTransitionState(false) }
+        menuTransition.targetState = showInlineActionMenu && menuPositionProvider != null
+
+        if (menuTransition.currentState || menuTransition.targetState) {
             Popup(
-                popupPositionProvider = menuPositionProvider,
+                popupPositionProvider = menuPositionProvider!!,
                 onDismissRequest = { onClick?.invoke() },
                 properties = PopupProperties(
                     focusable = true,
@@ -352,14 +369,20 @@ fun CommentListItem(
                     dismissOnClickOutside = true,
                 ),
             ) {
-                CommentInlineActionMenu(
-                    darkMode = darkMode,
-                    onCopy = onCopyFull,
-                    onSelect = onSelectText,
-                    onEdit = onEdit,
-                    onDelete = onDelete,
-                    confirmingDelete = confirmingDelete,
-                )
+                AnimatedVisibility(
+                    visibleState = menuTransition,
+                    enter = if (motionEnabled) fadeIn() + scaleIn() else EnterTransition.None,
+                    exit = if (motionEnabled) fadeOut() + scaleOut() else ExitTransition.None,
+                ) {
+                    CommentInlineActionMenu(
+                        darkMode = darkMode,
+                        onCopy = onCopyFull,
+                        onSelect = onSelectText,
+                        onEdit = onEdit,
+                        onDelete = onDelete,
+                        confirmingDelete = confirmingDelete,
+                    )
+                }
             }
         }
     }
@@ -613,4 +636,290 @@ fun List<CommentUiModel>.hasHiddenComments(expanded: Boolean): Boolean {
 fun List<CommentUiModel>.canCollapseComments(expanded: Boolean): Boolean {
     return expanded && size > DefaultVisibleCommentCount
 }
+
+// region RealCommentThread (migrated from SmallAlbumCommentSheets.kt)
+
+@Composable
+internal fun RealCommentThreadCard(
+    title: String,
+    subtitle: String,
+    stateKeyPrefix: String,
+    emptyText: String,
+    state: RealCommentThreadUiState,
+    onRetry: () -> Unit,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+    onLoadMore: (() -> Unit)? = null,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
+    val colors = YingShiThemeTokens.colors
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(radius.xl),
+        color = colors.raisedSurface.copy(alpha = 0.94f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.68f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.titleAccent,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+            RealCommentThreadContent(
+                state = state,
+                stateKeyPrefix = stateKeyPrefix,
+                emptyText = emptyText,
+                onRetry = onRetry,
+                onCreateComment = onCreateComment,
+                onUpdateComment = onUpdateComment,
+                onDeleteComment = onDeleteComment,
+                onLoadMore = onLoadMore,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun RealCommentThreadContent(
+    state: RealCommentThreadUiState,
+    stateKeyPrefix: String,
+    emptyText: String,
+    onRetry: () -> Unit,
+    onCreateComment: (String) -> Unit,
+    onUpdateComment: (String, String) -> Unit,
+    onDeleteComment: (String) -> Unit,
+    showInput: Boolean = true,
+    inputPlaceholder: String = "写一条评论",
+    onLoadMore: (() -> Unit)? = null,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    val motion = YingShiThemeTokens.motion
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val copyComment = rememberCommentCopyHandler()
+    var expanded by rememberSaveable(stateKeyPrefix) { mutableStateOf(false) }
+    var interactionState by rememberCommentInteractionState(stateKeyPrefix)
+    val visibleComments = state.comments.visibleComments(expanded)
+
+    BackHandler(enabled = interactionState.selectedCommentId != null) {
+        interactionState = interactionState.copy(
+            selectedCommentId = null,
+            selectedCommentValue = TextFieldValue(""),
+        )
+    }
+    BackHandler(enabled = interactionState.actionCommentId != null) {
+        interactionState = interactionState.copy(actionCommentId = null)
+    }
+
+    if (state.errorMessage != null) {
+        PostInlineNotice(
+            text = state.errorMessage,
+            actionLabel = "重试",
+            onAction = onRetry,
+        )
+    }
+    if (state.isLoading && visibleComments.isNotEmpty()) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+            Text(
+                text = "评论同步中…",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+        }
+    }
+
+    when {
+        state.isLoading && visibleComments.isEmpty() -> {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    text = "正在读取评论…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
+                )
+            }
+        }
+
+        visibleComments.isEmpty() -> {
+            Text(
+                text = emptyText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textSecondary,
+            )
+        }
+
+        else -> {
+            visibleComments.forEach { comment ->
+                CommentListItem(
+                    comment = comment,
+                    timeLabel = formatPostTime(comment.createdAtMillis),
+                    onLongPress = {
+                        interactionState = interactionState.copy(
+                            selectedCommentId = null,
+                            selectedCommentValue = TextFieldValue(""),
+                            editingCommentId = null,
+                            editingDraft = TextFieldValue(""),
+                            pendingDeleteCommentId = null,
+                            actionCommentId = comment.id,
+                        )
+                    },
+                    onClick = {
+                        interactionState = interactionState.copy(
+                            selectedCommentId = if (interactionState.selectedCommentId != null) null else interactionState.selectedCommentId,
+                            selectedCommentValue = if (interactionState.selectedCommentId != null) TextFieldValue("") else interactionState.selectedCommentValue,
+                            pendingDeleteCommentId = null,
+                            actionCommentId = null,
+                        )
+                    },
+                    showInlineActionMenu = interactionState.actionCommentId == comment.id &&
+                        interactionState.selectedCommentId != comment.id &&
+                        interactionState.editingCommentId != comment.id,
+                    onCopyFull = {
+                        copyComment(comment.content)
+                        interactionState = interactionState.copy(actionCommentId = null)
+                    },
+                    onSelectText = {
+                        interactionState = interactionState.copy(
+                            selectedCommentId = comment.id,
+                            selectedCommentValue = fullCommentSelectionValue(comment.content),
+                            editingCommentId = null,
+                            editingDraft = TextFieldValue(""),
+                            pendingDeleteCommentId = null,
+                            actionCommentId = null,
+                        )
+                    },
+                    onEdit = {
+                        interactionState = interactionState.copy(
+                            editingCommentId = comment.id,
+                            editingDraft = endOfCommentEditValue(comment.content),
+                            selectedCommentId = null,
+                            selectedCommentValue = TextFieldValue(""),
+                            pendingDeleteCommentId = null,
+                            actionCommentId = null,
+                        )
+                    },
+                    onDelete = {
+                        if (interactionState.pendingDeleteCommentId == comment.id) {
+                            onDeleteComment(comment.id)
+                            interactionState = interactionState.copy(
+                                selectedCommentId = if (interactionState.selectedCommentId == comment.id) null else interactionState.selectedCommentId,
+                                selectedCommentValue = if (interactionState.selectedCommentId == comment.id) TextFieldValue("") else interactionState.selectedCommentValue,
+                                editingCommentId = if (interactionState.editingCommentId == comment.id) null else interactionState.editingCommentId,
+                                editingDraft = if (interactionState.editingCommentId == comment.id) TextFieldValue("") else interactionState.editingDraft,
+                                pendingDeleteCommentId = null,
+                                actionCommentId = null,
+                            )
+                        } else {
+                            interactionState = interactionState.copy(
+                                pendingDeleteCommentId = comment.id,
+                                actionCommentId = comment.id,
+                            )
+                        }
+                    },
+                    confirmingDelete = interactionState.pendingDeleteCommentId == comment.id,
+                    isEditing = interactionState.editingCommentId == comment.id,
+                    editingValue = if (interactionState.editingCommentId == comment.id) interactionState.editingDraft else endOfCommentEditValue(comment.content),
+                    onEditingValueChange = { interactionState = interactionState.copy(editingDraft = it) },
+                    onSaveEdit = {
+                        onUpdateComment(comment.id, interactionState.editingDraft.text)
+                        interactionState = interactionState.copy(
+                            editingCommentId = null,
+                            editingDraft = TextFieldValue(""),
+                            pendingDeleteCommentId = null,
+                            actionCommentId = null,
+                        )
+                    },
+                    onCancelEdit = {
+                        interactionState = interactionState.copy(
+                            editingCommentId = null,
+                            editingDraft = TextFieldValue(""),
+                        )
+                    },
+                    selectionMode = interactionState.selectedCommentId == comment.id,
+                    selectionFieldValue = if (interactionState.selectedCommentId == comment.id) {
+                        interactionState.selectedCommentValue
+                    } else {
+                        TextFieldValue(comment.content)
+                    },
+                    onSelectionFieldValueChange = {
+                        interactionState = interactionState.copy(selectedCommentValue = it)
+                    },
+                    onCopySelection = if (interactionState.selectedCommentId == comment.id) {
+                        {
+                            interactionState.selectedCommentValue.selectedTextOrNull()?.let(copyComment)
+                            interactionState = interactionState.copy(
+                                selectedCommentId = null,
+                                selectedCommentValue = TextFieldValue(""),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+
+    if (state.comments.hasHiddenComments(expanded)) {
+        PostActionChip(text = "展开更多", onClick = { expanded = true })
+    }
+    if (state.comments.canCollapseComments(expanded)) {
+        PostActionChip(text = "收起", onClick = { expanded = false })
+    }
+    if (state.hasMore && onLoadMore != null) {
+        if (state.isLoading) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                Text(
+                    text = "加载更多评论…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
+        } else {
+            PostActionChip(text = "加载更多评论", onClick = onLoadMore)
+        }
+    }
+    if (state.isMutating) {
+        Text(
+            text = "正在提交…",
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.textSecondary,
+        )
+    }
+    if (showInput) {
+        var inputValue by remember { mutableStateOf(TextFieldValue("")) }
+        CommentInputBar(
+            stateKey = "$stateKeyPrefix-input",
+            placeholder = inputPlaceholder,
+            elevated = true,
+            onSend = onCreateComment,
+            value = inputValue,
+            onValueChange = { inputValue = it },
+        )
+    }
+}
+
+// endregion
 

@@ -3,6 +3,7 @@ package com.example.yingshi.data.remote.api
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.ApiEnvelopeDto
 import com.example.yingshi.data.remote.dto.CreateAlbumRequestDto
+import com.example.yingshi.data.remote.dto.MoveSmallAlbumsRequestDto
 import com.example.yingshi.data.remote.dto.PostSummaryDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UpdateAlbumRequestDto
@@ -37,4 +38,10 @@ interface AlbumApi {
     suspend fun deleteAlbum(
         @Path("albumId") albumId: String,
     ): ApiEnvelopeDto<TrashItemDto>
+
+    @PATCH("api/albums/{targetAlbumId}/move-small-albums")
+    suspend fun moveSmallAlbums(
+        @Path("targetAlbumId") targetAlbumId: String,
+        @Body request: MoveSmallAlbumsRequestDto,
+    ): ApiEnvelopeDto<List<PostSummaryDto>>
 }

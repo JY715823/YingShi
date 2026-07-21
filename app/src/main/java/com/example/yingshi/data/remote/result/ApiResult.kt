@@ -10,6 +10,7 @@ sealed interface ApiResult<out T> {
 
     data class Success<T>(
         val data: T,
+        val isFromCache: Boolean = false,
     ) : ApiResult<T>
 
     class Error(

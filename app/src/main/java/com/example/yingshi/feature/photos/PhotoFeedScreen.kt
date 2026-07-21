@@ -1,12 +1,22 @@
 package com.example.yingshi.feature.photos
 import android.util.Log
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
@@ -38,6 +48,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,8 +74,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -91,11 +105,14 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.yingShiMemoryGlow
+import com.example.yingshi.ui.components.yingShiShimmerSweep
 import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiColors
 import com.example.yingshi.ui.theme.YingShiMotion
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -215,6 +232,8 @@ fun PhotoFeedScreen(
     disabledMediaIds: Set<String> = emptySet(),
     disabledSelectionLabel: String? = null,
     presentation: PhotoFeedPresentation = PhotoFeedPresentation.EMBEDDED,
+    animatingDeleteMediaIds: Set<String> = emptySet(),
+    isSilentlyRefreshing: Boolean = false,
 ) {
     val spacing = YingShiThemeTokens.spacing
     val motion = YingShiThemeTokens.motion
@@ -321,6 +340,16 @@ fun PhotoFeedScreen(
     }
     val densityMorphProgress = remember { Animatable(1f) }
     val densityHeaderRevealAlpha = remember { Animatable(1f) }
+    val feedContentAlpha = remember { Animatable(1f) }
+
+    LaunchedEffect(selectedCollaboratorUserIds) {
+        if (!motionEnabled) return@LaunchedEffect
+        feedContentAlpha.snapTo(0.6f)
+        feedContentAlpha.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+        )
+    }
 
     LaunchedEffect(selectionState.selectedMediaIds) {
         liveSelectedIds.value = selectionState.selectedMediaIds
@@ -764,6 +793,9 @@ fun PhotoFeedScreen(
         targetOverlayAlpha = densityTransitionTargetOverlayAlpha,
         liveTargetAlpha = densityTransitionTargetLiveAlpha,
         liveHeaderScale = when (densityTransitionStage) {
+            PhotoFeedDensityTransitionStage.PREVIEWING -> 1f - 0.04f * densityTransitionPreviewProgress
+            PhotoFeedDensityTransitionStage.REBOUNDING -> 1f - 0.04f * densityTransitionReleaseProgress
+            PhotoFeedDensityTransitionStage.COMMITTING -> 0.96f + 0.04f * densityMorphProgress.value
             PhotoFeedDensityTransitionStage.SETTLING -> densityTransitionSettleHeaderScale
             else -> 1f
         },
@@ -1421,7 +1453,15 @@ fun PhotoFeedScreen(
         PhotoFeedDensityTransitionStage.IDLE,
         -> 1f
     }
-    val densityTransitionControlsScale = 1f
+    val densityTransitionControlsScale by animateFloatAsState(
+        targetValue = if (densityTransitionStage != PhotoFeedDensityTransitionStage.IDLE) 0.92f else 1f,
+        animationSpec = if (motionEnabled) {
+            spring(dampingRatio = 0.6f, stiffness = 400f)
+        } else {
+            tween(0)
+        },
+        label = "densityTransitionControlsScale",
+    )
 
     Column(
         modifier = modifier
@@ -1505,6 +1545,44 @@ fun PhotoFeedScreen(
                 }
             }
         }
+        AnimatedVisibility(
+            visible = isSilentlyRefreshing,
+            enter = fadeIn(animationSpec = if (motionEnabled) tween(300) else tween(0)),
+            exit = fadeOut(animationSpec = if (motionEnabled) tween(300) else tween(0)),
+        ) {
+            val indicatorColor = YingShiThemeTokens.colors.glassStroke.copy(alpha = 0.44f)
+            val infiniteTransition = rememberInfiniteTransition(label = "silentRefresh")
+            val sweepProgress by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = if (motionEnabled) {
+                    infiniteRepeatable(
+                        animation = tween(1800, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart,
+                    )
+                } else {
+                    infiniteRepeatable(
+                        animation = tween(0),
+                        repeatMode = RepeatMode.Restart,
+                    )
+                },
+                label = "silentRefreshSweep",
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.5.dp)
+                    .drawBehind {
+                        val sweepWidth = size.width * 0.4f
+                        val left = (size.width + sweepWidth) * sweepProgress - sweepWidth
+                        drawRect(
+                            color = indicatorColor,
+                            topLeft = Offset(left, 0f),
+                            size = Size(sweepWidth, size.height),
+                        )
+                    }
+            )
+        }
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1582,12 +1660,14 @@ fun PhotoFeedScreen(
                 presentation = presentation,
             )
 
+            val revealedRowKeys = remember { mutableStateSetOf<String>() }
+
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        alpha = densityTransitionLiveMediaAlpha
+                        alpha = densityTransitionLiveMediaAlpha * feedContentAlpha.value
                         scaleX = densityTransitionContentScale
                         scaleY = densityTransitionContentScale
                         transformOrigin = TransformOrigin.Center
@@ -1600,6 +1680,7 @@ fun PhotoFeedScreen(
                     bottom = spacing.lg + bottomOverlayPadding,
                 ),
             ) {
+                var gridRowCount = 0
                 items(
                     items = blocks,
                     key = { it.key },
@@ -1631,7 +1712,8 @@ fun PhotoFeedScreen(
                                 scaleX = densityTransitionPreviewScene.liveHeaderScale
                                 scaleY = densityTransitionPreviewScene.liveHeaderScale
                                 transformOrigin = TransformOrigin(0f, 0.5f)
-                            },
+                            }
+                                .then(if (motionEnabled) Modifier.animateItem() else Modifier),
                         ) {
                             PhotoFeedSectionHeaderRow(
                                 header = block,
@@ -1655,7 +1737,8 @@ fun PhotoFeedScreen(
                                 scaleX = densityTransitionPreviewScene.liveHeaderScale
                                 scaleY = densityTransitionPreviewScene.liveHeaderScale
                                 transformOrigin = TransformOrigin(0f, 0.5f)
-                            },
+                            }
+                                .then(if (motionEnabled) Modifier.animateItem() else Modifier),
                         ) {
                             PhotoFeedDayHeaderRow(
                                 header = block,
@@ -1675,7 +1758,8 @@ fun PhotoFeedScreen(
                                         bounds = Rect.Zero,
                                     ),
                                 ),
-                            ),
+                            )
+                                .then(if (motionEnabled) Modifier.animateItem() else Modifier),
                         ) {
                             PhotoFeedTimeBucketHeaderRow(
                                 header = block,
@@ -1693,7 +1777,8 @@ fun PhotoFeedScreen(
                                         bounds = Rect.Zero,
                                     ),
                                 ),
-                            ),
+                            )
+                                .then(if (motionEnabled) Modifier.animateItem() else Modifier),
                         ) {
                             PhotoFeedCollaboratorHeaderRow(
                                 identity = block.identity,
@@ -1709,12 +1794,16 @@ fun PhotoFeedScreen(
                                         bounds = Rect.Zero,
                                     ),
                                 ),
-                            ),
+                            )
+                                .then(if (motionEnabled) Modifier.animateItem() else Modifier),
                         ) {
                             PhotoFeedCollaboratorDividerRow()
                         }
                         is PhotoFeedGridRow -> PhotoFeedGridRowContent(
                             row = block,
+                            rowIndex = gridRowCount++,
+                            rowKey = block.key,
+                            revealedRowKeys = revealedRowKeys,
                             density = density,
                             selectionState = selectionState,
                             disabledMediaIds = disabledMediaIds,
@@ -1731,6 +1820,7 @@ fun PhotoFeedScreen(
                             activeInlineVideoId = activeInlineVideoId,
                             pausedInlineVideoIds = pausedInlineVideoIds,
                             inlineVideoProgressById = inlineVideoProgressById,
+                            animatingDeleteMediaIds = animatingDeleteMediaIds,
                             onToggleInlineVideo = onToggleInlineVideo,
                             onInlineVideoProgressChange = { item, progress ->
                                 inlineVideoProgressById = inlineVideoProgressById + (item.mediaId to progress)
@@ -1759,12 +1849,16 @@ fun PhotoFeedScreen(
                                             }
                                         }
                                     } else {
+                                        val heroOrigin = itemBoundsByMediaId[item.mediaId]?.let { bounds ->
+                                            HeroOrigin(mediaId = item.mediaId, boundsInRoot = bounds)
+                                        }
                                         onOpenViewer(
                                             PhotoViewerRoute(
                                                 mediaItems = displayFeedItems,
                                                 initialIndex = mediaPositionLookup[item.mediaId] ?: 0,
                                                 sourceLabel = "photos-feed",
                                                 showSmallAlbumSegments = false,
+                                                heroOrigin = heroOrigin,
                                             ),
                                         )
                                         selectionState
@@ -1772,12 +1866,16 @@ fun PhotoFeedScreen(
                                 )
                             },
                             onOpenMedia = { item ->
+                                val heroOrigin = itemBoundsByMediaId[item.mediaId]?.let { bounds ->
+                                    HeroOrigin(mediaId = item.mediaId, boundsInRoot = bounds)
+                                }
                                 onOpenViewer(
                                     PhotoViewerRoute(
                                         mediaItems = displayFeedItems,
                                         initialIndex = mediaPositionLookup[item.mediaId] ?: 0,
                                         sourceLabel = "photos-feed",
                                         showSmallAlbumSegments = false,
+                                        heroOrigin = heroOrigin,
                                     ),
                                 )
                             },
@@ -1793,6 +1891,7 @@ fun PhotoFeedScreen(
                                     },
                                 )
                             },
+                            modifier = if (motionEnabled) Modifier.animateItem() else Modifier,
                         )
                     }
                 }
@@ -2018,10 +2117,11 @@ private fun PhotoFeedAtmosphereLayer(
     val colors = YingShiThemeTokens.colors
     val motion = YingShiThemeTokens.motion
     val atmosphereAlpha = if (presentation == PhotoFeedPresentation.MAIN_STREAM) {
-        motion.feedAtmosphereAlpha * 1.28f
+        motion.feedAtmosphereAlpha * 1.42f
     } else {
-        motion.feedAtmosphereAlpha * 0.74f
+        motion.feedAtmosphereAlpha * 0.82f
     }
+    val breathOverlay = breathBrush(colors = colors, atmosphereAlpha = atmosphereAlpha)
     Box(
         modifier = modifier
             .background(
@@ -2057,7 +2157,36 @@ private fun PhotoFeedAtmosphereLayer(
                     center = Offset(980f, 180f),
                     radius = if (presentation == PhotoFeedPresentation.MAIN_STREAM) 640f else 420f,
                 ),
-            ),
+            )
+            .background(breathOverlay),
+    )
+}
+
+@Composable
+private fun breathBrush(
+    colors: YingShiColors,
+    atmosphereAlpha: Float,
+): Brush {
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val transition = rememberInfiniteTransition(label = "atmosphereBreath")
+    val breathPhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "atmosphereBreathPhase",
+    )
+    if (!motionEnabled) return Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+    val breathAlpha = (0.5f + 0.5f * kotlin.math.sin(breathPhase * 2 * Math.PI.toFloat())) * 0.06f * atmosphereAlpha
+    return Brush.radialGradient(
+        colors = listOf(
+            colors.glowWash.copy(alpha = breathAlpha),
+            Color.Transparent,
+        ),
+        center = Offset(640f, 300f),
+        radius = 500f,
     )
 }
 
@@ -2310,6 +2439,7 @@ internal fun PhotoFeedTimeScrubber(
     val density = LocalDensity.current
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
+    val motionEnabled = rememberYingShiMotionEnabled()
     val thumbWidth = 26.dp
     val thumbHeight = 64.dp
     val endMargin = 2.dp
@@ -2353,6 +2483,13 @@ internal fun PhotoFeedTimeScrubber(
             overviewExpansion.snapTo(0f)
         }
     }
+
+    var isInteracting by remember { mutableStateOf(false) }
+    val thumbScale by animateFloatAsState(
+        targetValue = if (isInteracting) 1.12f else 1f,
+        animationSpec = tween(durationMillis = if (motionEnabled) 120 else 0),
+        label = "thumbScale",
+    )
 
     Box(
         modifier = modifier
@@ -2475,30 +2612,47 @@ internal fun PhotoFeedTimeScrubber(
                     )
                 },
         ) {
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = colors.raisedSurface.copy(alpha = 0.96f),
-                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
-                shadowElevation = 1.dp,
-            ) {
-                Text(
-                    text = label,
-                    modifier = Modifier
-                        .width(132.dp)
-                        .padding(horizontal = spacing.sm, vertical = 9.dp)
-                        .onSizeChanged {
-                            scrubberLabelWidthPx = it.width
-                            labelHeightPx = it.height
-                        },
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
-                    ),
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
-                    color = colors.titleAccent,
-                )
+            AnimatedContent(
+                targetState = label,
+                transitionSpec = {
+                    if (motionEnabled) {
+                        (fadeIn(tween(200, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(200, easing = FastOutSlowInEasing)) { it / 4 })
+                            .togetherWith(
+                                fadeOut(tween(200, easing = FastOutSlowInEasing)) +
+                                    slideOutVertically(tween(200, easing = FastOutSlowInEasing)) { -it / 4 }
+                            )
+                    } else {
+                        fadeIn(tween(0)).togetherWith(fadeOut(tween(0)))
+                    }
+                },
+                label = "scrubberLabelTransition",
+            ) { targetLabel ->
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = colors.raisedSurface.copy(alpha = 0.96f),
+                    border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+                    shadowElevation = 1.dp,
+                ) {
+                    Text(
+                        text = targetLabel,
+                        modifier = Modifier
+                            .width(132.dp)
+                            .padding(horizontal = spacing.sm, vertical = 9.dp)
+                            .onSizeChanged {
+                                scrubberLabelWidthPx = it.width
+                                labelHeightPx = it.height
+                            },
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        ),
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                        color = colors.titleAccent,
+                    )
+                }
             }
         }
 
@@ -2512,16 +2666,21 @@ internal fun PhotoFeedTimeScrubber(
                     )
                 }
                 .size(width = thumbWidth, height = thumbHeight)
+                .graphicsLayer {
+                    scaleX = thumbScale
+                    scaleY = thumbScale
+                }
                 .clip(RoundedCornerShape(999.dp))
-                .background(colors.raisedSurface.copy(alpha = 0.94f))
+                .background(colors.glassStroke.copy(alpha = 0.28f))
                 .border(
-                    width = 1.dp,
-                    color = colors.dividerSoft.copy(alpha = 0.58f),
+                    width = 1.5.dp,
+                    color = colors.glassStroke.copy(alpha = 0.44f),
                     shape = RoundedCornerShape(999.dp),
                 )
                 .pointerInput(scrubberHeightPx) {
                     detectDragGestures(
                         onDragStart = {
+                            isInteracting = true
                             latestOnInteractingChanged(true)
                             dragStartProgress = latestProgress
                             dragAccumulatedPx = 0f
@@ -2539,10 +2698,12 @@ internal fun PhotoFeedTimeScrubber(
                             latestOnSeekToProgress(nextProgress)
                         },
                         onDragEnd = {
+                            isInteracting = false
                             lastDispatchedProgress = Float.NaN
                             latestOnInteractingChanged(false)
                         },
                         onDragCancel = {
+                            isInteracting = false
                             lastDispatchedProgress = Float.NaN
                             latestOnInteractingChanged(false)
                         },
@@ -2918,26 +3079,42 @@ private fun PhotoFeedEmptyCollaboratorState(
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
+    val spacing = YingShiThemeTokens.spacing
+    val motionEnabled = rememberYingShiMotionEnabled()
     val message = if (selectionEmpty) {
-        "未选中任何账号，当前不展示媒体"
+        "选择一个账号，发现属于你们的时刻"
     } else if (hasCollaborators) {
-        "当前筛选下还没有媒体"
+        "这里还没有照片，换个视角看看"
     } else {
         "还没有可以展示的协作账号"
     }
     Surface(
-        modifier = modifier,
+        modifier = modifier.yingShiSoftReveal(
+            visible = true,
+            motionEnabled = motionEnabled,
+        ),
         shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
         color = colors.sectionBackground.copy(alpha = 0.68f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
     ) {
-        Text(
-            text = message,
+        Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 22.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = colors.textSecondary,
-        )
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.PhotoLibrary,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = colors.textSecondary.copy(alpha = 0.28f),
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = colors.textSecondary,
+            )
+        }
     }
 }
 
@@ -3026,6 +3203,12 @@ private fun PhotoFeedTimeHeaderText(
     ) {
         if (presentation == PhotoFeedPresentation.MAIN_STREAM) {
             if (isYearHero) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(60.dp)
+                        .yingShiShimmerSweep(enabled = true, motionEnabled = motionEnabled),
+                )
                 Text(
                     text = text,
                     modifier = Modifier
@@ -3223,7 +3406,7 @@ private fun photoFeedTimeTitlePalette(
             )
 
             3, 4, 5 -> PhotoFeedTimeTitlePalette(
-                base = Color(0xFF2F665C),
+                base = Color(0xFF266853),
                 glint = Color(0xFFF0FFF8),
                 glow = Color(0xFFB9F0E1),
                 shadow = Color(0xFF8ADBC8),
@@ -3239,7 +3422,7 @@ private fun photoFeedTimeTitlePalette(
             )
 
             else -> PhotoFeedTimeTitlePalette(
-                base = Color(0xFF70553C),
+                base = Color(0xFF7A5A3E),
                 glint = Color(0xFFFFF2DE),
                 glow = Color(0xFFFFD9B8),
                 shadow = Color(0xFFEAB98C),
@@ -3286,6 +3469,9 @@ private fun photoFeedTimeTitlePalette(
 @Composable
 private fun PhotoFeedGridRowContent(
     row: PhotoFeedGridRow,
+    rowIndex: Int,
+    rowKey: String,
+    revealedRowKeys: MutableSet<String>,
     density: PhotoFeedDensity,
     selectionState: PhotoFeedSelectionState,
     disabledMediaIds: Set<String>,
@@ -3309,11 +3495,26 @@ private fun PhotoFeedGridRowContent(
     onMediaClick: (PhotoFeedItem) -> Unit,
     onOpenMedia: (PhotoFeedItem) -> Unit,
     onMediaLongPress: (PhotoFeedItem) -> Unit,
+    animatingDeleteMediaIds: Set<String> = emptySet(),
+    modifier: Modifier = Modifier,
 ) {
     val spacing = rowSpacing(density)
+    val motionEnabled = rememberYingShiMotionEnabled()
+    var rowVisible by remember { mutableStateOf(rowKey in revealedRowKeys) }
+    LaunchedEffect(Unit) {
+        if (!rowVisible) {
+            if (motionEnabled) {
+                delay(rowIndex * 40L)
+            }
+            rowVisible = true
+            revealedRowKeys.add(rowKey)
+        }
+    }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .yingShiSoftReveal(visible = rowVisible, motionEnabled = motionEnabled),
         horizontalArrangement = Arrangement.spacedBy(spacing),
     ) {
         row.items.forEach { item ->
@@ -3345,6 +3546,7 @@ private fun PhotoFeedGridRowContent(
                     onLongPress = { onMediaLongPress(item) },
                     onToggleInlineVideo = { onToggleInlineVideo(item) },
                     onInlineVideoProgressChange = { progress -> onInlineVideoProgressChange(item, progress) },
+                    isDeleting = item.mediaId in animatingDeleteMediaIds,
                 )
             }
         }
@@ -3384,6 +3586,7 @@ private fun PhotoFeedCard(
     onLongPress: () -> Unit,
     onToggleInlineVideo: () -> Unit,
     onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
+    isDeleting: Boolean = false,
 ) {
     val motion = YingShiThemeTokens.motion
     val colors = YingShiThemeTokens.colors
@@ -3406,6 +3609,16 @@ private fun PhotoFeedCard(
         animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
         label = "photoFeedCardSelectionBorder",
     )
+    val deleteAlpha by animateFloatAsState(
+        targetValue = if (isDeleting) 0f else 1f,
+        animationSpec = tween(durationMillis = if (motionEnabled) 200 else 0, easing = FastOutSlowInEasing),
+        label = "photoFeedCardDeleteAlpha",
+    )
+    val deleteScale by animateFloatAsState(
+        targetValue = if (isDeleting) 0.8f else 1f,
+        animationSpec = tween(durationMillis = if (motionEnabled) 200 else 0, easing = FastOutSlowInEasing),
+        label = "photoFeedCardDeleteScale",
+    )
     DisposableEffect(item.mediaId) {
         onDispose {
             onBoundsChange(null)
@@ -3415,8 +3628,9 @@ private fun PhotoFeedCard(
         modifier = modifier
             .aspectRatio(1f)
             .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
+                scaleX = itemScale * deleteScale
+                scaleY = itemScale * deleteScale
+                alpha = deleteAlpha
             }
             .clipToBounds()
             .background(Color.Transparent)
@@ -3464,6 +3678,22 @@ private fun PhotoFeedCard(
             modifier = Modifier.matchParentSize(),
         )
 
+        if (isNewImported) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                colors.goldAccent.copy(alpha = 0.12f),
+                                Color.Transparent,
+                            ),
+                            radius = 280f,
+                        ),
+                    ),
+            )
+        }
+
         if (supportsInlineVideo && isInlineVideoPlaying) {
             AppContentInlineVideoPlayer(
                 mediaSource = item.mediaSource,
@@ -3475,13 +3705,19 @@ private fun PhotoFeedCard(
         }
 
         if (supportsInlineVideo) {
-            InlineVideoPlaybackButton(
-                isPlaying = isInlineVideoActive && !isInlineVideoPaused,
-                onClick = onToggleInlineVideo,
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 6.dp, bottom = 6.dp),
-            )
+                    .padding(start = 6.dp, bottom = 6.dp)
+                    .background(colors.glassStroke.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                    .border(0.5.dp, colors.glassStroke.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                    .padding(4.dp),
+            ) {
+                InlineVideoPlaybackButton(
+                    isPlaying = isInlineVideoActive && !isInlineVideoPaused,
+                    onClick = onToggleInlineVideo,
+                )
+            }
         }
 
         if (showSelectionVideoMarker) {

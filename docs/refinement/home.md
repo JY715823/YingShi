@@ -4,9 +4,10 @@
 
 - Module key: `home`
 - Status: `closed`
-- Last updated: `2026-06-09`
+- Last updated: `2026-07-08`
 - Primary surfaces: `android`
 - Linked server brief: `none`
+- Refine2 status: `completed` (2026-07-08, 3 rounds, 10 FRs, 40/40 AC pass)
 
 ## Module Goal
 - User value: 打开 App 后立刻看到更像成品的共同空间门厅，直接回到照片和账本，不再先看说明型首页。

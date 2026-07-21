@@ -64,6 +64,7 @@ fun RealPhotoFeedPage(
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
     val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var animatingDeleteMediaIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var addToPostPendingPostId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -209,12 +210,7 @@ fun RealPhotoFeedPage(
                     danger = true,
                     onClick = {
                         showDeleteConfirm = false
-                        viewModel.deleteSelectedMedia(selectedIds) { deletedIds ->
-                            onSelectionStateChange(selectionState.without(deletedIds))
-                        }
-                        SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
-                        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
-                        SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
+                        animatingDeleteMediaIds = selectedIds
                     },
                 )
             },
@@ -222,6 +218,19 @@ fun RealPhotoFeedPage(
                 TrashDialogActionButton(text = "取消", onClick = { showDeleteConfirm = false })
             },
         )
+    }
+
+    LaunchedEffect(animatingDeleteMediaIds) {
+        if (animatingDeleteMediaIds.isEmpty()) return@LaunchedEffect
+        val ids = animatingDeleteMediaIds
+        delay(200)
+        viewModel.deleteSelectedMedia(ids) { deletedIds ->
+            onSelectionStateChange(selectionState.without(deletedIds))
+        }
+        SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+        SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
+        animatingDeleteMediaIds = emptySet()
     }
 
     if (showAddToPostDialog) {
@@ -376,6 +385,8 @@ fun RealPhotoFeedPage(
                             scrollTrigger = scrollTrigger,
                             inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
                             presentation = PhotoFeedPresentation.MAIN_STREAM,
+                            animatingDeleteMediaIds = animatingDeleteMediaIds,
+                            isSilentlyRefreshing = uiState.isSilentlyRefreshing,
                         )
                     }
                 }

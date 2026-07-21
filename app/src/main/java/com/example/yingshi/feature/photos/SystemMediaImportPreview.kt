@@ -194,8 +194,6 @@ private fun SystemMediaItem.stableImportMetadataKey(): String {
         append('|')
         append(sizeBytes ?: -1L)
         append('|')
-        append(displayTimeMillis)
-        append('|')
         append(width ?: -1)
         append('x')
         append(height ?: -1)

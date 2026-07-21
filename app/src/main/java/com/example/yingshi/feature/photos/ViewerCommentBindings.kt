@@ -51,13 +51,13 @@ fun rememberViewerCommentBindings(
         )
     }
 
-    val comments = CommentGateway.getMediaComments(normalizedMediaId)
+    val comments = FakeCommentRepository.getMediaComments(normalizedMediaId)
     return ViewerCommentBindings(
         comments = comments,
-        onCreateComment = { content -> CommentGateway.addMediaComment(normalizedMediaId, content) },
+        onCreateComment = { content -> FakeCommentRepository.addMediaComment(normalizedMediaId, content) },
         onUpdateComment = { commentId, content ->
-            CommentGateway.updateMediaComment(mediaId = normalizedMediaId, commentId = commentId, content = content)
+            FakeCommentRepository.updateMediaComment(mediaId = normalizedMediaId, commentId = commentId, content = content)
         },
-        onDeleteComment = { commentId -> CommentGateway.deleteMediaComment(normalizedMediaId, commentId) },
+        onDeleteComment = { commentId -> FakeCommentRepository.deleteMediaComment(normalizedMediaId, commentId) },
     )
 }

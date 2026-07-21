@@ -24,8 +24,9 @@ private val SystemMediaPreviewFrameTimesUs = listOf(
 )
 private val SystemMediaThumbnailSize = Size(640, 640)
 private const val SystemMediaOverviewThumbnailMaxEdge = 160
-private const val SystemMediaOverviewThumbnailCacheMaxBytes = 24 * 1024 * 1024
+private const val SystemMediaOverviewThumbnailCacheMaxBytes = 48 * 1024 * 1024
 private const val SystemMediaImageThumbnailCacheMaxBytes = 64 * 1024 * 1024
+private const val SystemMediaVideoThumbnailCacheMaxBytes = 32 * 1024 * 1024
 
 @Composable
 internal fun rememberSystemMediaThumbnail(
@@ -100,17 +101,17 @@ internal fun rememberSystemVideoThumbnail(
 ): Bitmap? {
     val appContext = remember(context) { context.applicationContext }
     return produceState<Bitmap?>(
-        initialValue = SystemMediaVideoThumbnailCache.bitmaps[uri.toString()],
+        initialValue = SystemMediaVideoThumbnailCache.get(uri.toString()),
         key1 = appContext,
         key2 = uri,
     ) {
-        SystemMediaVideoThumbnailCache.bitmaps[uri.toString()]?.let { cached ->
+        SystemMediaVideoThumbnailCache.get(uri.toString())?.let { cached ->
             value = cached
             return@produceState
         }
         value = withContext(Dispatchers.IO) {
             loadSystemVideoFrame(appContext, uri)?.also { bitmap ->
-                SystemMediaVideoThumbnailCache.bitmaps[uri.toString()] = bitmap
+                SystemMediaVideoThumbnailCache.put(uri.toString(), bitmap)
             }
         }
     }.value
@@ -204,11 +205,11 @@ internal suspend fun prefetchSystemVideoThumbnail(
     uri: Uri,
 ) {
     val key = uri.toString()
-    if (SystemMediaVideoThumbnailCache.bitmaps.containsKey(key)) return
+    if (SystemMediaVideoThumbnailCache.get(key) != null) return
     withContext(Dispatchers.IO) {
-        if (SystemMediaVideoThumbnailCache.bitmaps.containsKey(key)) return@withContext
+        if (SystemMediaVideoThumbnailCache.get(key) != null) return@withContext
         loadSystemVideoFrame(context.applicationContext, uri)?.let { bitmap ->
-            SystemMediaVideoThumbnailCache.bitmaps[key] = bitmap
+            SystemMediaVideoThumbnailCache.put(key, bitmap)
         }
     }
 }
@@ -242,7 +243,17 @@ internal fun resolveSystemVideoDimensions(
 internal fun Bitmap.toComposeBitmap() = asImageBitmap()
 
 private object SystemMediaVideoThumbnailCache {
-    val bitmaps = ConcurrentHashMap<String, Bitmap>()
+    private val cache = object : LruCache<String, Bitmap>(SystemMediaVideoThumbnailCacheMaxBytes) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    }
+
+    fun get(key: String): Bitmap? = cache.get(key)
+
+    fun put(key: String, bitmap: Bitmap) {
+        if (bitmap.byteCount <= SystemMediaVideoThumbnailCacheMaxBytes) {
+            cache.put(key, bitmap)
+        }
+    }
 }
 
 private object SystemMediaBitmapThumbnailCache {

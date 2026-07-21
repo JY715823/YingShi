@@ -81,6 +81,10 @@ interface AlbumRepository {
         postId: String,
         payload: UpdatePostAlbumsPayload,
     ): ApiResult<RemotePostSummary>
+    suspend fun moveSmallAlbums(
+        targetAlbumId: String,
+        smallAlbumIds: List<String>,
+    ): ApiResult<List<RemotePostSummary>>
 }
 
 interface PostRepository {
@@ -103,6 +107,11 @@ interface PostRepository {
     suspend fun updatePostMediaOrder(
         postId: String,
         orderedMediaIds: List<String>,
+    ): ApiResult<RemotePostDetail>
+
+    suspend fun updatePostMediaBatch(
+        postId: String,
+        removeMediaIds: List<String>,
     ): ApiResult<RemotePostDetail>
 
     suspend fun deleteSmallAlbum(
@@ -146,6 +155,7 @@ interface CommentRepository {
 interface NotificationRepository {
     suspend fun getNotifications(
         limit: Int? = null,
+        cursor: String? = null,
     ): ApiResult<List<RemoteNotification>>
 
     suspend fun getNotification(
@@ -280,9 +290,32 @@ interface LifeConsoleRepository {
         mediaId: String,
     ): ApiResult<RemoteTrashItem>
 
-    suspend fun addBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation>
+    // Round 7 阶段 7: 更新媒体位置
+    suspend fun updateMediaLocation(
+        mediaId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleToday>
 
-    suspend fun deleteLatestBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation>
+    // Round 7 阶段 7: 更新大便事件位置
+    suspend fun updateBowelEventLocation(
+        eventId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleBowelMutation>
+
+    suspend fun addBowelEvent(
+        zoneId: String = "Asia/Shanghai",
+        latitude: Double? = null,
+        longitude: Double? = null,
+        locationLabel: String? = null,
+    ): ApiResult<RemoteLifeConsoleBowelMutation>
+
+    suspend fun deleteLatestBowelEvent(
+        zoneId: String = "Asia/Shanghai",
+    ): ApiResult<RemoteLifeConsoleBowelMutation>
 
     suspend fun registerPushToken(
         platform: String,

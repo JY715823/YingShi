@@ -1136,14 +1136,14 @@ private fun PostMediaDeleteButton(
                 onLongClick = onLongClick,
             ),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.18f)),
+        color = colors.destructiveContainer.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, colors.destructive.copy(alpha = 0.18f)),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = "×",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = colors.onDestructiveContainer,
             )
         }
     }
@@ -1196,7 +1196,7 @@ private fun TrashIconButton(
 ) {
     val colors = YingShiThemeTokens.colors
     val iconColor = if (enabled) {
-        MaterialTheme.colorScheme.onErrorContainer
+        colors.onDestructiveContainer
     } else {
         colors.textSecondary.copy(alpha = 0.62f)
     }
@@ -1209,13 +1209,13 @@ private fun TrashIconButton(
         ),
         shape = CircleShape,
         color = if (enabled) {
-            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.84f)
+            colors.destructiveContainer.copy(alpha = 0.84f)
         } else {
             colors.sectionBackground.copy(alpha = 0.56f)
         },
         border = BorderStroke(
             1.dp,
-            if (enabled) MaterialTheme.colorScheme.error.copy(alpha = 0.20f) else colors.dividerSoft.copy(alpha = 0.46f),
+            if (enabled) colors.destructive.copy(alpha = 0.20f) else colors.dividerSoft.copy(alpha = 0.46f),
         ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize().padding(10.dp)) {

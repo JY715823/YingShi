@@ -202,6 +202,7 @@ fun TitleTabs(
 
             Box(
                 modifier = Modifier
+                    .weight(1f)
                     .yingShiHapticClickable(
                         shape = RoundedCornerShape(radius.capsule),
                         pressedScale = motion.pressedScale,
@@ -215,7 +216,7 @@ fun TitleTabs(
                         },
                     )
                     .padding(
-                        horizontal = if (selected) spacing.sm else spacing.xs,
+                        horizontal = spacing.sm,
                         vertical = spacing.xxs,
                     ),
                 contentAlignment = Alignment.Center,
@@ -227,9 +228,9 @@ fun TitleTabs(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = if (selected) {
-                        MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold)
+                        MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                     } else {
-                        MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
                     },
                 )
             }

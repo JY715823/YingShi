@@ -95,7 +95,7 @@ class LifePushDispatchActivity : ComponentActivity() {
         return null
     }
 
-    private fun todayDate(zoneId: String = "Asia/Shanghai"): String {
+    private fun todayDate(zoneId: String = LIFE_CONSOLE_ZONE_ID): String {
         return LocalDate.now(ZoneId.of(zoneId)).toString()
     }
 

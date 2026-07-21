@@ -149,6 +149,23 @@ object FakeAlbumRepository {
         return updated
     }
 
+    fun moveSmallAlbums(
+        targetAlbumId: String,
+        smallAlbumIds: List<String>,
+    ): List<AlbumPostCardUiModel> {
+        if (smallAlbumIds.isEmpty()) return emptyList()
+        smallAlbumIds.forEach { smallAlbumId ->
+            val index = posts.indexOfFirst { it.id == smallAlbumId }
+            if (index >= 0) {
+                posts[index] = posts[index].copy(
+                    albumId = targetAlbumId,
+                    albumIds = listOf(targetAlbumId),
+                )
+            }
+        }
+        return posts.filter { it.id in smallAlbumIds }
+    }
+
     fun snapshotAlbum(albumId: String): TrashAlbumSnapshot? {
         val album = getAlbum(albumId) ?: return null
         val postSnapshots = posts

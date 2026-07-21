@@ -1,5 +1,9 @@
 package com.example.yingshi.feature.photos
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.feature.me.ProfileAvatar
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
@@ -70,6 +76,27 @@ fun CollaboratorFilterChip(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val shape = RoundedCornerShape(radius.capsule)
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val animDuration = if (motionEnabled) 200 else 0
+
+    val backgroundColor by animateColorAsState(
+        targetValue = if (selected) colors.primaryContainer.copy(alpha = 0.88f)
+        else colors.raisedSurface.copy(alpha = 0.92f),
+        animationSpec = tween(durationMillis = animDuration, easing = FastOutSlowInEasing),
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) colors.glassStroke.copy(alpha = 0.86f)
+        else colors.dividerSoft.copy(alpha = 0.66f),
+        animationSpec = tween(durationMillis = animDuration, easing = FastOutSlowInEasing),
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) colors.titleAccent else colors.textSecondary,
+        animationSpec = tween(durationMillis = animDuration, easing = FastOutSlowInEasing),
+    )
+    val chipElevation by animateDpAsState(
+        targetValue = if (selected) 2.dp else 0.dp,
+        animationSpec = tween(durationMillis = animDuration, easing = FastOutSlowInEasing),
+    )
 
     Surface(
         modifier = modifier.yingShiClickable(
@@ -78,20 +105,9 @@ fun CollaboratorFilterChip(
             onClick = onClick,
         ),
         shape = shape,
-        color = if (selected) {
-            colors.primaryContainer.copy(alpha = 0.88f)
-        } else {
-            colors.raisedSurface.copy(alpha = 0.92f)
-        },
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) {
-                colors.glassStroke.copy(alpha = 0.86f)
-            } else {
-                colors.dividerSoft.copy(alpha = 0.66f)
-            },
-        ),
-        shadowElevation = if (selected) 2.dp else 0.dp,
+        color = backgroundColor,
+        border = BorderStroke(1.dp, borderColor),
+        shadowElevation = chipElevation,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = spacing.xs, vertical = 6.dp),
@@ -102,7 +118,7 @@ fun CollaboratorFilterChip(
             Text(
                 text = labelText,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = if (selected) colors.titleAccent else colors.textSecondary,
+                color = textColor,
             )
         }
     }

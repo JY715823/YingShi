@@ -11,26 +11,19 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,60 +35,36 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.Image
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -106,18 +75,9 @@ import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
-import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import java.util.Calendar
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -142,6 +102,7 @@ private fun systemMediaRenderPageSize(density: PhotoFeedDensity): Int {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SystemMediaScreen(
     onBack: () -> Unit,
@@ -189,6 +150,7 @@ fun SystemMediaScreen(
     var showAddToPostDialog by rememberSaveable {
         mutableStateOf(false)
     }
+    var showAlbumSheet by rememberSaveable { mutableStateOf(false) }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingImportPreview by remember {
         mutableStateOf<SystemMediaImportPreview?>(null)
@@ -222,8 +184,6 @@ fun SystemMediaScreen(
         mutableIntStateOf(-1)
     }
     var scrubberScrollJob by remember { mutableStateOf<Job?>(null) }
-    var pendingTargetMediaIdSnapshot by remember { mutableStateOf<String?>(null) }
-    var pendingTargetRenderedCount by remember { mutableIntStateOf(-1) }
     val spacing = YingShiThemeTokens.spacing
     val colors = YingShiThemeTokens.colors
     val coroutineScope = rememberCoroutineScope()
@@ -232,6 +192,18 @@ fun SystemMediaScreen(
         LocalSystemMediaPageStateStore.savedDensityName = densityName
     }
     val density = PhotoFeedDensity.valueOf(densityName)
+    val motion = YingShiThemeTokens.motion
+    val gridEnterAlpha = remember { Animatable(1f) }
+    LaunchedEffect(densityName) {
+        gridEnterAlpha.snapTo(0f)
+        gridEnterAlpha.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = motion.densityPreviewMillis + motion.densitySettleMillis,
+                easing = motion.easing,
+            ),
+        )
+    }
     val densityWarmWindow = remember(density) { systemMediaThumbnailWarmWindow(density) }
     val densityWarmBatchSize = remember(density) { systemMediaThumbnailWarmBatchSize(density) }
     val initialRenderCount = remember(density, uiState.filteredItems.size) {
@@ -278,40 +250,16 @@ fun SystemMediaScreen(
     val visibleItemIndexById = remember(visibleItems) {
         visibleItems.mapIndexed { index, item -> item.id to index }.toMap()
     }
-    LaunchedEffect(gridState, gridBlocks, visibleItems, thumbnailRequestSize, densityWarmWindow, scrubberInteracting) {
-        if (visibleItems.isEmpty() || densityWarmWindow <= 0 || scrubberInteracting) return@LaunchedEffect
-        snapshotFlow {
-            val mediaIndices = gridState.layoutInfo.visibleItemsInfo.mapNotNull { visibleInfo ->
-                val block = gridBlocks.getOrNull(visibleInfo.index) as? SystemMediaGridBlock.Media
-                block?.item?.id?.let(visibleItemIndexById::get)
-            }
-            if (mediaIndices.isEmpty()) {
-                null
-            } else {
-                mediaIndices.minOrNull()!! to mediaIndices.maxOrNull()!!
-            }
-        }.collectLatest { range ->
-            val (firstVisible, lastVisible) = range ?: return@collectLatest
-            val start = (firstVisible - densityWarmWindow).coerceAtLeast(0)
-            val end = (lastVisible + densityWarmWindow).coerceAtMost(visibleItems.lastIndex)
-            visibleItems
-                .subList(start, end + 1)
-                .chunked(densityWarmBatchSize)
-                .forEach { batch ->
-                    coroutineScope {
-                        batch.map { item ->
-                            async {
-                                prefetchSystemMediaThumbnail(
-                                    context = context,
-                                    uri = item.uri,
-                                    targetSizePx = thumbnailRequestSize,
-                                )
-                            }
-                        }.awaitAll()
-                    }
-                }
-        }
-    }
+    SystemMediaThumbnailWarmer(
+        gridState = gridState,
+        gridBlocks = gridBlocks,
+        visibleItems = visibleItems,
+        thumbnailRequestSize = thumbnailRequestSize,
+        warmWindow = densityWarmWindow,
+        warmBatchSize = densityWarmBatchSize,
+        scrubberInteracting = scrubberInteracting,
+        visibleItemIndexById = visibleItemIndexById,
+    )
     var densityGhost by remember { mutableStateOf<SystemMediaDensityGhost?>(null) }
     val updateDensity = remember(density, gridBlocks, gridState) {
         { nextDensity: PhotoFeedDensity ->
@@ -327,146 +275,29 @@ fun SystemMediaScreen(
             }
         }
     }
-    var manualInlineVideoId by remember { mutableStateOf<String?>(null) }
-    var pausedInlineVideoIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var inlineVideoProgressById by remember { mutableStateOf<Map<String, InlineVideoPlaybackProgress>>(emptyMap()) }
-    val visibleInlineVideoIds by remember(gridState, gridBlocks) {
-        derivedStateOf {
-            visibleSystemMediaVideoIds(
-                gridState = gridState,
-                gridBlocks = gridBlocks,
-            )
-        }
-    }
-    val centeredInlineVideoId by remember(gridState, gridBlocks) {
-        derivedStateOf {
-            centeredSystemMediaVideoId(
-                gridState = gridState,
-                gridBlocks = gridBlocks,
-            )
-        }
-    }
-    LaunchedEffect(inlineVideoAutoPlayAllowed) {
-        if (!inlineVideoAutoPlayAllowed) {
-            manualInlineVideoId = null
-        }
-    }
-    LaunchedEffect(visibleInlineVideoIds) {
-        val manualId = manualInlineVideoId
-        if (manualId != null && manualId !in visibleInlineVideoIds) {
-            manualInlineVideoId = null
-        }
-    }
-    val activeInlineVideoId = if (inlineVideoAutoPlayAllowed) {
-        manualInlineVideoId?.takeIf { it in visibleInlineVideoIds } ?: centeredInlineVideoId
-    } else {
-        null
-    }
-    val playingInlineVideoId = activeInlineVideoId?.takeUnless { it in pausedInlineVideoIds }
-    val onToggleInlineVideo = remember(inlineVideoAutoPlayAllowed, activeInlineVideoId, pausedInlineVideoIds) {
-        toggle@{ item: SystemMediaItem ->
-            if (!inlineVideoAutoPlayAllowed || item.type != SystemMediaType.VIDEO) {
-                return@toggle
-            }
-            if (activeInlineVideoId == item.id) {
-                pausedInlineVideoIds = if (item.id in pausedInlineVideoIds) {
-                    pausedInlineVideoIds - item.id
-                } else {
-                    pausedInlineVideoIds + item.id
-                }
-            } else {
-                manualInlineVideoId = item.id
-                pausedInlineVideoIds = pausedInlineVideoIds - item.id
-            }
-        }
-    }
+    val inlineVideoController = rememberSystemMediaInlineVideoController(
+        gridState = gridState,
+        gridBlocks = gridBlocks,
+        inlineVideoAutoPlayAllowed = inlineVideoAutoPlayAllowed,
+    )
+    val activeInlineVideoId = inlineVideoController.activeInlineVideoId
+    val playingInlineVideoId = inlineVideoController.playingInlineVideoId
+    val pausedInlineVideoIds = inlineVideoController.pausedInlineVideoIds
+    val inlineVideoProgressById = inlineVideoController.inlineVideoProgressById
+    val onToggleInlineVideo = inlineVideoController.onToggleInlineVideo
     val systemRowMapping = remember(gridBlocks, density.columns) {
-        val mediaToRow = mutableMapOf<String, String>()
-        val mediaToColumn = mutableMapOf<String, Int>()
-        val rowToMedia = mutableMapOf<String, MutableList<String>>()
-        val rowKeys = mutableListOf<String>()
-        var mediaInRow = 0
-        var rowIndex = 0
-        gridBlocks.forEach { block ->
-            when (block) {
-                is SystemMediaGridBlock.Media -> {
-                    val rowKey = "sys-row-$rowIndex"
-                    if (mediaInRow == 0) {
-                        rowKeys += rowKey
-                    }
-                    mediaToRow[block.item.id] = rowKey
-                    mediaToColumn[block.item.id] = mediaInRow
-                    rowToMedia.getOrPut(rowKey) { mutableListOf() }.add(block.item.id)
-                    mediaInRow++
-                    if (mediaInRow >= density.columns) {
-                        mediaInRow = 0
-                        rowIndex++
-                    }
-                }
-                is SystemMediaGridBlock.MonthHeader,
-                is SystemMediaGridBlock.DayHeader,
-                -> {
-                    if (mediaInRow > 0) {
-                        mediaInRow = 0
-                        rowIndex++
-                    }
-                }
-            }
-        }
-        SystemMediaRowMapping(
-            mediaToRow = mediaToRow,
-            mediaToColumn = mediaToColumn,
-            rowToMedia = rowToMedia.mapValues { it.value.toList() },
-            rowKeys = rowKeys,
-        )
+        buildSystemMediaRowMapping(gridBlocks, density.columns)
     }
     val gridEdgePadding = systemMediaGridEdgePadding(density)
     val edgePaddingPx = with(LocalDensity.current) { gridEdgePadding.toPx() }
-    val hitTestAdapter = remember(
-        gridState,
-        gridBlocks,
-        systemRowMapping,
-        density.columns,
-        spacingPx,
-        edgePaddingPx,
-    ) {
-        val colSpacingPx = spacingPx
-        MultiSelectHitTestAdapter(
-            hitTest = { touchPos ->
-                val layout = gridState.layoutInfo
-                val tx = (touchPos.x - edgePaddingPx).toInt()
-                val ty = touchPos.y.toInt()
-                val viewportW = layout.viewportSize.width.coerceAtLeast(1)
-                val contentW = (viewportW - edgePaddingPx * 2f).coerceAtLeast(1f)
-                val totalSpacing = (density.columns - 1) * colSpacingPx
-                val cellWidth = ((contentW - totalSpacing) / density.columns).coerceAtLeast(1f)
-                val segmentWidth = cellWidth + colSpacingPx
-                for (vi in layout.visibleItemsInfo) {
-                    val block = gridBlocks.getOrNull(vi.index) as? SystemMediaGridBlock.Media ?: continue
-                    val itemEndY = vi.offset.y + vi.size.height
-                    if (ty !in vi.offset.y until itemEndY) continue
-
-                    val rowKey = systemRowMapping.mediaToRow[block.item.id] ?: continue
-                    val rowItems = systemRowMapping.rowToMedia[rowKey].orEmpty()
-                    if (rowItems.isEmpty()) continue
-
-                    val colIndex = (tx / segmentWidth).toInt().coerceIn(0, density.columns - 1)
-                    val mediaId = rowItems.getOrNull(colIndex) ?: return@MultiSelectHitTestAdapter null
-                    return@MultiSelectHitTestAdapter MultiSelectHitResult(
-                        mediaId = mediaId,
-                        rowKey = rowKey,
-                        rowIndex = systemRowMapping.rowIndexForMedia(mediaId),
-                        isSelectable = true,
-                        colIndex = colIndex,
-                        columnsInRow = rowItems.size,
-                    )
-                }
-                null
-            },
-            mediaIdsInRow = { rowKey -> systemRowMapping.rowToMedia[rowKey].orEmpty() },
-            rowKeyAtIndex = { rowIndex -> systemRowMapping.rowKeys.getOrNull(rowIndex) },
-        )
-    }
+    val hitTestAdapter = rememberSystemMediaHitTestAdapter(
+        gridState = gridState,
+        gridBlocks = gridBlocks,
+        systemRowMapping = systemRowMapping,
+        columns = density.columns,
+        spacingPx = spacingPx,
+        edgePaddingPx = edgePaddingPx,
+    )
     val currentScrollProgress by remember(gridState, gridBlocks, uiState.filteredItems.size) {
         derivedStateOf {
             calculateSystemMediaScrollProgress(
@@ -511,55 +342,17 @@ fun SystemMediaScreen(
             }
         }
     }
-    LaunchedEffect(
-        scrollTrigger,
-        uiState.filteredItems,
-        renderedCount,
-        density.columns,
-    ) {
-        val mediaId = LocalSystemMediaPageStateStore.pendingScrollTargetMediaId ?: return@LaunchedEffect
-        val targetIndex = uiState.filteredItems.indexOfFirst { it.id == mediaId }
-        if (mediaId != pendingTargetMediaIdSnapshot) {
-            pendingTargetMediaIdSnapshot = mediaId
-            pendingTargetRenderedCount = -1
-        }
-        if (targetIndex < 0) {
-            pendingTargetMediaIdSnapshot = null
-            pendingTargetRenderedCount = -1
-            LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
-            LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
-            return@LaunchedEffect
-        }
-        if (density != PhotoFeedDensity.OVERVIEW_16 &&
-            targetIndex >= visibleItems.size &&
-            targetIndex < uiState.filteredItems.size
-        ) {
-            val nextRenderedCount = (targetIndex + renderPageSize)
-                .coerceAtMost(uiState.filteredItems.size)
-            if (nextRenderedCount > renderedCount && pendingTargetRenderedCount != nextRenderedCount) {
-                pendingTargetRenderedCount = nextRenderedCount
-                renderedCount = nextRenderedCount
-            }
-            return@LaunchedEffect
-        }
-        val targetBlockIndex = gridBlocks.indexOfFirst { block ->
-            block is SystemMediaGridBlock.Media && block.item.id == mediaId
-        }.takeIf { it >= 0 } ?: targetIndex
-        if (targetBlockIndex in gridState.layoutInfo.visibleItemsInfo.map { it.index }) {
-            pendingTargetMediaIdSnapshot = null
-            pendingTargetRenderedCount = -1
-            LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
-            LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
-            return@LaunchedEffect
-        }
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.isNotEmpty() }
-            .first { it }
-        gridState.scrollToItem(targetBlockIndex)
-        pendingTargetMediaIdSnapshot = null
-        pendingTargetRenderedCount = -1
-        LocalSystemMediaPageStateStore.pendingScrollTargetMediaId = null
-        LocalSystemMediaPageStateStore.pendingScrollAnchorOriginalIndex = -1
-    }
+    SystemMediaPendingScrollHandler(
+        scrollTrigger = scrollTrigger,
+        filteredItems = uiState.filteredItems,
+        density = density,
+        visibleItems = visibleItems,
+        gridBlocks = gridBlocks,
+        gridState = gridState,
+        renderPageSize = renderPageSize,
+        renderedCount = renderedCount,
+        onRenderedCountChange = { renderedCount = it },
+    )
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -594,7 +387,7 @@ fun SystemMediaScreen(
 
         if (result.resultCode == Activity.RESULT_OK) {
             val hiddenCount = LocalSystemMediaBridgeRepository.markMovedToSystemTrash(processedIds)
-            invalidateSystemMediaMetadataCache(context)
+            invalidateSystemMediaMetadataCache(context, clearDisk = true)
             selectionMode = false
             selectedIds = emptyList()
             viewModel.refresh(forceRefresh = true)
@@ -793,7 +586,24 @@ fun SystemMediaScreen(
         )
     }
 
-    Box(
+    if (showAlbumSheet) {
+        SystemMediaAlbumSheet(
+            albums = uiState.albums,
+            selectedAlbum = uiState.selectedAlbum,
+            onDismiss = { showAlbumSheet = false },
+            onAlbumSelected = { album ->
+                viewModel.onAlbumSelected(album)
+                showAlbumSheet = false
+            },
+        )
+    }
+
+    PullToRefreshBox(
+        isRefreshing = uiState.isRefreshing,
+        onRefresh = {
+            invalidateSystemMediaMetadataCache(context, clearDisk = true)
+            viewModel.refresh(forceRefresh = true)
+        },
         modifier = modifier
             .fillMaxSize()
             .background(colors.appBackground),
@@ -814,13 +624,16 @@ fun SystemMediaScreen(
                     selectedFilter = uiState.selectedFilter,
                     selectionMode = selectionMode,
                     selectedCount = selectedIds.size,
+                    totalCount = uiState.filteredItems.size,
+                    selectedAlbum = uiState.selectedAlbum,
                     onBack = onBack,
                     onFilterSelected = viewModel::onFilterSelected,
                     onRefresh = {
-                        invalidateSystemMediaMetadataCache(context)
+                        invalidateSystemMediaMetadataCache(context, clearDisk = true)
                         viewModel.refresh(forceRefresh = true)
                     },
-                    isRefreshing = uiState.isRefreshing,
+                    onOpenAlbums = { showAlbumSheet = true },
+                    isManualRefreshing = uiState.isRefreshing,
                 )
             }
 
@@ -889,7 +702,9 @@ fun SystemMediaScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(density.columns),
                             state = gridState,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = gridEnterAlpha.value },
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                             contentPadding = PaddingValues(
@@ -979,13 +794,13 @@ fun SystemMediaScreen(
                                             },
                                             onToggleInlineVideo = { onToggleInlineVideo(item) },
                                             onInlineVideoProgressChange = { progress ->
-                                                inlineVideoProgressById = inlineVideoProgressById + (item.id to progress)
+                                                inlineVideoController.onInlineVideoProgressChange(item.id, progress)
                                             },
                                         )
                                     }
                                 }
-	                            }
-	                        }
+                            }
+                        }
 
                         densityGhost?.let { ghost ->
                             SystemMediaDensityGhostOverlay(
@@ -1007,71 +822,64 @@ fun SystemMediaScreen(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
                                 .fillMaxHeight(),
-	                        ) {
-	                            Box(
-	                                modifier = Modifier
-	                                    .fillMaxHeight()
-	                                    .width(184.dp),
-	                            ) {
-	                                PhotoFeedTimeScrubber(
-	                                    modifier = Modifier.matchParentSize(),
-	                                    progress = displayedScrubberProgress,
-	                                    label = displayedScrubberLabel,
-	                                    showLabel = scrubberInteracting,
-	                                    yearMarkers = scrubberYearMarkers,
-		                                    onSeekToProgress = { progress ->
-		                                    val targetIndex = (progress * (uiState.filteredItems.lastIndex).coerceAtLeast(0))
-		                                        .roundToInt()
-		                                        .coerceIn(0, (uiState.filteredItems.size - 1).coerceAtLeast(0))
-	                                    scrubberDragProgress = progress.coerceIn(0f, 1f)
-		                                    val targetItem = uiState.filteredItems.getOrNull(targetIndex)
-		                                    scrubberDragLabel = targetItem?.toSystemMediaScrubberLabel().orEmpty()
-	                                    val scrubberStep = systemMediaScrubberIndexStep(density)
-		                                    if (
-                                                targetIndex == lastRequestedScrubberIndex ||
-                                                lastRequestedScrubberIndex >= 0 &&
-                                                abs(targetIndex - lastRequestedScrubberIndex) < scrubberStep
-                                            ) {
-		                                        return@PhotoFeedTimeScrubber
-		                                    }
-	                                    lastRequestedScrubberIndex = targetIndex
-	                                    val nextRenderedCount = if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
-	                                        (targetIndex + renderPageSize)
-                                            .coerceAtMost(uiState.filteredItems.size)
-                                    } else {
-                                        renderedCount
-                                    }
-	                                    if (targetIndex >= visibleItems.size && targetIndex < uiState.filteredItems.size) {
-	                                        renderedCount = nextRenderedCount
-	                                    }
-	                                    val targetBlockIndex = targetItem
-	                                        ?.let { item -> scrubberTargetBlockIndexByMediaId[item.id] }
-	                                        ?.takeIf { it >= 0 }
-	                                        ?: 0
-	                                    scrubberScrollJob?.cancel()
-	                                    scrubberScrollJob = coroutineScope.launch {
-	                                        if (nextRenderedCount != visibleItems.size) {
-	                                            delay(16)
-	                                        }
-		                                        gridState.scrollToItem(
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(184.dp),
+                            ) {
+                                PhotoFeedTimeScrubber(
+                                    modifier = Modifier.matchParentSize(),
+                                    progress = displayedScrubberProgress,
+                                    label = displayedScrubberLabel,
+                                    showLabel = scrubberInteracting,
+                                    yearMarkers = scrubberYearMarkers,
+                                    onSeekToProgress = { progress ->
+                                        val targetIndex = (progress * (uiState.filteredItems.lastIndex).coerceAtLeast(0))
+                                            .roundToInt()
+                                            .coerceIn(0, (uiState.filteredItems.size - 1).coerceAtLeast(0))
+                                        scrubberDragProgress = progress.coerceIn(0f, 1f)
+                                        val targetItem = uiState.filteredItems.getOrNull(targetIndex)
+                                        scrubberDragLabel = targetItem?.toSystemMediaScrubberLabel().orEmpty()
+                                        val scrubberStep = systemMediaScrubberIndexStep(density)
+                                        if (
+                                            targetIndex == lastRequestedScrubberIndex ||
+                                            lastRequestedScrubberIndex >= 0 &&
+                                            abs(targetIndex - lastRequestedScrubberIndex) < scrubberStep
+                                        ) {
+                                            return@PhotoFeedTimeScrubber
+                                        }
+                                        lastRequestedScrubberIndex = targetIndex
+                                        val targetBlockIndex = targetItem
+                                            ?.let { item -> scrubberTargetBlockIndexByMediaId[item.id] }
+                                            ?.takeIf { it >= 0 }
+                                            ?: 0
+                                        scrubberScrollJob?.cancel()
+                                        scrubberScrollJob = coroutineScope.launch {
+                                            gridState.scrollToItem(
                                                 index = targetBlockIndex,
                                                 scrollOffset = calculatePhotoFeedLikeSystemScrubberScrollOffset(gridState),
                                             )
-	                                    }
-	                                    },
-	                                    onInteractingChanged = { interacting ->
-	                                    scrubberInteracting = interacting
-	                                    if (interacting) {
-	                                        scrubberDragProgress = currentScrollProgress
-                                        scrubberDragLabel = currentScrubberLabel
-                                    } else {
-	                                        scrubberDragProgress = null
-	                                        scrubberDragLabel = ""
-	                                    }
-	                                    },
-	                                )
-	                            }
-	                        }
+                                        }
+                                    },
+                                    onInteractingChanged = { interacting ->
+                                        scrubberInteracting = interacting
+                                        if (interacting) {
+                                            scrubberDragProgress = currentScrollProgress
+                                            scrubberDragLabel = currentScrubberLabel
+                                            if (density != PhotoFeedDensity.OVERVIEW_16 &&
+                                                renderedCount < uiState.filteredItems.size
+                                            ) {
+                                                renderedCount = uiState.filteredItems.size
+                                            }
+                                        } else {
+                                            scrubberDragProgress = null
+                                            scrubberDragLabel = ""
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1151,1397 +959,3 @@ fun SystemMediaScreen(
     }
 }
 
-@Composable
-private fun SystemMediaPermissionState(
-    onRequestPermission: () -> Unit,
-    onOpenSettings: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = colors.sectionBackground.copy(alpha = 0.64f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = "需要图片和视频权限才能显示系统媒体。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SystemMediaActionChip(
-                        text = "继续授权",
-                        emphasized = true,
-                        onClick = onRequestPermission,
-                    )
-                    SystemMediaActionChip(
-                        text = "去设置",
-                        emphasized = false,
-                        onClick = onOpenSettings,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaTopBar(
-    selectedFilter: SystemMediaFilter,
-    selectionMode: Boolean,
-    selectedCount: Int,
-    onBack: () -> Unit,
-    onFilterSelected: (SystemMediaFilter) -> Unit,
-    onRefresh: () -> Unit,
-    isRefreshing: Boolean = false,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    var filterMenuExpanded by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(spacing.sm),
-    ) {
-        YingShiToolSurface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-            contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
-            highlighted = selectionMode,
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SystemMediaIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        onClick = onBack,
-                    )
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "系统媒体",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.titleAccent,
-                        )
-                        Text(
-                            text = if (selectionMode) {
-                                "长按与滑动选择媒体"
-                            } else {
-                                "当前筛选：${selectedFilter.label}"
-                            },
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = colors.textSecondary,
-                        )
-                    }
-
-                    if (isRefreshing) {
-                        Surface(
-                            modifier = Modifier.size(44.dp),
-                            shape = CircleShape,
-                            color = colors.sectionBackground.copy(alpha = 0.80f),
-                            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(21.dp),
-                                    strokeWidth = 2.dp,
-                                    color = colors.primaryAction,
-                                )
-                            }
-                        }
-                    } else {
-                        SystemMediaIconButton(
-                            icon = Icons.Default.Refresh,
-                            contentDescription = "刷新媒体",
-                            onClick = onRefresh,
-                        )
-                    }
-                    Box {
-                        SystemMediaIconButton(
-                            icon = Icons.Default.Menu,
-                            contentDescription = "媒体分类",
-                            onClick = { filterMenuExpanded = true },
-                        )
-                        DropdownMenu(
-                            expanded = filterMenuExpanded,
-                            onDismissRequest = { filterMenuExpanded = false },
-                        ) {
-                            SystemMediaFilter.entries.forEach { filter ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = filter.label,
-                                            fontWeight = if (filter == selectedFilter) FontWeight.SemiBold else FontWeight.Medium,
-                                        )
-                                    },
-                                    onClick = {
-                                        onFilterSelected(filter)
-                                        filterMenuExpanded = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (selectionMode) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-                color = colors.primaryContainer.copy(alpha = 0.88f),
-                border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.70f)),
-            ) {
-                Text(
-                    text = if (selectedCount > 0) "已选 $selectedCount 项" else "请选择媒体",
-                    modifier = Modifier.padding(horizontal = spacing.md, vertical = 12.dp),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.titleAccent,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaFilterChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier.yingShiClickable(
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-            pressedScale = 0.97f,
-            onClick = onClick,
-        ),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (selected) {
-            colors.primaryContainer.copy(alpha = 0.84f)
-        } else {
-            colors.sectionBackground.copy(alpha = 0.72f)
-        },
-        border = BorderStroke(
-            1.dp,
-            if (selected) colors.glassStroke.copy(alpha = 0.76f) else colors.dividerSoft.copy(alpha = 0.62f),
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            ),
-            color = colors.titleAccent,
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SystemMediaCard(
-    item: SystemMediaItem,
-    modifier: Modifier = Modifier,
-    density: PhotoFeedDensity,
-    thumbnailRequestSize: Int,
-    selectionMode: Boolean,
-    selected: Boolean,
-    selectionFlash: SelectionNumberFlash?,
-    inlineVideoAutoPlayEnabled: Boolean,
-    isInlineVideoPlaying: Boolean,
-    isInlineVideoActive: Boolean,
-    isInlineVideoPaused: Boolean,
-    inlineVideoProgress: InlineVideoPlaybackProgress?,
-    onClick: () -> Unit,
-    onOpenMedia: () -> Unit,
-    onLongPress: () -> Unit,
-    onToggleInlineVideo: () -> Unit,
-    onInlineVideoProgressChange: (InlineVideoPlaybackProgress) -> Unit,
-) {
-    val context = LocalContext.current
-    val colors = YingShiThemeTokens.colors
-    val motion = YingShiThemeTokens.motion
-    val motionEnabled = rememberYingShiMotionEnabled()
-    val isOverview16 = density == PhotoFeedDensity.OVERVIEW_16
-    val shape = RoundedCornerShape(0.dp)
-    val videoThumbnail = if (item.type == SystemMediaType.VIDEO && density.columns <= 4) {
-        rememberSystemVideoThumbnail(context, item.uri)
-    } else {
-        null
-    }
-    val mediaThumbnail = if (videoThumbnail == null) {
-        rememberSystemMediaThumbnail(
-            context = context,
-            uri = item.uri,
-            targetSizePx = thumbnailRequestSize,
-        )
-    } else {
-        null
-    }
-    val selectionHotspotOnly = selectionMode && density.columns in 2..4
-    val supportsInlineVideo = inlineVideoAutoPlayEnabled &&
-        !selectionMode &&
-        item.type == SystemMediaType.VIDEO &&
-        density.columns <= 4
-    val showSelectionVideoMarker = selectionMode &&
-        item.type == SystemMediaType.VIDEO &&
-        density.columns <= 4
-    val itemScale by animateFloatAsState(
-        targetValue = if (selected && !isOverview16) motion.selectedMediaScale else 1f,
-        animationSpec = tween(if (motionEnabled && !isOverview16) motion.stateMillis else 0, easing = motion.easing),
-        label = "systemMediaCardSelectionScale",
-    )
-    val thumbnailAlpha by animateFloatAsState(
-        targetValue = if (videoThumbnail != null || mediaThumbnail != null) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = if (motionEnabled && !isOverview16) 90 else 0,
-            easing = motion.easing,
-        ),
-        label = "systemMediaThumbnailAlpha",
-    )
-
-    Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .graphicsLayer {
-                scaleX = itemScale
-                scaleY = itemScale
-            }
-            .clip(shape)
-            .background(systemMediaCardBackground(item = item, density = density))
-            .combinedClickable(
-                onClick = if (selectionHotspotOnly) onOpenMedia else onClick,
-                onLongClick = onLongPress,
-            ),
-    ) {
-        if (videoThumbnail != null) {
-            Image(
-                bitmap = videoThumbnail.toComposeBitmap(),
-                contentDescription = item.displayName,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = thumbnailAlpha },
-                contentScale = ContentScale.Crop,
-            )
-        } else if (mediaThumbnail != null) {
-            Image(
-                bitmap = mediaThumbnail.toComposeBitmap(),
-                contentDescription = item.displayName,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = thumbnailAlpha },
-                contentScale = ContentScale.Crop,
-            )
-        }
-
-        if (!isOverview16) {
-            YingShiMediaFrame(
-                modifier = Modifier.fillMaxSize(),
-                shape = shape,
-                selected = selected,
-                topScrimAlpha = if (item.type == SystemMediaType.VIDEO) 0.22f else 0.14f,
-                bottomGlowAlpha = if (selected) 0.24f else 0.14f,
-            )
-        }
-
-        if (supportsInlineVideo && isInlineVideoPlaying) {
-            SystemMediaInlineVideoPlayer(
-                item = item,
-                playWhenReady = true,
-                modifier = Modifier.fillMaxSize(),
-                onPlaybackProgressChange = onInlineVideoProgressChange,
-            )
-        }
-
-        if (supportsInlineVideo) {
-            InlineVideoPlaybackButton(
-                isPlaying = isInlineVideoActive && !isInlineVideoPaused,
-                onClick = onToggleInlineVideo,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 6.dp, bottom = 6.dp),
-            )
-        }
-
-        if (showSelectionVideoMarker) {
-            InlineVideoPlaybackButton(
-                isPlaying = false,
-                onClick = {},
-                enabled = false,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 6.dp, bottom = 6.dp),
-            )
-        }
-
-        if (item.type == SystemMediaType.VIDEO && !isOverview16) {
-            VideoDurationBadge(
-                durationMillis = item.gridVideoBadgeDurationMillis(inlineVideoProgress),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 6.dp, end = 6.dp),
-            )
-        }
-
-        if (item.isImportedToApp && !isOverview16) {
-            SystemMediaBadge(
-                text = "已导入",
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 6.dp, start = 6.dp),
-            )
-        }
-
-        if (selectionMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.viewerBackground.copy(alpha = if (selected) 0.18f else 0.06f)),
-            )
-            if (selectionHotspotOnly) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(46.dp)
-                        .clickable(onClick = onClick),
-                    contentAlignment = Alignment.BottomEnd,
-                ) {
-                    SystemMediaSelectionBadge(
-                        selected = selected,
-                        modifier = Modifier.padding(end = 2.dp, bottom = 2.dp),
-                    )
-                }
-            } else {
-                SystemMediaSelectionBadge(
-                    selected = selected,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 2.dp, bottom = 2.dp),
-                )
-            }
-        }
-        if (selectionMode && !isOverview16) {
-            SelectionNumberFlashOverlay(
-                flash = selectionFlash,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-    }
-}
-
-private fun SystemMediaItem.gridVideoBadgeDurationMillis(
-    progress: InlineVideoPlaybackProgress?,
-): Long? {
-    val totalMillis = progress?.durationMillis ?: videoDurationMillis
-    if (totalMillis == null || totalMillis <= 0L) return null
-    val positionMillis = progress?.positionMillis ?: 0L
-    return (totalMillis - positionMillis).coerceIn(0L, totalMillis)
-}
-
-@Composable
-private fun SystemMediaBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = colors.raisedSurface.copy(alpha = 0.86f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.50f)),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
-        )
-    }
-}
-
-private fun systemMediaCardBackground(
-    item: SystemMediaItem,
-    density: PhotoFeedDensity,
-): Brush {
-    val alpha = if (density == PhotoFeedDensity.OVERVIEW_16) 0.82f else 0.62f
-    return Brush.linearGradient(
-        colors = listOf(
-            item.palette.start.copy(alpha = alpha),
-            item.palette.end.copy(alpha = (alpha + 0.08f).coerceAtMost(0.92f)),
-        ),
-    )
-}
-
-@Composable
-private fun SystemMediaAtmosphereLayer(
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            colors.primaryContainer.copy(alpha = 0.18f),
-                            colors.appBackground.copy(alpha = 0.08f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(80f, 120f),
-                        radius = 920f,
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            colors.memoryAccent.copy(alpha = 0.14f),
-                            colors.sectionBackground.copy(alpha = 0.10f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(1120f, 1880f),
-                        radius = 980f,
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            colors.raisedSurface.copy(alpha = 0.06f),
-                            Color.Transparent,
-                            colors.viewerBackground.copy(alpha = 0.08f),
-                        ),
-                    ),
-                ),
-        )
-    }
-}
-
-@Composable
-private fun SystemMediaSelectionBar(
-    selectedCount: Int,
-    onImportToApp: () -> Unit,
-    onCreatePost: () -> Unit,
-    onAddToPost: () -> Unit,
-    onMoveToTrash: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-
-    YingShiToolSurface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.lg),
-        contentPadding = PaddingValues(horizontal = spacing.sm, vertical = spacing.sm),
-        highlighted = selectedCount > 0,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        ) {
-            SystemMediaActionChip(
-                text = "导入",
-                emphasized = true,
-                modifier = Modifier.weight(1f),
-                onClick = onImportToApp,
-            )
-            SystemMediaActionChip(
-                text = "新建",
-                emphasized = false,
-                modifier = Modifier.weight(1f),
-                onClick = onCreatePost,
-            )
-            SystemMediaActionChip(
-                text = "加入",
-                emphasized = false,
-                modifier = Modifier.weight(1f),
-                onClick = onAddToPost,
-            )
-            SystemMediaActionChip(
-                text = "删除",
-                emphasized = false,
-                danger = true,
-                modifier = Modifier.weight(1f),
-                onClick = onMoveToTrash,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaActionChip(
-    text: String,
-    emphasized: Boolean,
-    danger: Boolean = false,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = modifier.yingShiClickable(
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-            pressedScale = 0.96f,
-            onClick = onClick,
-        ),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = if (danger) {
-            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.90f)
-        } else if (emphasized) {
-            colors.primaryContainer.copy(alpha = 0.88f)
-        } else {
-            colors.sectionBackground.copy(alpha = 0.72f)
-        },
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (danger) {
-                MaterialTheme.colorScheme.error.copy(alpha = 0.24f)
-            } else if (emphasized) {
-                colors.glassStroke.copy(alpha = 0.72f)
-            } else {
-                colors.dividerSoft.copy(alpha = 0.62f)
-            },
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier
-                .then(if (compact) Modifier else Modifier.fillMaxWidth())
-                .padding(horizontal = if (compact) 12.dp else 14.dp, vertical = if (compact) 7.dp else 10.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            textAlign = TextAlign.Center,
-            color = if (danger) {
-                MaterialTheme.colorScheme.onErrorContainer
-            } else if (emphasized) {
-                colors.titleAccent
-            } else {
-                colors.titleAccent
-            },
-        )
-    }
-}
-
-@Composable
-private fun SystemMediaIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier
-            .size(44.dp)
-            .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
-        shape = CircleShape,
-        color = colors.sectionBackground.copy(alpha = 0.80f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = colors.titleAccent,
-                modifier = Modifier.size(21.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaSelectionBadge(
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier
-            .size(24.dp)
-            .clip(CircleShape)
-            .background(
-                if (selected) colors.primaryContainer else colors.raisedSurface.copy(alpha = 0.74f),
-            )
-            .border(
-                width = 1.5.dp,
-                color = if (selected) colors.glassStroke else colors.raisedSurface.copy(alpha = 0.94f),
-                shape = CircleShape,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (selected) {
-            Text(
-                text = "✓",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),
-                color = colors.onPrimaryContainer,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SelectionNumberFlashOverlay(
-    flash: SelectionNumberFlash?,
-    modifier: Modifier = Modifier,
-) {
-    if (flash == null) return
-    val alpha = remember(flash.nonce) { Animatable(0f) }
-    LaunchedEffect(flash.nonce) {
-        alpha.snapTo(0f)
-        alpha.animateTo(1f, animationSpec = tween(durationMillis = 300))
-        delay(800)
-        alpha.animateTo(0f, animationSpec = tween(durationMillis = 500))
-    }
-
-    if (alpha.value > 0f) {
-        val colors = YingShiThemeTokens.colors
-        Box(
-            modifier = modifier
-                .alpha(alpha.value)
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.raisedSurface.copy(alpha = 0.94f))
-                .border(
-                    width = 1.dp,
-                    color = colors.selectedPillBg.copy(alpha = 0.78f),
-                    shape = RoundedCornerShape(12.dp),
-                )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = flash.number.toString(),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                ),
-                color = colors.titleAccent,
-            )
-        }
-    }
-}
-
-private sealed interface SystemMediaGridBlock {
-    val key: String
-
-    data class MonthHeader(
-        override val key: String,
-        val title: String,
-    ) : SystemMediaGridBlock
-
-    data class DayHeader(
-        override val key: String,
-        val title: String,
-    ) : SystemMediaGridBlock
-
-    data class Media(
-        override val key: String,
-        val item: SystemMediaItem,
-    ) : SystemMediaGridBlock
-}
-
-private data class SystemMediaRowMapping(
-    val mediaToRow: Map<String, String>,
-    val mediaToColumn: Map<String, Int>,
-    val rowToMedia: Map<String, List<String>>,
-    val rowKeys: List<String>,
-) {
-    private val rowKeyToIndex: Map<String, Int> = rowKeys
-        .mapIndexed { index, rowKey -> rowKey to index }
-        .toMap()
-
-    fun rowIndexForMedia(mediaId: String): Int {
-        return mediaToRow[mediaId]?.let { rowKey -> rowKeyToIndex[rowKey] } ?: -1
-    }
-}
-
-@Composable
-private fun SystemMediaMonthHeaderRow(title: String) {
-    Text(
-        text = title,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 4.dp, top = 12.dp, bottom = 6.dp),
-        style = MaterialTheme.typography.headlineSmall.copy(
-            fontSize = 28.sp,
-            lineHeight = 32.sp,
-            fontWeight = FontWeight.Bold,
-        ),
-        color = YingShiThemeTokens.colors.titleAccent,
-    )
-}
-
-@Composable
-private fun SystemMediaDayHeaderRow(title: String) {
-    Text(
-        text = title,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 4.dp, top = 6.dp, bottom = 5.dp),
-        style = MaterialTheme.typography.titleLarge.copy(
-            fontSize = 20.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.Bold,
-        ),
-        color = YingShiThemeTokens.colors.textPrimary.copy(alpha = 0.88f),
-    )
-}
-
-private fun systemMediaGridEdgePadding(density: PhotoFeedDensity) = rowSpacing(density)
-
-private fun systemMediaThumbnailRequestSize(density: PhotoFeedDensity): Int {
-    return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 512
-        PhotoFeedDensity.COMFORT_3 -> 384
-        PhotoFeedDensity.DENSE_4 -> 288
-        PhotoFeedDensity.OVERVIEW_8 -> 144
-        PhotoFeedDensity.OVERVIEW_16 -> 96
-    }
-}
-
-private fun systemMediaThumbnailWarmWindow(density: PhotoFeedDensity): Int {
-    return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 18
-        PhotoFeedDensity.COMFORT_3 -> 24
-        PhotoFeedDensity.DENSE_4 -> 36
-        PhotoFeedDensity.OVERVIEW_8 -> 120
-        PhotoFeedDensity.OVERVIEW_16 -> 420
-    }
-}
-
-private fun systemMediaThumbnailWarmBatchSize(density: PhotoFeedDensity): Int {
-    return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 6
-        PhotoFeedDensity.COMFORT_3 -> 8
-        PhotoFeedDensity.DENSE_4 -> 10
-        PhotoFeedDensity.OVERVIEW_8 -> 14
-        PhotoFeedDensity.OVERVIEW_16 -> 18
-    }
-}
-
-private fun buildSystemMediaScrubberYearMarkers(
-    items: List<SystemMediaItem>,
-): List<PhotoFeedScrubberYearMarker> {
-    val anchors = items.mapIndexed { index, item ->
-        PhotoFeedScrubberAnchor(
-            blockKey = item.id,
-            itemIndex = index,
-            label = item.toSystemMediaScrubberLabel(),
-            timeMillis = item.displayTimeMillis,
-        )
-    }
-    return buildPhotoFeedScrubberYearMarkers(anchors)
-}
-
-@Composable
-private fun SystemMediaTimeScrubber(
-    progress: Float,
-    label: String,
-    showLabel: Boolean,
-    onSeekToProgress: (Float) -> Unit,
-    onInteractingChanged: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val density = LocalDensity.current
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    val thumbWidth = 22.dp
-    val thumbHeight = 76.dp
-    val endMargin = 8.dp
-
-    var scrubberHeightPx by remember { mutableIntStateOf(0) }
-    var labelHeightPx by remember { mutableIntStateOf(0) }
-    var scrubberLabelWidthPx by remember { mutableIntStateOf(0) }
-    var lastDispatchedProgress by remember { mutableStateOf(Float.NaN) }
-    var dragStartProgress by remember { mutableStateOf(0f) }
-    var dragAccumulatedPx by remember { mutableStateOf(0f) }
-    val latestProgress by rememberUpdatedState(progress.coerceIn(0f, 1f))
-    val latestOnSeekToProgress by rememberUpdatedState(onSeekToProgress)
-    val latestOnInteractingChanged by rememberUpdatedState(onInteractingChanged)
-    val thumbWidthPx = with(density) { thumbWidth.roundToPx() }
-    val thumbHeightPx = with(density) { thumbHeight.roundToPx() }
-    val endMarginPx = with(density) { endMargin.roundToPx() }
-    val labelGapPx = with(density) { 12.dp.roundToPx() }
-    val travelHeightPx = (scrubberHeightPx - thumbHeightPx).coerceAtLeast(1)
-    val normalizedProgress = progress.coerceIn(0f, 1f)
-    val thumbTopPx = (travelHeightPx * normalizedProgress).roundToInt()
-    val labelTopPx = (thumbTopPx + (thumbHeightPx / 2) - (labelHeightPx / 2))
-        .coerceIn(0, (scrubberHeightPx - labelHeightPx).coerceAtLeast(0))
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .onSizeChanged { scrubberHeightPx = it.height },
-    ) {
-        androidx.compose.animation.AnimatedVisibility(
-            visible = showLabel && label.isNotBlank(),
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset { IntOffset(x = -(scrubberLabelWidthPx + thumbWidthPx + endMarginPx + labelGapPx), y = labelTopPx) },
-        ) {
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = colors.raisedSurface.copy(alpha = 0.96f),
-                border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
-            ) {
-                Text(
-                    text = label,
-                    modifier = Modifier
-                        .padding(horizontal = spacing.md, vertical = 8.dp)
-                        .onSizeChanged {
-                            scrubberLabelWidthPx = it.width
-                            labelHeightPx = it.height
-                        },
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
-                    color = colors.titleAccent,
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset { IntOffset(x = -endMarginPx, y = thumbTopPx) }
-                .size(width = thumbWidth, height = thumbHeight)
-                .clip(RoundedCornerShape(999.dp))
-                .background(colors.raisedSurface.copy(alpha = 0.96f))
-                .border(
-                    width = 1.dp,
-                    color = colors.dividerSoft.copy(alpha = 0.58f),
-                    shape = RoundedCornerShape(999.dp),
-                )
-                .pointerInput(scrubberHeightPx) {
-                    detectDragGestures(
-                        onDragStart = {
-                            latestOnInteractingChanged(true)
-                            dragStartProgress = latestProgress
-                            dragAccumulatedPx = 0f
-                            lastDispatchedProgress = Float.NaN
-                        },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            dragAccumulatedPx += dragAmount.y
-                            val nextProgress = (dragStartProgress + (dragAccumulatedPx / travelHeightPx.toFloat()))
-                                .coerceIn(0f, 1f)
-                            if (!lastDispatchedProgress.isNaN() && abs(lastDispatchedProgress - nextProgress) < 0.005f) {
-                                return@detectDragGestures
-                            }
-                            lastDispatchedProgress = nextProgress
-                            latestOnSeekToProgress(nextProgress)
-                        },
-                        onDragEnd = {
-                            lastDispatchedProgress = Float.NaN
-                            latestOnInteractingChanged(false)
-                        },
-                        onDragCancel = {
-                            lastDispatchedProgress = Float.NaN
-                            latestOnInteractingChanged(false)
-                        },
-                    )
-                },
-        ) {
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 10.dp)
-                    .size(8.dp),
-            ) {
-                val w = size.width
-                val h = size.height
-                val path = Path().apply {
-                    moveTo(w / 2f, 0f)
-                    lineTo(0f, h)
-                    lineTo(w, h)
-                    close()
-                }
-                drawPath(path, color = colors.titleAccent.copy(alpha = 0.78f))
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(width = 14.dp, height = 6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(colors.dividerSoft.copy(alpha = 0.82f)),
-            )
-
-            Canvas(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 10.dp)
-                    .size(8.dp),
-            ) {
-                val w = size.width
-                val h = size.height
-                val path = Path().apply {
-                    moveTo(0f, 0f)
-                    lineTo(w, 0f)
-                    lineTo(w / 2f, h)
-                    close()
-                }
-                drawPath(path, color = colors.titleAccent.copy(alpha = 0.78f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaLoadingState(
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            CircularProgressIndicator(color = colors.primaryAction)
-            Text(
-                text = "正在读取本地媒体…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary,
-            )
-        }
-    }
-}
-
-private data class SystemMediaDensityGhost(
-    val density: PhotoFeedDensity,
-    val blocks: List<SystemMediaGridBlock>,
-    val firstVisibleItemIndex: Int,
-    val firstVisibleItemScrollOffset: Int,
-    val nonce: Long,
-)
-
-@Composable
-private fun SystemMediaDensityGhostOverlay(
-    ghost: SystemMediaDensityGhost,
-    gridEdgePadding: androidx.compose.ui.unit.Dp,
-    onFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    key(ghost.nonce) {
-        val alpha = remember { Animatable(1f) }
-        val ghostState = rememberLazyGridState(
-            initialFirstVisibleItemIndex = ghost.firstVisibleItemIndex.coerceAtLeast(0),
-            initialFirstVisibleItemScrollOffset = ghost.firstVisibleItemScrollOffset.coerceAtLeast(0),
-        )
-        val thumbnailRequestSize = remember(ghost.density) {
-            systemMediaThumbnailRequestSize(ghost.density)
-        }
-        LaunchedEffect(ghost.nonce) {
-            alpha.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 520),
-            )
-            onFinished()
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(ghost.density.columns),
-            state = ghostState,
-            userScrollEnabled = false,
-            modifier = modifier
-                .graphicsLayer {
-                    this.alpha = alpha.value
-                    scaleX = 0.998f
-                    scaleY = 0.998f
-                },
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            contentPadding = PaddingValues(
-                start = gridEdgePadding,
-                end = gridEdgePadding,
-                top = 2.dp,
-                bottom = 112.dp,
-            ),
-        ) {
-            items(
-                items = ghost.blocks,
-                key = { "ghost-${ghost.nonce}-${it.key}" },
-                span = { block ->
-                    when (block) {
-                        is SystemMediaGridBlock.Media -> GridItemSpan(1)
-                        is SystemMediaGridBlock.MonthHeader,
-                        is SystemMediaGridBlock.DayHeader,
-                        -> GridItemSpan(maxLineSpan)
-                    }
-                },
-                contentType = { block ->
-                    when (block) {
-                        is SystemMediaGridBlock.MonthHeader -> "ghost-system-month"
-                        is SystemMediaGridBlock.DayHeader -> "ghost-system-day"
-                        is SystemMediaGridBlock.Media -> "ghost-${block.item.type}-${ghost.density.columns}"
-                    }
-                },
-            ) { block ->
-                when (block) {
-                    is SystemMediaGridBlock.MonthHeader -> SystemMediaMonthHeaderRow(block.title)
-                    is SystemMediaGridBlock.DayHeader -> SystemMediaDayHeaderRow(block.title)
-                    is SystemMediaGridBlock.Media -> SystemMediaGhostCard(
-                        item = block.item,
-                        density = ghost.density,
-                        thumbnailRequestSize = thumbnailRequestSize,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaGhostCard(
-    item: SystemMediaItem,
-    density: PhotoFeedDensity,
-    thumbnailRequestSize: Int,
-) {
-    val context = LocalContext.current
-    val thumbnail = rememberSystemMediaThumbnail(
-        context = context,
-        uri = item.uri,
-        targetSizePx = thumbnailRequestSize,
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(item.aspectRatio.coerceIn(0.56f, 1.8f))
-            .clip(RoundedCornerShape(if (density.columns <= 4) 14.dp else 7.dp))
-            .background(item.palette.start.copy(alpha = 0.58f)),
-    ) {
-        if (thumbnail != null) {
-            Image(
-                bitmap = thumbnail.toComposeBitmap(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaErrorState(
-    message: String,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = colors.sectionBackground.copy(alpha = 0.64f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.70f)),
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.textSecondary,
-                )
-                SystemMediaActionChip(
-                    text = "重试",
-                    emphasized = true,
-                    onClick = onRetry,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SystemMediaEmptyState(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    val colors = YingShiThemeTokens.colors
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = colors.sectionBackground.copy(alpha = 0.58f),
-            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
-        ) {
-            Text(
-                text = text,
-                modifier = Modifier.padding(20.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.textSecondary,
-            )
-        }
-    }
-}
-
-private fun List<String>.toggleSystemMediaId(id: String): List<String> {
-    return if (contains(id)) {
-        filterNot { it == id }
-    } else {
-        this + id
-    }
-}
-
-private fun calculateSystemMediaScrollProgress(
-    gridState: LazyGridState,
-    blocks: List<SystemMediaGridBlock>,
-    itemCount: Int,
-): Float {
-    if (itemCount <= 1) return 0f
-    val layoutInfo = gridState.layoutInfo
-    val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull() ?: return 0f
-    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).coerceAtLeast(1)
-    val visibleMediaCount = layoutInfo.visibleItemsInfo
-        .count { visible -> blocks.getOrNull(visible.index) is SystemMediaGridBlock.Media }
-        .coerceAtLeast(1)
-    val scrollableStart = (itemCount - visibleMediaCount).coerceAtLeast(1)
-    val firstMediaOrdinal = blocks
-        .take((firstVisible.index + 1).coerceAtMost(blocks.size))
-        .count { it is SystemMediaGridBlock.Media }
-        .coerceAtLeast(1) - 1
-    val offsetFraction = ((-firstVisible.offset.y).toFloat() / maxOf(firstVisible.size.height, viewportHeight).toFloat())
-        .coerceIn(0f, 1f)
-    return ((firstMediaOrdinal + offsetFraction) / scrollableStart.toFloat())
-        .coerceIn(0f, 1f)
-}
-
-private fun visibleSystemMediaVideoIds(
-    gridState: LazyGridState,
-    gridBlocks: List<SystemMediaGridBlock>,
-): Set<String> {
-    return gridState.layoutInfo.visibleItemsInfo
-        .mapNotNull { visible ->
-            val block = gridBlocks.getOrNull(visible.index) as? SystemMediaGridBlock.Media
-            block?.item?.takeIf { it.type == SystemMediaType.VIDEO }?.id
-        }
-        .toSet()
-}
-
-private fun centeredSystemMediaVideoId(
-    gridState: LazyGridState,
-    gridBlocks: List<SystemMediaGridBlock>,
-): String? {
-    val layoutInfo = gridState.layoutInfo
-    if (layoutInfo.visibleItemsInfo.isEmpty()) return null
-    val viewportCenterX = layoutInfo.viewportSize.width / 2f
-    val viewportCenterY = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
-
-    return layoutInfo.visibleItemsInfo
-        .mapNotNull { visible ->
-            val block = gridBlocks.getOrNull(visible.index) as? SystemMediaGridBlock.Media
-                ?: return@mapNotNull null
-            val item = block.item.takeIf { it.type == SystemMediaType.VIDEO } ?: return@mapNotNull null
-            val centerX = visible.offset.x + visible.size.width / 2f
-            val centerY = visible.offset.y + visible.size.height / 2f
-            val score = abs(centerX - viewportCenterX) + abs(centerY - viewportCenterY)
-            item.id to score
-        }
-        .minByOrNull { it.second }
-        ?.first
-}
-
-private fun SystemMediaItem.toSystemMediaScrubberLabel(): String {
-    return SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(Date(displayTimeMillis))
-}
-
-private fun buildSystemMediaGridBlocks(
-    items: List<SystemMediaItem>,
-    density: PhotoFeedDensity,
-): List<SystemMediaGridBlock> {
-    if (items.isEmpty()) return emptyList()
-    val monthFormat = SimpleDateFormat("yyyy年M月", Locale.CHINA)
-    val monthKeyFormat = SimpleDateFormat("yyyy-MM", Locale.CHINA)
-    val yearFormat = SimpleDateFormat("yyyy年", Locale.CHINA)
-    val yearKeyFormat = SimpleDateFormat("yyyy", Locale.CHINA)
-    val dayKeyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
-    val blocks = mutableListOf<SystemMediaGridBlock>()
-    var lastMonthKey: String? = null
-    var lastYearKey: String? = null
-    var lastDayKey: String? = null
-
-    items.forEach { item ->
-        val date = Date(item.displayTimeMillis)
-        if (density.columns >= 16) {
-            val yearKey = yearKeyFormat.format(date)
-            if (yearKey != lastYearKey) {
-                blocks += SystemMediaGridBlock.MonthHeader(
-                    key = "system-year-$yearKey",
-                    title = yearFormat.format(date),
-                )
-                lastYearKey = yearKey
-            }
-            blocks += SystemMediaGridBlock.Media(
-                key = "system-media-${item.id}",
-                item = item,
-            )
-            return@forEach
-        }
-        val monthKey = monthKeyFormat.format(date)
-        if (monthKey != lastMonthKey) {
-            blocks += SystemMediaGridBlock.MonthHeader(
-                key = "system-month-$monthKey",
-                title = monthFormat.format(date),
-            )
-            lastMonthKey = monthKey
-            lastDayKey = null
-        }
-        val dayKey = dayKeyFormat.format(date)
-        if (dayKey != lastDayKey) {
-            blocks += SystemMediaGridBlock.DayHeader(
-                key = "system-day-$dayKey",
-                title = formatSystemMediaDayHeader(item.displayTimeMillis),
-            )
-            lastDayKey = dayKey
-        }
-        blocks += SystemMediaGridBlock.Media(
-            key = "system-media-${item.id}",
-            item = item,
-        )
-    }
-    return blocks
-}
-
-private fun calculatePhotoFeedLikeSystemScrubberScrollOffset(
-    gridState: LazyGridState,
-): Int {
-    val layoutInfo = gridState.layoutInfo
-    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset)
-        .takeIf { it > 0 }
-        ?: layoutInfo.viewportSize.height
-    return -(viewportHeight * 0.36f).roundToInt()
-}
-
-private fun findSystemMediaScrubberTargetBlockIndex(
-    blocks: List<SystemMediaGridBlock>,
-    mediaId: String,
-): Int {
-    val mediaIndex = blocks.indexOfFirst { block ->
-        block is SystemMediaGridBlock.Media && block.item.id == mediaId
-    }
-    if (mediaIndex <= 0) return mediaIndex
-    for (index in mediaIndex downTo 0) {
-        when (blocks[index]) {
-            is SystemMediaGridBlock.DayHeader,
-            is SystemMediaGridBlock.MonthHeader,
-            -> return index
-            is SystemMediaGridBlock.Media -> Unit
-        }
-    }
-    return mediaIndex
-}
-
-private fun buildSystemMediaScrubberTargetIndexMap(
-    blocks: List<SystemMediaGridBlock>,
-): Map<String, Int> {
-    if (blocks.isEmpty()) return emptyMap()
-    val targetByMediaId = LinkedHashMap<String, Int>(blocks.size)
-    var currentHeaderIndex = 0
-    blocks.forEachIndexed { index, block ->
-        when (block) {
-            is SystemMediaGridBlock.DayHeader,
-            is SystemMediaGridBlock.MonthHeader,
-            -> currentHeaderIndex = index
-            is SystemMediaGridBlock.Media -> {
-                targetByMediaId[block.item.id] = currentHeaderIndex
-            }
-        }
-    }
-    return targetByMediaId
-}
-
-private fun systemMediaScrubberIndexStep(density: PhotoFeedDensity): Int {
-    return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 1
-        PhotoFeedDensity.COMFORT_3 -> 2
-        PhotoFeedDensity.DENSE_4 -> 3
-        PhotoFeedDensity.OVERVIEW_8 -> 12
-        PhotoFeedDensity.OVERVIEW_16 -> 36
-    }
-}
-
-private fun resolveCurrentSystemMediaVisibleLabel(
-    itemIndex: Int,
-    blocks: List<SystemMediaGridBlock>,
-    fallbackItems: List<SystemMediaItem>,
-): String {
-    if (blocks.isEmpty()) {
-        return fallbackItems.firstOrNull()?.toSystemMediaScrubberLabel().orEmpty()
-    }
-    val safeIndex = itemIndex.coerceIn(0, blocks.lastIndex)
-    val nextMedia = blocks
-        .drop(safeIndex)
-        .firstOrNull { it is SystemMediaGridBlock.Media } as? SystemMediaGridBlock.Media
-    val previousMedia = blocks
-        .take(safeIndex + 1)
-        .lastOrNull { it is SystemMediaGridBlock.Media } as? SystemMediaGridBlock.Media
-    return nextMedia?.item?.toSystemMediaScrubberLabel()
-        ?: previousMedia?.item?.toSystemMediaScrubberLabel()
-        ?: fallbackItems.firstOrNull()?.toSystemMediaScrubberLabel()
-        ?: ""
-}
-
-private fun formatSystemMediaDayHeader(timeMillis: Long): String {
-    val target = Calendar.getInstance(Locale.CHINA).apply {
-        timeInMillis = timeMillis
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val today = Calendar.getInstance(Locale.CHINA).apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val yesterday = today.clone() as Calendar
-    yesterday.add(Calendar.DAY_OF_YEAR, -1)
-    return when (target.timeInMillis) {
-        today.timeInMillis -> "今天"
-        yesterday.timeInMillis -> "昨天"
-        else -> SimpleDateFormat("M月d日", Locale.CHINA).format(Date(timeMillis))
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun SystemMediaEmptyStatePreview() {
-    YingShiTheme {
-        SystemMediaEmptyState(text = "当前没有可显示的本地媒体。")
-    }
-}

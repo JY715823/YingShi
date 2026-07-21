@@ -8,6 +8,8 @@ import com.example.yingshi.data.model.RemoteLifeConsoleBowelUserSummary
 import com.example.yingshi.data.model.RemoteLifeConsoleToday
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.remote.auth.AuthSessionManager
+import com.example.yingshi.feature.life.firstUsableImageUrl
+import com.example.yingshi.feature.life.isVideo
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.google.gson.Gson
 import java.io.File
@@ -226,28 +228,10 @@ internal object LifeConsoleWidgetStore {
 
     private fun RemoteMedia.widgetCacheUrl(): String? {
         return if (isVideo()) {
-            firstImageUrl(coverUrl, thumbnailUrl, previewUrl, mediaUrl, originalUrl)
+            firstUsableImageUrl(coverUrl, thumbnailUrl, previewUrl, mediaUrl, originalUrl)
         } else {
-            firstImageUrl(originalUrl, mediaUrl, previewUrl, thumbnailUrl, coverUrl)
+            firstUsableImageUrl(originalUrl, mediaUrl, previewUrl, thumbnailUrl, coverUrl)
         }
-    }
-
-    private fun RemoteMedia.isVideo(): Boolean {
-        return mediaType.equals("video", ignoreCase = true) ||
-            mimeType?.startsWith("video/", ignoreCase = true) == true ||
-            !videoUrl.isNullOrBlank()
-    }
-
-    private fun firstImageUrl(vararg urls: String?): String? {
-        return urls.firstOrNull { url ->
-            val normalized = url?.trim()
-            !normalized.isNullOrBlank() && !looksLikeVideoUrl(normalized)
-        }?.trim()
-    }
-
-    private fun looksLikeVideoUrl(url: String): Boolean {
-        val lower = url.substringBefore('?').lowercase()
-        return listOf(".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv").any(lower::endsWith)
     }
 }
 

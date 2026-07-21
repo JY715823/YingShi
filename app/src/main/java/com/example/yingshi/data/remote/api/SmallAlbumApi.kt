@@ -1,4 +1,4 @@
-﻿package com.example.yingshi.data.remote.api
+package com.example.yingshi.data.remote.api
 
 import com.example.yingshi.data.remote.dto.ApiEnvelopeDto
 import com.example.yingshi.data.remote.dto.AddSmallAlbumMediaRequestDto
@@ -8,6 +8,7 @@ import com.example.yingshi.data.remote.dto.SmallAlbumSummaryDto
 import com.example.yingshi.data.remote.dto.SetSmallAlbumCoverRequestDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
 import com.example.yingshi.data.remote.dto.UpdateSmallAlbumBasicInfoRequestDto
+import com.example.yingshi.data.remote.dto.UpdateSmallAlbumMediaBatchRequestDto
 import com.example.yingshi.data.remote.dto.UpdateSmallAlbumMediaOrderRequestDto
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -46,6 +47,12 @@ interface SmallAlbumApi {
     suspend fun updatePostMediaOrder(
         @Path("smallAlbumId") smallAlbumId: String,
         @Body request: UpdateSmallAlbumMediaOrderRequestDto,
+    ): ApiEnvelopeDto<SmallAlbumDetailDto>
+
+    @PATCH("api/small-albums/{smallAlbumId}/media-batch")
+    suspend fun updatePostMediaBatch(
+        @Path("smallAlbumId") smallAlbumId: String,
+        @Body request: UpdateSmallAlbumMediaBatchRequestDto,
     ): ApiEnvelopeDto<SmallAlbumDetailDto>
 
     @POST("api/small-albums/{smallAlbumId}/media")

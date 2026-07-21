@@ -19,6 +19,9 @@ data class LifeConsoleBowelUserSummaryDto(
     val count: Int = 0,
     val latestOccurredAtMillis: Long? = null,
     val eventTimesMillis: List<Long> = emptyList(),
+    val latestLocationLabel: String? = null,
+    // Round 8: 当日所有大便事件列表 (含完整位置信息), 用于今日页/历史页大便每条单独展示
+    val events: List<LifeConsoleBowelEventDto>? = null,
 )
 
 data class LifeConsoleBowelSummaryDto(
@@ -42,12 +45,14 @@ data class LifeConsoleHistoryDayDto(
     val displayLabel: String,
     val selfMedia: List<MediaDto> = emptyList(),
     val partnerMedia: List<MediaDto> = emptyList(),
+    val locationLabel: String? = null,
 )
 
 data class LifeConsoleBowelHistoryDayDto(
     val date: String,
     val displayLabel: String,
     val users: List<LifeConsoleBowelUserSummaryDto> = emptyList(),
+    val locationLabel: String? = null,
 )
 
 data class LifeConsoleHistoryDto(
@@ -64,15 +69,39 @@ data class LifeConsoleMediaRequestDto(
     val mediaIds: List<String>,
 )
 
+/**
+ * FR-18/FR-19: Optional request body for POST /api/life-console/bowel-events.
+ * All fields nullable so callers can omit the body entirely (legacy clients still work).
+ */
+data class LifeConsoleBowelEventRequestDto(
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
+)
+
 data class LifeConsoleBowelEventDto(
     val bowelEventId: String,
     val userId: String,
     val occurredAtMillis: Long,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
 )
 
 data class LifeConsoleBowelMutationResponseDto(
     val event: LifeConsoleBowelEventDto? = null,
     val bowel: LifeConsoleBowelSummaryDto,
+)
+
+/**
+ * Round 7 阶段 7: PATCH /api/life-console/media/{mediaId}/location
+ * 和 PATCH /api/life-console/bowel-events/{eventId}/location 的请求体。
+ * 与服务端 UpdateLocationRequest record 对齐。
+ */
+data class UpdateLocationRequestDto(
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
 )
 
 data class RegisterPushTokenRequestDto(

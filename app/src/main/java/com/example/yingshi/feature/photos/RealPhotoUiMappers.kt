@@ -170,6 +170,9 @@ fun RemoteMedia.toPhotoFeedItem(): PhotoFeedItem {
             displayTimeSource
         },
         mediaSource = toAppContentMediaSource(),
+        locationLabel = locationLabel,
+        locationLat = latitude,
+        locationLng = longitude,
     )
 }
 

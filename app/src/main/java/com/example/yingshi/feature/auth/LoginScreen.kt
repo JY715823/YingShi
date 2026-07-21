@@ -1,6 +1,15 @@
 package com.example.yingshi.feature.auth
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +28,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -31,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -75,6 +88,7 @@ import com.example.yingshi.ui.components.YingShiAuroraBackdrop
 import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiPrimaryMistButton
 import com.example.yingshi.ui.components.YingShiTextField
+import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -123,6 +137,7 @@ fun LoginScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
+    val motionEnabled = rememberYingShiMotionEnabled()
     val settings = BackendDebugConfig.settings
     val networkState by NetworkConnectivityMonitor.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -144,12 +159,15 @@ fun LoginScreen(
     var actionJob by remember { mutableStateOf<Job?>(null) }
     var challengeState by remember { mutableStateOf<ActiveLoginChallenge?>(null) }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var lockedUntilMillis by rememberSaveable { mutableLongStateOf(0L) }
+    var lockedMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     val resendRemainingMillis = (challengeState?.resendAvailableAtMillis ?: 0L) - nowMillis
     val resendRemainingSeconds = (resendRemainingMillis.coerceAtLeast(0L) + 999L) / 1000L
     val challengeExpired = challengeState?.let { nowMillis >= it.expireAtMillis } ?: false
     val isRememberedLoginPending = pendingAction is PendingLoginAction.RememberedLogin && challengeState == null
-    val currentMessage = errorMessage ?: statusMessage ?: sessionMessage
+    val isAccountLocked = lockedUntilMillis > nowMillis
+    val currentMessage = lockedMessage ?: errorMessage ?: statusMessage ?: sessionMessage
 
     fun finishLogin(session: RemoteLoginSession) {
         pendingAction = null
@@ -160,6 +178,8 @@ fun LoginScreen(
         statusMessage = null
         verificationCode = ""
         challengeState = null
+        lockedUntilMillis = 0L
+        lockedMessage = null
         onLoginSuccess(
             RemoteCurrentUser(
                 userId = session.userId,
@@ -200,7 +220,15 @@ fun LoginScreen(
         ) {
             clearChallenge()
         }
-        errorMessage = result.message
+        if (effectiveCode == "AUTH_ACCOUNT_LOCKED") {
+            lockedUntilMillis = System.currentTimeMillis() + 15 * 60 * 1000L
+            lockedMessage = "账号已临时锁定，请 15 分钟后再试"
+            errorMessage = null
+        } else {
+            lockedUntilMillis = 0L
+            lockedMessage = null
+            errorMessage = result.message
+        }
         statusMessage = null
         pendingAction = null
         waitingForNetwork = false
@@ -431,6 +459,8 @@ fun LoginScreen(
         waitingForNetwork = false
         errorMessage = null
         statusMessage = null
+        lockedUntilMillis = 0L
+        lockedMessage = null
         launchPendingAction(actionNonce, action)
     }
 
@@ -440,9 +470,12 @@ fun LoginScreen(
         }
     }
 
-    LaunchedEffect(challengeState?.challengeId) {
-        while (challengeState != null) {
+    LaunchedEffect(challengeState?.challengeId, lockedUntilMillis) {
+        while (challengeState != null || lockedUntilMillis > nowMillis) {
             nowMillis = System.currentTimeMillis()
+            if (lockedUntilMillis <= nowMillis && lockedMessage != null) {
+                lockedMessage = null
+            }
             delay(1000)
         }
     }
@@ -477,179 +510,313 @@ fun LoginScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 28.dp, vertical = 24.dp),
         ) {
-            Spacer(modifier = Modifier.weight(0.72f, fill = true))
+            Spacer(modifier = Modifier.weight(0.5f, fill = true))
 
-            Column(
+            // Brand header — outside the card
+            BrandHeader()
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 560.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                    .widthIn(max = 560.dp)
+                    .shadow(
+                        elevation = 8.dp,
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                        ambientColor = colors.titleAccent.copy(alpha = 0.04f),
+                        spotColor = colors.titleAccent.copy(alpha = 0.06f),
+                    )
+                    .shadow(
+                        elevation = 2.dp,
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                        ambientColor = colors.glassStroke.copy(alpha = 0.08f),
+                        spotColor = Color.Transparent,
+                    ),
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
+                color = colors.raisedSurface.copy(alpha = 0.88f),
+                border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.50f)),
             ) {
-                BrandHeader()
+                Box(
+                    modifier = Modifier.background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                colors.glowWash.copy(alpha = 0.10f),
+                                colors.raisedSurface.copy(alpha = 0.20f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(YingShiThemeTokens.spacing.xl),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        PresetAccountRow(
+                            selectedAccount = account,
+                            onSelect = { selected ->
+                                account = selected
+                                password = BuildConfig.DEFAULT_TEMP_PASSWORD
+                                errorMessage = null
+                                lockedUntilMillis = 0L
+                                lockedMessage = null
+                            },
+                            motionEnabled = motionEnabled,
+                        )
 
-                PresetAccountRow(
-                    selectedAccount = account,
-                    onSelect = { selected ->
-                        account = selected
-                        password = BuildConfig.DEFAULT_TEMP_PASSWORD
-                        errorMessage = null
-                    },
-                )
+                        YingShiTextField(
+                            value = account,
+                            onValueChange = {
+                                account = it
+                                errorMessage = null
+                                lockedUntilMillis = 0L
+                                lockedMessage = null
+                            },
+                            placeholder = LABEL_ACCOUNT,
+                            icon = Icons.Rounded.AlternateEmail,
+                            enabled = !isLoading && challengeState == null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
 
-                YingShiTextField(
-                    value = account,
-                    onValueChange = {
-                        account = it
-                        errorMessage = null
-                    },
-                    placeholder = LABEL_ACCOUNT,
-                    icon = Icons.Rounded.AlternateEmail,
-                    enabled = !isLoading && challengeState == null,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                if (challengeState == null) {
-                    YingShiTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            errorMessage = null
-                        },
-                        placeholder = LABEL_PASSWORD,
-                        icon = Icons.Rounded.Lock,
-                        enabled = !isLoading,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingContent = {
-                            Icon(
-                                imageVector = if (isPasswordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                contentDescription = if (isPasswordVisible) "隐藏密码" else "显示密码",
-                                tint = colors.titleAccent,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .yingShiClickable(shape = CircleShape) {
-                                        isPasswordVisible = !isPasswordVisible
-                                    }
-                                    .padding(4.dp)
-                                    .size(22.dp),
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    YingShiTextField(
-                        value = verificationCode,
-                        onValueChange = {
-                            verificationCode = it.filter(Char::isDigit).take(6)
-                            errorMessage = null
-                        },
-                        placeholder = LABEL_CODE,
-                        icon = Icons.Rounded.Lock,
-                        enabled = !isLoading,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                AuthMessageBlock(
-                    message = currentMessage,
-                    isError = errorMessage != null,
-                )
-
-                YingShiPrimaryMistButton(
-                    text = when {
-                        challengeState == null && waitingForNetwork && isRememberedLoginPending -> "等待网络恢复后登录"
-                        challengeState == null && waitingForNetwork -> "等待网络恢复后发送"
-                        challengeState == null && isLoading && isRememberedLoginPending -> "正在登录"
-                        challengeState == null && isLoading -> "正在发送验证码"
-                        challengeState == null -> "登录"
-                        waitingForNetwork -> "等待网络恢复后登录"
-                        isLoading -> "正在验证并登录"
-                        else -> "完成登录"
-                    },
-                    onClick = {
-                        if (challengeState == null) {
-                            val normalizedAccount = account.trim()
-                            val challengeRequest = LoginRequestDto(
-                                account = normalizedAccount,
-                                password = password,
-                            )
-                            val rememberedLoginToken = AuthSessionManager.getRememberedLoginToken(normalizedAccount)
-                            if (rememberedLoginToken != null) {
-                                queueAction(
-                                    PendingLoginAction.RememberedLogin(
-                                        request = RememberedLoginRequestDto(
-                                            account = normalizedAccount,
-                                            password = password,
-                                            deviceId = AuthSessionManager.getDeviceId(),
-                                            rememberedLoginToken = rememberedLoginToken,
-                                        ),
-                                        fallbackRequest = challengeRequest,
-                                    ),
+                        AnimatedContent(
+                            targetState = challengeState != null,
+                            transitionSpec = {
+                                fadeIn(tween(if (motionEnabled) 250 else 0)) togetherWith
+                                    fadeOut(tween(if (motionEnabled) 200 else 0))
+                            },
+                            label = "authFieldSwitch",
+                        ) { isChallenge ->
+                            if (!isChallenge) {
+                                YingShiTextField(
+                                    value = password,
+                                    onValueChange = {
+                                        password = it
+                                        errorMessage = null
+                                    },
+                                    placeholder = LABEL_PASSWORD,
+                                    icon = Icons.Rounded.Lock,
+                                    enabled = !isLoading,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                    visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingContent = {
+                                        Icon(
+                                            imageVector = if (isPasswordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                            contentDescription = if (isPasswordVisible) "隐藏密码" else "显示密码",
+                                            tint = colors.titleAccent,
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .yingShiClickable(shape = CircleShape) {
+                                                    isPasswordVisible = !isPasswordVisible
+                                                }
+                                                .padding(4.dp)
+                                                .size(22.dp),
+                                        )
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             } else {
-                                queueAction(
-                                    PendingLoginAction.RequestChallenge(
-                                        challengeRequest,
-                                    ),
+                                YingShiTextField(
+                                    value = verificationCode,
+                                    onValueChange = {
+                                        verificationCode = it.filter(Char::isDigit).take(6)
+                                        errorMessage = null
+                                    },
+                                    placeholder = LABEL_CODE,
+                                    icon = Icons.Rounded.Lock,
+                                    enabled = !isLoading,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
-                        } else {
-                            val activeChallenge = challengeState ?: return@YingShiPrimaryMistButton
-                            queueAction(
-                                PendingLoginAction.VerifyChallenge(
-                                    VerifyLoginChallengeRequestDto(
-                                        challengeId = activeChallenge.challengeId,
-                                        code = verificationCode.trim(),
-                                        deviceId = AuthSessionManager.getDeviceId(),
-                                    ),
-                                ),
+                        }
+
+                        AnimatedVisibility(
+                            visible = currentMessage != null,
+                            enter = fadeIn(tween(if (motionEnabled) 250 else 0)),
+                            exit = fadeOut(tween(if (motionEnabled) 200 else 0)),
+                        ) {
+                            AuthMessageBlock(
+                                message = currentMessage,
+                                isError = errorMessage != null,
                             )
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = if (challengeState == null) {
-                        account.isNotBlank() && password.isNotBlank() && !isLoading
-                    } else {
-                        verificationCode.length >= 6 && !isLoading
-                    },
-                    loading = isLoading,
-                )
 
-                if (challengeState != null) {
-                    LoginInlineActions(
-                        challengeExpired = challengeExpired,
-                        resendRemainingSeconds = resendRemainingSeconds,
-                        isLoading = isLoading,
-                        onResend = {
-                            val activeChallenge = challengeState ?: return@LoginInlineActions
-                            if (challengeExpired) {
-                                clearChallenge()
-                                queueAction(
-                                    PendingLoginAction.RequestChallenge(
-                                        LoginRequestDto(
-                                            account = account.trim(),
-                                            password = password,
+                        YingShiPrimaryMistButton(
+                            text = when {
+                                challengeState == null && waitingForNetwork && isRememberedLoginPending -> "等待网络恢复后登录"
+                                challengeState == null && waitingForNetwork -> "等待网络恢复后发送"
+                                challengeState == null && isLoading && isRememberedLoginPending -> "正在登录"
+                                challengeState == null && isLoading -> "正在发送验证码"
+                                challengeState == null -> "登录"
+                                waitingForNetwork -> "等待网络恢复后登录"
+                                isLoading -> "正在验证并登录"
+                                else -> "完成登录"
+                            },
+                            onClick = {
+                                if (challengeState == null) {
+                                    val normalizedAccount = account.trim()
+                                    val challengeRequest = LoginRequestDto(
+                                        account = normalizedAccount,
+                                        password = password,
+                                    )
+                                    val rememberedLoginToken = AuthSessionManager.getRememberedLoginToken(normalizedAccount)
+                                    if (rememberedLoginToken != null) {
+                                        queueAction(
+                                            PendingLoginAction.RememberedLogin(
+                                                request = RememberedLoginRequestDto(
+                                                    account = normalizedAccount,
+                                                    password = password,
+                                                    deviceId = AuthSessionManager.getDeviceId(),
+                                                    rememberedLoginToken = rememberedLoginToken,
+                                                ),
+                                                fallbackRequest = challengeRequest,
+                                            ),
+                                        )
+                                    } else {
+                                        queueAction(
+                                            PendingLoginAction.RequestChallenge(
+                                                challengeRequest,
+                                            ),
+                                        )
+                                    }
+                                } else {
+                                    val activeChallenge = challengeState ?: return@YingShiPrimaryMistButton
+                                    queueAction(
+                                        PendingLoginAction.VerifyChallenge(
+                                            VerifyLoginChallengeRequestDto(
+                                                challengeId = activeChallenge.challengeId,
+                                                code = verificationCode.trim(),
+                                                deviceId = AuthSessionManager.getDeviceId(),
+                                            ),
                                         ),
-                                    ),
-                                )
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = if (challengeState == null) {
+                                account.isNotBlank() && password.isNotBlank() && !isLoading && !isAccountLocked
                             } else {
-                                queueAction(
-                                    PendingLoginAction.ResendChallenge(
-                                        ResendLoginChallengeRequestDto(
-                                            challengeId = activeChallenge.challengeId,
+                                verificationCode.length >= 6 && !isLoading && !isAccountLocked
+                            },
+                            loading = isLoading,
+                        )
+
+                        // Divider with "或"
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(0.5.dp)
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(Color.Transparent, colors.dividerSoft.copy(alpha = 0.50f)),
                                         ),
                                     ),
-                                )
-                            }
-                        },
-                        onBack = {
-                            clearChallenge()
-                            errorMessage = null
-                            statusMessage = null
-                        },
-                    )
+                            )
+                            Text(
+                                text = "或",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.textSecondary.copy(alpha = 0.50f),
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(0.5.dp)
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(colors.dividerSoft.copy(alpha = 0.50f), Color.Transparent),
+                                        ),
+                                    ),
+                            )
+                        }
+
+                        // Quick login button
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .yingShiClickable(shape = RoundedCornerShape(14.dp)) {
+                                    val normalizedAccount = account.trim()
+                                    val rememberedLoginToken = AuthSessionManager.getRememberedLoginToken(normalizedAccount)
+                                    if (rememberedLoginToken != null) {
+                                        queueAction(
+                                            PendingLoginAction.RememberedLogin(
+                                                request = RememberedLoginRequestDto(
+                                                    account = normalizedAccount,
+                                                    password = password,
+                                                    deviceId = AuthSessionManager.getDeviceId(),
+                                                    rememberedLoginToken = rememberedLoginToken,
+                                                ),
+                                                fallbackRequest = LoginRequestDto(
+                                                    account = normalizedAccount,
+                                                    password = password,
+                                                ),
+                                            ),
+                                        )
+                                    }
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            color = colors.raisedSurface.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.45f)),
+                        ) {
+                            Text(
+                                text = "同设备免验证重登",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 13.dp),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium),
+                                color = colors.textSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = challengeState != null,
+                            enter = fadeIn(tween(if (motionEnabled) 250 else 0)) + slideInVertically(
+                                animationSpec = tween(if (motionEnabled) 250 else 0),
+                                initialOffsetY = { it / 4 },
+                            ),
+                            exit = fadeOut(tween(if (motionEnabled) 200 else 0)),
+                        ) {
+                            LoginInlineActions(
+                                challengeExpired = challengeExpired,
+                                resendRemainingSeconds = resendRemainingSeconds,
+                                isLoading = isLoading,
+                                isAccountLocked = isAccountLocked,
+                                onResend = {
+                                    val activeChallenge = challengeState ?: return@LoginInlineActions
+                                    if (challengeExpired) {
+                                        clearChallenge()
+                                        queueAction(
+                                            PendingLoginAction.RequestChallenge(
+                                                LoginRequestDto(
+                                                    account = account.trim(),
+                                                    password = password,
+                                                ),
+                                            ),
+                                        )
+                                    } else {
+                                        queueAction(
+                                            PendingLoginAction.ResendChallenge(
+                                                ResendLoginChallengeRequestDto(
+                                                    challengeId = activeChallenge.challengeId,
+                                                ),
+                                            ),
+                                        )
+                                    }
+                                },
+                                onBack = {
+                                    clearChallenge()
+                                    errorMessage = null
+                                    statusMessage = null
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -707,57 +874,126 @@ fun LoginScreen(
 private fun BrandHeader() {
     val colors = YingShiThemeTokens.colors
     Column(
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // Decorative gold line above
+        Box(
+            modifier = Modifier
+                .widthIn(max = 40.dp)
+                .fillMaxWidth()
+                .height(1.5.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, colors.goldAccent.copy(alpha = 0.40f), Color.Transparent),
+                    ),
+                ),
+        )
         Text(
             text = APP_NAME,
             style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.SemiBold),
             color = colors.titleAccent,
         )
+        Text(
+            text = "我们的共同空间",
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.goldAccent.copy(alpha = 0.78f),
+        )
+        // Decorative subtle line below
+        Box(
+            modifier = Modifier
+                .widthIn(max = 24.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, colors.dividerSoft, Color.Transparent),
+                    ),
+                ),
+        )
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PresetAccountRow(
     selectedAccount: String,
     onSelect: (String) -> Unit,
+    motionEnabled: Boolean = true,
 ) {
     val colors = YingShiThemeTokens.colors
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    // Round 8 第十轮: 改用 Row 替代 FlowRow, 避免 experimental API 在不同 compose-foundation
+    // 版本间的 NoSuchMethodError 崩溃 (这里只有2个账号, 不需要自动换行).
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         listOf(
             BuildConfig.DEFAULT_PRIMARY_ACCOUNT to "账号 A",
             BuildConfig.DEFAULT_SECONDARY_ACCOUNT to "账号 B",
         ).forEach { (account, label) ->
             val selected = selectedAccount.trim().equals(account, ignoreCase = true)
-            Column(
-                modifier = Modifier.yingShiClickable(shape = CircleShape) {
-                    onSelect(account)
-                },
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+            val pillBg by animateColorAsState(
+                targetValue = if (selected) colors.primaryContainer.copy(alpha = 0.15f) else colors.raisedSurface.copy(alpha = 0.45f),
+                animationSpec = tween(if (motionEnabled) 300 else 0),
+                label = "pillBg",
+            )
+            val pillBorder by animateColorAsState(
+                targetValue = if (selected) colors.glassStroke.copy(alpha = 0.70f) else colors.dividerSoft.copy(alpha = 0.40f),
+                animationSpec = tween(if (motionEnabled) 300 else 0),
+                label = "pillBorder",
+            )
+            val labelColor by animateColorAsState(
+                targetValue = if (selected) colors.titleAccent else colors.textSecondary,
+                animationSpec = tween(if (motionEnabled) 200 else 0),
+                label = "labelColor",
+            )
+            val accountColor by animateColorAsState(
+                targetValue = if (selected) colors.titleAccent.copy(alpha = 0.88f) else colors.textSecondary.copy(alpha = 0.88f),
+                animationSpec = tween(if (motionEnabled) 200 else 0),
+                label = "accountColor",
+            )
+            val indicatorAlpha by animateColorAsState(
+                targetValue = if (selected) colors.goldAccent.copy(alpha = 0.50f) else Color.Transparent,
+                animationSpec = tween(if (motionEnabled) 300 else 0),
+                label = "indicatorAlpha",
+            )
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .yingShiClickable(shape = RoundedCornerShape(14.dp)) {
+                        onSelect(account)
+                    },
+                shape = RoundedCornerShape(14.dp),
+                color = pillBg,
+                border = BorderStroke(1.5.dp, pillBorder),
             ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (selected) colors.titleAccent else colors.textSecondary,
-                )
-                Text(
-                    text = account,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (selected) colors.titleAccent.copy(alpha = 0.88f) else colors.textSecondary.copy(alpha = 0.88f),
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp)
-                        .background(
-                            if (selected) colors.titleAccent.copy(alpha = 0.55f) else Color.Transparent,
-                        )
-                        .height(2.dp),
-                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = labelColor,
+                    )
+                    Text(
+                        text = account,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accountColor,
+                    )
+                    // Gold indicator line
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp)
+                            .height(2.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color.Transparent, indicatorAlpha, Color.Transparent),
+                                ),
+                            ),
+                    )
+                }
             }
         }
     }
@@ -785,6 +1021,7 @@ private fun LoginInlineActions(
     challengeExpired: Boolean,
     resendRemainingSeconds: Long,
     isLoading: Boolean,
+    isAccountLocked: Boolean,
     onResend: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -799,7 +1036,7 @@ private fun LoginInlineActions(
         ) {
             TextButton(
                 onClick = onResend,
-                enabled = !isLoading && (challengeExpired || resendRemainingSeconds <= 0L),
+                enabled = !isLoading && !isAccountLocked && (challengeExpired || resendRemainingSeconds <= 0L),
             ) {
                 Text(
                     text = when {
@@ -839,13 +1076,13 @@ private fun ConnectionEntryLink(
         Icon(
             imageVector = Icons.Rounded.Settings,
             contentDescription = null,
-            tint = colors.titleAccent.copy(alpha = 0.88f),
+            tint = colors.textSecondary.copy(alpha = 0.72f),
             modifier = Modifier.size(18.dp),
         )
         Text(
             text = "连接设置",
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
+            style = MaterialTheme.typography.labelMedium,
+            color = colors.textSecondary,
         )
     }
 }

@@ -30,6 +30,10 @@ val YingShiViewerAccent = Color(0xFFBDEFFF)
 val YingShiViewerText = Color(0xFFF4FBFC)
 val YingShiViewerTextSecondary = Color(0xFFA9C3CC)
 
+// Viewer Overlay 材质 token（派生自 viewerAccent，不引入新色相）
+val YingShiViewerOverlayEdgeGlow = YingShiViewerAccent.copy(alpha = 0.15f)
+val YingShiViewerOverlayBorder = YingShiViewerAccent.copy(alpha = 0.22f)
+
 val YingShiBlue = YingShiPrimaryContainer
 val YingShiBlueLight = YingShiPrimaryContainer
 val YingShiAirBlue = YingShiSectionBackground
@@ -49,3 +53,26 @@ val YingShiNight = YingShiViewerBackground
 val YingShiNightSurface = YingShiViewerSurface
 val YingShiNightMuted = YingShiViewerTextSecondary
 val YingShiNightDivider = Color(0xFF2F4850)
+
+// 标题光晕颜色
+val YingShiTitleAuraWarmGlow = Color(0xD0FFF4D9)
+val YingShiTitleAuraCoolGlow = Color(0xC4AEEBFF)
+val YingShiTitleAuraWarmSparkle = Color(0xFFFFE8C6)
+val YingShiTitleAuraCoolSparkle = Color(0xFFB4F5FF)
+val YingShiTitleAuraBottomCool = Color(0x99CBEFFF)
+val YingShiTitleAuraBottomWarm = Color(0x7CFFEAC2)
+
+// 标题文字层颜色
+val YingShiTitleTextShadowGlow = Color(0xFF85DFFF)
+val YingShiTitleTextShadowWarm = Color(0xFFFFE8C6)
+val YingShiTitleTextGlowWarm = Color(0xFFFFF2DE)
+val YingShiTitleTextShadowCool = Color(0xFFB4F5FF)
+val YingShiTitleTextGlowCool = Color(0xFFD7FBFF)
+
+// Destructive 色系（匹配 Material3 默认 Light 主题 error 色）
+val YingShiDestructiveContainer = Color(0xFFFFDAD4)
+val YingShiDestructive = Color(0xFFBA1A1A)
+val YingShiOnDestructiveContainer = Color(0xFF410002)
+
+// 玻璃表面
+val YingShiGlassSurfaceBase = Color.White.copy(alpha = 0.62f)

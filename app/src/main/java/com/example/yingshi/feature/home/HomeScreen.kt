@@ -1,7 +1,15 @@
 package com.example.yingshi.feature.home
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Landscape
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material3.Icon
@@ -26,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +53,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.data.cache.AppReadCacheStore
+import com.example.yingshi.data.cache.CachedPhotoFeed
+import com.example.yingshi.data.remote.result.ApiResult
+import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.ledger.LedgerBookPickerSheet
 import com.example.yingshi.feature.photos.AppContentMediaThumbnail
 import com.example.yingshi.feature.photos.AppMediaType
@@ -51,9 +67,15 @@ import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.yingShiHapticClickable
+import com.example.yingshi.ui.components.yingShiShimmerSweep
 import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun HomeScreen(
@@ -74,6 +96,65 @@ fun HomeScreen(
     )
     val allPhotoOwnerIds = remember(uiState.photoCollaborators) {
         uiState.photoCollaborators.mapTo(linkedSetOf()) { it.userId }
+    }
+
+    // FR-5: 首页数据预热 — 启动后并行拉取照片 feed 和通知，写入缓存后 changeVersion 触发重组
+    LaunchedEffect(uiState.currentUser?.userId) {
+        val userId = uiState.currentUser?.userId ?: return@LaunchedEffect
+        runCatching {
+            coroutineScope {
+                launch {
+                    val cachedFeed = withContext(Dispatchers.IO) { AppReadCacheStore.readPhotoFeed(userId) }
+                    if (cachedFeed == null) {
+                        val result = RepositoryProvider.mediaRepository.getMediaFeedPage(pageSize = 60)
+                        if (result is ApiResult.Success) {
+                            withContext(Dispatchers.IO) {
+                                AppReadCacheStore.writePhotoFeed(
+                                    userId = userId,
+                                    payload = CachedPhotoFeed(
+                                        items = result.data.items,
+                                        nextCursor = result.data.nextCursor,
+                                        hasMore = result.data.hasMore,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                launch {
+                    val cachedNotifications = withContext(Dispatchers.IO) { AppReadCacheStore.readNotifications(userId) }
+                    if (cachedNotifications == null) {
+                        val result = RepositoryProvider.notificationRepository.getNotifications(limit = 100)
+                        if (result is ApiResult.Success) {
+                            withContext(Dispatchers.IO) {
+                                AppReadCacheStore.writeNotifications(
+                                    userId = userId,
+                                    notifications = result.data,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }.onFailure { /* 静默失败，不阻塞首页 */ }
+    }
+
+    // FR-6: 卡片 staggered reveal 入场动画
+    var photoVisible by remember { mutableStateOf(false) }
+    var ledgerVisible by remember { mutableStateOf(false) }
+    var bellVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (motionEnabled) {
+            photoVisible = true
+            delay(120)
+            ledgerVisible = true
+            delay(80)
+            bellVisible = true
+        } else {
+            photoVisible = true
+            ledgerVisible = true
+            bellVisible = true
+        }
     }
 
     YingShiAuroraBackdrop(
@@ -100,10 +181,14 @@ fun HomeScreen(
                     color = colors.titleAccent,
                     modifier = Modifier.yingShiSoftReveal(motionEnabled = motionEnabled),
                 )
-                HomeNotificationBellButton(
-                    unreadCount = uiState.unreadNotificationCount,
-                    onClick = onOpenNotifications,
-                )
+                Box(
+                    modifier = Modifier.yingShiSoftReveal(visible = bellVisible, motionEnabled = motionEnabled),
+                ) {
+                    HomeNotificationBellButton(
+                        unreadCount = uiState.unreadNotificationCount,
+                        onClick = onOpenNotifications,
+                    )
+                }
             }
 
             if (uiState.isReadOnly) {
@@ -117,7 +202,7 @@ fun HomeScreen(
                 summary = uiState.recentPhotos,
                 collaborators = uiState.photoCollaborators,
                 selectedOwnerIds = uiState.selectedPhotoOwnerIds,
-                modifier = Modifier.yingShiSoftReveal(motionEnabled = motionEnabled),
+                modifier = Modifier.yingShiSoftReveal(visible = photoVisible, motionEnabled = motionEnabled),
                 onClick = onOpenPhotos,
                 onToggleCollaborator = { userId ->
                     val nextSelection = toggleCollaboratorSelection(
@@ -131,7 +216,7 @@ fun HomeScreen(
 
             HomeLedgerCard(
                 uiState = uiState,
-                modifier = Modifier.yingShiSoftReveal(motionEnabled = motionEnabled),
+                modifier = Modifier.yingShiSoftReveal(visible = ledgerVisible, motionEnabled = motionEnabled),
                 onClick = onOpenLedger,
                 onOpenBookPicker = {
                     if (uiState.ledgerBooks.isNotEmpty()) {
@@ -203,7 +288,7 @@ private fun HomePhotoCard(
         shape = shape,
         color = colors.raisedSurface.copy(alpha = 0.72f),
         border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.56f)),
-        shadowElevation = 4.dp,
+        shadowElevation = 6.dp,
     ) {
         Box(
             modifier = Modifier
@@ -212,11 +297,12 @@ private fun HomePhotoCard(
                     Brush.linearGradient(
                         colors = listOf(
                             colors.raisedSurface.copy(alpha = 0.20f),
-                            colors.glowWash.copy(alpha = 0.18f),
-                            colors.memoryWash.copy(alpha = 0.12f),
+                            colors.glowWash.copy(alpha = 0.24f),
+                            colors.memoryWash.copy(alpha = 0.14f),
                         ),
                     ),
-                ),
+                )
+                .border(0.5.dp, colors.glassStroke.copy(alpha = 0.18f), shape),
         ) {
             HomePhotoCollage(
                 summary = summary,
@@ -228,9 +314,11 @@ private fun HomePhotoCard(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.16f),
+                                colors.raisedSurface.copy(alpha = 0.16f),
+                                colors.raisedSurface.copy(alpha = 0.04f),
                                 Color.Transparent,
-                                Color(0xCC5E708A).copy(alpha = 0.42f),
+                                colors.titleAccent.copy(alpha = 0.18f),
+                                colors.titleAccent.copy(alpha = 0.42f),
                             ),
                         ),
                     ),
@@ -379,14 +467,22 @@ private fun HomePhotoPane(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.24f),
+                                colors.raisedSurface.copy(alpha = 0.24f),
                                 Color.Transparent,
                             ),
                             center = Offset(120f, 120f),
                             radius = 520f,
                         ),
                     ),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Landscape,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = colors.raisedSurface.copy(alpha = 0.14f),
+                )
+            }
         } else {
             AppContentMediaThumbnail(
                 mediaSource = tile.mediaSource,
@@ -410,28 +506,49 @@ private fun HomeCollaboratorDot(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
-    Surface(
-        modifier = Modifier
-            .size(30.dp)
-            .yingShiClickable(shape = CircleShape, pressedScale = 0.95f, onClick = onClick),
-        shape = CircleShape,
-        color = if (selected) {
-            colors.primaryContainer.copy(alpha = 0.96f)
-        } else {
-            colors.raisedSurface.copy(alpha = 0.78f)
-        },
-        border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.86f)),
-        shadowElevation = if (selected) 1.dp else 0.dp,
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val bgColor by animateColorAsState(
+        targetValue = if (selected) colors.primaryContainer.copy(alpha = 0.96f)
+                      else colors.raisedSurface.copy(alpha = 0.78f),
+        animationSpec = tween(if (motionEnabled) 200 else 0),
+        label = "dotBgColor",
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) colors.titleAccent
+                      else colors.textSecondary,
+        animationSpec = tween(if (motionEnabled) 200 else 0),
+        label = "dotTextColor",
+    )
+    Box(
+        modifier = Modifier.size(if (selected) 34.dp else 30.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = if (selected) colors.titleAccent else colors.textSecondary,
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(colors.glassStroke.copy(alpha = 0.24f), CircleShape),
             )
+        }
+        Surface(
+            modifier = Modifier
+                .size(30.dp)
+                .yingShiClickable(shape = CircleShape, pressedScale = 0.95f, onClick = onClick),
+            shape = CircleShape,
+            color = bgColor,
+            border = BorderStroke(1.dp, colors.glassStroke.copy(alpha = 0.86f)),
+            shadowElevation = if (selected && motionEnabled) 1.dp else 0.dp,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = textColor,
+                )
+            }
         }
     }
 }
@@ -441,17 +558,18 @@ private fun HomeMetaPill(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = YingShiThemeTokens.colors
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = 0.18f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.24f)),
+        color = colors.raisedSurface.copy(alpha = 0.18f),
+        border = BorderStroke(1.dp, colors.raisedSurface.copy(alpha = 0.24f)),
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = Color.White,
+            color = colors.raisedSurface,
         )
     }
 }
@@ -491,11 +609,12 @@ private fun HomeLedgerCard(
                     Brush.linearGradient(
                         colors = listOf(
                             colors.raisedSurface.copy(alpha = 0.96f),
-                            Color(0xFFEAF7F3).copy(alpha = 0.94f),
-                            Color(0xFFFFF2E8).copy(alpha = 0.88f),
+                            colors.glowWash.copy(alpha = 0.94f),
+                            colors.memoryWash.copy(alpha = 0.88f),
                         ),
                     ),
                 )
+                .yingShiShimmerSweep()
                 .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
@@ -552,8 +671,16 @@ private fun HomeBookFilterChip(
             onClick = onClick,
         ),
         shape = shape,
-        color = colors.sectionBackground.copy(alpha = if (enabled) 0.90f else 0.70f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.72f)),
+        color = if (enabled) {
+            accentColor.copy(alpha = 0.12f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.70f)
+        },
+        border = BorderStroke(1.dp, if (enabled) {
+            accentColor.copy(alpha = 0.32f)
+        } else {
+            colors.dividerSoft.copy(alpha = 0.72f)
+        }),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -566,12 +693,20 @@ private fun HomeBookFilterChip(
                 color = accentColor.copy(alpha = 0.88f),
             ) {}
             Text(
-                text = if (enabled) "$label ▾" else label,
+                text = label,
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = if (enabled) colors.titleAccent else colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (enabled) {
+                Icon(
+                    imageVector = Icons.Rounded.ExpandMore,
+                    contentDescription = "展开",
+                    modifier = Modifier.size(16.dp),
+                    tint = colors.titleAccent,
+                )
+            }
         }
     }
 }
@@ -585,7 +720,7 @@ private fun HomeLedgerHeroSignal(
     val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(26.dp),
-        color = Color.White.copy(alpha = 0.60f),
+        color = colors.raisedSurface.copy(alpha = 0.60f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.56f)),
     ) {
         Box(
@@ -595,8 +730,9 @@ private fun HomeLedgerHeroSignal(
                     Brush.linearGradient(
                         colors = listOf(
                             accentColor.copy(alpha = 0.16f),
-                            Color.White.copy(alpha = 0.70f),
-                            Color(0xFFFFF5ED).copy(alpha = 0.64f),
+                            colors.glowWash.copy(alpha = 0.36f),
+                            colors.raisedSurface.copy(alpha = 0.70f),
+                            colors.memoryWash.copy(alpha = 0.64f),
                         ),
                     ),
                 )
@@ -668,8 +804,8 @@ private fun HomeLedgerRecentSignal(
     val colors = YingShiThemeTokens.colors
     Surface(
         shape = RoundedCornerShape(22.dp),
-        color = colors.raisedSurface.copy(alpha = 0.70f),
-        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.58f)),
+        color = colors.raisedSurface.copy(alpha = 0.56f),
+        border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.42f)),
     ) {
         if (hasTransaction) {
             Row(
@@ -734,11 +870,22 @@ private fun HomeLedgerRecentSignal(
                     .padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    text = "最近一笔",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.textSecondary,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AccountBalanceWallet,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = colors.textSecondary.copy(alpha = 0.48f),
+                    )
+                    Text(
+                        text = "最近一笔",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.textSecondary,
+                    )
+                }
                 Text(
                     text = if (hasBook) "暂无记录" else "进入记账",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -755,6 +902,23 @@ private fun HomeNotificationBellButton(
     onClick: () -> Unit,
 ) {
     val colors = YingShiThemeTokens.colors
+    val motionEnabled = rememberYingShiMotionEnabled()
+    val hasUnread = unreadCount > 0
+    val breathTransition = rememberInfiniteTransition(label = "bellBreath")
+    val breathAlpha by breathTransition.animateFloat(
+        initialValue = 0.20f,
+        targetValue = if (hasUnread && motionEnabled) 0.44f else 0.20f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bellBreathAlpha",
+    )
+    val effectiveBreathAlpha = when {
+        !hasUnread -> 0f
+        !motionEnabled -> 0.36f
+        else -> breathAlpha
+    }
     val bellIcon = if (unreadCount > 0) {
         Icons.Rounded.NotificationsActive
     } else {
@@ -766,7 +930,7 @@ private fun HomeNotificationBellButton(
             .size(44.dp)
             .yingShiClickable(shape = CircleShape, pressedScale = 0.94f, onClick = onClick),
         shape = CircleShape,
-        color = Color.White.copy(alpha = 0.68f),
+        color = colors.raisedSurface.copy(alpha = 0.68f),
         border = BorderStroke(
             width = 1.dp,
             color = colors.dividerSoft.copy(alpha = 0.72f),
@@ -779,15 +943,15 @@ private fun HomeNotificationBellButton(
                     .matchParentSize()
                     .background(
                         Brush.radialGradient(
-                            colors = if (unreadCount > 0) {
+                            colors = if (hasUnread) {
                                 listOf(
-                                    colors.memoryWash.copy(alpha = 0.36f),
+                                    colors.memoryWash.copy(alpha = effectiveBreathAlpha),
                                     colors.glowWash.copy(alpha = 0.20f),
                                     Color.Transparent,
                                 )
                             } else {
                                 listOf(
-                                    Color.White.copy(alpha = 0.28f),
+                                    colors.raisedSurface.copy(alpha = 0.28f),
                                     colors.glowWash.copy(alpha = 0.14f),
                                     Color.Transparent,
                                 )
@@ -816,7 +980,7 @@ private fun HomeNotificationBellButton(
                 ) {
                     Text(
                         text = if (unreadCount > 99) "99+" else unreadCount.toString(),
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.raisedSurface,
                     )

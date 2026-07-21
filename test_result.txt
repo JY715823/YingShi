@@ -1,0 +1,43 @@
+Return code: 1
+BUILD SUCCESSFUL: False
+BUILD FAILED: True
+  >> BackendAutoLoginManagerTest > noSessionRequiresManualEmailVerification FAILED
+  >> BackendAutoLoginManagerTest > noSessionRequiresManualEmailVerification FAILED
+  >> BackendAutoLoginManagerTest > saveBaseUrlReasonUsesReverifyMessage FAILED
+  >> BackendAutoLoginManagerTest > saveBaseUrlReasonUsesReverifyMessage FAILED
+  >> TransferCenterBehaviorTest > terminalFailedTasksStillCountAsCompletedProgress FAILED
+  >> TransferCenterBehaviorTest > terminalFailedTasksStillCountAsCompletedProgress FAILED
+  >> > Task :app:testDebugUnitTest FAILED
+  >> > Task :app:testDebugUnitTest FAILED
+  >> 49 tests completed, 3 failed
+  >> FAILURE: Build failed with an exception.
+  >> Execution failed for task ':app:testDebugUnitTest'.
+  >> > There were failing tests. See the report at: file:///E:/Study/App/YingShi/app/build/reports/tests/testDebugUnitTest/index.html
+  >> BUILD FAILED in 7s
+
+Last 25 stdout lines:
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:kspDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+
+> Task :app:testDebugUnitTest
+
+BackendAutoLoginManagerTest > noSessionRequiresManualEmailVerification FAILED
+    java.lang.AssertionError at BackendAutoLoginManagerTest.kt:22
+
+BackendAutoLoginManagerTest > saveBaseUrlReasonUsesReverifyMessage FAILED
+    java.lang.AssertionError at BackendAutoLoginManagerTest.kt:34
+
+TransferCenterBehaviorTest > terminalFailedTasksStillCountAsCompletedProgress FAILED
+    java.lang.AssertionError at TransferCenterBehaviorTest.kt:17
+
+> Task :app:testDebugUnitTest FAILED
+30 actionable tasks: 1 executed, 29 up-to-date
+Configuration cache entry stored.

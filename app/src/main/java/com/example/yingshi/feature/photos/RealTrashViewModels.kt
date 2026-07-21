@@ -44,62 +44,30 @@ data class RealTrashDetailUiState(
     val detail: RemoteTrashDetail? = null,
 )
 
-private object RealTrashMemoryCache {
-    private val listStates = mutableMapOf<String, RealTrashListUiState>()
-    private val detailStates = mutableMapOf<String, RealTrashDetailUiState>()
-
-    fun listKey(selectedType: TrashEntryType?): String = selectedType?.name ?: "ALL"
-
-    fun readListState(selectedType: TrashEntryType?): RealTrashListUiState? = listStates[listKey(selectedType)]
-
-    fun hasListState(selectedType: TrashEntryType?): Boolean = listStates.containsKey(listKey(selectedType))
-
-    fun writeListState(
-        selectedType: TrashEntryType?,
-        state: RealTrashListUiState,
-    ) {
-        listStates[listKey(selectedType)] = state.copy(isLoading = false, isMutating = false)
-    }
-
-    fun readDetailState(entryId: String): RealTrashDetailUiState? = detailStates[entryId]
-
-    fun writeDetailState(
-        entryId: String,
-        state: RealTrashDetailUiState,
-    ) {
-        detailStates[entryId] = state.copy(isLoading = false, isMutating = false)
-    }
-}
-
 class RealTrashListViewModel(
     initialSelectedType: TrashEntryType? = null,
     private val trashRepository: TrashRepository = RepositoryProvider.trashRepository,
 ) : ViewModel() {
-    private var activeListKey = RealTrashMemoryCache.listKey(initialSelectedType)
-    private val _uiState = MutableStateFlow(
-        RealTrashMemoryCache.readListState(initialSelectedType) ?: RealTrashListUiState(isLoading = true),
-    )
+    private var activeListKey = initialSelectedType?.name ?: "ALL"
+    private val _uiState = MutableStateFlow(RealTrashListUiState(isLoading = true))
     val uiState: StateFlow<RealTrashListUiState> = _uiState.asStateFlow()
+    private var lastKnownPendingEntries: List<TrashPendingCleanupUiModel> = emptyList()
 
     fun refresh(selectedType: TrashEntryType?) {
         viewModelScope.launch {
-            val nextListKey = RealTrashMemoryCache.listKey(selectedType)
-            val cachedState = RealTrashMemoryCache.readListState(selectedType)
+            val nextListKey = selectedType?.name ?: "ALL"
             val cachedList = withContext(Dispatchers.IO) { readCachedList(selectedType) }
-            val hasCachedState = RealTrashMemoryCache.hasListState(selectedType)
             if (nextListKey != activeListKey) {
                 activeListKey = nextListKey
-                _uiState.value = cachedState
-                    ?: cachedList?.toUiState()
+                _uiState.value = cachedList?.toUiState(pendingEntries = lastKnownPendingEntries)
                     ?: RealTrashListUiState(isLoading = true)
-            } else if (cachedState != null && _uiState.value.entries.isEmpty()) {
-                _uiState.value = cachedState
-            } else if (cachedState == null && cachedList != null && _uiState.value.entries.isEmpty()) {
-                _uiState.value = cachedList.toUiState()
+            } else if (cachedList != null && _uiState.value.entries.isEmpty()) {
+                _uiState.value = cachedList.toUiState(pendingEntries = lastKnownPendingEntries)
             }
             if (!AuthSessionManager.isLoggedIn) {
                 if (cachedList != null && OfflineAccessManager.state.isReadOnly) {
                     _uiState.value = cachedList.toUiState(
+                        pendingEntries = lastKnownPendingEntries,
                         isOfflineReadOnly = true,
                         statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
                     )
@@ -120,7 +88,7 @@ class RealTrashListViewModel(
                 }
             }
 
-            val shouldShowLoading = _uiState.value.entries.isEmpty() && !hasCachedState && cachedList == null
+            val shouldShowLoading = _uiState.value.entries.isEmpty() && cachedList == null
             _uiState.update {
                 it.copy(
                     isLoading = shouldShowLoading,
@@ -143,6 +111,11 @@ class RealTrashListViewModel(
             val itemError = rawError?.toBackendUiMessage("读取回收站列表失败。")
             val successItems = (itemsResult as? ApiResult.Success)?.data.orEmpty()
             val successPendingItems = (pendingResult as? ApiResult.Success)?.data.orEmpty()
+            if (pendingResult is ApiResult.Success) {
+                lastKnownPendingEntries = successPendingItems
+                    .map { it.toTrashPendingCleanupUiModel() }
+                    .sortedBy { it.undoDeadlineMillis }
+            }
             if (successItems.isNotEmpty()) {
                 withContext(Dispatchers.IO) {
                     persistTrashList(selectedType, successItems)
@@ -154,6 +127,7 @@ class RealTrashListViewModel(
                     val message = rawError.offlineReadOnlyMessage()
                     OfflineAccessManager.enterReadOnly(message)
                     _uiState.value = cachedList.toUiState(
+                        pendingEntries = lastKnownPendingEntries,
                         isOfflineReadOnly = true,
                         statusMessage = message,
                     )
@@ -163,6 +137,7 @@ class RealTrashListViewModel(
                         isOfflineReadOnly = false,
                         tokenMissing = false,
                         errorMessage = itemError,
+                        pendingEntries = lastKnownPendingEntries,
                     )
                 }
                 return@launch
@@ -178,13 +153,10 @@ class RealTrashListViewModel(
                 isOfflineReadOnly = false,
                 errorMessage = itemError,
                 entries = deduplicatedEntries,
-                pendingEntries = successPendingItems
-                    .map { it.toTrashPendingCleanupUiModel() }
-                    .sortedBy { it.undoDeadlineMillis },
+                pendingEntries = lastKnownPendingEntries,
                 statusMessage = _uiState.value.statusMessage,
             )
             _uiState.value = nextState
-            RealTrashMemoryCache.writeListState(selectedType, nextState)
         }
     }
 
@@ -257,7 +229,7 @@ class RealTrashListViewModel(
             }
             if (successCount > 0) {
                 notifyRealBackendContentChanged()
-                invalidateSystemMediaMetadataCache()
+                invalidateSystemMediaMetadataCache(clearDisk = true)
             }
             refresh(selectedType)
             _uiState.update {
@@ -359,7 +331,7 @@ class RealTrashListViewModel(
                         successCount += 1
                         entry.sourceMediaId?.let { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
                         entry.relatedMediaIds.forEach { LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(it) }
-                        invalidateSystemMediaMetadataCache()
+                        invalidateSystemMediaMetadataCache(clearDisk = true)
                     }
                     is ApiResult.Error -> failureCount += 1
                     ApiResult.Loading -> Unit
@@ -403,9 +375,7 @@ class RealTrashDetailViewModel(
     private val route: TrashDetailRoute,
     private val trashRepository: TrashRepository = RepositoryProvider.trashRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(
-        RealTrashMemoryCache.readDetailState(route.entryId) ?: RealTrashDetailUiState(isLoading = true),
-    )
+    private val _uiState = MutableStateFlow(RealTrashDetailUiState(isLoading = true))
     val uiState: StateFlow<RealTrashDetailUiState> = _uiState.asStateFlow()
 
     init {
@@ -456,7 +426,6 @@ class RealTrashDetailViewModel(
                         detail = result.data,
                     )
                     _uiState.value = nextState
-                    RealTrashMemoryCache.writeDetailState(route.entryId, nextState)
                     withContext(Dispatchers.IO) {
                         persistTrashDetail(route.entryId, result.data)
                     }
@@ -607,7 +576,7 @@ class RealTrashDetailViewModel(
             when (val result = block()) {
                 is ApiResult.Success -> {
                     notifyRealBackendContentChanged()
-                    invalidateSystemMediaMetadataCache()
+                    invalidateSystemMediaMetadataCache(clearDisk = true)
                     if (clearImportOverlayOnSuccess) {
                         LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaIds(
                             result.data.relatedMediaIds + listOfNotNull(result.data.sourceMediaId),
@@ -685,6 +654,7 @@ private fun RealTrashListViewModel.persistTrashList(
 }
 
 private fun CachedTrashList.toUiState(
+    pendingEntries: List<TrashPendingCleanupUiModel> = emptyList(),
     isOfflineReadOnly: Boolean = false,
     statusMessage: String? = null,
 ): RealTrashListUiState {
@@ -696,7 +666,7 @@ private fun CachedTrashList.toUiState(
         isOfflineReadOnly = isOfflineReadOnly,
         statusMessage = statusMessage,
         entries = entries,
-        pendingEntries = emptyList(),
+        pendingEntries = pendingEntries,
     )
 }
 

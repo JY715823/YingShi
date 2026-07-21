@@ -2,7 +2,12 @@ package com.example.yingshi.ui.components
 
 import android.animation.ValueAnimator
 import android.os.Build
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
@@ -135,6 +140,40 @@ fun Modifier.yingShiMemoryGlow(
             ),
             center = Offset.Unspecified,
             radius = 360f,
+        ),
+    )
+}
+
+/**
+ * 微妙的光泽扫过效果（shimmer），用于卡片等需要丝绸光泽质感的组件。
+ * 周期 3500ms，与 YingShiPrimaryMistButton 的 shimmer 设计语言一致。
+ * 遵循 motionEnabled 守卫，关闭动画时退化为无效果。
+ */
+@Composable
+fun Modifier.yingShiShimmerSweep(
+    enabled: Boolean = true,
+    motionEnabled: Boolean = rememberYingShiMotionEnabled(),
+): Modifier {
+    val transition = rememberInfiniteTransition(label = "yingShiShimmer")
+    val offset by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "yingShiShimmerOffset",
+    )
+    if (!enabled || !motionEnabled) return this
+    return this.background(
+        Brush.linearGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color.White.copy(alpha = 0.18f),
+                Color.Transparent,
+            ),
+            start = Offset(offset * 3f - 1f, 0f),
+            end = Offset(offset * 3f, 0f),
         ),
     )
 }

@@ -110,6 +110,7 @@ Request:
   "title": "Night Walk",
   "summary": "A quiet walk home",
   "contributorLabel": "Demo A and Demo B",
+  "participantUserIds": ["user_001", "user_002"],
   "displayTimeMillis": 1777412800000,
   "albumIds": ["album_001"],
   "initialMediaIds": ["media_001", "media_002"],
@@ -130,6 +131,7 @@ Request:
   "title": "Night Walk Updated",
   "summary": "A quiet walk home with one more note",
   "contributorLabel": "Demo A and Demo B",
+  "participantUserIds": ["user_001", "user_002"],
   "displayTimeMillis": 1777412800000,
   "albumIds": ["album_001", "album_002"]
 }

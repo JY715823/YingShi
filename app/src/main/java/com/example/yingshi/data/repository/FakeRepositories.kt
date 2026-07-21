@@ -1,4 +1,4 @@
-﻿package com.example.yingshi.data.repository
+package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.ConfirmUploadPayload
@@ -223,6 +223,17 @@ class FakeAlbumRepositoryShell : AlbumRepository {
             ?.let { ApiResult.Success(it) }
             ?: ApiResult.Error(code = "SMALL_ALBUM_NOT_FOUND", message = "Fake small album not found after album update")
     }
+
+    override suspend fun moveSmallAlbums(
+        targetAlbumId: String,
+        smallAlbumIds: List<String>,
+    ): ApiResult<List<RemotePostSummary>> {
+        val moved = FakeAlbumRepository.moveSmallAlbums(
+            targetAlbumId = targetAlbumId,
+            smallAlbumIds = smallAlbumIds,
+        )
+        return ApiResult.Success(moved.map { it.toRemotePostSummary() })
+    }
 }
 
 class FakePostRepositoryShell : PostRepository {
@@ -303,6 +314,15 @@ class FakePostRepositoryShell : PostRepository {
         }
         return getPostDetail(postId)
     }
+
+    override suspend fun updatePostMediaBatch(
+        postId: String,
+        removeMediaIds: List<String>,
+    ): ApiResult<RemotePostDetail> = ApiResult.Error(
+        code = "NOT_IMPLEMENTED",
+        message = "FAKE updatePostMediaBatch 尚未实现。",
+        throwable = NotImplementedError(),
+    )
 
     override suspend fun deleteSmallAlbum(smallAlbumId: String): ApiResult<RemoteTrashItem> {
         return ApiResult.Error(
@@ -444,7 +464,7 @@ class FakeCommentRepositoryShell : CommentRepository {
 }
 
 class FakeNotificationRepositoryShell : NotificationRepository {
-    override suspend fun getNotifications(limit: Int?): ApiResult<List<RemoteNotification>> {
+    override suspend fun getNotifications(limit: Int?, cursor: String?): ApiResult<List<RemoteNotification>> {
         val items = FakeNotificationRepository.getNotifications()
             .let { notifications ->
                 if (limit == null || limit < 1) {
@@ -868,7 +888,38 @@ class FakeLifeConsoleRepositoryShell : LifeConsoleRepository {
         )
     }
 
-    override suspend fun addBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+    // Round 7 阶段 7: Fake 空实现，返回当前 today/bowel 快照
+    override suspend fun updateMediaLocation(
+        mediaId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleToday> {
+        return ApiResult.Success(fakeToday())
+    }
+
+    override suspend fun updateBowelEventLocation(
+        eventId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleBowelMutation> {
+        val profile = fakeAuthCurrentProfile()
+            ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
+        return ApiResult.Success(
+            RemoteLifeConsoleBowelMutation(
+                eventId = eventId,
+                bowel = fakeBowelSummary(profile),
+            ),
+        )
+    }
+
+    override suspend fun addBowelEvent(
+        zoneId: String,
+        latitude: Double?,
+        longitude: Double?,
+        locationLabel: String?,
+    ): ApiResult<RemoteLifeConsoleBowelMutation> {
         val profile = fakeAuthCurrentProfile()
             ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
         val eventTime = System.currentTimeMillis()
@@ -881,7 +932,9 @@ class FakeLifeConsoleRepositoryShell : LifeConsoleRepository {
         )
     }
 
-    override suspend fun deleteLatestBowelEvent(): ApiResult<RemoteLifeConsoleBowelMutation> {
+    override suspend fun deleteLatestBowelEvent(
+        zoneId: String,
+    ): ApiResult<RemoteLifeConsoleBowelMutation> {
         val profile = fakeAuthCurrentProfile()
             ?: return ApiResult.Error(code = "AUTH_UNAUTHORIZED", message = "Fake auth session is missing")
         val events = bowelTimesByUserId.getOrPut(profile.userId) { mutableListOf() }

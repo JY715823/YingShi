@@ -30,6 +30,11 @@ data class CreateUploadTokenRequestDto(
     val operationTitle: String? = null,
     val operationMediaCount: Int? = null,
     val sourceItemId: String? = null,
+    val domain: String? = null,
+    // FR-18: optional location fields (all nullable, server-side reverse geocoding fallback applies)
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val locationLabel: String? = null,
 )
 
 data class UploadCompleteResponseDto(

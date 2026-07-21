@@ -1,83 +1,30 @@
 package com.example.yingshi.feature.photos
 
 import android.app.Activity
-import android.content.ContextWrapper
-import android.os.Build
-import android.os.SystemClock
-import android.view.WindowInsets
-import android.view.WindowInsetsAnimationControlListener
-import android.view.WindowInsetsAnimationController
-import android.view.View
-import android.view.WindowManager
-import android.view.animation.LinearInterpolator
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.IosShare
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -85,519 +32,23 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.media3.common.AudioAttributes as Media3AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
-import coil.imageLoader
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
-import com.example.yingshi.data.cache.AppReadCacheStore
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
-import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
-import com.example.yingshi.ui.components.yingShiClickable
-import com.example.yingshi.ui.components.yingShiMediaEnterMotion
-import com.example.yingshi.ui.components.yingShiSoftReveal
-import com.example.yingshi.ui.theme.YingShiViewerAccent
-import com.example.yingshi.ui.theme.YingShiViewerBackground
-import com.example.yingshi.ui.theme.YingShiViewerSurface
-import com.example.yingshi.ui.theme.YingShiViewerText
-import com.example.yingshi.ui.theme.YingShiTheme
+import com.example.yingshi.feature.life.LifeLocationPickerActivity
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.min
-
-private val ViewerNightTop = YingShiViewerSurface
-private val ViewerNightBottom = YingShiViewerBackground
-private val ViewerNightMiddle = YingShiViewerSurface.copy(alpha = 0.92f)
-private val ViewerSurface = YingShiViewerText
-private val ViewerAccent = YingShiViewerAccent
-private const val MinViewerScale = 1f
-private const val MaxViewerScale = 6f
-private const val MaxViewerElasticScale = 9f
-private const val ViewerDoubleTapScale = 2.5f
-private const val ViewerZoomResetThreshold = 1.02f
-private const val ViewerFastDoubleTapWindowMillis = 260L
-private const val DefaultViewerVideoDurationMillis = 18_000L
-private const val LongImageHeightWidthRatioThreshold = 3.8f
-
-private object ViewerLayoutTuning {
-    val topBarStartInset = 4.dp
-    val topBarEndInset = 10.dp
-    val topBarTopInset = 6.dp
-    val backButtonTouchSize = 44.dp
-    val canvasHorizontalPadding = 0.dp
-    val canvasTopPadding = 68.dp
-    val canvasBottomPadding = 104.dp
-    val immersiveCanvasTopPadding = 0.dp
-    val immersiveCanvasBottomPadding = 0.dp
-    val immersiveVideoVerticalTapZone = 76.dp
-    val immersiveVideoBottomExitZone = 40.dp
-    const val commentPreviewWidthFraction = 0.70f
-    val commentPreviewMaxWidth = 288.dp
-    val commentPreviewHeight = 172.dp
-    val photoFlowEdgeActionsBottomPadding = 0.dp
-    val inPostEdgeActionsBottomPadding = 2.dp
-    val postSegmentBottomOffset = 2.dp
-    const val commentSheetHeightFraction = 0.66f
-    const val relatedPostsSheetHeightFraction = 0.42f
-    const val zoomedOverlayAlpha = 0.42f
-    const val previewCommentsMaxCount = 10
-}
-
-private data class ViewerCommentPanelState(
-    val selectedCommentId: String? = null,
-)
-
-private data class ViewerNotice(
-    val mediaId: String,
-    val message: String,
-    val emphasized: Boolean = false,
-    val nonce: Int,
-)
-
-private class ViewerZoomState {
-    var scale by mutableStateOf(MinViewerScale)
-        private set
-    var offset by mutableStateOf(Offset.Zero)
-        private set
-    private var latestContentSize by mutableStateOf(IntSize.Zero)
-    private var latestContentTopLeft by mutableStateOf(Offset.Zero)
-    private var latestMinimumScale by mutableStateOf(MinViewerScale)
-
-    val isZoomed: Boolean
-        get() = abs(scale - MinViewerScale) > ViewerZoomResetThreshold - MinViewerScale
-
-    fun updateContentGeometry(
-        contentSize: IntSize,
-        contentTopLeft: Offset,
-        minimumScale: Float = MinViewerScale,
-    ) {
-        if (contentSize.width > 0 && contentSize.height > 0) {
-            latestContentSize = contentSize
-            latestContentTopLeft = contentTopLeft
-            latestMinimumScale = minimumScale.coerceIn(0.05f, MinViewerScale)
-        }
-    }
-
-    fun applyTransform(
-        zoomChange: Float,
-        panChange: Offset,
-        focalPoint: Offset,
-        containerSize: IntSize,
-        contentSize: IntSize,
-        contentTopLeft: Offset,
-    ) {
-        val previousScale = scale
-        val minimumScale = latestMinimumScale
-        val nextScale = (scale * zoomChange).coerceIn(minimumScale, MaxViewerElasticScale)
-        if (minimumScale >= MinViewerScale && nextScale <= ViewerZoomResetThreshold) {
-            reset()
-            return
-        }
-
-        scale = nextScale
-        val scaleRatio = if (previousScale > 0f) nextScale / previousScale else MinViewerScale
-        val focalAnchoredOffset = focalPoint -
-            contentTopLeft -
-            (focalPoint - contentTopLeft - offset) * scaleRatio +
-            panChange
-        offset = clampOffset(focalAnchoredOffset, nextScale, containerSize, contentSize, contentTopLeft)
-    }
-
-    fun settleAfterGesture(
-        containerSize: IntSize,
-        contentSize: IntSize,
-        contentTopLeft: Offset,
-    ) {
-        if (scale <= MaxViewerScale) {
-            offset = clampOffset(
-                value = offset,
-                currentScale = scale,
-                containerSize = containerSize,
-                contentSize = contentSize,
-                contentTopLeft = contentTopLeft,
-            )
-            return
-        }
-        val previousScale = scale
-        scale = MaxViewerScale
-        offset = clampOffset(
-            value = offset * (MaxViewerScale / previousScale),
-            currentScale = MaxViewerScale,
-            containerSize = containerSize,
-            contentSize = contentSize,
-            contentTopLeft = contentTopLeft,
-        )
-    }
-
-    fun panBy(
-        panChange: Offset,
-        containerSize: IntSize,
-        contentSize: IntSize,
-        contentTopLeft: Offset,
-    ) {
-        if (!isZoomed) return
-        offset = clampOffset(offset + panChange, scale, containerSize, contentSize, contentTopLeft)
-    }
-
-    fun reset() {
-        scale = MinViewerScale
-        offset = Offset.Zero
-    }
-
-    fun toggleDoubleTap(
-        tapPosition: Offset,
-        containerSize: IntSize,
-    ) {
-        if (isZoomed) {
-            reset()
-            return
-        }
-        val contentSize = latestContentSize.takeIf { it.width > 0 && it.height > 0 } ?: containerSize
-        val contentTopLeft = latestContentTopLeft
-        val targetScale = ViewerDoubleTapScale.coerceIn(MinViewerScale, MaxViewerScale)
-        scale = targetScale
-        val normalizedTap = tapPosition - contentTopLeft
-        offset = clampOffset(
-            value = tapPosition - contentTopLeft - normalizedTap * targetScale,
-            currentScale = targetScale,
-            containerSize = containerSize,
-            contentSize = contentSize,
-            contentTopLeft = contentTopLeft,
-        )
-    }
-
-    private fun clampOffset(
-        value: Offset,
-        currentScale: Float,
-        containerSize: IntSize,
-        contentSize: IntSize,
-        contentTopLeft: Offset,
-    ): Offset {
-        val scaledWidth = contentSize.width * currentScale
-        val scaledHeight = contentSize.height * currentScale
-        val minX = if (scaledWidth <= containerSize.width) {
-            ((containerSize.width - scaledWidth) / 2f) - contentTopLeft.x
-        } else {
-            containerSize.width - contentTopLeft.x - scaledWidth
-        }
-        val maxX = if (scaledWidth <= containerSize.width) minX else -contentTopLeft.x
-        val minY = if (scaledHeight <= containerSize.height) {
-            ((containerSize.height - scaledHeight) / 2f) - contentTopLeft.y
-        } else {
-            containerSize.height - contentTopLeft.y - scaledHeight
-        }
-        val maxY = if (scaledHeight <= containerSize.height) minY else -contentTopLeft.y
-        return Offset(
-            x = value.x.coerceIn(minX, maxX),
-            y = value.y.coerceIn(minY, maxY),
-        )
-    }
-}
-
-private fun Modifier.viewerZoomGesture(
-    zoomState: ViewerZoomState,
-    contentSize: IntSize,
-    contentTopLeft: Offset,
-): Modifier = pointerInput(zoomState, contentSize, contentTopLeft) {
-    awaitEachGesture {
-        while (true) {
-            val event = awaitPointerEvent()
-            val activeChanges = event.changes.filter { it.pressed }
-            if (activeChanges.isEmpty()) break
-
-            if (activeChanges.size >= 2) {
-                val currentCentroid = activeChanges.centroid(usePrevious = false)
-                val previousCentroid = activeChanges.centroid(usePrevious = true)
-                val currentDistance = activeChanges.averageDistanceTo(currentCentroid, usePrevious = false)
-                val previousDistance = activeChanges.averageDistanceTo(previousCentroid, usePrevious = true)
-                val zoomChange = if (previousDistance > 0f) {
-                    currentDistance / previousDistance
-                } else {
-                    MinViewerScale
-                }
-
-                zoomState.applyTransform(
-                    zoomChange = zoomChange,
-                    panChange = currentCentroid - previousCentroid,
-                    focalPoint = currentCentroid,
-                    containerSize = size,
-                    contentSize = contentSize,
-                    contentTopLeft = contentTopLeft,
-                )
-                activeChanges.forEach { it.consume() }
-            } else if (zoomState.isZoomed) {
-                val panChange = activeChanges.first().positionChange()
-                if (panChange.getDistance() > viewConfiguration.touchSlop / 3f) {
-                    zoomState.panBy(
-                        panChange = panChange,
-                        containerSize = size,
-                        contentSize = contentSize,
-                        contentTopLeft = contentTopLeft,
-                    )
-                    activeChanges.forEach { it.consume() }
-                }
-            }
-        }
-        zoomState.settleAfterGesture(
-            containerSize = size,
-            contentSize = contentSize,
-            contentTopLeft = contentTopLeft,
-        )
-    }
-}
-
-internal fun Modifier.viewerSingleTapGesture(
-    enabled: Boolean = true,
-    onDoubleTap: ((Offset, IntSize) -> Unit)? = null,
-    onTap: (Offset, IntSize) -> Unit,
-): Modifier {
-    if (!enabled) return this
-    return pointerInput(onTap, onDoubleTap) {
-        var lastTapUptimeMillis = 0L
-        var lastTapPosition: Offset? = null
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val start = down.position
-            var pointerCountExceeded = false
-            var moved = false
-            var consumed = down.isConsumed
-            var upPosition = start
-            while (true) {
-                val event = awaitPointerEvent()
-                val pressed = event.changes.filter { it.pressed }
-                if (pressed.size > 1) pointerCountExceeded = true
-                event.changes.forEach { change ->
-                    if (change.isConsumed) consumed = true
-                    if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
-                        moved = true
-                    }
-                    if (change.id == down.id && !change.pressed) {
-                        upPosition = change.position
-                    }
-                }
-                if (pressed.isEmpty()) {
-                    if (!pointerCountExceeded && !moved && !consumed) {
-                        val now = SystemClock.uptimeMillis()
-                        val previousTapPosition = lastTapPosition
-                        val doubleTapDistance = viewConfiguration.touchSlop * 8f
-                        val isDoubleTap = onDoubleTap != null &&
-                            previousTapPosition != null &&
-                            now - lastTapUptimeMillis <= ViewerFastDoubleTapWindowMillis &&
-                            (upPosition - previousTapPosition).getDistance() <= doubleTapDistance
-                        if (isDoubleTap) {
-                            lastTapUptimeMillis = 0L
-                            lastTapPosition = null
-                            onDoubleTap?.invoke(upPosition, size)
-                        } else {
-                            lastTapUptimeMillis = now
-                            lastTapPosition = upPosition
-                            onTap(upPosition, size)
-                        }
-                    }
-                    break
-                }
-            }
-        }
-    }
-}
-
-internal fun isViewerVideoImmersiveToggleTap(position: Offset, size: IntSize): Boolean {
-    if (size.height <= 0) return false
-    val topZone = size.height * 0.18f
-    val bottomZone = size.height * 0.18f
-    return position.y <= topZone || position.y >= size.height - bottomZone
-}
-
-internal fun applyViewerStatusBarVisibility(view: View, immersive: Boolean) {
-    val activity = view.context.findActivity()
-    val window = activity?.window ?: return
-    val controller = WindowCompat.getInsetsController(window, view)
-    if (immersive) {
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-        )
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility =
-            window.decorView.systemUiVisibility or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        controller.systemBarsBehavior =
-            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.insetsController?.systemBarsBehavior =
-                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            window.insetsController?.controlWindowInsetsAnimation(
-                WindowInsets.Type.statusBars(),
-                0L,
-                LinearInterpolator(),
-                null,
-                object : WindowInsetsAnimationControlListener {
-                    override fun onReady(
-                        animationController: WindowInsetsAnimationController,
-                        types: Int,
-                    ) {
-                        animationController.setInsetsAndAlpha(
-                            animationController.hiddenStateInsets,
-                            0f,
-                            1f,
-                        )
-                        animationController.finish(true)
-                    }
-
-                    override fun onFinished(animationController: WindowInsetsAnimationController) = Unit
-
-                    override fun onCancelled(animationController: WindowInsetsAnimationController?) {
-                        @Suppress("DEPRECATION")
-                        window.decorView.systemUiVisibility =
-                            window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_FULLSCREEN
-                    }
-                },
-            )
-        } else {
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-        }
-    } else {
-        window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility =
-            window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_FULLSCREEN.inv() and
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY.inv()
-        controller.show(WindowInsetsCompat.Type.statusBars())
-    }
-}
-
-private fun List<PointerInputChange>.centroid(usePrevious: Boolean): Offset {
-    val total = fold(Offset.Zero) { sum, change ->
-        sum + if (usePrevious) change.previousPosition else change.position
-    }
-    return total / size.toFloat()
-}
-
-private fun List<PointerInputChange>.averageDistanceTo(
-    centroid: Offset,
-    usePrevious: Boolean,
-): Float {
-    return sumOf { change ->
-        val position = if (usePrevious) change.previousPosition else change.position
-        (position - centroid).getDistance().toDouble()
-    }.toFloat() / size
-}
-
-@Composable
-internal fun ViewerStatusBarEffect(immersive: Boolean = false) {
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val activity = view.context.findActivity()
-        val window = activity?.window
-        val previousStatusBarColor = window?.statusBarColor
-        val previousLightStatusBars = window?.let {
-            WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars
-        }
-        val previousSystemBarsBehavior = window?.let {
-            WindowCompat.getInsetsController(it, view).systemBarsBehavior
-        }
-        val previousWindowFlags = window?.attributes?.flags
-        @Suppress("DEPRECATION")
-        val previousSystemUiVisibility = window?.decorView?.systemUiVisibility
-
-        if (window != null) {
-            val controller = WindowCompat.getInsetsController(window, view)
-            window.statusBarColor = android.graphics.Color.rgb(0x18, 0x2A, 0x35)
-            controller.isAppearanceLightStatusBars = false
-        }
-
-        onDispose {
-            if (window != null && previousStatusBarColor != null && previousLightStatusBars != null) {
-                val controller = WindowCompat.getInsetsController(window, view)
-                controller.show(WindowInsetsCompat.Type.statusBars())
-                if (previousWindowFlags != null &&
-                    previousWindowFlags and WindowManager.LayoutParams.FLAG_FULLSCREEN != 0
-                ) {
-                    window.setFlags(
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                    )
-                } else {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                }
-                if (previousSystemUiVisibility != null) {
-                    @Suppress("DEPRECATION")
-                    window.decorView.systemUiVisibility = previousSystemUiVisibility
-                }
-                window.statusBarColor = previousStatusBarColor
-                controller.isAppearanceLightStatusBars = previousLightStatusBars
-                if (previousSystemBarsBehavior != null) {
-                    controller.systemBarsBehavior = previousSystemBarsBehavior
-                }
-            }
-        }
-    }
-
-    SideEffect {
-        val window = view.context.findActivity()?.window
-        if (window != null) {
-            val controller = WindowCompat.getInsetsController(window, view)
-            window.statusBarColor = android.graphics.Color.rgb(0x10, 0x1F, 0x26)
-            controller.isAppearanceLightStatusBars = false
-        }
-        applyViewerStatusBarVisibility(view, immersive)
-    }
-}
-
-private tailrec fun android.content.Context.findActivity(): Activity? {
-    return when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
-}
 
 @Composable
 fun PhotoViewerScreen(
@@ -635,7 +86,38 @@ fun PhotoViewerScreen(
     }
     val initialPage = route.initialIndex.coerceIn(0, viewerItems.lastIndex)
     val zoomState = remember { ViewerZoomState() }
+    val heroOrigin = route.heroOrigin
+    val heroProgress = remember { Animatable(if (heroOrigin != null) 0f else 1f) }
+    var heroExiting by remember { mutableStateOf(false) }
+    LaunchedEffect(route, heroExiting) {
+        if (heroOrigin != null && !heroExiting && heroProgress.value < 1f) {
+            heroProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(HeroTransitionMillis, easing = HeroEasing),
+            )
+        }
+    }
+    val handleBack: () -> Unit = {
+        if (heroOrigin != null && !heroExiting && heroProgress.value >= 1f) {
+            heroExiting = true
+            coroutineScope.launch {
+                heroProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(HeroTransitionMillis, easing = HeroEasing),
+                )
+                onBack()
+                heroExiting = false
+            }
+        } else {
+            onBack()
+        }
+    }
     var isImmersive by remember { mutableStateOf(false) }
+    // Round 8 第十七轮: 缩放状态下单击切换 overlay 可见性的 override 标记.
+    // 当 zoomed + hideOverlaysWhenZoomed 时, overlaysVisible=false 导致 appOverlaysVisible=false,
+    // 单击只能 toggle isImmersive, 但 appOverlaysVisible 仍为 false, overlay 无法恢复.
+    // 现在缩放状态下单击改 toggle forceShowOverlays, 让用户能临时呼出 chrome.
+    var forceShowOverlays by remember { mutableStateOf(false) }
     var showCommentPreview by remember { mutableStateOf(false) }
     var commentPanelState by remember { mutableStateOf<ViewerCommentPanelState?>(null) }
     var showRelatedPostsSheet by remember { mutableStateOf(false) }
@@ -699,13 +181,15 @@ fun PhotoViewerScreen(
     }
     val hideOverlaysWhenZoomed = settingsState.viewerPreferences.hideOverlaysWhenZoomed
     val autoPauseVideoOnMediaSwitch = settingsState.viewerPreferences.autoPauseVideoOnMediaSwitch
-    val overlaysVisible = !zoomState.isZoomed || !hideOverlaysWhenZoomed
+    // Round 8 第十七轮: forceShowOverlays 让缩放状态下也能临时呼出 overlay
+    val overlaysVisible = !zoomState.isZoomed || !hideOverlaysWhenZoomed || forceShowOverlays
     val appOverlaysVisible = overlaysVisible && !isImmersive
-    val overlayAlpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
+    val baseOverlayAlpha = if (zoomState.isZoomed && hideOverlaysWhenZoomed && !forceShowOverlays) {
         ViewerLayoutTuning.zoomedOverlayAlpha
     } else {
         1f
     }
+    val overlayAlpha = baseOverlayAlpha
     val canOpenOriginal = remember(currentItem) {
         when (RepositoryProvider.currentMode) {
             RepositoryMode.REAL -> currentItem.mediaType == AppMediaType.IMAGE &&
@@ -732,6 +216,97 @@ fun PhotoViewerScreen(
             message = message,
             emphasized = emphasized,
             nonce = viewerNoticeNonce,
+        )
+    }
+    fun revealVideoControls() {
+        videoControlsVisible = true
+        videoControlsActivityNonce += 1
+    }
+    fun toggleImmersive() {
+        // Round 8 第十七轮: 缩放状态下, 单击改 toggle forceShowOverlays 而不是 immersive.
+        // 这样用户在 zoomed 状态下单击能呼出/隐藏 chrome (TopBar + EdgeActions),
+        // 而不是只能切换 immersive (immersive 无法恢复 overlay, 因为 overlaysVisible=false).
+        if (zoomState.isZoomed && hideOverlaysWhenZoomed) {
+            forceShowOverlays = !forceShowOverlays
+            // 如果之前进入了 immersive, 顺便退出 immersive 让状态栏恢复
+            if (isImmersive) {
+                applyViewerStatusBarVisibility(view, false)
+                isImmersive = false
+            }
+            if (!forceShowOverlays) {
+                showCommentPreview = false
+                commentPanelState = null
+                showRelatedPostsSheet = false
+                showTimeEditorSheet = false
+                videoControlsVisible = false
+            }
+            return
+        }
+        val nextImmersive = !isImmersive
+        applyViewerStatusBarVisibility(view, nextImmersive)
+        isImmersive = nextImmersive
+        if (nextImmersive) {
+            showCommentPreview = false
+            commentPanelState = null
+            showRelatedPostsSheet = false
+            showTimeEditorSheet = false
+            videoControlsVisible = false
+        }
+    }
+    // Round 8 第十六轮: 地点胶囊点击跳地图页 (复用 LifeLocationPickerActivity), 返回后调用服务端更新
+    val locationPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val data = result.data ?: return@rememberLauncherForActivityResult
+        val lat = data.getDoubleExtra(LifeLocationPickerActivity.EXTRA_RESULT_LAT, Double.NaN)
+        val lng = data.getDoubleExtra(LifeLocationPickerActivity.EXTRA_RESULT_LNG, Double.NaN)
+        val label = data.getStringExtra(LifeLocationPickerActivity.EXTRA_RESULT_LABEL)
+        val targetMediaId = currentItem.mediaId
+        val safeLat = if (lat.isNaN()) null else lat
+        val safeLng = if (lng.isNaN()) null else lng
+        coroutineScope.launch {
+            when (RepositoryProvider.currentMode) {
+                RepositoryMode.REAL -> {
+                    val res = RepositoryProvider.lifeConsoleRepository.updateMediaLocation(
+                        mediaId = targetMediaId,
+                        latitude = safeLat,
+                        longitude = safeLng,
+                        locationLabel = label,
+                    )
+                    when (res) {
+                        is ApiResult.Success -> showViewerNotice("位置已更新", emphasized = true)
+                        else -> showViewerNotice("位置更新失败")
+                    }
+                }
+                RepositoryMode.FAKE -> {
+                    showViewerNotice("位置已更新", emphasized = true)
+                }
+            }
+            // 本地立即更新 viewerItems, 触发 UI 重绘
+            viewerItems = viewerItems.map { item ->
+                if (item.mediaId == targetMediaId) {
+                    item.copy(
+                        locationLabel = label,
+                        locationLat = safeLat,
+                        locationLng = safeLng,
+                    )
+                } else {
+                    item
+                }
+            }
+            notifyRealBackendContentChanged(mediaIds = setOf(targetMediaId))
+        }
+    }
+    fun openLocationPicker() {
+        locationPickerLauncher.launch(
+            LifeLocationPickerActivity.intent(
+                context = context,
+                initialLat = currentItem.locationLat,
+                initialLng = currentItem.locationLng,
+                initialLabel = currentItem.locationLabel,
+                title = "调整照片位置",
+            )
         )
     }
     LaunchedEffect(currentItem.mediaId, currentOriginalState) {
@@ -842,6 +417,7 @@ fun PhotoViewerScreen(
 
     LaunchedEffect(currentIndex, currentItem.mediaId, autoPauseVideoOnMediaSwitch) {
         zoomState.reset()
+        forceShowOverlays = false
         showCommentPreview = false
         commentPanelState = null
         showRelatedPostsSheet = false
@@ -884,24 +460,9 @@ fun PhotoViewerScreen(
         kotlinx.coroutines.delay(2800)
         videoControlsVisible = false
     }
-    fun revealVideoControls() {
-        videoControlsVisible = true
-        videoControlsActivityNonce += 1
-    }
-    fun toggleImmersive() {
-        val nextImmersive = !isImmersive
-        applyViewerStatusBarVisibility(view, nextImmersive)
-        isImmersive = nextImmersive
-        if (nextImmersive) {
-            showCommentPreview = false
-            commentPanelState = null
-            showRelatedPostsSheet = false
-            showTimeEditorSheet = false
-            videoControlsVisible = false
-        }
-    }
     BackHandler(enabled = zoomState.isZoomed) {
         zoomState.reset()
+        forceShowOverlays = false
     }
     BackHandler(enabled = !isImmersive && showCommentPreview) {
         showCommentPreview = false
@@ -916,132 +477,92 @@ fun PhotoViewerScreen(
         showTimeEditorSheet = false
     }
     BackHandler(enabled = !isImmersive && !zoomState.isZoomed && !showCommentPreview && commentPanelState == null && !showRelatedPostsSheet && !showTimeEditorSheet) {
-        onBack()
+        handleBack()
     }
     BackHandler(enabled = isImmersive && !zoomState.isZoomed) {
-        onBack()
+        handleBack()
     }
     ViewerStatusBarEffect(immersive = isImmersive)
 
     if (showDeleteConfirm) {
-        val dialogColors = YingShiThemeTokens.colors
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            containerColor = dialogColors.raisedSurface,
-            titleContentColor = dialogColors.titleAccent,
-            textContentColor = dialogColors.textSecondary,
-            title = {
-                Text(
-                    text = "删除当前媒体到回收站？",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                )
-            },
-            text = {
-                Text(
-                    text = "当前媒体会从照片流消失，并影响所有引用它的小相册。删除后会进入映世回收站，可以在回收站中恢复。",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            confirmButton = {
-                TrashDialogActionButton(
-                    text = "删除到回收站",
-                    danger = true,
-                    onClick = {
-                        showDeleteConfirm = false
-                        val deletingItem = currentItem
-                        when (RepositoryProvider.currentMode) {
-                            RepositoryMode.FAKE -> {
-                                deleteFakeViewerMedia(deletingItem)
-                                val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
-                                if (nextItems.isEmpty()) {
-                                    onBack()
-                                } else {
-                                    viewerItems = nextItems
-                                    coroutineScope.launch {
-                                        pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
-                                    }
-                                    showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
-                                }
+        ViewerDeleteConfirmDialog(
+            onDismiss = { showDeleteConfirm = false },
+            onConfirm = {
+                showDeleteConfirm = false
+                val deletingItem = currentItem
+                when (RepositoryProvider.currentMode) {
+                    RepositoryMode.FAKE -> {
+                        deleteFakeViewerMedia(deletingItem)
+                        val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
+                        if (nextItems.isEmpty()) {
+                            handleBack()
+                        } else {
+                            viewerItems = nextItems
+                            coroutineScope.launch {
+                                pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
                             }
-                            RepositoryMode.REAL -> {
-                                coroutineScope.launch {
-                                    val message = deleteRealViewerMedia(deletingItem.mediaId)
-                                    if (message != null) {
-                                        showViewerNotice(message)
-                                        return@launch
-                                    }
-                                    val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
-                                    if (nextItems.isEmpty()) {
-                                        onBack()
-                                    } else {
-                                        viewerItems = nextItems
-                                        pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
-                                        showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
-                                    }
-                                }
+                            showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
+                        }
+                    }
+                    RepositoryMode.REAL -> {
+                        coroutineScope.launch {
+                            val message = deleteRealViewerMedia(deletingItem.mediaId)
+                            if (message != null) {
+                                showViewerNotice(message)
+                                return@launch
+                            }
+                            val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
+                            if (nextItems.isEmpty()) {
+                                handleBack()
+                            } else {
+                                viewerItems = nextItems
+                                pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
+                                showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
                             }
                         }
-                    },
-                )
-            },
-            dismissButton = {
-                TrashDialogActionButton(text = "取消", onClick = { showDeleteConfirm = false })
+                    }
+                }
             },
         )
     }
 
+    val heroActive = heroOrigin != null && heroProgress.value < 1f
+    // Hero 过渡：内容层淡入/淡出 + 微缩放，背景始终全黑不闪烁
+    val heroContentAlpha = if (heroOrigin != null) heroProgress.value else 1f
+    val heroContentScale = if (heroOrigin != null) 0.97f + 0.03f * heroProgress.value else 1f
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(ViewerNightBottom)
             .viewerSingleTapGesture(
                 onTap = { position, size ->
-                    if (currentItem.mediaType == AppMediaType.VIDEO) {
-                        val topTapZonePx = with(density) {
-                            if (isImmersive) {
-                                ViewerLayoutTuning.immersiveCanvasTopPadding.toPx()
-                            } else {
-                                ViewerLayoutTuning.canvasTopPadding.toPx()
-                            }
-                        }
-                        val bottomTapZonePx = with(density) {
-                            if (isImmersive) {
-                                ViewerLayoutTuning.immersiveVideoBottomExitZone.toPx()
-                            } else {
-                                ViewerLayoutTuning.canvasBottomPadding.toPx()
-                            }
-                        }
-                        if (position.y <= topTapZonePx || position.y >= size.height - bottomTapZonePx) {
-                            toggleImmersive()
-                        } else {
-                            videoControlsVisible = !videoControlsVisible
-                            videoControlsActivityNonce += 1
-                        }
-                    } else {
-                        toggleImmersive()
-                    }
+                    handleViewerTap(position, size, currentItem, isImmersive, density, videoControlsVisible,
+                        { videoControlsVisible = it }, ::toggleImmersive, { videoControlsActivityNonce += 1 })
                 },
-                onDoubleTap = { position, size ->
-                    if (currentItem.mediaType == AppMediaType.IMAGE) {
-                        zoomState.toggleDoubleTap(
-                            tapPosition = position,
-                            containerSize = size,
-                        )
-                    }
-                },
+                onDoubleTap = { position, size -> handleViewerDoubleTap(position, size, currentItem, zoomState) },
             ),
     ) {
-        ViewerAtmosphereLayer(
+        // 内容层：淡入/淡出 + 微缩放
+        Box(
             modifier = Modifier
                 .matchParentSize()
-                .alpha(if (isImmersive) 0.42f else 1f),
-        )
+                .alpha(heroContentAlpha)
+                .graphicsLayer {
+                    scaleX = heroContentScale
+                    scaleY = heroContentScale
+                },
+        ) {
+            ViewerAtmosphereLayer(
+                modifier = Modifier
+                    .matchParentSize()
+                    .alpha(if (isImmersive) 0.42f else 1f),
+            )
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            beyondViewportPageCount = 1,
-            userScrollEnabled = viewerItems.size > 1 && !zoomState.isZoomed,
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
+                userScrollEnabled = viewerItems.size > 1 && !zoomState.isZoomed && !heroActive,
             key = { page -> viewerItems[page].mediaId },
         ) { page ->
             PhotoViewerCanvas(
@@ -1079,47 +600,9 @@ fun PhotoViewerScreen(
                         revealVideoControls()
                     }
                 },
-                onTogglePlayback = {
-                    revealVideoControls()
-                    val durationMillis = videoPlaybackState.durationMillis
-                        ?: currentItem.viewerVideoDurationMillis()
-                    val shouldRestart = videoPlaybackState.isCompleted ||
-                        (durationMillis > 0L && videoPlaybackState.progressMillis >= durationMillis)
-                    videoPlaybackState = if (videoPlaybackState.errorMessage != null) {
-                        videoPlaybackState.retryState().copy(mediaId = currentItem.mediaId)
-                    } else if (videoPlaybackState.isPlaying) {
-                        videoPlaybackState.copy(isPlaying = false)
-                    } else {
-                        videoPlaybackState.copy(
-                            mediaId = currentItem.mediaId,
-                            isPlaying = true,
-                            progressMillis = if (shouldRestart) 0L else videoPlaybackState.progressMillis,
-                            seekRequestMillis = if (shouldRestart) 0L else videoPlaybackState.seekRequestMillis,
-                            seekRequestNonce = if (shouldRestart) {
-                                videoPlaybackState.seekRequestNonce + 1
-                            } else {
-                                videoPlaybackState.seekRequestNonce
-                            },
-                            pendingSeekTargetMillis = if (shouldRestart) 0L else videoPlaybackState.pendingSeekTargetMillis,
-                            errorMessage = null,
-                            isCompleted = false,
-                        )
-                    }
-                },
+                onTogglePlayback = { toggleVideoPlayback(videoPlaybackState, currentItem, { videoPlaybackState = it }, ::revealVideoControls) },
                 onSeekPlayback = { progressMillis ->
-                    revealVideoControls()
-                    val durationMillis = videoPlaybackState.durationMillis
-                        ?: currentItem.viewerVideoDurationMillis()
-                    val targetMillis = progressMillis.coerceIn(0L, durationMillis.coerceAtLeast(0L))
-                    videoPlaybackState = videoPlaybackState.copy(
-                        mediaId = currentItem.mediaId,
-                        progressMillis = targetMillis,
-                        seekRequestMillis = targetMillis,
-                        seekRequestNonce = videoPlaybackState.seekRequestNonce + 1,
-                        pendingSeekTargetMillis = targetMillis,
-                        errorMessage = null,
-                        isCompleted = false,
-                    )
+                    seekVideoPlayback(progressMillis, videoPlaybackState, currentItem, { videoPlaybackState = it }, ::revealVideoControls)
                 },
                 onVideoPlaybackStateChange = { mediaId, state ->
                     val mergedState = state.mergePendingSeekDisplay(videoPlaybackStateCache[mediaId])
@@ -1157,7 +640,7 @@ fun PhotoViewerScreen(
             )
         }
 
-        if (!isImmersive) {
+        if (appOverlaysVisible) {
             ViewerTopScrim(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -1176,7 +659,7 @@ fun PhotoViewerScreen(
         }
 
         AnimatedVisibility(
-            visible = !isImmersive,
+            visible = appOverlaysVisible,
             enter = fadeIn(tween(motion.floatingMillis, easing = motion.easing)) +
                 slideInVertically(
                     animationSpec = tween(motion.floatingMillis, easing = motion.easing),
@@ -1193,40 +676,15 @@ fun PhotoViewerScreen(
         ) {
             PhotoViewerTopBar(
                 onBack = {
-                    onBack()
+                    handleBack()
                 },
                 uploaderIdentity = uploaderIdentity,
-                onShare = {
-                    if (shareInFlight) {
-                        showViewerNotice("正在准备分享文件…")
-                    } else {
-                        coroutineScope.launch {
-                            shareInFlight = true
-                            showViewerNotice("正在准备分享文件…")
-                            try {
-                                when (
-                                    val result = MediaShareManager.shareMedia(
-                                        context = context,
-                                        items = listOf(currentItem.toShareableMediaItem()),
-                                        packageBaseName = "映世-${currentItem.mediaId}",
-                                    )
-                                ) {
-                                    is MediaShareLaunchResult.Success -> {
-                                        showViewerNotice(result.toNoticeMessage(), emphasized = true)
-                                    }
-                                    is MediaShareLaunchResult.Error -> {
-                                        showViewerNotice(result.message)
-                                    }
-                                }
-                            } finally {
-                                shareInFlight = false
-                            }
-                        }
-                    }
-                },
+                onShare = { shareCurrentMedia(context, currentItem, coroutineScope, shareInFlight, { shareInFlight = it }, ::showViewerNotice) },
                 onEditTime = { showTimeEditorSheet = true },
                 onDelete = { showDeleteConfirm = true },
                 onOpenRelatedPosts = { showRelatedPostsSheet = true },
+                locationLabel = currentItem.locationLabel,
+                onOpenLocation = { openLocationPicker() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
@@ -1295,6 +753,7 @@ fun PhotoViewerScreen(
                 originalActionLabel = originalActionLabel,
                 timeLabel = overlayUiModel.timeLabel,
                 showCommentPreview = showCommentPreview,
+                onEditTime = { showTimeEditorSheet = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -1418,2399 +877,13 @@ fun PhotoViewerScreen(
                 initialTimeMillis = currentItem.mediaDisplayTimeMillis,
                 onDismiss = { showTimeEditorSheet = false },
                 onConfirm = { nextTimeMillis ->
-                    showTimeEditorSheet = false
-                    FakePhotoFeedRepository.updateMediaDisplayTime(
-                        mediaId = currentItem.mediaId,
-                        displayTimeMillis = nextTimeMillis,
-                    )
-                    MediaTimeOverrides.put(currentItem.mediaId, nextTimeMillis)
-                    // Trigger a real-backend refresh so the photo-feed re-maps with the new time
-                    notifyRealBackendContentChanged(mediaIds = setOf(currentItem.mediaId))
-                    val currentMediaId = currentItem.mediaId
-                    val nextItems = viewerItems
-                        .map { item ->
-                            if (item.mediaId == currentMediaId) {
-                                item.withViewerDisplayTime(nextTimeMillis)
-                            } else {
-                                item
-                            }
-                        }
-                        .sortedByDescending { it.mediaDisplayTimeMillis }
-                    viewerItems = nextItems
-                    coroutineScope.launch {
-                        val nextIndex = nextItems.indexOfFirst { it.mediaId == currentMediaId }
-                            .takeIf { it >= 0 }
-                            ?: currentIndex.coerceIn(0, nextItems.lastIndex)
-                        pagerState.scrollToPage(nextIndex)
-                    }
-                    showViewerNotice("时间已修改", emphasized = true)
+                    applyTimeEdit(nextTimeMillis, currentItem, viewerItems, currentIndex, coroutineScope, pagerState,
+                        { showTimeEditorSheet = it }, { viewerItems = it }, ::showViewerNotice)
                 },
             )
         }
 
-    }
-}
-
-@Composable
-private fun PrefetchViewerMediaAssets(
-    items: List<PhotoFeedItem>,
-    currentIndex: Int,
-    accessToken: String?,
-) {
-    if (RepositoryProvider.currentMode != RepositoryMode.REAL || items.isEmpty()) return
-
-    val context = LocalContext.current
-    val targets = remember(items, currentIndex) {
-        buildList {
-            listOf(currentIndex - 1, currentIndex, currentIndex + 1)
-                .distinct()
-                .forEach { index ->
-                    val item = items.getOrNull(index) ?: return@forEach
-                    add(item)
-                }
-        }
-    }
-
-    LaunchedEffect(context, targets, accessToken) {
-        val imageLoader = context.imageLoader
-        targets.forEach { item ->
-            if (item.mediaType == AppMediaType.VIDEO) {
-                val posterImageCacheKey = item.mediaSource.videoPosterImageCacheKey(item.mediaType)
-                val posterImageUrl = item.mediaSource.videoPosterImageUrl(item.mediaType)
-                val posterImageDiskCacheKey = item.mediaSource.videoPosterImageDiskCacheKey(item.mediaType)
-                if (posterImageUrl != null) {
-                    backendMediaImageRequest(
-                        context = context,
-                        url = posterImageUrl,
-                        accessToken = accessToken,
-                        memoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
-                        diskCacheKey = posterImageDiskCacheKey,
-                        size = 1280,
-                    )?.let(imageLoader::enqueue)
-                    return@forEach
-                }
-            } else {
-                item.mediaSource?.viewerPreviewImageUrl(item.mediaType)?.let { previewUrl ->
-                    val previewCacheKey = item.mediaSource.viewerPreviewImageCacheKey(item.mediaType)
-                    backendMediaImageRequest(
-                        context = context,
-                        url = previewUrl,
-                        accessToken = accessToken,
-                        memoryCacheKey = previewCacheKey ?: sharedPreviewMemoryCacheKey(previewUrl),
-                        diskCacheKey = previewCacheKey,
-                        size = 1280,
-                    )?.let(imageLoader::enqueue)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ViewerPostSegmentIndicator(
-    currentIndex: Int,
-    total: Int,
-    alpha: Float,
-    modifier: Modifier = Modifier,
-) {
-    if (total <= 1) return
-
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Row(
-        modifier = modifier.alpha(alpha),
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        repeat(total) { index ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(radius.capsule))
-                    .background(
-                        if (index <= currentIndex) {
-                            ViewerSurface.copy(alpha = 0.82f)
-                        } else {
-                            ViewerSurface.copy(alpha = 0.22f)
-                        },
-                    ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ViewerTopScrim(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    ViewerNightBottom.copy(alpha = 0.62f),
-                    ViewerNightBottom.copy(alpha = 0.24f),
-                    Color.Transparent,
-                ),
-            ),
-        ),
-    )
-}
-
-@Composable
-private fun ViewerBottomScrim(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    ViewerNightBottom.copy(alpha = 0.20f),
-                    ViewerNightBottom.copy(alpha = 0.58f),
-                ),
-            ),
-        ),
-    )
-}
-
-@Composable
-private fun ViewerNoticeHost(
-    notice: ViewerNotice?,
-    currentMediaId: String,
-    onExpired: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val motion = YingShiThemeTokens.motion
-    val spacing = YingShiThemeTokens.spacing
-    val motionEnabled = rememberYingShiMotionEnabled()
-    val visibleNotice = notice?.takeIf { it.mediaId == currentMediaId }
-
-    LaunchedEffect(visibleNotice?.nonce) {
-        val activeNotice = visibleNotice ?: return@LaunchedEffect
-        kotlinx.coroutines.delay(motion.viewerNoticeVisibleMillis.toLong())
-        onExpired(activeNotice.nonce)
-    }
-
-    AnimatedVisibility(
-        visible = visibleNotice != null,
-        enter = fadeIn(tween(if (motionEnabled) motion.viewerNoticeMillis else 0, easing = motion.easing)) +
-            slideInVertically(
-                animationSpec = tween(if (motionEnabled) motion.viewerNoticeMillis else 0, easing = motion.easing),
-                initialOffsetY = { -it / 5 },
-            ),
-        exit = fadeOut(tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing)) +
-            slideOutVertically(
-                animationSpec = tween(if (motionEnabled) motion.stateMillis else 0, easing = motion.easing),
-                targetOffsetY = { -it / 6 },
-            ),
-        modifier = modifier,
-    ) {
-        val activeNotice = visibleNotice ?: return@AnimatedVisibility
-        Surface(
-            modifier = Modifier
-                .yingShiSoftReveal(visible = true, motionEnabled = motionEnabled)
-                .widthIn(max = 320.dp),
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-            color = ViewerNightTop.copy(alpha = if (activeNotice.emphasized) 0.82f else 0.76f),
-            border = BorderStroke(
-                width = 1.dp,
-                color = ViewerAccent.copy(alpha = if (activeNotice.emphasized) 0.34f else 0.20f),
-            ),
-        ) {
-            Text(
-                text = activeNotice.message,
-                modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = if (activeNotice.emphasized) FontWeight.SemiBold else FontWeight.Medium,
-                ),
-                color = ViewerSurface.copy(alpha = 0.94f),
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ViewerAtmosphereLayer(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.background(ViewerNightBottom)) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            ViewerAccent.copy(alpha = 0.16f),
-                            ViewerNightMiddle.copy(alpha = 0.16f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(0f, 0f),
-                        radius = 980f,
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            ViewerAccent.copy(alpha = 0.10f),
-                            ViewerNightTop.copy(alpha = 0.18f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(1200f, 2200f),
-                        radius = 860f,
-                    ),
-                ),
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            ViewerNightTop.copy(alpha = 0.12f),
-                            Color.Transparent,
-                            ViewerNightBottom.copy(alpha = 0.34f),
-                        ),
-                    ),
-                ),
-        )
-    }
-}
-
-@Composable
-private fun EmptyPhotoViewerScreen(
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ViewerNightBottom),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            ViewerSheetActionButton(text = "返回", onClick = onBack)
-            Text(
-                text = "当前没有可查看的媒体",
-                style = MaterialTheme.typography.titleMedium,
-                color = ViewerSurface.copy(alpha = 0.92f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PhotoViewerTopBar(
-    onBack: () -> Unit,
-    uploaderIdentity: CollaboratorIdentityUiModel?,
-    onShare: () -> Unit,
-    onEditTime: () -> Unit,
-    onDelete: () -> Unit,
-    onOpenRelatedPosts: () -> Unit,
-    modifier: Modifier = Modifier,
-    overlayAlpha: Float = 1f,
-) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Box(
-        modifier = modifier.alpha(overlayAlpha),
-    ) {
-        val topButtonShape = CircleShape
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .widthIn(max = 230.dp),
-        ) {
-            Surface(
-                modifier = Modifier
-                    .size(ViewerLayoutTuning.backButtonTouchSize)
-                    .yingShiClickable(shape = topButtonShape, pressedScale = 0.94f, onClick = onBack),
-                shape = topButtonShape,
-                color = ViewerNightTop.copy(alpha = 0.56f),
-                border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "返回",
-                        tint = ViewerSurface.copy(alpha = 0.94f),
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.align(Alignment.TopEnd),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            uploaderIdentity?.let { identity ->
-                CollaboratorMarkerBadge(
-                    identity = identity,
-                    size = 44.dp,
-                )
-            }
-            ViewerIconCircle(
-                icon = Icons.Default.IosShare,
-                contentDescription = "分享",
-                onClick = onShare,
-            )
-            Box(
-                modifier = Modifier.wrapContentSize(Alignment.TopEnd),
-            ) {
-                ViewerIconCircle(
-                    icon = Icons.Rounded.MoreHoriz,
-                    contentDescription = "更多",
-                    onClick = { menuExpanded = true },
-                )
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                    modifier = Modifier.wrapContentSize(Alignment.TopEnd),
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(text = "修改时间") },
-                        onClick = {
-                            menuExpanded = false
-                            onEditTime()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(text = "所属小相册") },
-                        onClick = {
-                            menuExpanded = false
-                            onOpenRelatedPosts()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(text = "删除媒体", color = MaterialTheme.colorScheme.error) },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ViewerTimeBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = ViewerNightTop.copy(alpha = 0.68f),
-        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.24f)),
-        shadowElevation = 4.dp,
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = ViewerSurface.copy(alpha = 0.96f),
-        )
-    }
-}
-
-@Composable
-private fun ViewerIconCircle(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    onClick: () -> Unit,
-) {
-    val shape = CircleShape
-    Surface(
-        modifier = Modifier
-            .size(46.dp)
-            .yingShiClickable(shape = shape, pressedScale = 0.94f, onClick = onClick),
-        shape = shape,
-        color = ViewerNightTop.copy(alpha = 0.54f),
-        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = ViewerSurface.copy(alpha = 0.90f),
-                modifier = Modifier.size(23.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PhotoViewerCanvas(
-    media: PhotoFeedItem,
-    zoomState: ViewerZoomState?,
-    videoPlaybackState: ViewerVideoPlaybackState?,
-    originalLoadState: OriginalLoadState,
-    originalLoadingLabel: String,
-    overlaysVisible: Boolean,
-    immersive: Boolean,
-    videoControlsVisible: Boolean,
-    onVideoAreaClick: () -> Unit,
-    onTogglePlayback: () -> Unit,
-    onSeekPlayback: (Long) -> Unit,
-    onVideoPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
-    onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
-    autoLongImageReading: Boolean,
-    autoPauseVideoOnMediaSwitch: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val density = LocalDensity.current
-    val isVideo = media.mediaType == AppMediaType.VIDEO
-    val useLongImageReading = !isVideo &&
-        autoLongImageReading &&
-        media.shouldUseLongImageReading()
-    val topPadding by animateDpAsState(
-        targetValue = if (immersive) ViewerLayoutTuning.immersiveCanvasTopPadding else ViewerLayoutTuning.canvasTopPadding,
-        label = "viewerCanvasTopPadding",
-    )
-    val bottomPadding by animateDpAsState(
-        targetValue = if (immersive) {
-            if (isVideo) ViewerLayoutTuning.immersiveVideoBottomExitZone else ViewerLayoutTuning.immersiveCanvasBottomPadding
-        } else {
-            ViewerLayoutTuning.canvasBottomPadding
-        },
-        label = "viewerCanvasBottomPadding",
-    )
-
-    BoxWithConstraints(
-        modifier = modifier.padding(
-            start = ViewerLayoutTuning.canvasHorizontalPadding,
-            top = topPadding,
-            end = ViewerLayoutTuning.canvasHorizontalPadding,
-            bottom = bottomPadding,
-        ),
-        contentAlignment = Alignment.Center,
-    ) {
-        val mediaAspectRatio = media.viewerAspectRatio().coerceIn(0.05f, 20f)
-        val fittedMediaWidth = if (maxHeight * mediaAspectRatio <= maxWidth) {
-            maxHeight * mediaAspectRatio
-        } else {
-            maxWidth
-        }
-        val fittedMediaHeight = if (maxWidth / mediaAspectRatio <= maxHeight) {
-            maxWidth / mediaAspectRatio
-        } else {
-            maxHeight
-        }
-        val canvasWidth = if (isVideo || useLongImageReading) maxWidth else fittedMediaWidth
-        val canvasHeight = if (isVideo) {
-            maxHeight
-        } else if (useLongImageReading) {
-            (maxWidth / mediaAspectRatio).coerceAtLeast(maxHeight)
-        } else {
-            fittedMediaHeight
-        }
-        val contentSize = with(density) {
-            IntSize(canvasWidth.roundToPx(), canvasHeight.roundToPx())
-        }
-        val longImageScrollState = rememberScrollState()
-        LaunchedEffect(media.mediaId, useLongImageReading) {
-            if (useLongImageReading) {
-                longImageScrollState.scrollTo(0)
-            }
-        }
-        val containerSize = with(density) {
-            IntSize(maxWidth.roundToPx(), maxHeight.roundToPx())
-        }
-        val longImageMinimumScale = if (useLongImageReading &&
-            contentSize.width > 0 &&
-            contentSize.height > 0 &&
-            containerSize.width > 0 &&
-            containerSize.height > 0
-        ) {
-            min(
-                containerSize.width.toFloat() / contentSize.width.toFloat(),
-                containerSize.height.toFloat() / contentSize.height.toFloat(),
-            ).coerceIn(0.05f, MinViewerScale)
-        } else {
-            MinViewerScale
-        }
-        val contentTopLeft = Offset(
-            x = ((containerSize.width - contentSize.width) / 2f),
-            y = if (useLongImageReading) {
-                -longImageScrollState.value.toFloat()
-            } else {
-                ((containerSize.height - contentSize.height) / 2f)
-            },
-        )
-        zoomState?.updateContentGeometry(
-            contentSize = contentSize,
-            contentTopLeft = contentTopLeft,
-            minimumScale = longImageMinimumScale,
-        )
-        val zoomTransformModifier = if (zoomState != null) {
-            Modifier
-                .graphicsLayer {
-                    transformOrigin = TransformOrigin(0f, 0f)
-                    scaleX = zoomState.scale
-                    scaleY = zoomState.scale
-                    translationX = zoomState.offset.x
-                    translationY = zoomState.offset.y
-                }
-        } else {
-            Modifier
-        }
-        val gestureModifier = if (zoomState != null) {
-            Modifier.viewerZoomGesture(
-                zoomState = zoomState,
-                contentSize = contentSize,
-                contentTopLeft = contentTopLeft,
-            )
-        } else {
-            Modifier
-        }
-        var mediaEnterActive by remember(media.mediaId, zoomState != null) { mutableStateOf(false) }
-        LaunchedEffect(media.mediaId, zoomState != null) {
-            mediaEnterActive = zoomState != null
-        }
-        val mediaEnterModifier = if (zoomState != null) {
-            Modifier
-                .yingShiMediaEnterMotion(active = mediaEnterActive)
-        } else {
-            Modifier
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(gestureModifier),
-            contentAlignment = if (useLongImageReading) Alignment.TopCenter else Alignment.Center,
-        ) {
-            if (useLongImageReading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(
-                            state = longImageScrollState,
-                            enabled = zoomState?.isZoomed != true,
-                        ),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(canvasWidth)
-                            .height(canvasHeight)
-                            .then(mediaEnterModifier)
-                            .then(zoomTransformModifier)
-                            .background(ViewerNightBottom),
-                    ) {
-                        if (media.mediaSource != null) {
-                            ViewerImageCanvas(
-                                media = media,
-                                originalLoadState = originalLoadState,
-                                originalLoadingLabel = originalLoadingLabel,
-                                onOriginalLoadStateChange = onOriginalLoadStateChange,
-                                contentScale = ContentScale.FillWidth,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        } else {
-                            Surface(
-                                modifier = Modifier.align(Alignment.Center),
-                                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                                color = ViewerNightTop.copy(alpha = 0.82f),
-                            ) {
-                                Text(
-                                    text = "暂无可用媒体预览",
-                                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = ViewerSurface.copy(alpha = 0.82f),
-                                )
-                            }
-                        }
-                    }
-                }
-            } else if (isVideo) {
-                Box(
-                    modifier = Modifier
-                        .width(canvasWidth)
-                        .height(canvasHeight),
-                ) {
-                    val revealInteractionSource = remember(media.mediaId) { MutableInteractionSource() }
-                    ViewerVideoCanvas(
-                        media = media,
-                        playbackState = videoPlaybackState,
-                        isCurrent = zoomState != null,
-                        autoPauseOnMediaSwitch = autoPauseVideoOnMediaSwitch,
-                        originalLoadState = originalLoadState,
-                        onPlaybackStateChange = onVideoPlaybackStateChange,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .then(mediaEnterModifier)
-                            .then(zoomTransformModifier),
-                    )
-                    if (videoPlaybackState?.errorMessage == null) {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clickable(
-                                    interactionSource = revealInteractionSource,
-                                    indication = LocalIndication.current,
-                                    onClick = onVideoAreaClick,
-                                ),
-                        )
-                    }
-                    if (videoControlsVisible && videoPlaybackState != null) {
-                        val playButtonShape = CircleShape
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .yingShiClickable(
-                                    shape = playButtonShape,
-                                    pressedScale = 0.94f,
-                                    onClick = onTogglePlayback,
-                                ),
-                            shape = playButtonShape,
-                            color = ViewerNightTop.copy(alpha = if (videoPlaybackState.isPlaying) 0.62f else 0.70f),
-                            border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.26f)),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(76.dp)
-                                    .padding(22.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                VideoGlyph(
-                                    state = if (videoPlaybackState.isPlaying) VideoGlyphState.PAUSE else VideoGlyphState.PLAY,
-                                    tint = ViewerSurface.copy(alpha = 0.92f),
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-                    }
-                    if (videoControlsVisible && videoPlaybackState != null) {
-                        val durationMillis = videoPlaybackState.durationMillis
-                            ?: media.viewerVideoDurationMillis()
-                        ViewerVideoControls(
-                            playbackState = videoPlaybackState,
-                            durationMillis = durationMillis,
-                            onTogglePlayback = onTogglePlayback,
-                            onSeekPlayback = onSeekPlayback,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(horizontal = spacing.lg, vertical = spacing.lg),
-                        )
-                    }
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .width(canvasWidth)
-                        .height(canvasHeight)
-                        .then(mediaEnterModifier)
-                        .then(zoomTransformModifier)
-                        .background(ViewerNightBottom),
-                ) {
-                    if (media.mediaSource != null) {
-                        ViewerImageCanvas(
-                            media = media,
-                            originalLoadState = originalLoadState,
-                            originalLoadingLabel = originalLoadingLabel,
-                            onOriginalLoadStateChange = onOriginalLoadStateChange,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        Surface(
-                            modifier = Modifier.align(Alignment.Center),
-                            shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-                            color = ViewerNightTop.copy(alpha = 0.82f),
-                        ) {
-                            Text(
-                                text = "暂无可用媒体预览",
-                                modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = ViewerSurface.copy(alpha = 0.82f),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ViewerImageCanvas(
-    media: PhotoFeedItem,
-    originalLoadState: OriginalLoadState,
-    originalLoadingLabel: String,
-    onOriginalLoadStateChange: (String, OriginalLoadState) -> Unit,
-    contentScale: ContentScale = ContentScale.Fit,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val mediaSource = media.mediaSource
-    val previewUrl = remember(mediaSource, media.mediaType) {
-        mediaSource.viewerPreviewImageUrl(media.mediaType)
-    }
-    val previewCacheKey = remember(mediaSource, media.mediaType) {
-        mediaSource.viewerPreviewImageCacheKey(media.mediaType)
-    }
-    val originalUrl = remember(mediaSource, media.mediaType) {
-        mediaSource.viewerOriginalImageUrl(media.mediaType)
-    }
-    val originalCacheKey = remember(mediaSource, media.mediaType) {
-        mediaSource.viewerOriginalImageCacheKey(media.mediaType)
-    }
-    val shouldRequestOriginal = originalLoadState == OriginalLoadState.Loaded
-    val sessionVersion = AuthSessionManager.sessionVersion
-    val accessToken = remember(sessionVersion) {
-        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
-    }
-    val previewRequest = remember(context, previewUrl, previewCacheKey, accessToken) {
-        backendMediaImageRequest(
-            context = context,
-            url = previewUrl,
-            accessToken = accessToken,
-            memoryCacheKey = previewCacheKey ?: previewUrl?.let(::sharedPreviewMemoryCacheKey),
-            diskCacheKey = previewCacheKey,
-        )
-    }
-    val originalRequest = remember(context, originalUrl, originalCacheKey, shouldRequestOriginal, accessToken) {
-        if (shouldRequestOriginal) {
-            backendMediaOriginalImageRequest(
-                context = context,
-                url = originalUrl,
-                accessToken = accessToken,
-                memoryCacheKey = originalCacheKey ?: originalUrl?.let(::sharedOriginalMemoryCacheKey),
-                diskCacheKey = originalCacheKey,
-            )
-        } else {
-            null
-        }
-    }
-    val previewPainter = rememberAsyncImagePainter(model = previewRequest)
-    val originalPainter = rememberAsyncImagePainter(model = originalRequest)
-    val previewState = previewPainter.state
-    val originalState = originalPainter.state
-    val showOriginal = originalLoadState == OriginalLoadState.Loaded &&
-        originalState is AsyncImagePainter.State.Success
-    val showPreview = previewRequest != null &&
-        previewState !is AsyncImagePainter.State.Error &&
-        !showOriginal
-    val failureReason = when {
-        previewUrl == null && originalUrl == null -> ViewerImageFailureReason.MISSING_URL
-        showOriginal || showPreview -> ViewerImageFailureReason.NONE
-        originalLoadState == OriginalLoadState.Failed -> ViewerImageFailureReason.ORIGINAL_FAILED
-        previewRequest != null && previewState is AsyncImagePainter.State.Error -> ViewerImageFailureReason.PREVIEW_FAILED
-        else -> ViewerImageFailureReason.NONE
-    }
-
-    LaunchedEffect(media.mediaId, originalUrl, originalLoadState, originalState) {
-        if (RepositoryProvider.currentMode != RepositoryMode.FAKE) return@LaunchedEffect
-        when {
-            originalLoadState == OriginalLoadState.Loading &&
-                originalState is AsyncImagePainter.State.Success -> {
-                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Loaded)
-            }
-            shouldRequestOriginal && originalState is AsyncImagePainter.State.Error -> {
-                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier.background(ViewerNightBottom),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (showPreview) {
-            Image(
-                painter = previewPainter,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale,
-            )
-        }
-
-        if (showOriginal) {
-            Image(
-                painter = originalPainter,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale,
-            )
-        }
-
-        if (previewRequest != null && previewState is AsyncImagePainter.State.Loading && !showOriginal) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                color = ViewerSurface.copy(alpha = 0.90f),
-                strokeWidth = 2.dp,
-            )
-        }
-
-        if (originalLoadState == OriginalLoadState.Loading) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = spacing.md),
-                shape = RoundedCornerShape(radius.capsule),
-                color = ViewerNightTop.copy(alpha = 0.84f),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        color = ViewerSurface.copy(alpha = 0.88f),
-                        strokeWidth = 1.5.dp,
-                    )
-                    Text(
-                        text = originalLoadingLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ViewerSurface.copy(alpha = 0.88f),
-                    )
-                }
-            }
-        }
-
-        if (failureReason != ViewerImageFailureReason.NONE) {
-            ViewerImageFallback(
-                reason = failureReason,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ViewerImageFallback(
-    reason: ViewerImageFailureReason,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val label = reason.message.takeIf { it.isNotBlank() } ?: return
-
-    Surface(
-        modifier = modifier.padding(spacing.lg),
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = ViewerNightTop.copy(alpha = 0.82f),
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-            color = ViewerSurface.copy(alpha = 0.88f),
-        )
-    }
-}
-
-@Composable
-private fun ViewerVideoPosterFallback(
-    message: String?,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-
-    Box(
-        modifier = modifier.background(ViewerNightBottom),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(YingShiThemeTokens.radius.xl),
-            color = ViewerNightTop.copy(alpha = 0.68f),
-            border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = spacing.lg, vertical = spacing.md),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = ViewerSurface.copy(alpha = 0.10f),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        VideoGlyph(
-                            state = VideoGlyphState.PLAY,
-                            tint = ViewerSurface.copy(alpha = 0.88f),
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-                if (!message.isNullOrBlank()) {
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = ViewerSurface.copy(alpha = 0.82f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@androidx.annotation.OptIn(UnstableApi::class)
-@Composable
-internal fun ViewerVideoCanvas(
-    media: PhotoFeedItem,
-    playbackState: ViewerVideoPlaybackState?,
-    isCurrent: Boolean,
-    autoPauseOnMediaSwitch: Boolean = true,
-    originalLoadState: OriginalLoadState,
-    onPlaybackStateChange: (String, ViewerVideoPlaybackState) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val context = LocalContext.current
-    val videoUrl = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.viewerVideoUrl(media.mediaType)
-    }
-    val videoCacheKey = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.viewerVideoCacheKey(media.mediaType)
-    }
-    val isPlaying = playbackState?.isPlaying == true
-    val isLoading = playbackState?.isLoading == true
-    val errorMessage = playbackState?.errorMessage
-    val sessionVersion = AuthSessionManager.sessionVersion
-    val accessToken = remember(sessionVersion) {
-        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
-    }
-    val posterImageUrl = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.videoPosterImageUrl(media.mediaType)
-    }
-    val posterImageCacheKey = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.videoPosterImageCacheKey(media.mediaType)
-    }
-    val posterImageDiskCacheKey = remember(media.mediaSource, media.mediaType) {
-        media.mediaSource.videoPosterImageDiskCacheKey(media.mediaType)
-    }
-    val posterImageRequest = remember(context, posterImageUrl, posterImageCacheKey, posterImageDiskCacheKey, accessToken) {
-        backendMediaImageRequest(
-            context = context,
-            url = posterImageUrl,
-            accessToken = accessToken,
-            memoryCacheKey = posterImageCacheKey ?: posterImageUrl?.let(::sharedPreviewMemoryCacheKey),
-            diskCacheKey = posterImageDiskCacheKey,
-            size = 1280,
-        )
-    }
-    val posterImagePainter = rememberAsyncImagePainter(model = posterImageRequest)
-    val posterImageState = posterImagePainter.state
-    val fallbackPosterVideoUrl = if (posterImageUrl.isNullOrBlank() ||
-        posterImageState is AsyncImagePainter.State.Error
-    ) {
-        videoUrl?.takeIf(::canExtractViewerPosterOnClient)
-    } else {
-        null
-    }
-    val videoPosterState = rememberVideoPosterState(
-        url = fallbackPosterVideoUrl,
-        accessToken = accessToken,
-        cacheKey = videoCacheKey,
-        diskCacheKey = media.mediaSource.viewerVideoDiskCacheKey(media.mediaType),
-    ).value
-    val extractedPosterPainter = rememberAsyncImagePainter(model = videoPosterState.model)
-    val requestHeaders = remember(videoUrl, accessToken) {
-        backendMediaRequestHeaders(videoUrl, accessToken)
-    }
-    var retryVersion by remember(media.mediaId) { mutableStateOf(0) }
-    val retryRequestNonce = playbackState?.retryRequestNonce ?: 0
-    var isPrepared by remember(media.mediaId, retryVersion, retryRequestNonce) { mutableStateOf(false) }
-    var pendingSeekTargetMillis by remember(media.mediaId, retryVersion, retryRequestNonce) {
-        mutableStateOf<Long?>(null)
-    }
-    val initialPositionMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
-    val shouldPreparePlayer = isCurrent &&
-        !videoUrl.isNullOrBlank() &&
-        (isPlaying || initialPositionMillis > 0L || retryRequestNonce > 0 || (playbackState?.seekRequestNonce ?: 0) > 0)
-    val player = remember(media.mediaId, videoUrl, videoCacheKey, requestHeaders, retryVersion, retryRequestNonce, shouldPreparePlayer) {
-        if (videoUrl.isNullOrBlank() || !shouldPreparePlayer) {
-            null
-        } else {
-            ExoPlayer.Builder(context).build().apply {
-                setAudioAttributes(
-                    Media3AudioAttributes.Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .build(),
-                    true,
-                )
-                setMediaSource(
-                    ProgressiveMediaSource.Factory(
-                        AppMediaVideoCache.dataSourceFactory(
-                            context = context,
-                            requestHeaders = requestHeaders,
-                            connectTimeoutMs = 8_000,
-                            readTimeoutMs = 8_000,
-                        ),
-                    ).createMediaSource(
-                        MediaItem.Builder()
-                            .setUri(videoUrl)
-                            .setCustomCacheKey(videoCacheKey ?: sharedVideoDiskCacheKey(videoUrl))
-                            .build(),
-                    ),
-                )
-                if (initialPositionMillis > 0L) {
-                    seekTo(initialPositionMillis)
-                }
-                prepare()
-            }
-        }
-    }
-
-    fun updatePlaybackState(transform: (ViewerVideoPlaybackState) -> ViewerVideoPlaybackState) {
-        val current = playbackState ?: ViewerVideoPlaybackState(mediaId = media.mediaId)
-        onPlaybackStateChange(
-            media.mediaId,
-            transform(current.copy(mediaId = media.mediaId)),
-        )
-    }
-
-    LaunchedEffect(media.mediaId, videoUrl, autoPauseOnMediaSwitch) {
-        if (!autoPauseOnMediaSwitch && playbackState?.mediaId == media.mediaId) {
-            return@LaunchedEffect
-        }
-        if (videoUrl.isNullOrBlank()) {
-            onPlaybackStateChange(
-                media.mediaId,
-                ViewerVideoPlaybackState(
-                    mediaId = media.mediaId,
-                    errorMessage = "视频 URL 为空",
-                ),
-            )
-        } else {
-            val currentProgressMillis = playbackState?.progressMillis?.coerceAtLeast(0L) ?: 0L
-            onPlaybackStateChange(
-                media.mediaId,
-                ViewerVideoPlaybackState(
-                    mediaId = media.mediaId,
-                    isLoading = playbackState?.isPlaying == true,
-                    progressMillis = currentProgressMillis,
-                    durationMillis = media.viewerVideoDurationMillis(),
-                    seekRequestMillis = playbackState?.seekRequestMillis,
-                    seekRequestNonce = playbackState?.seekRequestNonce ?: 0,
-                    pendingSeekTargetMillis = playbackState?.pendingSeekTargetMillis,
-                ),
-            )
-        }
-    }
-
-    DisposableEffect(player) {
-        if (player == null) {
-            onDispose { }
-        } else {
-            val listener = object : Player.Listener {
-                override fun onPlaybackStateChanged(playbackStateValue: Int) {
-                    when (playbackStateValue) {
-                        Player.STATE_BUFFERING -> {
-                            updatePlaybackState {
-                                it.copy(
-                                    isLoading = true,
-                                    errorMessage = null,
-                                )
-                            }
-                        }
-
-                        Player.STATE_READY -> {
-                            isPrepared = true
-                            updatePlaybackState {
-                                it.copy(
-                                    isLoading = false,
-                                    errorMessage = null,
-                                    isCompleted = false,
-                                    durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
-                                )
-                            }
-                        }
-
-                        Player.STATE_ENDED -> {
-                            updatePlaybackState {
-                                it.copy(
-                                    isPlaying = false,
-                                    isLoading = false,
-                                    isCompleted = true,
-                                    progressMillis = player.viewerDurationMillis() ?: it.progressMillis,
-                                    durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
-                                )
-                            }
-                        }
-
-                        else -> Unit
-                    }
-                }
-
-                override fun onIsPlayingChanged(isPlayingValue: Boolean) {
-                    updatePlaybackState {
-                        it.copy(
-                            isLoading = player.playbackState == Player.STATE_BUFFERING,
-                            durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
-                        )
-                    }
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    isPrepared = false
-                    updatePlaybackState {
-                        it.copy(
-                            isPlaying = false,
-                            isLoading = false,
-                            errorMessage = "视频加载失败，请重试",
-                            isCompleted = false,
-                        )
-                    }
-                }
-            }
-            player.addListener(listener)
-            onDispose {
-                player.removeListener(listener)
-                player.release()
-            }
-        }
-    }
-
-    DisposableEffect(isCurrent) {
-        if (!isCurrent) {
-            player?.pause()
-            if (autoPauseOnMediaSwitch) {
-                updatePlaybackState { it.copy(isPlaying = false) }
-            }
-        }
-        onDispose {
-        }
-    }
-
-    LaunchedEffect(isCurrent, isPlaying, errorMessage, videoUrl, retryVersion) {
-        if (player == null) return@LaunchedEffect
-        player.playWhenReady = isCurrent && isPlaying && errorMessage == null
-        if (isCurrent && isPlaying && errorMessage == null) {
-            player.play()
-        } else {
-            player.pause()
-        }
-        while (isCurrent && videoUrl != null && errorMessage == null) {
-            if (isPrepared) {
-                val rawProgressMillis = player.currentPosition.coerceAtLeast(0L)
-                val pendingSeekMillis = pendingSeekTargetMillis
-                val displayedProgressMillis = if (pendingSeekMillis != null) {
-                    val distance = rawProgressMillis - pendingSeekMillis
-                    if (distance in -500L..500L) {
-                        pendingSeekTargetMillis = null
-                        rawProgressMillis
-                    } else {
-                        pendingSeekMillis
-                    }
-                } else {
-                    rawProgressMillis
-                }
-                updatePlaybackState {
-                    it.copy(
-                        progressMillis = displayedProgressMillis,
-                        durationMillis = player.viewerDurationMillis() ?: it.durationMillis,
-                        isLoading = player.playbackState == Player.STATE_BUFFERING,
-                        pendingSeekTargetMillis = pendingSeekTargetMillis,
-                    )
-                }
-            }
-            kotlinx.coroutines.delay(300)
-        }
-    }
-
-    LaunchedEffect(playbackState?.seekRequestNonce, player) {
-        val targetMillis = playbackState?.seekRequestMillis ?: return@LaunchedEffect
-        val normalizedTargetMillis = targetMillis.coerceAtLeast(0L)
-        pendingSeekTargetMillis = normalizedTargetMillis
-        player?.seekTo(normalizedTargetMillis)
-    }
-    val hasServerPosterImage = posterImageRequest != null &&
-        posterImageState is AsyncImagePainter.State.Success
-    val hasExtractedPosterImage = videoPosterState.model != null &&
-        extractedPosterPainter.state !is AsyncImagePainter.State.Error
-    val posterPainter = if (hasServerPosterImage) {
-        posterImagePainter
-    } else {
-        extractedPosterPainter
-    }
-    val hasPosterImage = hasServerPosterImage || hasExtractedPosterImage
-    val hasPendingSeek = playbackState?.pendingSeekTargetMillis != null ||
-        (playbackState?.seekRequestMillis != null && playbackState.seekRequestNonce > 0 && isLoading)
-    val shouldShowPoster = hasPosterImage &&
-        (!isPrepared || hasPendingSeek || (playbackState?.progressMillis ?: 0L) <= 0L || errorMessage != null)
-
-    Box(
-        modifier = modifier
-            .background(ViewerNightBottom),
-    ) {
-        if (!videoUrl.isNullOrBlank() && player != null) {
-            key(retryVersion, retryRequestNonce) {
-                AndroidView(
-                    factory = { viewContext ->
-                        PlayerView(viewContext).apply {
-                            useController = false
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            this.player = player
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { playerView ->
-                        playerView.player = player
-                        if (isCurrent && errorMessage == null && isPlaying) {
-                            player.play()
-                        } else {
-                            player.pause()
-                        }
-                    },
-                )
-            }
-        }
-
-        if (shouldShowPoster) {
-            Image(
-                painter = posterPainter,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
-        } else if (!isPrepared) {
-            ViewerVideoPosterFallback(
-                message = when {
-                    videoUrl.isNullOrBlank() -> "暂无视频地址"
-                    errorMessage != null -> "视频加载失败"
-                    posterImageState is AsyncImagePainter.State.Loading || videoPosterState.isLoading || isLoading -> "视频准备中"
-                    else -> null
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        if (posterImageState is AsyncImagePainter.State.Loading || videoPosterState.isLoading || isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(24.dp),
-                color = ViewerSurface.copy(alpha = 0.88f),
-                strokeWidth = 2.dp,
-            )
-        }
-
-        if (errorMessage != null && !videoUrl.isNullOrBlank()) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(top = 96.dp),
-                shape = RoundedCornerShape(radius.capsule),
-                color = ViewerNightTop.copy(alpha = 0.82f),
-                border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
-                onClick = {
-                    retryVersion += 1
-                    isPrepared = false
-                    updatePlaybackState { it.retryState() }
-                },
-            ) {
-                Text(
-                    text = "重试",
-                    modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = ViewerSurface.copy(alpha = 0.90f),
-                )
-            }
-        }
-    }
-}
-
-private fun canExtractViewerPosterOnClient(url: String): Boolean {
-    val normalized = url.trim().lowercase()
-    return normalized.startsWith("content://") ||
-        normalized.startsWith("file://") ||
-        normalized.startsWith("http://") ||
-        normalized.startsWith("https://") ||
-        normalized.startsWith("/")
-}
-
-@Composable
-internal fun ViewerVideoControls(
-    playbackState: ViewerVideoPlaybackState,
-    durationMillis: Long,
-    onTogglePlayback: () -> Unit,
-    onSeekPlayback: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val safeDurationMillis = durationMillis.coerceAtLeast(0L)
-    var draggedFraction by remember(playbackState.mediaId) { mutableStateOf<Float?>(null) }
-    var releasedSeekMillis by remember(playbackState.mediaId) { mutableStateOf<Long?>(null) }
-    val displayedProgressMillis = when {
-        safeDurationMillis <= 0L -> 0L
-        draggedFraction != null -> (draggedFraction!! * safeDurationMillis)
-            .toLong()
-            .coerceIn(0L, safeDurationMillis)
-        releasedSeekMillis != null -> releasedSeekMillis!!.coerceIn(0L, safeDurationMillis)
-        playbackState.pendingSeekTargetMillis != null -> playbackState.pendingSeekTargetMillis.coerceIn(0L, safeDurationMillis)
-        else -> playbackState.progressMillis.coerceIn(0L, safeDurationMillis)
-    }
-    val displayedFraction = if (safeDurationMillis <= 0L) {
-        0f
-    } else {
-        (displayedProgressMillis.toFloat() / safeDurationMillis.toFloat()).coerceIn(0f, 1f)
-    }
-
-    LaunchedEffect(
-        releasedSeekMillis,
-        playbackState.progressMillis,
-        playbackState.pendingSeekTargetMillis,
-        playbackState.isLoading,
-    ) {
-        val targetMillis = releasedSeekMillis ?: return@LaunchedEffect
-        if (playbackState.pendingSeekTargetMillis == null &&
-            !playbackState.isLoading &&
-            abs(playbackState.progressMillis - targetMillis) <= 650L
-        ) {
-            releasedSeekMillis = null
-        }
-    }
-
-    Surface(
-        modifier = modifier.widthIn(min = 240.dp, max = 420.dp),
-        shape = RoundedCornerShape(radius.xl),
-        color = ViewerNightTop.copy(alpha = 0.76f),
-        border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.08f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clickable(onClick = onTogglePlayback),
-                    shape = CircleShape,
-                    color = ViewerSurface.copy(alpha = 0.14f),
-                    border = BorderStroke(1.dp, ViewerSurface.copy(alpha = 0.10f)),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(11.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        VideoGlyph(
-                            state = if (playbackState.isPlaying) {
-                                VideoGlyphState.PAUSE
-                            } else {
-                                VideoGlyphState.PLAY
-                            },
-                            tint = ViewerSurface.copy(alpha = 0.92f),
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-                ) {
-                    Text(
-                        text = "${formatVideoProgress(displayedProgressMillis)} / ${formatVideoProgress(safeDurationMillis)} · 剩余 ${formatVideoProgress((safeDurationMillis - displayedProgressMillis).coerceAtLeast(0L))}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ViewerSurface.copy(alpha = 0.68f),
-                    )
-                }
-            }
-
-            Slider(
-                value = displayedFraction,
-                onValueChange = { draggedFraction = it.coerceIn(0f, 1f) },
-                onValueChangeFinished = {
-                    val targetFraction = draggedFraction ?: displayedFraction
-                    val targetMillis = if (safeDurationMillis <= 0L) {
-                        0L
-                    } else {
-                        (targetFraction * safeDurationMillis).toLong().coerceIn(0L, safeDurationMillis)
-                    }
-                    releasedSeekMillis = targetMillis
-                    draggedFraction = null
-                    onSeekPlayback(targetMillis)
-                },
-                enabled = safeDurationMillis > 0L && playbackState.errorMessage == null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp),
-            )
-        }
-    }
-}
-
-private fun PhotoFeedItem.viewerAspectRatio(): Float {
-    val widthValue = width
-    val heightValue = height
-    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
-        return widthValue.toFloat() / heightValue.toFloat()
-    }
-    return aspectRatio.coerceAtLeast(0.2f)
-}
-
-internal fun PhotoFeedItem.shouldUseLongImageReading(): Boolean {
-    if (mediaType != AppMediaType.IMAGE) return false
-    val widthValue = width
-    val heightValue = height
-    if (widthValue != null && heightValue != null && widthValue > 0 && heightValue > 0) {
-        return heightValue.toFloat() / widthValue.toFloat() >= LongImageHeightWidthRatioThreshold
-    }
-    val normalizedAspectRatio = aspectRatio.takeIf { it > 0f } ?: return false
-    return 1f / normalizedAspectRatio >= LongImageHeightWidthRatioThreshold
-}
-
-internal fun PhotoFeedItem.viewerVideoDurationMillis(): Long {
-    return videoDurationMillis ?: DefaultViewerVideoDurationMillis
-}
-
-private fun ExoPlayer.viewerDurationMillis(): Long? {
-    return duration.takeIf { it != C.TIME_UNSET && it > 0L }
-}
-
-private fun formatVideoProgress(timeMillis: Long): String {
-    val totalSeconds = (timeMillis / 1000L).coerceAtLeast(0L)
-    val minutes = totalSeconds / 60L
-    val seconds = totalSeconds % 60L
-    return "%02d:%02d".format(minutes, seconds)
-}
-
-@Composable
-private fun PhotoViewerEdgeActions(
-    overlayUiModel: PhotoViewerOverlayUiModel,
-    originalActionLabel: String,
-    timeLabel: String,
-    showCommentPreview: Boolean,
-    onOpenComments: () -> Unit,
-    onOpenOriginal: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier,
-    ) {
-        ViewerCommentEntry(
-            commentCountLabel = overlayUiModel.commentCountLabel,
-            previewExpanded = showCommentPreview,
-            onClick = onOpenComments,
-            modifier = Modifier.align(Alignment.CenterStart),
-        )
-
-        ViewerTimeBadge(
-            text = timeLabel,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = (-18).dp),
-        )
-
-        if (overlayUiModel.showOriginalAction) {
-            ViewerCapsule(
-                text = originalActionLabel,
-                emphasized = overlayUiModel.originalLoadState == OriginalLoadState.Loaded,
-                enabled = overlayUiModel.originalLoadState != OriginalLoadState.Loading,
-                onClick = onOpenOriginal,
-                modifier = Modifier.align(Alignment.CenterEnd),
-            )
-        } else {
-            ViewerCapsule(
-                text = "原图已保存",
-                emphasized = false,
-                surfaceAlpha = 0.08f,
-                contentAlpha = 0.78f,
-                modifier = Modifier.align(Alignment.CenterEnd),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ViewerCommentEntry(
-    commentCountLabel: String,
-    previewExpanded: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Row(
-        modifier = modifier
-            .yingShiClickable(
-                shape = RoundedCornerShape(radius.capsule),
-                pressedScale = 0.96f,
-                onClick = onClick,
-            ),
-        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = ViewerAccent.copy(alpha = if (previewExpanded) 0.24f else 0.14f),
-            border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.18f)),
-        ) {
-            Text(
-                text = "评",
-                modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.sm),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = ViewerSurface.copy(alpha = 0.94f),
-            )
-        }
-
-        if (commentCountLabel != "0") {
-            ViewerCapsule(
-                text = commentCountLabel,
-                emphasized = true,
-                surfaceAlpha = if (previewExpanded) 0.18f else 0.14f,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ViewerCapsule(
-    text: String,
-    emphasized: Boolean,
-    modifier: Modifier = Modifier,
-    surfaceAlpha: Float = if (emphasized) 0.14f else 0.10f,
-    contentAlpha: Float = 0.94f,
-    enabled: Boolean = true,
-    onClick: (() -> Unit)? = null,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val shape = RoundedCornerShape(radius.capsule)
-
-    Surface(
-        modifier = modifier
-            .then(
-                if (onClick != null && enabled) {
-                    Modifier.yingShiClickable(shape = shape, pressedScale = 0.96f, onClick = onClick)
-                } else {
-                    Modifier
-                },
-            ),
-        shape = shape,
-        color = ViewerNightTop.copy(alpha = if (enabled) surfaceAlpha + 0.26f else 0.22f),
-        border = BorderStroke(
-            width = 1.dp,
-            color = ViewerAccent.copy(alpha = if (enabled) surfaceAlpha + 0.10f else 0.08f),
-        ),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = spacing.sm, vertical = spacing.xs),
-            style = if (emphasized) {
-                MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-            } else {
-                MaterialTheme.typography.labelLarge
-            },
-            color = ViewerSurface.copy(alpha = if (enabled) contentAlpha else 0.58f),
-        )
-    }
-}
-
-@Composable
-private fun ViewerCommentPreviewLayer(
-    comments: List<CommentUiModel>,
-    onOpenComment: (String) -> Unit,
-    onAddComment: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val shape = RoundedCornerShape(radius.lg)
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth(ViewerLayoutTuning.commentPreviewWidthFraction)
-            .widthIn(max = ViewerLayoutTuning.commentPreviewMaxWidth)
-            .height(ViewerLayoutTuning.commentPreviewHeight),
-        shape = shape,
-        color = ViewerNightTop.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.20f)),
-    ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            ViewerAccent.copy(alpha = 0.14f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(0f, 0f),
-                        radius = 360f,
-                    ),
-                ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = spacing.md, vertical = spacing.md),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "媒体评论",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        color = ViewerSurface.copy(alpha = 0.90f),
-                    )
-                    ViewerCapsule(
-                        text = "添加评论",
-                        emphasized = false,
-                        surfaceAlpha = 0.12f,
-                        contentAlpha = 0.88f,
-                        onClick = onAddComment,
-                    )
-                }
-                if (comments.isEmpty()) {
-                    Text(
-                        text = "当前媒体还没有评论",
-                        modifier = Modifier.padding(horizontal = spacing.xs, vertical = spacing.xs),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ViewerSurface.copy(alpha = 0.64f),
-                    )
-                } else {
-                    comments.forEach { comment ->
-                        Text(
-                            text = "${comment.author}：${comment.content}",
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(radius.sm))
-                                .clickable { onOpenComment(comment.id) }
-                                .padding(horizontal = spacing.xs, vertical = spacing.xs),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ViewerSurface.copy(alpha = 0.88f),
-                            maxLines = 2,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ViewerCacheActionSheet(
-    cacheState: AppMediaCacheState,
-    onDismiss: () -> Unit,
-    onClearPreviewCache: () -> Unit,
-    onClearOriginalCache: () -> Unit,
-    onClearVideoCache: (() -> Unit)?,
-    onOpenGlobalCacheManagement: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = ViewerNightTop,
-        contentColor = ViewerSurface,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = "清理缓存",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = ViewerSurface.copy(alpha = 0.94f),
-            )
-            Text(
-                text = "当前媒体缓存 ${cacheState.cacheSizeLabel}",
-                style = MaterialTheme.typography.labelMedium,
-                color = ViewerSurface.copy(alpha = 0.62f),
-            )
-            ViewerCacheActionRow(
-                title = "清理预览缓存",
-                subtitle = if (cacheState.previewCached) "当前标记为已缓存" else "当前已是未缓存状态",
-                onClick = onClearPreviewCache,
-            )
-            ViewerCacheActionRow(
-                title = "清理原图缓存",
-                subtitle = if (cacheState.originalCached) {
-                    "清理后会回到“加载原图”"
-                } else {
-                    "当前原图尚未缓存"
-                },
-                onClick = onClearOriginalCache,
-            )
-            if (onClearVideoCache != null) {
-                ViewerCacheActionRow(
-                    title = "清理视频缓存",
-                    subtitle = if (cacheState.videoCached) "当前视频缓存可清理" else "当前视频已是未缓存状态",
-                    onClick = onClearVideoCache,
-                )
-            }
-            ViewerCacheActionRow(
-                title = "打开全局缓存管理",
-                subtitle = "查看缓存占用并清理全部预览、原图和视频缓存",
-                onClick = onOpenGlobalCacheManagement,
-            )
-            ViewerSheetActionButton(
-                text = "关闭",
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.End),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ViewerCacheActionRow(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(radius.lg))
-            .background(ViewerSurface.copy(alpha = 0.08f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = spacing.md, vertical = spacing.sm),
-        verticalArrangement = Arrangement.spacedBy(spacing.xxs),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = ViewerSurface.copy(alpha = 0.90f),
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = ViewerSurface.copy(alpha = 0.62f),
-        )
-    }
-}
-
-@Composable
-private fun ViewerSheetActionButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    emphasized: Boolean = false,
-    enabled: Boolean = true,
-) {
-    val shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule)
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        shape = shape,
-        color = if (emphasized) {
-            ViewerSurface.copy(alpha = 0.16f)
-        } else {
-            ViewerSurface.copy(alpha = 0.08f)
-        },
-        border = BorderStroke(1.dp, ViewerSurface.copy(alpha = if (emphasized) 0.18f else 0.10f)),
-        shadowElevation = 0.dp,
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = if (enabled) ViewerSurface.copy(alpha = 0.90f) else ViewerSurface.copy(alpha = 0.38f),
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PhotoViewerCommentSheet(
-    mediaId: String,
-    comments: List<CommentUiModel>,
-    selectedCommentId: String?,
-    autoFocusInput: Boolean,
-    onDismiss: () -> Unit,
-    isLoading: Boolean = false,
-    isMutating: Boolean = false,
-    errorMessage: String? = null,
-    statusMessage: String? = null,
-    onRetry: (() -> Unit)? = null,
-    onCreateComment: (String) -> Unit,
-    onUpdateComment: (String, String) -> Unit,
-    onDeleteComment: (String) -> Unit,
-    onShowNotice: (String, Boolean) -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val copyComment = rememberCommentCopyHandler()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var expanded by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf(false) }
-    var actionCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
-    var editingCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
-    var editingDraft by androidx.compose.runtime.saveable.rememberSaveable(mediaId, stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(""))
-    }
-    var selectedForCopyCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
-    var pendingDeleteCommentId by androidx.compose.runtime.saveable.rememberSaveable(mediaId) { mutableStateOf<String?>(null) }
-    var selectedCommentValue by androidx.compose.runtime.saveable.rememberSaveable(mediaId, stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(""))
-    }
-    var showSelectedCommentNotice by rememberSaveable(mediaId, selectedCommentId) {
-        mutableStateOf(selectedCommentId != null)
-    }
-    val visibleComments = comments.visibleComments(expanded)
-
-    LaunchedEffect(mediaId, selectedCommentId) {
-        if (selectedCommentId == null) {
-            showSelectedCommentNotice = false
-        } else {
-            showSelectedCommentNotice = true
-            kotlinx.coroutines.delay(2400L)
-            showSelectedCommentNotice = false
-        }
-    }
-
-    BackHandler(enabled = selectedForCopyCommentId != null) {
-        selectedForCopyCommentId = null
-        selectedCommentValue = TextFieldValue("")
-    }
-    BackHandler(enabled = actionCommentId != null) {
-        actionCommentId = null
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = ViewerNightTop,
-        contentColor = ViewerSurface,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(ViewerLayoutTuning.commentSheetHeightFraction)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            ViewerNightTop.copy(alpha = 0.98f),
-                            ViewerNightTop.copy(alpha = 0.94f),
-                            ViewerNightBottom.copy(alpha = 0.98f),
-                        ),
-                    ),
-                )
-                .imePadding()
-                .navigationBarsPadding()
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 6.dp, height = 24.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(ViewerAccent.copy(alpha = 0.82f)),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "媒体评论",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = ViewerSurface.copy(alpha = 0.96f),
-                    )
-                    Text(
-                        text = if (comments.isEmpty()) "给这一帧留一句" else "${comments.size} 条留言",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ViewerSurface.copy(alpha = 0.58f),
-                    )
-                }
-            }
-            if (showSelectedCommentNotice) {
-                Text(
-                    text = "已定位到这条评论",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ViewerAccent.copy(alpha = 0.82f),
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(spacing.md),
-            ) {
-                if (errorMessage != null) {
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
-                        Text(
-                            text = errorMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = ViewerSurface.copy(alpha = 0.82f),
-                        )
-                        if (onRetry != null) {
-                            ViewerSheetActionButton(text = "重试", emphasized = true, onClick = onRetry)
-                        }
-                    }
-                }
-                if (isLoading) {
-                    Text(
-                        text = "正在读取媒体评论…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ViewerSurface.copy(alpha = 0.68f),
-                    )
-                } else if (visibleComments.isEmpty()) {
-                    Text(
-                        text = "还没有留言，给这段记忆留一句。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ViewerSurface.copy(alpha = 0.76f),
-                    )
-                } else {
-                    visibleComments.forEach { comment ->
-                        CommentListItem(
-                            comment = comment,
-                            timeLabel = formatViewerTime(comment.createdAtMillis),
-                            onLongPress = {
-                                selectedForCopyCommentId = null
-                                selectedCommentValue = TextFieldValue("")
-                                editingCommentId = null
-                                editingDraft = TextFieldValue("")
-                                pendingDeleteCommentId = null
-                                actionCommentId = comment.id
-                            },
-                            onClick = {
-                                if (selectedForCopyCommentId != null) {
-                                    selectedForCopyCommentId = null
-                                    selectedCommentValue = TextFieldValue("")
-                                }
-                                pendingDeleteCommentId = null
-                                actionCommentId = null
-                            },
-                            darkMode = true,
-                            highlighted = comment.id == selectedCommentId,
-                            showInlineActionMenu = actionCommentId == comment.id &&
-                                selectedForCopyCommentId != comment.id &&
-                                editingCommentId != comment.id,
-                            onCopyFull = {
-                                copyComment(comment.content)
-                                actionCommentId = null
-                            },
-                            onSelectText = {
-                                selectedForCopyCommentId = comment.id
-                                selectedCommentValue = fullCommentSelectionValue(comment.content)
-                                editingCommentId = null
-                                editingDraft = TextFieldValue("")
-                                pendingDeleteCommentId = null
-                                actionCommentId = null
-                            },
-                            onEdit = {
-                                editingCommentId = comment.id
-                                editingDraft = endOfCommentEditValue(comment.content)
-                                selectedForCopyCommentId = null
-                                selectedCommentValue = TextFieldValue("")
-                                pendingDeleteCommentId = null
-                                actionCommentId = null
-                            },
-                            onDelete = {
-                                if (pendingDeleteCommentId == comment.id) {
-                                    onDeleteComment(comment.id)
-                                    if (selectedForCopyCommentId == comment.id) {
-                                        selectedForCopyCommentId = null
-                                        selectedCommentValue = TextFieldValue("")
-                                    }
-                                    if (editingCommentId == comment.id) {
-                                        editingCommentId = null
-                                        editingDraft = TextFieldValue("")
-                                    }
-                                    pendingDeleteCommentId = null
-                                    actionCommentId = null
-                                    onShowNotice("评论已删除", true)
-                                } else {
-                                    pendingDeleteCommentId = comment.id
-                                    actionCommentId = comment.id
-                                }
-                            },
-                            confirmingDelete = pendingDeleteCommentId == comment.id,
-                            isEditing = editingCommentId == comment.id,
-                            editingValue = if (editingCommentId == comment.id) editingDraft else endOfCommentEditValue(comment.content),
-                            onEditingValueChange = { editingDraft = it },
-                            onSaveEdit = {
-                                onUpdateComment(comment.id, editingDraft.text)
-                                editingCommentId = null
-                                editingDraft = TextFieldValue("")
-                                pendingDeleteCommentId = null
-                                actionCommentId = null
-                                onShowNotice("评论已更新", true)
-                            },
-                            onCancelEdit = {
-                                editingCommentId = null
-                                editingDraft = TextFieldValue("")
-                            },
-                            selectionMode = selectedForCopyCommentId == comment.id,
-                            selectionFieldValue = if (selectedForCopyCommentId == comment.id) {
-                                selectedCommentValue
-                            } else {
-                                TextFieldValue(comment.content)
-                            },
-                            onSelectionFieldValueChange = { selectedCommentValue = it },
-                            onCopySelection = if (selectedForCopyCommentId == comment.id) {
-                                {
-                                    selectedCommentValue.selectedTextOrNull()?.let(copyComment)
-                                    selectedForCopyCommentId = null
-                                    selectedCommentValue = TextFieldValue("")
-                                }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                }
-                if (comments.hasHiddenComments(expanded)) {
-                    ViewerSheetActionButton(text = "展开更多评论", onClick = { expanded = true })
-                }
-                if (comments.canCollapseComments(expanded)) {
-                    ViewerSheetActionButton(text = "收起到最新 10 条", onClick = { expanded = false })
-                }
-                if (isMutating) {
-                    Text(
-                        text = "正在提交评论操作…",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = ViewerSurface.copy(alpha = 0.72f),
-                    )
-                }
-            }
-            CommentInputBar(
-                stateKey = "media-comment-input-$mediaId",
-                placeholder = "写一条媒体评论",
-                darkMode = true,
-                elevated = true,
-                requestFocusOnShow = autoFocusInput,
-                onSend = { content ->
-                    onCreateComment(content)
-                    expanded = false
-                },
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ViewerRelatedPostsSheet(
-    posts: List<ViewerRelatedPostUiModel>,
-    onSelectPost: (ViewerRelatedPostUiModel) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val spacing = YingShiThemeTokens.spacing
-    val radius = YingShiThemeTokens.radius
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = ViewerNightTop,
-        contentColor = ViewerSurface,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(ViewerLayoutTuning.relatedPostsSheetHeightFraction)
-                .padding(horizontal = spacing.lg, vertical = spacing.md),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            Text(
-                text = "所属小相册",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = ViewerSurface.copy(alpha = 0.94f),
-            )
-            if (posts.isEmpty()) {
-                Spacer(modifier = Modifier.height(2.dp))
-            } else {
-                posts.forEach { post ->
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(radius.lg))
-                            .background(ViewerSurface.copy(alpha = 0.08f))
-                            .clickable { onSelectPost(post) }
-                            .padding(horizontal = spacing.md, vertical = spacing.sm),
-                        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = post.title,
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                                color = ViewerSurface.copy(alpha = 0.88f),
-                            )
-                            if (post.subtitle.isNotBlank()) {
-                                ViewerRelatedAlbumTag(text = post.subtitle)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ViewerRelatedAlbumTag(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
-        color = ViewerAccent.copy(alpha = 0.14f),
-        border = BorderStroke(1.dp, ViewerAccent.copy(alpha = 0.22f)),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = ViewerSurface.copy(alpha = 0.86f),
-            maxLines = 1,
-        )
-    }
-}
-
-private fun fakeViewerPreviewComments(media: PhotoFeedItem): List<CommentUiModel> {
-    if (media.commentCount <= 0) return emptyList()
-
-    val bodies = listOf(
-        "这张的光很温柔，像那天刚好慢下来了一点。",
-        "我记得这里，当时风特别轻。",
-        "这个角度好像比现场更安静。",
-        "这张适合单独留一句。",
-    )
-    return List(media.commentCount.coerceAtMost(ViewerLayoutTuning.previewCommentsMaxCount)) { index ->
-        CommentUiModel(
-            id = "${media.mediaId}-preview-$index",
-            targetType = CommentTargetType.Media,
-            targetId = media.mediaId,
-            author = if (index % 2 == 0) "我" else "你",
-            content = bodies[index % bodies.size],
-            createdAtMillis = media.mediaDisplayTimeMillis - (index * 7 * 60 * 1000L),
-        )
-    }
-}
-
-private fun buildViewerRelatedPosts(
-    media: PhotoFeedItem,
-    sourcePostRoute: PostDetailPlaceholderRoute?,
-    routeOverrides: Map<String, PostDetailPlaceholderRoute> = emptyMap(),
-    albumTitleById: Map<String, String> = emptyMap(),
-): List<ViewerRelatedPostUiModel> {
-    return media.postIds.distinct().map { postId ->
-        val route = routeOverrides[postId] ?: buildViewerRelatedPostRoute(
-            media = media,
-            postId = postId,
-            sourcePostRoute = sourcePostRoute,
-        )
-        ViewerRelatedPostUiModel(
-            id = postId,
-            title = route.title,
-            subtitle = route.viewerRelatedAlbumLabel(albumTitleById),
-            route = route,
-        )
-    }
-}
-
-private fun SmallAlbumDetailRoute.viewerRelatedAlbumLabel(
-    albumTitleById: Map<String, String>,
-): String {
-    val title = albumIds
-        .asSequence()
-        .mapNotNull { albumId ->
-            albumTitleById[albumId]
-                ?: FakeAlbumRepository.getAlbum(albumId)?.title
-        }
-        .firstOrNull()
-    return title?.let { "大相册 $it" }.orEmpty()
-}
-
-private fun buildCachedViewerRelatedPostRoutes(
-    postIds: List<String>,
-    sourcePostRoute: PostDetailPlaceholderRoute?,
-): Map<String, PostDetailPlaceholderRoute> {
-    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return emptyMap()
-    val cachedDirectory = AppReadCacheStore.readAlbumDirectory(userId)?.payload ?: return emptyMap()
-    val summariesById = cachedDirectory.postsByAlbumId.values
-        .flatten()
-        .associateBy { it.postId }
-    return postIds.mapNotNull { postId ->
-        if (sourcePostRoute?.postId == postId) {
-            postId to sourcePostRoute
-        } else {
-            val summary = summariesById[postId] ?: return@mapNotNull null
-            postId to summary.toPostDetailPlaceholderRoute(
-                selectedAlbumId = summary.albumIds.firstOrNull().orEmpty().ifBlank {
-                    summary.albumId
-                },
-            )
-        }
-    }.toMap()
-}
-
-private fun buildCachedViewerAlbumTitleMap(): Map<String, String> {
-    val userId = AuthSessionManager.getCurrentUserSnapshot()?.userId ?: return emptyMap()
-    return AppReadCacheStore.readAlbumDirectory(userId)
-        ?.payload
-        ?.albums
-        .orEmpty()
-        .associate { it.albumId to it.title }
-}
-
-private fun buildViewerRelatedPostRoute(
-    media: PhotoFeedItem,
-    postId: String,
-    sourcePostRoute: PostDetailPlaceholderRoute?,
-): PostDetailPlaceholderRoute {
-    if (sourcePostRoute?.postId == postId) {
-        return sourcePostRoute
-    }
-    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
-        FakeAlbumRepository.getPost(postId)?.let { post ->
-            return FakeAlbumRepository.toPostDetailRoute(post)
-        }
-    }
-    val fallbackTitle = sourcePostRoute
-        ?.takeIf { it.postId == postId }
-        ?.title
-        ?: "未命名小相册"
-    val fallbackSummary = sourcePostRoute
-        ?.takeIf { it.postId == postId }
-        ?.summary
-        ?: ""
-    return PostDetailPlaceholderRoute(
-        postId = postId,
-        albumId = sourcePostRoute?.albumId ?: "viewer-related",
-        albumIds = sourcePostRoute?.albumIds ?: listOf("viewer-related"),
-        title = fallbackTitle,
-        summary = fallbackSummary,
-        postDisplayTimeMillis = media.mediaDisplayTimeMillis,
-        mediaCount = 0,
-        coverPalette = media.palette,
-        coverMediaType = media.mediaType,
-        coverAspectRatio = media.aspectRatio,
-    )
-}
-
-private fun deleteFakeViewerMedia(item: PhotoFeedItem) {
-    val selectedIds = setOf(item.mediaId)
-    val outcome = FakeAlbumRepository.previewGlobalMediaDelete(selectedIds)
-    val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(FakeAlbumRepository::snapshotPost)
-    val relationSnapshotsByMediaId = FakeAlbumRepository.snapshotMediaRelations(selectedIds)
-
-    FakeTrashRepository.recordSystemDeletedMedia(
-        mediaSnapshots = listOf(
-            TrashMediaSnapshot(
-                mediaId = item.mediaId,
-                displayTimeMillis = item.mediaDisplayTimeMillis,
-                palette = item.palette,
-                mediaType = item.mediaType,
-                aspectRatio = item.aspectRatio,
-                width = item.width,
-                height = item.height,
-                videoDurationMillis = item.videoDurationMillis,
-                mediaSource = item.mediaSource,
-                sourcePostId = item.postIds.firstOrNull(),
-                sourcePostTitle = item.postIds.firstOrNull()?.let(FakeAlbumRepository::getPost)?.title,
-            ),
-        ),
-        relationSnapshotsByMediaId = relationSnapshotsByMediaId,
-    )
-    deletedPostSnapshots.forEach(FakeTrashRepository::recordDeletedPost)
-    val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(selectedIds)
-    FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds)
-}
-
-private suspend fun deleteRealViewerMedia(mediaId: String): String? {
-    if (!AuthSessionManager.isLoggedIn) {
-        return "请先连接服务，再删除这项媒体。"
-    }
-    return when (val result = RepositoryProvider.mediaRepository.systemDeleteMedia(mediaId)) {
-        is ApiResult.Success -> {
-            TrashActorHintStore.record(
-                item = result.data,
-                fallbackActorUserId = currentCollaboratorActorUserId(),
-            )
-            notifyRealBackendContentChanged(
-                mediaIds = setOf(mediaId),
-            )
-            null
-        }
-        is ApiResult.Error -> result.toBackendUiMessage("删除真实媒体失败。")
-        ApiResult.Loading -> null
-    }
-}
-
-private fun buildViewerTimeMillis(
-    selectedDateMillis: Long,
-    hour: Int,
-    minute: Int,
-): Long {
-    return Calendar.getInstance(Locale.CHINA).run {
-        timeInMillis = selectedDateMillis
-        set(Calendar.HOUR_OF_DAY, hour.coerceIn(0, 23))
-        set(Calendar.MINUTE, minute.coerceIn(0, 59))
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-        timeInMillis
-    }
-}
-
-private fun PhotoFeedItem.withViewerDisplayTime(timeMillis: Long): PhotoFeedItem {
-    val calendar = Calendar.getInstance(Locale.CHINA).apply {
-        timeInMillis = timeMillis
-    }
-    return copy(
-        mediaDisplayTimeMillis = timeMillis,
-        displayYear = calendar.get(Calendar.YEAR),
-        displayMonth = calendar.get(Calendar.MONTH) + 1,
-        displayDay = calendar.get(Calendar.DAY_OF_MONTH),
-        displayTimeSource = DisplayTimeSourceManual,
-    )
-}
-
-private fun formatViewerTime(timeMillis: Long): String {
-    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timeMillis))
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun PhotoViewerScreenPreview() {
-    YingShiTheme(darkTheme = true) {
-        PhotoViewerScreen(
-            route = PhotoViewerRoute(
-                mediaItems = FakePhotoFeedRepository.getPhotoFeed(),
-                initialIndex = 0,
-                sourceLabel = "照片页全局媒体流",
-                showSmallAlbumSegments = false,
-            ),
-            onBack = { },
-        )
-    }
+        } // close inner content Box
+    } // close outer Box
 }
 

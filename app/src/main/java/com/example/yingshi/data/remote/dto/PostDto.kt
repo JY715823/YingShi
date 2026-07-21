@@ -107,6 +107,12 @@ data class UpdatePostMediaOrderRequestDto(
 
 typealias UpdateSmallAlbumMediaOrderRequestDto = UpdatePostMediaOrderRequestDto
 
+data class UpdatePostMediaBatchRequestDto(
+    val removeMediaIds: List<String>,
+)
+
+typealias UpdateSmallAlbumMediaBatchRequestDto = UpdatePostMediaBatchRequestDto
+
 data class AddPostMediaRequestDto(
     val mediaIds: List<String>,
     val coverMediaId: String? = null,

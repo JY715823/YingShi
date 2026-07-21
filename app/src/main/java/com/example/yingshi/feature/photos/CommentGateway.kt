@@ -7,43 +7,10 @@ import com.example.yingshi.data.repository.CommentRepository
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.data.remote.result.ApiResult
 
+// Round 2 FR-3: FAKE-mode methods removed — FAKE screens now call FakeCommentRepository directly.
 object CommentGateway {
     val repository: CommentRepository
         get() = RepositoryProvider.commentRepository
-
-    fun getPostComments(postId: String): List<CommentUiModel> {
-        return FakeCommentRepository.getPostComments(postId)
-    }
-
-    fun getMediaComments(mediaId: String): List<CommentUiModel> {
-        return FakeCommentRepository.getMediaComments(mediaId)
-    }
-
-    fun addPostComment(postId: String, content: String) {
-        FakeCommentRepository.addPostComment(postId, content)
-    }
-
-    fun addMediaComment(mediaId: String, content: String) {
-        FakeCommentRepository.addMediaComment(mediaId, content)
-    }
-
-    fun updatePostComment(postId: String, commentId: String, content: String) {
-        FakeCommentRepository.updatePostComment(postId, commentId, content)
-    }
-
-    fun updateMediaComment(mediaId: String, commentId: String, content: String) {
-        FakeCommentRepository.updateMediaComment(mediaId, commentId, content)
-    }
-
-    fun deletePostComment(postId: String, commentId: String) {
-        FakeCommentRepository.deletePostComment(postId, commentId)
-    }
-
-    fun deleteMediaComment(mediaId: String, commentId: String) {
-        FakeCommentRepository.deleteMediaComment(mediaId, commentId)
-    }
-
-    fun mediaCommentCount(mediaId: String): Int = FakeCommentRepository.mediaCommentCount(mediaId)
 
     suspend fun loadPostComments(
         postId: String,
