@@ -2,7 +2,7 @@ package com.example.yingshi.feature.photos
 
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.result.ApiResult
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -22,7 +22,7 @@ import org.junit.Test
  *
  * 测试策略：
  * - 使用 FakeTrashRepository 控制 repository 返回值
- * - 使用 AuthSessionManager.saveTokens 模拟已登录状态（绕过 BackendAutoLoginManager 路径）
+ * - 使用 AuthSessionManager.saveTokens 模拟已登录状态（绕过 BackendSessionProbe 路径）
  * - 不设置 currentUserSnapshot，使 readCachedList/persistTrashList 返回 null（绕过 AppReadCacheStore）
  * - 使用 UnconfinedTestDispatcher 让 viewModelScope 协程立即执行
  */
@@ -46,7 +46,7 @@ class RealTrashListViewModelTest {
         fakeRepo = FakeTrashRepository()
         AuthSessionManager.clearTokensPreservingReadCache()
         AuthSessionManager.saveTokens(validTokens())
-        BackendAutoLoginManager.markLoggedOut("test-setup")
+        BackendSessionProbe.markLoggedOut("test-setup")
     }
 
     @After

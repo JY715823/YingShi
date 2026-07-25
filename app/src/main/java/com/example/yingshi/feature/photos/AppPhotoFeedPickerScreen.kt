@@ -29,8 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -78,132 +76,14 @@ fun AppPhotoFeedPickerScreen(
 
     BackHandler(onBack = ::handleBackRequest)
 
-    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        val sessionKey = realBackendSessionKey("photo-feed-picker")
-        val viewModel: RealPhotoFeedViewModel = viewModel(
-            key = sessionKey,
-            factory = RealPhotoFeedViewModel.factory(),
-        )
-        val uiState by viewModel.uiState.collectAsState()
-        val visibleItems = remember(uiState.feedItems, excludedMediaIds) {
-            uiState.feedItems.filterNot { excludedMediaIds.contains(it.mediaId) }
-        }
-        Box(modifier = modifier.fillMaxSize()) {
-            PhotoFeedPickerScaffold(
-                title = title,
-                confirmLabel = confirmLabel,
-                selectionState = selectionState,
-                onSelectionStateChange = {
-                    selectionState = it.copy(isInSelectionMode = true)
-                },
-                onBack = ::handleBackRequest,
-                onConfirm = {
-                    val selectedIdSet = selectionState.selectedMediaIds
-                    val selectedItems = visibleItems
-                        .filter { selectedIdSet.contains(it.mediaId) }
-                        .map(PhotoFeedItem::toCreatePostAppMediaItem)
-                    onConfirm(selectedItems)
-                },
-                modifier = Modifier.fillMaxSize(),
-                body = {
-                    when {
-                        uiState.tokenMissing -> {
-                            BackendNoticeCard(
-                                title = "需要连接服务",
-                                text = uiState.errorMessage ?: "请先完成登录后再选择照片。",
-                                actionLabel = "重试",
-                                onAction = viewModel::refresh,
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                        }
-
-                        uiState.isLoading && visibleItems.isEmpty() -> {
-                            BackendLoadingCard(
-                                text = "正在读取照片流…",
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                        }
-
-                        uiState.errorMessage != null && visibleItems.isEmpty() -> {
-                            BackendNoticeCard(
-                                title = "读取照片流失败",
-                                text = uiState.errorMessage ?: "当前无法读取照片流。",
-                                actionLabel = "重试",
-                                onAction = viewModel::refresh,
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                        }
-
-                        visibleItems.isEmpty() -> {
-                            BackendNoticeCard(
-                                title = "没有可选媒体",
-                                text = "当前照片流里没有可加入的媒体。",
-                                actionLabel = "返回",
-                                onAction = onBack,
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                        }
-
-                        else -> {
-                            PhotoFeedScreen(
-                                feedItems = visibleItems,
-                                modifier = Modifier.fillMaxSize(),
-                                pageStateStore = localPageStateStore,
-                                selectionState = selectionState,
-                                bottomOverlayPadding = 88.dp,
-                                isLoadingMore = uiState.isLoadingMore,
-                                hasMore = uiState.hasMore,
-                                loadMoreErrorMessage = uiState.loadMoreErrorMessage,
-                                onSelectionStateChange = {
-                                    selectionState = it.copy(isInSelectionMode = true)
-                                },
-                                onLoadMore = viewModel::loadNextPage,
-                                onRetryLoadMore = viewModel::retryLoadNextPage,
-                                onOpenViewer = { viewerRoute = it },
-                                onShowNotice = ::showNotice,
-                                inlineVideoAutoPlayEnabled = false,
-                                allowOpenMediaWhileSelecting = true,
-                                disabledMediaIds = disabledMediaIds,
-                                disabledSelectionLabel = disabledSelectionLabel,
-                            )
-                        }
-                    }
-                },
-            )
-            if (showExitConfirm) {
-                PickerExitConfirmDialog(
-                    onDismiss = { showExitConfirm = false },
-                    onLeave = {
-                        showExitConfirm = false
-                        onBack()
-                    },
-                )
-            }
-            viewerRoute?.let { route ->
-                PhotoViewerScreen(
-                    route = route,
-                    onBack = { viewerRoute = null },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            YingShiNoticeHost(
-                notice = notice,
-                onExpired = { nonce ->
-                    if (notice?.nonce == nonce) {
-                        notice = null
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = YingShiThemeTokens.spacing.sm),
-            )
-        }
-        return
-    }
-
-    val visibleItems = remember(excludedMediaIds) {
-        FakePhotoFeedRepository.getPhotoFeed().filterNot { excludedMediaIds.contains(it.mediaId) }
+    val sessionKey = realBackendSessionKey("photo-feed-picker")
+    val viewModel: RealPhotoFeedViewModel = viewModel(
+        key = sessionKey,
+        factory = RealPhotoFeedViewModel.factory(),
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    val visibleItems = remember(uiState.feedItems, excludedMediaIds) {
+        uiState.feedItems.filterNot { excludedMediaIds.contains(it.mediaId) }
     }
     Box(modifier = modifier.fillMaxSize()) {
         PhotoFeedPickerScaffold(
@@ -223,41 +103,70 @@ fun AppPhotoFeedPickerScreen(
             },
             modifier = Modifier.fillMaxSize(),
             body = {
-                if (visibleItems.isEmpty()) {
-                    BackendNoticeCard(
-                        title = "没有可选媒体",
-                        text = "当前照片流里没有可加入的媒体。",
-                        actionLabel = "返回",
-                        onAction = onBack,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                } else {
-                    PhotoFeedScreen(
-                        feedItems = visibleItems,
-                        modifier = Modifier.fillMaxSize(),
-                        pageStateStore = localPageStateStore,
-                        selectionState = selectionState,
-                        bottomOverlayPadding = 88.dp,
-                        onSelectionStateChange = {
-                            selectionState = it.copy(isInSelectionMode = true)
-                        },
-                        onOpenViewer = { viewerRoute = it },
-                        onShowNotice = ::showNotice,
-                        inlineVideoAutoPlayEnabled = false,
-                        allowOpenMediaWhileSelecting = true,
-                        disabledMediaIds = disabledMediaIds,
-                        disabledSelectionLabel = disabledSelectionLabel,
-                    )
+                when {
+                    uiState.tokenMissing -> {
+                        BackendNoticeCard(
+                            title = "需要连接服务",
+                            text = uiState.errorMessage ?: "请先完成登录后再选择照片。",
+                            actionLabel = "重试",
+                            onAction = viewModel::refresh,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                    uiState.isLoading && visibleItems.isEmpty() -> {
+                        BackendLoadingCard(
+                            text = "正在读取照片流…",
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                    uiState.errorMessage != null && visibleItems.isEmpty() -> {
+                        BackendNoticeCard(
+                            title = "读取照片流失败",
+                            text = uiState.errorMessage ?: "当前无法读取照片流。",
+                            actionLabel = "重试",
+                            onAction = viewModel::refresh,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                    visibleItems.isEmpty() -> {
+                        BackendNoticeCard(
+                            title = "没有可选媒体",
+                            text = "当前照片流里没有可加入的媒体。",
+                            actionLabel = "返回",
+                            onAction = onBack,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                    else -> {
+                        PhotoFeedScreen(
+                            feedItems = visibleItems,
+                            modifier = Modifier.fillMaxSize(),
+                            pageStateStore = localPageStateStore,
+                            selectionState = selectionState,
+                            bottomOverlayPadding = 88.dp,
+                            isLoadingMore = uiState.isLoadingMore,
+                            hasMore = uiState.hasMore,
+                            loadMoreErrorMessage = uiState.loadMoreErrorMessage,
+                            onSelectionStateChange = {
+                                selectionState = it.copy(isInSelectionMode = true)
+                            },
+                            onLoadMore = viewModel::loadNextPage,
+                            onRetryLoadMore = viewModel::retryLoadNextPage,
+                            onOpenViewer = { viewerRoute = it },
+                            onShowNotice = ::showNotice,
+                            inlineVideoAutoPlayEnabled = false,
+                            allowOpenMediaWhileSelecting = true,
+                            disabledMediaIds = disabledMediaIds,
+                            disabledSelectionLabel = disabledSelectionLabel,
+                        )
+                    }
                 }
             },
         )
-        viewerRoute?.let { route ->
-            PhotoViewerScreen(
-                route = route,
-                onBack = { viewerRoute = null },
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
         if (showExitConfirm) {
             PickerExitConfirmDialog(
                 onDismiss = { showExitConfirm = false },
@@ -265,6 +174,13 @@ fun AppPhotoFeedPickerScreen(
                     showExitConfirm = false
                     onBack()
                 },
+            )
+        }
+        viewerRoute?.let { route ->
+            PhotoViewerScreen(
+                route = route,
+                onBack = { viewerRoute = null },
+                modifier = Modifier.fillMaxSize(),
             )
         }
         YingShiNoticeHost(

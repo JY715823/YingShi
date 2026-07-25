@@ -412,11 +412,6 @@ fun SettingsScreen(
                                             checked = viewerPreferences.autoPauseVideoOnMediaSwitch,
                                             onCheckedChange = { SettingsRepository.updateAutoPauseVideoOnMediaSwitch(it) },
                                         )
-                                        SettingsInfoRow(
-                                            title = "原图加载方式",
-                                            subtitle = "当前保持按需加载，避免看图时默默占满缓存。",
-                                            value = "按需加载",
-                                        )
                                     }
                                 }
 
@@ -695,13 +690,6 @@ fun SettingsScreen(
                                             subtitle = "查看服务地址、重新连接和当前兜底状态。",
                                             icon = Icons.Rounded.Cloud,
                                             onClick = { onOpenBackendDiagnostics(BackendDiagnosticsRoute(source = "settings")) },
-                                        )
-                                        YingShiEntryCard(
-                                            title = "退出登录",
-                                            subtitle = "清除当前账号会话",
-                                            icon = Icons.Rounded.Login,
-                                            backgroundColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.70f),
-                                            onClick = onLogout,
                                         )
                                     }
                                 }

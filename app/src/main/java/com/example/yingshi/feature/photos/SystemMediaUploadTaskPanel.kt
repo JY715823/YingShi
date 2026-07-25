@@ -52,10 +52,10 @@ fun SystemMediaUploadTaskPanel(
                     UploadState.WAITING -> colors.textSecondary
                     UploadState.UPLOADING -> colors.titleAccent
                     UploadState.SUCCESS -> colors.softGreenAction
-                    UploadState.FAILURE -> MaterialTheme.colorScheme.error
+                    UploadState.FAILED -> MaterialTheme.colorScheme.error
                     UploadState.CANCELLED -> colors.textSecondary
                 }
-                val trackColor = if (task.state == UploadState.FAILURE) {
+                val trackColor = if (task.state == UploadState.FAILED) {
                     MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.62f)
                 } else {
                     colors.sectionBackground.copy(alpha = 0.88f)
@@ -139,7 +139,7 @@ private fun taskStateLabel(task: SystemMediaUploadTaskUiModel): String {
         UploadState.WAITING -> "等待上传"
         UploadState.UPLOADING -> "正在上传 ${task.progressPercent}%"
         UploadState.SUCCESS -> "上传成功"
-        UploadState.FAILURE -> task.errorMessage ?: "上传失败"
+        UploadState.FAILED -> task.errorMessage ?: "上传失败"
         UploadState.CANCELLED -> "已取消"
     }
 }

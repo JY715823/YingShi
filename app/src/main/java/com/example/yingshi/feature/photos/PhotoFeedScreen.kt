@@ -45,6 +45,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -100,7 +101,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.imageLoader
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
@@ -114,6 +114,9 @@ import com.example.yingshi.ui.theme.YingShiThemeTokens
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
@@ -310,6 +313,8 @@ fun PhotoFeedScreen(
     var feedViewportBounds by remember { mutableStateOf<Rect?>(null) }
     val itemBoundsByMediaId = remember { mutableStateMapOf<String, Rect>() }
     var densityTransitionStage by remember { mutableStateOf(PhotoFeedDensityTransitionStage.IDLE) }
+    // P1: 记录最后滚动方向（正=向下，负=向上，0=静止），供滚动停止后二次预加载使用
+    var lastScrollDirection by remember { mutableIntStateOf(0) }
     var densityPreviewState by remember { mutableStateOf<DiscreteZoomPreviewState<PhotoFeedDensity>?>(null) }
     var densityTransitionAnchorMediaId by remember { mutableStateOf<String?>(null) }
     var densityTransitionPreviewCandidates by remember {
@@ -510,36 +515,34 @@ fun PhotoFeedScreen(
             }
         }
     }
-    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        val context = LocalContext.current
-        val sessionVersion = AuthSessionManager.sessionVersion
-        val accessToken = remember(sessionVersion) {
-            AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
-        }
-        LaunchedEffect(visibleInlineVideoIds, mediaById, accessToken, thumbnailRequestSize) {
-            val imageLoader = context.imageLoader
-            visibleInlineVideoIds.forEach { mediaId ->
-                val item = mediaById[mediaId] ?: return@forEach
-                val mediaSource = item.mediaSource
-                val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
-                val posterImageCacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType)
-                val posterImageDiskCacheKey = mediaSource.videoPosterImageDiskCacheKey(item.mediaType)
-                if (!posterImageUrl.isNullOrBlank()) {
-                    backendMediaImageRequest(
-                        context = context,
+    val context = LocalContext.current
+    val sessionVersion = AuthSessionManager.sessionVersion
+    val accessToken = remember(sessionVersion) {
+        AuthSessionManager.peekAccessToken()?.takeIf { it.isNotBlank() }
+    }
+    LaunchedEffect(visibleInlineVideoIds, mediaById, accessToken, thumbnailRequestSize) {
+        val imageLoader = context.imageLoader
+        visibleInlineVideoIds.forEach { mediaId ->
+            val item = mediaById[mediaId] ?: return@forEach
+            val mediaSource = item.mediaSource
+            val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
+            val posterImageCacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType)
+            val posterImageDiskCacheKey = mediaSource.videoPosterImageDiskCacheKey(item.mediaType)
+            if (!posterImageUrl.isNullOrBlank()) {
+                backendMediaImageRequest(
+                    context = context,
+                    url = posterImageUrl,
+                    accessToken = accessToken,
+                    memoryCacheKey = photoFeedPreviewMemoryCacheKey(
                         url = posterImageUrl,
-                        accessToken = accessToken,
-                        memoryCacheKey = photoFeedPreviewMemoryCacheKey(
-                            url = posterImageUrl,
-                            cacheKey = posterImageCacheKey,
-                            requestSize = transitionThumbnailRequestSize,
-                        ),
-                        placeholderMemoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
-                        diskCacheKey = posterImageDiskCacheKey,
-                        size = transitionThumbnailRequestSize,
-                    )?.let(imageLoader::enqueue)
-                    return@forEach
-                }
+                        cacheKey = posterImageCacheKey,
+                        requestSize = transitionThumbnailRequestSize,
+                    ),
+                    placeholderMemoryCacheKey = posterImageCacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
+                    diskCacheKey = posterImageDiskCacheKey,
+                    size = transitionThumbnailRequestSize,
+                )?.let(imageLoader::enqueue)
+                return@forEach
             }
         }
     }
@@ -1368,6 +1371,82 @@ fun PhotoFeedScreen(
         }
     }
 
+    // 滚动方向感知的持续预取：自然滑动时（非滑条跳转），按方向预热前方 N 行缩略图，
+    // 让用户向上/向下滑时大概率命中内存缓存，毫秒级出图，消除"滑动后空白几秒"体验问题。
+    // 复用现成的 prefetchPhotoFeedAroundAnchor 工具函数，零额外内存成本（仅入 Coil 队列）。
+    // P1 优化：
+    //   - leading/trailing 从 4/12 → 12/24，前方预热范围扩大 2-3 倍，覆盖快速翻页 2-3 屏
+    //   - filter 上限从 12 → 24，快速大跳也能触发预加载
+    //   - 移除 densityTransitionStage==IDLE 限制（密度切换中也允许预加载，避免切换后空白）
+    //   - 记录最后滚动方向，供滚动停止后二次预加载使用
+    LaunchedEffect(listState, blocks.size, density, accessToken, thumbnailRequestSize) {
+        if (blocks.isEmpty()) return@LaunchedEffect
+        var lastIndex = listState.firstVisibleItemIndex
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .drop(1) // 跳过初始位置（已由 PrefetchPhotoFeedThumbnails 覆盖）
+            .filter { newIndex ->
+                // 仅过滤 density 提交瞬间产生的瞬变（COMMITTING 阶段 blocks 在重组），
+                // 其他阶段（PREVIEWING/REBOUNDING/SETTLING/IDLE）都允许预加载
+                densityTransitionStage != PhotoFeedDensityTransitionStage.COMMITTING &&
+                    abs(newIndex - lastIndex) in 1..24
+            }
+            .collect { newIndex ->
+                val direction = newIndex - lastIndex
+                val anchor = newIndex
+                lastIndex = newIndex
+                lastScrollDirection = direction
+                // 向下滑（direction > 0）：多预热下方；向上滑：多预热上方
+                // P1: 扩大到 12/24，让前方 2-3 屏都在预热中，配合 Coil 32 并发能跟上快速翻页
+                val leading = if (direction < 0) 24 else 12
+                val trailing = if (direction > 0) 24 else 12
+                prefetchPhotoFeedAroundAnchor(
+                    blocks = blocks,
+                    anchorIndex = anchor,
+                    leadingRows = leading,
+                    trailingRows = trailing,
+                    context = context,
+                    imageLoader = context.imageLoader,
+                    accessToken = accessToken,
+                    requestSize = thumbnailRequestSize,
+                )
+            }
+    }
+
+    // P1 新增：滚动停止后二次预加载。
+    // 用户快速翻页时第一次预加载可能跟不上（请求 enqueue 但未下载完），
+    // 滚动停止后立刻再预热一次更大范围（前后 12/24 行），覆盖用户继续翻页的可能方向。
+    // 利用 isScrollInProgress 的下降沿触发，仅在滚动结束时跑一次，开销可控。
+    LaunchedEffect(listState, blocks.size, density, accessToken, thumbnailRequestSize) {
+        if (blocks.isEmpty()) return@LaunchedEffect
+        var wasScrolling = false
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { scrolling ->
+                if (scrolling) {
+                    wasScrolling = true
+                } else if (wasScrolling) {
+                    // 下降沿：滚动刚结束，触发二次预加载
+                    wasScrolling = false
+                    val anchor = listState.firstVisibleItemIndex
+                    // 沿用最后滚动方向，侧重预热用户大概率继续翻的方向
+                    val (leading, trailing) = if (lastScrollDirection >= 0) 12 to 24 else 24 to 12
+                    prefetchPhotoFeedAroundAnchor(
+                        blocks = blocks,
+                        anchorIndex = anchor,
+                        leadingRows = leading,
+                        trailingRows = trailing,
+                        context = context,
+                        imageLoader = context.imageLoader,
+                        accessToken = accessToken,
+                        requestSize = thumbnailRequestSize,
+                    )
+                    // 重置方向，避免下次停止时沿用旧方向
+                    lastScrollDirection = 0
+                }
+            }
+    }
+
     LaunchedEffect(listState, blocks.size, hasMore, isLoadingMore, loadMoreErrorMessage) {
         snapshotFlow {
             val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -1821,6 +1900,10 @@ fun PhotoFeedScreen(
                             pausedInlineVideoIds = pausedInlineVideoIds,
                             inlineVideoProgressById = inlineVideoProgressById,
                             animatingDeleteMediaIds = animatingDeleteMediaIds,
+                            // P1 修复：stagger 序号基于视口起点计算（跳转和翻页完全一致）。
+                            // 旧逻辑用全局 rowIndex + skipRevealStagger 短路，导致滑条跳转无动画、
+                            // 慢滚动新行 delay 8s。现统一为相对视口序号 ≤160ms。
+                            staggerAnchorIndex = listState.firstVisibleItemIndex,
                             onToggleInlineVideo = onToggleInlineVideo,
                             onInlineVideoProgressChange = { item, progress ->
                                 inlineVideoProgressById = inlineVideoProgressById + (item.mediaId to progress)
@@ -2046,6 +2129,22 @@ fun PhotoFeedScreen(
                                             index = anchor.itemIndex,
                                             scrollOffset = calculatePhotoFeedScrubberScrollOffset(listState),
                                         )
+                                        // 跳转后预热目标位置周围缩略图，消除"向上翻空白"体验问题。
+                                        // 主因：LazyColumn 默认 prefetch 仅约 1 项，跳转后向上滑时
+                                        // 新进入组合的行需现请求缩略图（带 accessToken 的 backend 请求），
+                                        // 响应延迟可达数百毫秒至数秒，表现为"一片空白"。
+                                        // P1: 扩大预热范围 8/4 → 16/8，覆盖前后各 2 屏，配合 Coil 32 并发
+                                        // 让用户跳转后立即向上/下翻 1-2 屏都能命中缓存毫秒级出图。
+                                        prefetchPhotoFeedAroundAnchor(
+                                            blocks = blocks,
+                                            anchorIndex = anchor.itemIndex,
+                                            leadingRows = 16,
+                                            trailingRows = 8,
+                                            context = context,
+                                            imageLoader = context.imageLoader,
+                                            accessToken = accessToken,
+                                            requestSize = thumbnailRequestSize,
+                                        )
                                     }
                                 }
                             },
@@ -2205,8 +2304,6 @@ private fun PrefetchPhotoFeedThumbnails(
     density: PhotoFeedDensity,
     requestSize: Int,
 ) {
-    if (RepositoryProvider.currentMode != RepositoryMode.REAL) return
-
     val context = LocalContext.current
     val sessionVersion = AuthSessionManager.sessionVersion
     val accessToken = remember(sessionVersion) {
@@ -2296,6 +2393,82 @@ private data class PrefetchTarget(
     val mimeType: String?,
     val extractVideoPoster: Boolean = false,
 )
+
+/**
+ * 时间滑条跳转后预热目标位置周围的缩略图。
+ *
+ * 解决"滑条跳转后向上翻空白"体验问题：LazyColumn 默认 prefetch 仅约 1 项，
+ * 跳转后向上滑时新进入组合的行需现请求缩略图（带 accessToken 的 backend 请求），
+ * 响应延迟可达数百毫秒至数秒。本函数在跳转完成后立即将目标位置前后 N 行的
+ * 缩略图塞入 Coil 队列，用户向上滑时大概率命中内存缓存，毫秒级出图。
+ *
+ * @param blocks 完整的 PhotoFeedBlock 列表
+ * @param anchorIndex 跳转目标在 blocks 中的索引
+ * @param leadingRows 向上预取的行数（向上翻的概率高，多预取）
+ * @param trailingRows 向下预取的行数
+ */
+private fun prefetchPhotoFeedAroundAnchor(
+    blocks: List<PhotoFeedBlock>,
+    anchorIndex: Int,
+    leadingRows: Int,
+    trailingRows: Int,
+    context: android.content.Context,
+    imageLoader: coil.ImageLoader,
+    accessToken: String?,
+    requestSize: Int,
+) {
+    val fromIndex = (anchorIndex - leadingRows).coerceAtLeast(0)
+    val toIndex = (anchorIndex + trailingRows).coerceAtMost(blocks.lastIndex)
+    if (fromIndex > toIndex) return
+
+    for (i in fromIndex..toIndex) {
+        val row = blocks.getOrNull(i) as? PhotoFeedGridRow ?: continue
+        row.items.forEach { item ->
+            val mediaSource = item.mediaSource ?: return@forEach
+            when (item.mediaType) {
+                AppMediaType.IMAGE -> {
+                    val url = mediaSource.thumbnailModelUrl(item.mediaType) ?: return@forEach
+                    val cacheKey = mediaSource.thumbnailModelCacheKey(item.mediaType)
+                    val diskKey = mediaSource.thumbnailModelDiskCacheKey(item.mediaType)
+                    backendMediaImageRequest(
+                        context = context,
+                        url = url,
+                        accessToken = accessToken,
+                        memoryCacheKey = photoFeedPreviewMemoryCacheKey(
+                            url = url,
+                            cacheKey = cacheKey,
+                            requestSize = requestSize,
+                        ),
+                        placeholderMemoryCacheKey = cacheKey ?: sharedPreviewMemoryCacheKey(url),
+                        diskCacheKey = diskKey,
+                        size = requestSize,
+                    )?.let(imageLoader::enqueue)
+                }
+
+                AppMediaType.VIDEO -> {
+                    val posterImageUrl = mediaSource.videoPosterImageUrl(item.mediaType)
+                    if (!posterImageUrl.isNullOrBlank()) {
+                        val cacheKey = mediaSource.videoPosterImageCacheKey(item.mediaType)
+                        val diskKey = mediaSource.videoPosterImageDiskCacheKey(item.mediaType)
+                        backendMediaImageRequest(
+                            context = context,
+                            url = posterImageUrl,
+                            accessToken = accessToken,
+                            memoryCacheKey = photoFeedPreviewMemoryCacheKey(
+                                url = posterImageUrl,
+                                cacheKey = cacheKey,
+                                requestSize = requestSize,
+                            ),
+                            placeholderMemoryCacheKey = cacheKey ?: sharedPreviewMemoryCacheKey(posterImageUrl),
+                            diskCacheKey = diskKey,
+                            size = requestSize,
+                        )?.let(imageLoader::enqueue)
+                    }
+                }
+            }
+        }
+    }
+}
 
 private data class PhotoFeedVisiblePosition(
     val index: Int,
@@ -3058,16 +3231,55 @@ private fun PhotoFeedCollaboratorDividerRow(
     modifier: Modifier = Modifier,
 ) {
     val colors = YingShiThemeTokens.colors
-    Box(
+    // 鲜艳蓝色调，与整体融洽：线条用浅蓝渐变，中心装饰用亮蓝
+    val vividBlue = Color(0xFF4B9FFF)
+    val lineColor = Color(0xFF7DC4FF).copy(alpha = 0.85f)
+    val accentColor = vividBlue.copy(alpha = 0.85f)
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.glassStroke.copy(alpha = 0.55f)),
+                .weight(1f)
+                .height(2.5.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, lineColor, accentColor)
+                    ),
+                ),
+        )
+        Surface(
+            modifier = Modifier
+                .padding(horizontal = 12.dp),
+            shape = RoundedCornerShape(3.dp),
+            color = Color.Transparent,
+            shadowElevation = 2.dp,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 36.dp, height = 6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFB4E0FF), vividBlue)
+                        ),
+                    )
+                    .border(1.dp, vividBlue.copy(alpha = 0.65f), RoundedCornerShape(3.dp)),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(2.5.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(accentColor, lineColor, Color.Transparent)
+                    ),
+                ),
         )
     }
 }
@@ -3496,6 +3708,10 @@ private fun PhotoFeedGridRowContent(
     onOpenMedia: (PhotoFeedItem) -> Unit,
     onMediaLongPress: (PhotoFeedItem) -> Unit,
     animatingDeleteMediaIds: Set<String> = emptySet(),
+    // P1 修复：保留参数签名以减小改动面，但内部不再使用——所有场景统一走完整 stagger。
+    @Suppress("UNUSED_PARAMETER") skipRevealStagger: Boolean = false,
+    // 视口起点索引用于计算相对 stagger 序号；不传则用全局 rowIndex（仅降级兼容）
+    staggerAnchorIndex: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val spacing = rowSpacing(density)
@@ -3503,8 +3719,18 @@ private fun PhotoFeedGridRowContent(
     var rowVisible by remember { mutableStateOf(rowKey in revealedRowKeys) }
     LaunchedEffect(Unit) {
         if (!rowVisible) {
+            // P1 修复：stagger 基于视口相对序号，而非全局 rowIndex。
+            // 此前 `delay(rowIndex * 40L)` 用 LazyColumn 全局索引：
+            //   - 慢滚动时新行 rowIndex=200+，delay=8000ms，导致"等几秒才开始动画"
+            //   - 滑条跳转到第 100 行时 delay=4000ms，作者因此加了 skipRevealStagger 短路
+            //     让滑条跳转完全跳过 stagger，结果"滑条定位没动画"，与前后翻页不一致
+            // 现改为 `delay((rowIndex - staggerAnchorIndex).coerceIn(0, 4) * 40L)`：
+            //   - 相对当前视口起点计算 stagger 序号（0/1/2/3/4）
+            //   - 最大 160ms 上限，无论跳转还是慢滚动都立刻启动入场
+            //   - 滑条跳转和前后翻页完全一致，所有行都有完整 220ms 入场动画 + 波浪感
             if (motionEnabled) {
-                delay(rowIndex * 40L)
+                val staggerIndex = (rowIndex - staggerAnchorIndex).coerceIn(0, 4)
+                delay(staggerIndex * 40L)
             }
             rowVisible = true
             revealedRowKeys.add(rowKey)
@@ -3649,7 +3875,10 @@ private fun PhotoFeedCard(
             modifier = Modifier.matchParentSize(),
             contentDescription = item.mediaId,
             requestSize = thumbnailRequestSize,
-            showLoadingIndicator = false,
+            // 开启加载指示器：滑条跳转后缩略图未命中缓存时显示加载圈，
+            // 避免 palette 占位色与背景色相近时"伪空白"体验。
+            // 正常滚动时图片通常已缓存，不会触发加载圈。
+            showLoadingIndicator = true,
             showVideoPlayOverlay = !(supportsInlineVideo || showSelectionVideoMarker),
         )
 
@@ -4733,7 +4962,7 @@ private fun photoFeedPredictedBlockHeightPx(
         )
 
         is PhotoFeedCollaboratorHeader -> with(densityScope) { 42.dp.toPx() }
-        is PhotoFeedCollaboratorDivider -> with(densityScope) { 13.dp.toPx() }
+        is PhotoFeedCollaboratorDivider -> with(densityScope) { 34.dp.toPx() }
         is PhotoFeedGridRow -> 0f
     }
 }
@@ -5129,7 +5358,7 @@ internal fun rowSpacing(density: PhotoFeedDensity): Dp {
 
 internal fun photoFeedThumbnailRequestSize(density: PhotoFeedDensity): Int {
     return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 960
+        PhotoFeedDensity.COMFORT_2 -> 720
         PhotoFeedDensity.COMFORT_3 -> 720
         PhotoFeedDensity.DENSE_4 -> 512
         PhotoFeedDensity.OVERVIEW_8 -> 256
@@ -5139,31 +5368,25 @@ internal fun photoFeedThumbnailRequestSize(density: PhotoFeedDensity): Int {
 
 private fun photoFeedPrefetchCount(density: PhotoFeedDensity): Int {
     return when (density) {
-        PhotoFeedDensity.COMFORT_2 -> 24
-        PhotoFeedDensity.COMFORT_3 -> 30
-        PhotoFeedDensity.DENSE_4 -> 40
-        PhotoFeedDensity.OVERVIEW_8 -> 64
-        PhotoFeedDensity.OVERVIEW_16 -> 96
+        PhotoFeedDensity.COMFORT_2 -> 32
+        PhotoFeedDensity.COMFORT_3 -> 40
+        PhotoFeedDensity.DENSE_4 -> 56
+        PhotoFeedDensity.OVERVIEW_8 -> 80
+        PhotoFeedDensity.OVERVIEW_16 -> 128
     }
 }
 
 private fun photoFeedPreviewMemoryCacheKey(
     url: String,
     cacheKey: String?,
-    requestSize: Int,
+    @Suppress("UNUSED_PARAMETER") requestSize: Int,
 ): String {
-    if (!cacheKey.isNullOrBlank()) {
-        return if (requestSize >= 512) {
-            cacheKey
-        } else {
-            "$cacheKey:size:$requestSize"
-        }
-    }
-    return if (requestSize >= 512) {
-        sharedPreviewMemoryCacheKey(url)
-    } else {
-        sharedSizedPreviewMemoryCacheKey(url, requestSize)
-    }
+    // P1 修复：与 AppContentMediaThumbnail.thumbnailMemoryCacheKey 保持一致，
+    // 统一缓存键，不再按 requestSize 加 ":size:$size" 后缀。
+    // 否则预取（COMFORT_3=720）和实际渲染（OVERVIEW_8=256）使用不同键，
+    // 预取的图无法命中，等于白做功。统一后预取的图可被任意 density 复用。
+    if (!cacheKey.isNullOrBlank()) return cacheKey
+    return sharedPreviewMemoryCacheKey(url)
 }
 
 @Preview(showBackground = true)

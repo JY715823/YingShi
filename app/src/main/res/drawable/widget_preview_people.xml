@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FR-11: Widget previewImage 兜底（API 24-30 设备选择器预览）。
+  占位预览图：展现人物痕迹 widget 基本结构（标题+双竖相框对角错位+爱心）。
+  后续真机验证时替换为真机截图 PNG（mipmap-xxhdpi/widget_people_preview.png）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="560dp"
+    android:viewportWidth="320"
+    android:viewportHeight="560">
+
+    <!-- 透明背景 -->
+
+    <!-- 标题区 -->
+    <path
+        android:fillColor="#FF26313A"
+        android:pathData="M30,25 h260 v32 h-260 z" />
+    <path
+        android:fillColor="#FF9A6A2A"
+        android:pathData="M30,62 h150 v12 h-150 z" />
+
+    <!-- 上相框（对方·人物，偏左上，竖框） -->
+    <path
+        android:fillColor="#FFFFFC"
+        android:strokeColor="#A0A9E5F2"
+        android:strokeWidth="0.5"
+        android:pathData="M30,110 h130 v200 h-130 z" />
+    <!-- 胶带 -->
+    <path
+        android:fillColor="#C0DFF5F4"
+        android:pathData="M75,105 h40 v12 h-40 z" />
+    <!-- 照片区 -->
+    <path
+        android:fillColor="#FFDFF5F4"
+        android:pathData="M35,125 h120 v170 h-120 z" />
+
+    <!-- 爱心贴纸（两框之间） -->
+    <path
+        android:fillColor="#A0A2473D"
+        android:pathData="M170,210 c-3,-8 -15,-8 -15,2 c0,8 15,18 15,18 c0,0 15,-10 15,-18 c0,-10 -12,-10 -15,-2 z" />
+
+    <!-- 下相框（自己·人物，偏右下，竖框） -->
+    <path
+        android:fillColor="#FFFFFC"
+        android:strokeColor="#A0A9E5F2"
+        android:strokeWidth="0.5"
+        android:pathData="M160,250 h130 v200 h-130 z" />
+    <!-- 胶带 -->
+    <path
+        android:fillColor="#C0A9E5F2"
+        android:pathData="M205,245 h40 v12 h-40 z" />
+    <!-- 照片区 -->
+    <path
+        android:fillColor="#FFDFF5F4"
+        android:pathData="M165,265 h120 v170 h-120 z" />
+</vector>

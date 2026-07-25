@@ -102,7 +102,6 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.AppMediaType
 import com.example.yingshi.feature.photos.OriginalLoadState
@@ -117,6 +116,8 @@ import com.example.yingshi.feature.photos.ViewerTopScrim
 import com.example.yingshi.feature.photos.ViewerTimeEditorSheet
 import com.example.yingshi.feature.photos.actionLabel
 import com.example.yingshi.feature.photos.applyViewerStatusBarVisibility
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.feature.photos.formatMediaDisplayTime
 import com.example.yingshi.feature.photos.hasMeaningfulViewerOriginal
 import com.example.yingshi.feature.photos.resolveAppMediaType
@@ -226,6 +227,20 @@ class LifeMediaQuickViewerActivity : ComponentActivity() {
             return intent(context, media).apply {
                 putExtra(EXTRA_LAUNCHED_FROM_WIDGET, true)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            }
+        }
+
+        /**
+         * FR-6 Round 2: Widget 点击照片打开查看态，携带 slotKey 以便直接定位同 slot 全部媒体。
+         * 同时携带 displayTimeMillis + 地点信息，让首帧占位能正确显示元数据。
+         */
+        fun widgetIntent(context: Context, media: RemoteMedia, slotKey: String): Intent {
+            return widgetIntent(context, media).apply {
+                putExtra(EXTRA_SLOT_KEY, slotKey)
+                putExtra(EXTRA_DISPLAY_TIME_MILLIS, media.displayTimeMillis)
+                media.locationLabel?.let { putExtra(EXTRA_LOCATION_LABEL, it) }
+                media.latitude?.let { putExtra(EXTRA_LOCATION_LAT, it) }
+                media.longitude?.let { putExtra(EXTRA_LOCATION_LNG, it) }
             }
         }
     }
@@ -577,7 +592,6 @@ private fun LifeMediaQuickViewerPager(
         )
     }
     val currentOriginalState = if (
-        RepositoryProvider.currentMode == RepositoryMode.REAL &&
         currentOriginalTarget != null &&
         currentAppMediaType == AppMediaType.IMAGE
     ) {
@@ -588,7 +602,6 @@ private fun LifeMediaQuickViewerPager(
     val canOpenOriginal = currentAppMediaType == AppMediaType.IMAGE &&
         currentOriginalTarget?.mediaSource.hasMeaningfulViewerOriginal(currentAppMediaType)
     val originalActionLabel = if (
-        RepositoryProvider.currentMode == RepositoryMode.REAL &&
         currentOriginalState == OriginalLoadState.Loading &&
         !networkState.isConnected
     ) {
@@ -728,7 +741,6 @@ private fun LifeMediaQuickViewerPager(
                 onEditTime = { showTimeEditorSheet = true },
                 onOpenOriginal = {
                     val target = currentOriginalTarget ?: return@LifeQuickViewerEdgeActions
-                    if (RepositoryProvider.currentMode != RepositoryMode.REAL) return@LifeQuickViewerEdgeActions
                     when {
                         currentAppMediaType != AppMediaType.IMAGE ||
                             !currentOriginalTarget.mediaSource.hasMeaningfulViewerOriginal(currentAppMediaType) -> {
@@ -825,9 +837,9 @@ private fun LifeMediaQuickViewerPager(
         )
     }
 
-    // Round 8 第十六轮: 时间选择器 (复刻照片流 Viewer, 点击日期胶囊弹出).
-    // 注意: 服务端 life-console 媒体暂未提供修改时间的 endpoint, 这里先做本地预览 + 通知,
-    // 让用户在当前查看态看到新时间; 重新进入会还原. 后续可加服务端 endpoint 持久化.
+    // 时间选择器 (复刻照片流 Viewer, 点击日期胶囊弹出).
+    // 通用 endpoint PATCH /api/media/{mediaId}/time 持久化, 与照片流查看态共用.
+    // 不调 notifyRealBackendContentChanged, 避免触发照片流刷新 (life 媒体隔离).
     if (showTimeEditorSheet && currentMedia != null) {
         ViewerTimeEditorSheet(
             initialTimeMillis = currentMedia.displayTimeMillis.takeIf { it > 0L }
@@ -847,7 +859,22 @@ private fun LifeMediaQuickViewerPager(
                         ?: targetIndex.coerceIn(0, sorted.lastIndex)
                     scope.launch { pagerState.scrollToPage(newIndex) }
                 }
-                showViewerNotice("时间已修改（本地预览）", emphasized = true)
+                showViewerNotice("时间已修改", emphasized = true)
+                if (!AuthSessionManager.isLoggedIn) {
+                    showViewerNotice("未登录, 修改仅在本地有效", false)
+                    return@ViewerTimeEditorSheet
+                }
+                scope.launch {
+                    when (val result = RepositoryProvider.mediaRepository.updateMediaTime(targetId, nextTimeMillis)) {
+                        is ApiResult.Success -> {
+                            SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
+                        }
+                        is ApiResult.Error -> {
+                            showViewerNotice("时间修改失败, 请重试", false)
+                        }
+                        ApiResult.Loading -> Unit
+                    }
+                }
             },
         )
     }

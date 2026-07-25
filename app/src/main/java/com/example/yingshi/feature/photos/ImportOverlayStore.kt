@@ -6,8 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.MutationEvent
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.MutationKind
 import org.json.JSONArray
@@ -143,12 +141,6 @@ internal object ImportOverlayStore {
             appMediaIdBySystemSourceKey[sourceKey]
                 ?.takeIf { it !in invalidatedAppMediaIds }
                 ?.let { return it }
-        }
-        if (RepositoryProvider.currentMode != RepositoryMode.REAL) {
-            FakePhotoFeedRepository.findPhotoFeedItem(item.id)?.mediaId?.let { mediaId ->
-                rememberAppMediaIdForSource(item, mediaId)
-                return mediaId
-            }
         }
         return null
     }

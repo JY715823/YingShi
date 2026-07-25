@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  账本胶囊背景（FR-7 账本入口收缩为图标胶囊）
+  替代旧 38dp 文字按钮
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_capsule_bg" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="0.5dp"
+                android:color="@color/widget_capsule_stroke" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+</layer-list>

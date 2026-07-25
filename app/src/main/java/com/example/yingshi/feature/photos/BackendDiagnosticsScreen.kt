@@ -37,7 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 import com.example.yingshi.ui.components.YingShiBackdropVariant
@@ -68,7 +68,7 @@ fun BackendDiagnosticsScreen(
     val colors = YingShiThemeTokens.colors
     val settings = BackendDebugConfig.settings
     val scope = rememberCoroutineScope()
-    val autoLoginState by BackendAutoLoginManager.uiState.collectAsState()
+    val autoLoginState by BackendSessionProbe.uiState.collectAsState()
     val offlineAccessState = OfflineAccessManager.state
     var baseUrlInput by rememberSaveable { mutableStateOf(settings.baseUrl) }
     var isRunning by remember { mutableStateOf(false) }
@@ -83,9 +83,9 @@ fun BackendDiagnosticsScreen(
     val isBusy = isRunning || autoLoginState.inFlight
 
     val connectionTone = when (autoLoginState.phase) {
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Success -> YingShiNoticeTone.SUCCESS
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Failed -> YingShiNoticeTone.WARNING
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.LoggingIn -> YingShiNoticeTone.INFO
+        com.example.yingshi.data.remote.auth.SessionProbePhase.Success -> YingShiNoticeTone.SUCCESS
+        com.example.yingshi.data.remote.auth.SessionProbePhase.Failed -> YingShiNoticeTone.WARNING
+        com.example.yingshi.data.remote.auth.SessionProbePhase.LoggingIn -> YingShiNoticeTone.INFO
         else -> YingShiNoticeTone.WARNING
     }
 
@@ -140,7 +140,7 @@ fun BackendDiagnosticsScreen(
                             scope.launch {
                                 isRunning = true
                                 BackendDebugConfig.updateBaseUrl(baseUrlInput)
-                                val outcome = BackendAutoLoginManager.loginDefault(
+                                val outcome = BackendSessionProbe.probeSessionState(
                                     force = true,
                                     reason = "save_base_url",
                                 )
@@ -201,7 +201,7 @@ fun BackendDiagnosticsScreen(
                             onClick = {
                                 scope.launch {
                                     isRunning = true
-                                    val outcome = BackendAutoLoginManager.loginDefault(
+                                    val outcome = BackendSessionProbe.probeSessionState(
                                         force = true,
                                         reason = "manual_retry",
                                     )
@@ -217,7 +217,7 @@ fun BackendDiagnosticsScreen(
                             text = "退出连接",
                             onClick = {
                                 AuthSessionManager.clearTokens()
-                                BackendAutoLoginManager.markLoggedOut("已退出当前连接。")
+                                BackendSessionProbe.markLoggedOut("已退出当前连接。")
                                 lastResult = "已退出当前连接。"
                             },
                             enabled = !isBusy,
@@ -401,12 +401,12 @@ private fun CircleIconButton(
     }
 }
 
-private val com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.displayLabel: String
+private val com.example.yingshi.data.remote.auth.SessionProbePhase.displayLabel: String
     get() = when (this) {
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Idle -> "未登录"
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.LoggingIn -> "登录中"
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Success -> "已登录"
-        com.example.yingshi.data.remote.auth.BackendAutoLoginPhase.Failed -> "登录失败"
+        com.example.yingshi.data.remote.auth.SessionProbePhase.Idle -> "未登录"
+        com.example.yingshi.data.remote.auth.SessionProbePhase.LoggingIn -> "登录中"
+        com.example.yingshi.data.remote.auth.SessionProbePhase.Success -> "已登录"
+        com.example.yingshi.data.remote.auth.SessionProbePhase.Failed -> "登录失败"
     }
 
 @Preview(showBackground = true)

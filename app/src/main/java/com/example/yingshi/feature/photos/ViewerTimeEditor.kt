@@ -1,6 +1,7 @@
 package com.example.yingshi.feature.photos
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -156,11 +157,35 @@ private fun ymToPager(y: Int, m: Int) = (y - PagerStartYear) * 12 + m
 
 // ── Public entry ─────────────────────────────────────────────────────
 
+@Immutable
+data class ViewerTimeEditorColors(
+    val accent: Color,
+    val text: Color,
+    val secondaryText: Color,
+    val surface: Color,
+    val background: Color,
+) {
+    companion object {
+        @Composable
+        fun defaultDark(): ViewerTimeEditorColors {
+            val c = YingShiThemeTokens.colors
+            return ViewerTimeEditorColors(
+                accent = c.viewerAccent,
+                text = c.viewerText,
+                secondaryText = c.viewerTextSecondary,
+                surface = c.viewerSurface,
+                background = c.viewerBackground,
+            )
+        }
+    }
+}
+
 @Composable
 fun ViewerTimeEditorSheet(
     initialTimeMillis: Long,
     onDismiss: () -> Unit,
     onConfirm: (Long) -> Unit,
+    colors: ViewerTimeEditorColors = ViewerTimeEditorColors.defaultDark(),
 ) {
     val ic = remember(initialTimeMillis) {
         Calendar.getInstance(Locale.CHINA).apply { timeInMillis = initialTimeMillis }
@@ -175,8 +200,7 @@ fun ViewerTimeEditorSheet(
     var showTimeWheel by remember { mutableStateOf(false) }
 
     ViewerMainSheet(selY, selM, selD, selH, selMin,
-        onYm = { y, m -> selY = y; selM = m },
-        onDay = { selD = it },
+        onSelectDay = { y, m, d -> selY = y; selM = m; selD = d },
         onDismiss = onDismiss,
         onDone = {
             onConfirm(Calendar.getInstance(Locale.CHINA).apply {
@@ -184,10 +208,12 @@ fun ViewerTimeEditorSheet(
             }.timeInMillis)
         },
         onTime = { showTimeWheel = true },
+        colors = colors,
     )
     if (showTimeWheel) ViewerTimeWheelSheet(selH, selMin,
         onDismiss = { showTimeWheel = false },
         onConfirm = { h, m -> selH = h; selMin = m; showTimeWheel = false },
+        colors = colors,
     )
 }
 
@@ -197,36 +223,34 @@ fun ViewerTimeEditorSheet(
 @Composable
 private fun ViewerMainSheet(
     selY: Int, selM: Int, selD: Int, selH: Int, selMin: Int,
-    onYm: (Int, Int) -> Unit, onDay: (Int) -> Unit,
+    onSelectDay: (Int, Int, Int) -> Unit,
     onDismiss: () -> Unit, onDone: () -> Unit, onTime: () -> Unit,
+    colors: ViewerTimeEditorColors,
 ) {
     val sp = YingShiThemeTokens.spacing; val rd = YingShiThemeTokens.radius
-    val colors = YingShiThemeTokens.colors
-    val accent = colors.viewerAccent
-    val textColor = colors.viewerText
-    val secondaryText = colors.viewerTextSecondary
+    val accent = colors.accent
+    val textColor = colors.text
+    val secondaryText = colors.secondaryText
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val initPage = ymToPager(selY, selM)
     val pagerState = rememberPagerState(initPage, pageCount = { PagerMonthCount })
     val (py, pm) = pagerToYM(pagerState.currentPage)
-    val initPageKey = remember { initPage }
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage == initPageKey) return@LaunchedEffect
-        val (y, m) = pagerToYM(pagerState.currentPage); onYm(y, m)
-    }
+    // 关键修复：滑动只改变查看的月份页，不改变选中日期 selY/selM/selD。
+    // 只有用户点击具体日期时才通过 onSelectDay(y, m, d) 更新选中状态。
+    // 这样滑动月份时选中标记不会"飘"到当前月的同一天。
     val today = remember {
         val c = Calendar.getInstance(Locale.CHINA)
         Triple(c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH))
     }
     val wk = listOf("一", "二", "三", "四", "五", "六", "日")
-    val stableOnDay by rememberUpdatedState(onDay)
+    val stableOnSelectDay by rememberUpdatedState(onSelectDay)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = colors.viewerSurface,
+        containerColor = colors.surface,
         dragHandle = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(sp.sm))
@@ -285,7 +309,7 @@ private fun ViewerMainSheet(
                 beyondViewportPageCount = 1, key = { it },
             ) { page ->
                 val (y, m) = pagerToYM(page)
-                CalendarMonth(y, m, if (y == selY && m == selM) selD else 0, today, stableOnDay)
+                CalendarMonth(y, m, if (y == selY && m == selM) selD else 0, today, { d -> stableOnSelectDay(y, m, d) }, colors)
             }
 
             Spacer(Modifier.height(6.dp))
@@ -293,7 +317,7 @@ private fun ViewerMainSheet(
             Surface(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(rd.lg)).clickable(onClick = onTime),
                 RoundedCornerShape(rd.lg),
-                color = colors.viewerBackground.copy(alpha = 0.82f),
+                color = colors.background.copy(alpha = 0.82f),
             ) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = sp.md, vertical = sp.sm), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Text("时间", style = MaterialTheme.typography.bodyMedium, color = secondaryText)
@@ -322,8 +346,8 @@ private fun ViewerMainSheet(
 private fun CalendarMonth(
     year: Int, month: Int, selectedDay: Int,
     today: Triple<Int, Int, Int>, onDaySelected: (Int) -> Unit,
+    colors: ViewerTimeEditorColors,
 ) {
-    val colors = YingShiThemeTokens.colors
     val cells = remember(year, month, selectedDay) {
         val dim = monthLength(year, month + 1)
         val fdow = (weekday(year, month + 1, 1) + 6) % 7
@@ -342,8 +366,10 @@ private fun CalendarMonth(
         }
     }
 
-    val cellShape = remember { RoundedCornerShape(6.dp) }
-    val selectedBg = remember(colors.viewerAccent) { colors.viewerAccent.copy(alpha = 0.16f) }
+    val cellShape = remember { RoundedCornerShape(8.dp) }
+    // 选中日期背景：提高不透明度让绿色更明显
+    val selectedBg = remember(colors.accent) { colors.accent.copy(alpha = 0.55f) }
+    val selectedRing = remember(colors.accent) { colors.accent.copy(alpha = 0.85f) }
 
     Column(Modifier.fillMaxSize()) {
         val rows = cells.size / 7
@@ -352,7 +378,12 @@ private fun CalendarMonth(
                 for (c in 0 until 7) {
                     val cell = cells[r * 7 + c]
                     val bg = if (cell != null && cell.isSelected) selectedBg else Color.Transparent
-                    Box(Modifier.weight(1f).fillMaxHeight().background(bg, cellShape)
+                    Box(Modifier.weight(1f).fillMaxHeight()
+                        .background(bg, cellShape)
+                        .then(
+                            if (cell != null && cell.isSelected) Modifier.border(2.dp, selectedRing, cellShape)
+                            else Modifier
+                        )
                         .clickable(enabled = cell != null) { cell?.let { onDaySelected(it.day) } },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -362,23 +393,23 @@ private fun CalendarMonth(
                                     Text(if (cell.topGreen) "今" else (cell.top ?: ""), fontSize = 10.sp,
                                         fontWeight = if (cell.topGreen) FontWeight.Bold else FontWeight.Normal,
                                         color = when {
-                                            cell.topGreen -> colors.viewerAccent
+                                            cell.topGreen -> colors.accent
                                             cell.topRed -> MaterialTheme.colorScheme.error
-                                            else -> colors.viewerTextSecondary
+                                            else -> colors.secondaryText
                                         },
                                         maxLines = 1)
                                     Spacer(Modifier.height(1.dp))
                                 }
                                 Text("${cell.day}", fontSize = 15.sp,
                                     fontWeight = if (cell.isSelected || cell.isToday) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (cell.isSelected) colors.viewerAccent else colors.viewerText,
+                                    color = if (cell.isSelected) colors.accent else colors.text,
                                     maxLines = 1)
                                 if (cell.bot != null && !cell.topRed && !cell.topGreen) {
                                     Spacer(Modifier.height(1.dp))
                                     Text(
                                         cell.bot ?: "",
                                         fontSize = 10.sp,
-                                        color = colors.viewerTextSecondary,
+                                        color = colors.secondaryText,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -399,9 +430,9 @@ private fun CalendarMonth(
 private fun ViewerTimeWheelSheet(
     initialHour: Int, initialMinute: Int,
     onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit,
+    colors: ViewerTimeEditorColors,
 ) {
     val sp = YingShiThemeTokens.spacing; val rd = YingShiThemeTokens.radius; val den = LocalDensity.current
-    val colors = YingShiThemeTokens.colors
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sm = (initialMinute / 5) * 5
     var selH by remember { mutableIntStateOf(initialHour) }
@@ -413,14 +444,14 @@ private fun ViewerTimeWheelSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = colors.viewerSurface,
+        containerColor = colors.surface,
         dragHandle = {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(sp.sm))
                 Surface(
                     Modifier.size(36.dp, 4.dp),
                     RoundedCornerShape(rd.capsule),
-                    color = colors.viewerTextSecondary.copy(alpha = 0.34f),
+                    color = colors.secondaryText.copy(alpha = 0.34f),
                 ) {}
                 Spacer(Modifier.height(sp.xs))
             }
@@ -428,27 +459,27 @@ private fun ViewerTimeWheelSheet(
     ) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.40f).padding(horizontal = sp.xl)) {
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                TextButton(onClick = onDismiss) { Text("取消", color = colors.viewerTextSecondary) }
+                TextButton(onClick = onDismiss) { Text("取消", color = colors.secondaryText) }
                 Text(
                     "选择时间",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = colors.viewerText,
+                    color = colors.text,
                 )
-                TextButton(onClick = { onConfirm(selH, selM) }) { Text("确定", color = colors.viewerAccent, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = { onConfirm(selH, selM) }) { Text("确定", color = colors.accent, fontWeight = FontWeight.Bold) }
             }
             Spacer(Modifier.height(sp.sm))
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
                     "%02d:%02d".format(selH, selM),
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = colors.viewerText,
+                    color = colors.text,
                 )
             }
             Spacer(Modifier.height(sp.xs))
             Row(Modifier.weight(1f).height(vpDp), Arrangement.Center) {
-                WheelColumn(hours, initialHour, selH, itemH, vc, { selH = it }, Modifier.weight(1f))
+                WheelColumn(hours, initialHour, selH, itemH, vc, { selH = it }, Modifier.weight(1f), colors)
                 Spacer(Modifier.width(8.dp))
-                WheelColumn(minutes, sm / 5, selM / 5, itemH, vc, { selM = it * 5 }, Modifier.weight(1f))
+                WheelColumn(minutes, sm / 5, selM / 5, itemH, vc, { selM = it * 5 }, Modifier.weight(1f), colors)
             }
         }
     }
@@ -460,8 +491,8 @@ private fun ViewerTimeWheelSheet(
 private fun WheelColumn(
     items: List<String>, initIdx: Int, selIdx: Int,
     itemHDp: Dp, vc: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
+    colors: ViewerTimeEditorColors,
 ) {
-    val colors = YingShiThemeTokens.colors
     val d = LocalDensity.current; val ih = with(d) { itemHDp.roundToPx() }; val vp = ih * vc
     val pad = vp / 2 - ih / 2; val vpDp = with(d) { vp.toDp() }; val pdDp = with(d) { pad.toDp() }
     val listState = rememberLazyListState(); val scope = rememberCoroutineScope()
@@ -494,12 +525,12 @@ private fun WheelColumn(
                 Box(Modifier.fillMaxWidth().height(itemHDp), contentAlignment = Alignment.Center) {
                     Text(items[idx],
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = if (ctr) FontWeight.Bold else FontWeight.Normal),
-                        color = if (ctr) colors.viewerText else colors.viewerTextSecondary.copy(alpha = 0.72f),
+                        color = if (ctr) colors.text else colors.secondaryText.copy(alpha = 0.72f),
                         textAlign = TextAlign.Center)
                 }
             }
         }
-        val lc = colors.viewerTextSecondary.copy(alpha = 0.18f)
+        val lc = colors.secondaryText.copy(alpha = 0.18f)
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter).offset(y = with(d) { (vp / 2 - ih / 2).toDp() }).background(lc))
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter).offset(y = with(d) { (vp / 2 + ih / 2).toDp() }).background(lc))
         val mh = with(d) { (vp / 2 - ih / 2).toDp() }
@@ -510,8 +541,8 @@ private fun WheelColumn(
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            colors.viewerSurface.copy(alpha = 0.96f),
-                            colors.viewerSurface.copy(alpha = 0.66f),
+                            colors.surface.copy(alpha = 0.96f),
+                            colors.surface.copy(alpha = 0.66f),
                             Color.Transparent,
                         ),
                     ),
@@ -525,8 +556,8 @@ private fun WheelColumn(
                     Brush.verticalGradient(
                         listOf(
                             Color.Transparent,
-                            colors.viewerSurface.copy(alpha = 0.66f),
-                            colors.viewerSurface.copy(alpha = 0.96f),
+                            colors.surface.copy(alpha = 0.66f),
+                            colors.surface.copy(alpha = 0.96f),
                         ),
                     ),
                 ),

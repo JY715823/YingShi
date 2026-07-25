@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  大便胶囊背景（FR-7 大便徽标降级）
+  替代旧 widget_bowel_card 116dp 大卡片
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 底色 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_capsule_bg" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+    <!-- 描边 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="0.5dp"
+                android:color="@color/widget_capsule_stroke" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</layer-list>

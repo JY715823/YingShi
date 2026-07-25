@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ============================================================ -->
+    <!-- Widget 深色色板（镜像 values/colors.xml，FR-10 深色模式）     -->
+    <!-- 设计原则：深石板基底、暖白文字、提亮香槟金、相纸暖灰白        -->
+    <!-- 对齐 App Color.kt Viewer 深色 token                          -->
+    <!-- ============================================================ -->
+
+    <!-- 镜像 App Color.kt token 的 17 个核心色板（深色变体） -->
+    <color name="widget_app_background">#FF101F26</color>
+    <color name="widget_section_background">#FF1D333C</color>
+    <color name="widget_raised_surface">#FFE8E0D0</color>
+    <color name="widget_primary_container">#FF2F5C7A</color>
+    <color name="widget_primary_pressed">#FF4D88B0</color>
+    <color name="widget_title_accent">#FFF4FBFC</color>
+    <color name="widget_gold_accent">#FFE2B97A</color>
+    <color name="widget_glass_stroke">#FF5A8FA8</color>
+    <color name="widget_glow_wash">#FF2A4458</color>
+    <color name="widget_text_primary">#FFF4FBFC</color>
+    <color name="widget_text_secondary">#FFA9C3CC</color>
+    <color name="widget_divider_soft">#FF2F4850</color>
+    <color name="widget_aura_warm">#D0E2B97A</color>
+    <color name="widget_aura_cool">#C42F5C7A</color>
+    <color name="widget_destructive">#FFFFB4AB</color>
+    <color name="widget_memory_accent">#FFE6958C</color>
+    <color name="widget_soft_green">#FF2D4A3E</color>
+
+    <!-- Widget 专用辅助色（深色变体） -->
+    <color name="widget_polaroid_shadow">#66000000</color>
+    <color name="widget_polaroid_stroke">#A05A8FA8</color>
+    <color name="widget_polaroid_highlight_top">#40FFFFFF</color>
+    <color name="widget_polaroid_highlight_bottom">#00FFFFFF</color>
+    <color name="widget_tape_pink">#C04D88B0</color>
+    <color name="widget_tape_pink_stripe">#80E6958C</color>
+    <color name="widget_tape_mint">#C02D4A3E</color>
+    <color name="widget_tape_mint_stripe">#802D4A3E</color>
+    <color name="widget_tape_gold">#C0E2B97A</color>
+    <color name="widget_tape_gold_stripe">#80E2B97A</color>
+    <color name="widget_tape_blue">#C02F5C7A</color>
+    <color name="widget_tape_blue_stripe">#802F5C7A</color>
+    <color name="widget_heart_color">#A0E6958C</color>
+    <color name="widget_capsule_bg">#E61D333C</color>
+    <color name="widget_capsule_stroke">#805A8FA8</color>
+</resources>

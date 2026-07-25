@@ -20,7 +20,7 @@
 ## Current State
 - What exists today:
   - shell visuals and bottom nav are already customized but still slightly crowd labels
-  - repository mode infra still exists in runtime config and many code paths
+  - repository mode infra has been cleaned from runtime config and active code paths (Round 1); no `RepositoryMode` references remain in source
   - media binary caches exist, but core business-data caches for feed, albums, notifications, trash, and profile snapshot are weak or memory-only
   - login and app bootstrap still gate too hard on live auth/session state and can block cached read access
 - Known constraints:
@@ -181,7 +181,7 @@
   - trash list/detail
 - `YingShiApp` bootstrap now prefers cached current-user entry when live auth/profile refresh fails for network or server availability reasons, and only forces login when there is no usable protected cache or auth is explicitly invalid.
 - Explicit logout and confirmed `401` invalidation clear protected cached access; transient network/server failure enters read-only cached mode instead.
-- Active runtime path is now REAL-only in config/provider flow; repository mode is no longer surfaced through build config or settings for normal app usage.
+- Active runtime path is now REAL-only in config/provider flow; `RepositoryMode` has been cleaned from active source (Round 1) and is no longer surfaced through build config or settings for normal app usage.
 - Feed, album directory, notifications, and trash flows now persist successful reads and fall back to cached read-only content inside the agreed five global entry surfaces.
 - Offline read-only mode blocks write-style actions in these shell-adjacent surfaces instead of trying and failing blindly.
 - Added app-level network recovery monitoring so the shell can detect connectivity restoration without requiring page switches.
@@ -235,9 +235,9 @@
   - real-device retest now focuses tightly on the reconnect behavior plus the install-build page-entry ANR path that changed in this round
 - Known gaps:
   - reconnect recovery still needs fresh real-device confirmation on the user’s actual network conditions
-  - legacy fake source files and some internal `RepositoryMode` conditionals still exist in the codebase, but runtime no longer exposes a user-switchable mode
+  - legacy fake source files may remain in the codebase, but `RepositoryMode` conditionals have been cleaned from active source (Round 1) and runtime no longer exposes a user-switchable mode
   - this round does not add offline write queueing or stale-age timestamps
-  - life-module cache coverage was explicitly left out of this follow-up round per user direction
+  - life-module cache coverage has since been landed: AppReadCacheStore now defines LIFE_CONSOLE_TODAY_SCOPE and LIFE_CONSOLE_HISTORY_SCOPE, and RealLifeConsoleRepository wires read/write through AppReadCacheStore
 
 ## New Coupling Recheck
 - Module: `auth`
@@ -461,14 +461,14 @@
   - user real-device confirmation that page-entry freezing is gone
   - user real-device confirmation that network self-healing is working acceptably
 - What remains risky or intentionally deferred:
-  - legacy fake source files and some internal `RepositoryMode` branches still exist as non-user-facing leftovers, even though runtime is no longer switchable
+  - legacy fake source files may remain as non-user-facing leftovers; `RepositoryMode` branches have been cleaned from active source (Round 1)
   - stale-age timestamps and offline write queueing remain intentionally deferred
-  - life-module business caches were explicitly left out of this module scope and may need their own later refinement if offline behavior is expanded there
+  - life-module business caches are now covered through AppReadCacheStore (LIFE_CONSOLE_TODAY_SCOPE and LIFE_CONSOLE_HISTORY_SCOPE) with RealLifeConsoleRepository read/write integration
 
 ## Carry-forward Notes
 - Fact future modules must remember: this round establishes offline read-only as the release default for cached entry surfaces.
 - Adjacent module to revisit later: uploader/write-heavy flows may need a stronger offline policy after release because this module deliberately stops at read-only fallback.
-- Adjacent module uncovered during device QA: `LifeConsoleScreen` currently refreshes on launch, timed refresh, or `ON_RESUME`, but does not participate in the shared shell read-cache recovery model.
+- Adjacent module previously uncovered during device QA: `LifeConsoleScreen` now participates in the shared shell read-cache recovery model via AppReadCacheStore (LIFE_CONSOLE_TODAY_SCOPE and LIFE_CONSOLE_HISTORY_SCOPE) wired through RealLifeConsoleRepository.
 - Future regression watch: if photos, notifications, trash, or auth flows gain new persistent-cache reads or writes, keep them off the main thread by default.
 
 ## Closeout Self-check

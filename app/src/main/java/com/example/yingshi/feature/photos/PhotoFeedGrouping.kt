@@ -156,20 +156,27 @@ internal fun buildPhotoFeedScrubberYearMarkers(
     anchors: List<PhotoFeedScrubberAnchor>,
 ): List<PhotoFeedScrubberYearMarker> {
     if (anchors.isEmpty()) return emptyList()
-    val newestTime = anchors.maxOf { it.timeMillis }
-    val oldestTime = anchors.minOf { it.timeMillis }
-    val range = (newestTime - oldestTime).coerceAtLeast(1L)
-    val years = anchors
-        .map { anchor -> calendarFor(anchor.timeMillis).get(Calendar.YEAR) }
-        .distinct()
-        .sortedDescending()
-    return years.map { year ->
-        val markerTime = maxOf(oldestTime, yearStartMillis(year))
-        PhotoFeedScrubberYearMarker(
-            year = year,
-            progress = ((newestTime - markerTime).toFloat() / range.toFloat()).coerceIn(0f, 1f),
-        )
+    val lastIndex = anchors.lastIndex
+    // 年份标记的 progress 改为基于 anchor index, 与滑条 thumb 的 progress 坐标系一致.
+    // 此前用时间坐标系 (newestTime - markerTime) / range, 当媒体在时间上分布不均时,
+    // 滑条位置和年份标记位置会对不上 (如滑到 2026.5 但标记显示在 2024-2025 之间).
+    // anchors 按时间降序 (最新在前), 第一个遇到的某年份 anchor 就是该年份最新的, 映射到 progress 0~1.
+    val firstAnchorIndexByYear = linkedMapOf<Int, Int>()
+    anchors.forEachIndexed { index, anchor ->
+        val year = calendarFor(anchor.timeMillis).get(Calendar.YEAR)
+        if (year !in firstAnchorIndexByYear) {
+            firstAnchorIndexByYear[year] = index
+        }
     }
+    return firstAnchorIndexByYear.entries
+        .sortedByDescending { it.key }
+        .map { (year, firstAnchorIndex) ->
+            val progress = if (lastIndex <= 0) 0f else (firstAnchorIndex.toFloat() / lastIndex.toFloat())
+            PhotoFeedScrubberYearMarker(
+                year = year,
+                progress = progress.coerceIn(0f, 1f),
+            )
+        }
 }
 
 internal fun resolveCurrentScrubberAnchorIndex(

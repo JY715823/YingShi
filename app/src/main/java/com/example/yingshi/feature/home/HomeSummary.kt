@@ -24,8 +24,10 @@ import com.example.yingshi.feature.ledger.data.NoOpLedgerSyncBridge
 import com.example.yingshi.feature.ledger.formatMoney
 import com.example.yingshi.feature.photos.AppContentMediaSource
 import com.example.yingshi.feature.photos.AppMediaType
+import com.example.yingshi.feature.photos.CollaboratorDirectoryStore
 import com.example.yingshi.feature.photos.CollaboratorIdentityUiModel
 import com.example.yingshi.feature.photos.PhotoThumbnailPalette
+import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 import com.example.yingshi.feature.photos.collaboratorDirectorySnapshot
 import com.example.yingshi.feature.photos.isAllCollaboratorsSelected
 import com.example.yingshi.feature.photos.normalizedCollaboratorSelection
@@ -88,15 +90,11 @@ fun rememberHomeUiState(
     val sessionVersion = AuthSessionManager.sessionVersion
     val cacheVersion = AppReadCacheStore.changeVersion
     val offlineState = OfflineAccessManager.state
-    val currentUser = remember(sessionVersion, cacheVersion) {
-        AuthSessionManager.getCurrentUserSnapshot() ?: AppReadCacheStore.readCurrentUser()?.payload
+    val storeUser = CollaboratorDirectoryStore.currentUser
+    val currentUser = remember(storeUser, sessionVersion, cacheVersion) {
+        storeUser ?: AuthSessionManager.getCurrentUserSnapshot() ?: AppReadCacheStore.readCurrentUser()?.payload
     }
-    val collaboratorSnapshot = remember(currentUser) {
-        collaboratorDirectorySnapshot(
-            currentUser = currentUser,
-            fallbackToFakeProfile = false,
-        )
-    }
+    val collaboratorSnapshot = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
     val photoCollaborators = remember(collaboratorSnapshot) {
         collaboratorSnapshot.all.take(2)
     }

@@ -11,12 +11,21 @@ import android.content.pm.PackageManager
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.life.LocationHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.Calendar
 import java.util.Locale
 import org.json.JSONArray
@@ -24,7 +33,10 @@ import org.json.JSONObject
 
 interface SystemMediaRepository {
     fun peekCachedMedia(maxAgeMillis: Long = 0L): List<SystemMediaItem>?
-    suspend fun loadMedia(forceRefresh: Boolean = false): List<SystemMediaItem>
+    suspend fun loadMedia(
+        forceRefresh: Boolean = false,
+        useLocalOverlayOnly: Boolean = false,
+    ): List<SystemMediaItem>
     suspend fun loadAlbums(): List<SystemMediaAlbum>
 }
 
@@ -33,7 +45,12 @@ internal fun preloadSystemMediaCache(context: Context) {
     CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
         runCatching {
             if (hasSystemMediaReadAccess(appContext)) {
-                LocalSystemMediaRepository(appContext).loadMedia(forceRefresh = true)
+                // 变更9: 预热路径避网. App 启动期没必要走网络往返,
+                // 网络刷新延后到用户进入系统媒体页.
+                LocalSystemMediaRepository(appContext).loadMedia(
+                    forceRefresh = true,
+                    useLocalOverlayOnly = true,
+                )
             }
         }
     }
@@ -59,7 +76,10 @@ class LocalSystemMediaRepository(
         return LocalSystemMediaQueryCache.peek(appContext, maxAgeMillis)
     }
 
-    override suspend fun loadMedia(forceRefresh: Boolean): List<SystemMediaItem> {
+    override suspend fun loadMedia(
+        forceRefresh: Boolean,
+        useLocalOverlayOnly: Boolean,
+    ): List<SystemMediaItem> {
         LocalSystemMediaBridgeRepository.warmPersistentImportOverlay(appContext)
         if (!hasSystemMediaReadAccess(appContext)) {
             throw SecurityException("Missing system media permission.")
@@ -69,19 +89,26 @@ class LocalSystemMediaRepository(
         }
         val localItems = dataSource.queryMedia()
             .sortedByDescending { it.displayTimeMillis }
-        return localItems
-            .withAppImportStatus(allowRemoteRefresh = NetworkConnectivityMonitor.currentState.isConnected)
-            .also { items ->
-                LocalSystemMediaQueryCache.store(appContext, items)
-            }
+        // S 级刷新优化: ContentObserver 触发的刷新 (插卡/拔卡) 只用本地 overlay,
+        // 跳过 getImportStatus 网络往返; 用户手动下拉刷新才走网络.
+        // 此前每次插卡都把数千 fingerprint 分批发服务端, 耗时 5s+.
+        val allowRemoteRefresh = !useLocalOverlayOnly &&
+            NetworkConnectivityMonitor.currentState.isConnected
+        val itemsWithStatus = localItems.withAppImportStatus(
+            allowRemoteRefresh = allowRemoteRefresh,
+            useLocalOverlayOnly = useLocalOverlayOnly,
+        )
+        LocalSystemMediaQueryCache.store(appContext, itemsWithStatus)
+        latestLoadedItems = itemsWithStatus
+        return itemsWithStatus
     }
 
     override suspend fun loadAlbums(): List<SystemMediaAlbum> {
         if (!hasSystemMediaReadAccess(appContext)) {
             return emptyList()
         }
-        val cachedItems = LocalSystemMediaQueryCache.peek(appContext, maxAgeMillis = 0L)
-        val items = cachedItems ?: run {
+        // 优先用 loadMedia 最新返回的 items 生成相册, 避免读到旧缓存导致插内存卡后新相册不出现.
+        val items = latestLoadedItems ?: LocalSystemMediaQueryCache.peek(appContext, maxAgeMillis = 0L) ?: run {
             val localItems = dataSource.queryMedia().sortedByDescending { it.displayTimeMillis }
             LocalSystemMediaQueryCache.store(appContext, localItems)
             localItems
@@ -89,14 +116,34 @@ class LocalSystemMediaRepository(
         return items.groupAlbumsFromItems()
     }
 
-    private suspend fun List<SystemMediaItem>.withAppImportStatus(allowRemoteRefresh: Boolean): List<SystemMediaItem> {
-        if (
-            isEmpty() ||
-            RepositoryProvider.currentMode != RepositoryMode.REAL ||
-            !AuthSessionManager.isLoggedIn ||
-            !allowRemoteRefresh
-        ) {
+    private var latestLoadedItems: List<SystemMediaItem>? = null
+
+    private suspend fun List<SystemMediaItem>.withAppImportStatus(
+        allowRemoteRefresh: Boolean,
+        useLocalOverlayOnly: Boolean = false,
+    ): List<SystemMediaItem> {
+        if (isEmpty() || !AuthSessionManager.isLoggedIn) {
             return this
+        }
+        // S 级刷新路径: 仅用本地 overlay, 不发网络请求.
+        // 插卡/拔卡时 ContentObserver 触发此路径, 避免数千 fingerprint 分批网络往返.
+        if (useLocalOverlayOnly || !allowRemoteRefresh) {
+            return map { item ->
+                val cached = LocalSystemMediaBridgeRepository.peekImportStatus(item)
+                if (cached != null) {
+                    item.copy(
+                        importedAppMediaId = cached.first,
+                        linkedSmallAlbumIds = cached.second,
+                        linkedPostIds = cached.second,
+                    )
+                } else {
+                    item.copy(
+                        importedAppMediaId = null,
+                        linkedSmallAlbumIds = emptyList(),
+                        linkedPostIds = emptyList(),
+                    )
+                }
+            }
         }
         val itemsByFingerprint = flatMap { item ->
             listOf(
@@ -106,18 +153,30 @@ class LocalSystemMediaRepository(
         }.distinct()
         val statuses = mutableMapOf<String, Pair<String, List<String>>>()
         var anyBatchSucceeded = false
-        itemsByFingerprint.chunked(SystemMediaImportStatusBatchSize).forEach { fingerprints ->
-            when (val result = RepositoryProvider.mediaRepository.getImportStatus(fingerprints)) {
-                is ApiResult.Success -> {
-                    anyBatchSucceeded = true
-                    result.data.forEach { status ->
-                        statuses[status.sourceFingerprint] = status.mediaId to status.smallAlbumIds
+        // 变更2: getImportStatus 并发批处理.
+        // 此前 5000 item → 20 batch × 200ms 串行 forEach = 4s;
+        // 改为并发 4 路 (Semaphore 限流避免服务器压力), 20 batch / 4 ≈ 5 轮 × 200ms = 1s.
+        val importStatusSemaphore = Semaphore(IMPORT_STATUS_PARALLELISM)
+        coroutineScope {
+            itemsByFingerprint.chunked(SystemMediaImportStatusBatchSize).map { fingerprints ->
+                async(Dispatchers.IO) {
+                    importStatusSemaphore.withPermit {
+                        when (val result = RepositoryProvider.mediaRepository.getImportStatus(fingerprints)) {
+                            is ApiResult.Success -> {
+                                synchronized(statuses) {
+                                    anyBatchSucceeded = true
+                                    result.data.forEach { status ->
+                                        statuses[status.sourceFingerprint] = status.mediaId to status.smallAlbumIds
+                                    }
+                                }
+                            }
+                            is ApiResult.Error,
+                            ApiResult.Loading,
+                            -> Unit
+                        }
                     }
                 }
-                is ApiResult.Error,
-                ApiResult.Loading,
-                -> return@forEach
-            }
+            }.awaitAll()
         }
         if (!anyBatchSucceeded) {
             return this
@@ -126,22 +185,15 @@ class LocalSystemMediaRepository(
             val status = statuses[item.stableImportSourceFingerprint()]
                 ?: statuses[item.stableImportMetadataSourceFingerprint()]
             if (status == null) {
-                // API 未匹配时，先查本地 overlay 缓存，保留已知的导入状态
-                val localStatus = LocalSystemMediaBridgeRepository.peekImportStatus(item)
-                if (localStatus != null) {
-                    item.copy(
-                        importedAppMediaId = localStatus.first,
-                        linkedSmallAlbumIds = localStatus.second,
-                        linkedPostIds = localStatus.second,
-                    )
-                } else {
-                    LocalSystemMediaBridgeRepository.forgetImportStatus(item)
-                    item.copy(
-                        importedAppMediaId = null,
-                        linkedSmallAlbumIds = emptyList(),
-                        linkedPostIds = emptyList(),
-                    )
-                }
+                // 服务端已成功响应但未匹配到该媒体, 说明媒体未导入或已被移入回收站.
+                // 此前会回退到本地 overlay 缓存, 导致已移入回收站的媒体仍显示"已导入".
+                // 修复: 服务端响应可信时, 直接清除本地 overlay 并标记为未导入.
+                LocalSystemMediaBridgeRepository.forgetImportStatus(item)
+                item.copy(
+                    importedAppMediaId = null,
+                    linkedSmallAlbumIds = emptyList(),
+                    linkedPostIds = emptyList(),
+                )
             } else {
                 LocalSystemMediaBridgeRepository.rememberImportStatus(
                     item = item,
@@ -159,6 +211,8 @@ class LocalSystemMediaRepository(
 }
 
 private const val SystemMediaImportStatusBatchSize = 500
+private const val EXIF_PARALLELISM = 16
+private const val IMPORT_STATUS_PARALLELISM = 4
 
 interface SystemMediaDataSource {
     suspend fun queryMedia(): List<SystemMediaItem>
@@ -271,6 +325,9 @@ private object LocalSystemMediaQueryCache {
             .put("videoDurationMillis", videoDurationMillis)
             .put("uploadedByUserId", uploadedByUserId)
             .put("sizeBytes", sizeBytes)
+            .put("locationLabel", locationLabel ?: JSONObject.NULL)
+            .put("latitude", latitude ?: JSONObject.NULL)
+            .put("longitude", longitude ?: JSONObject.NULL)
     }
 
     private fun JSONObject.toSystemMediaItemOrNull(): SystemMediaItem? {
@@ -311,6 +368,9 @@ private object LocalSystemMediaQueryCache {
             videoDurationMillis = optNullableLong("videoDurationMillis"),
             uploadedByUserId = optNullableString("uploadedByUserId"),
             sizeBytes = optNullableLong("sizeBytes"),
+            locationLabel = optNullableString("locationLabel"),
+            latitude = optNullableDouble("latitude"),
+            longitude = optNullableDouble("longitude"),
         )
     }
 
@@ -328,6 +388,54 @@ private object LocalSystemMediaQueryCache {
         if (!has(name) || isNull(name)) return null
         return optInt(name).takeIf { it > 0 }
     }
+
+    private fun JSONObject.optNullableDouble(name: String): Double? {
+        if (!has(name) || isNull(name)) return null
+        val value = optDouble(name, Double.NaN)
+        return if (value.isNaN()) null else value
+    }
+}
+
+// P0-1: EXIF 解析结果缓存单例. mediaStoreId -> (fileModifiedAt, capturedAt).
+// 跨 DataSource/ViewModel/Worker 实例共享, 进程内持久.
+// 命中条件: (mediaStoreId, fileModifiedAt) 同时匹配, 文件未修改才复用.
+internal object SystemMediaExifCache {
+    val cache: java.util.concurrent.ConcurrentHashMap<Long, ExifCacheEntry> =
+        java.util.concurrent.ConcurrentHashMap()
+}
+
+internal data class ExifCacheEntry(
+    val fileModifiedAtMillis: Long?,
+    val capturedAtMillis: Long?,
+    val locationLabel: String? = null,
+    // EXIF GPS (WGS-84) → GCJ-02 后的坐标, 用于跳转地图只读查看.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+)
+
+// P0-2: 后台 EXIF 解析完成事件总线.
+// DataSource 后台解析完一项 EXIF 后 emit, ViewModel collect 并 merge 到 queriedItems.
+internal data class SystemMediaExifUpdate(
+    val mediaStoreId: Long,
+    val displayTimeMillis: Long,
+    val capturedAtMillis: Long?,
+    val fileModifiedAtMillis: Long?,
+    val displayTimeSource: String,
+    val displayYear: Int,
+    val displayMonth: Int,
+    val displayDay: Int,
+    val locationLabel: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+)
+
+internal object SystemMediaExifUpdateBus {
+    private val _events = MutableSharedFlow<SystemMediaExifUpdate>(
+        extraBufferCapacity = 256,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val events: SharedFlow<SystemMediaExifUpdate> = _events.asSharedFlow()
+    fun tryEmit(update: SystemMediaExifUpdate) = _events.tryEmit(update)
 }
 
 class MediaStoreSystemMediaDataSource(
@@ -335,6 +443,29 @@ class MediaStoreSystemMediaDataSource(
 ) : SystemMediaDataSource {
     private val appContext = context.applicationContext
     private val contentResolver = context.contentResolver
+
+    // P0-1: exifCache 单例化. 此前是实例字段, 每次 new DataSource 都丢失缓存,
+    // 导致 ViewModel/Worker/预热 各自一份, 手动刷新重新解析全部 EXIF (5s).
+    // 单例化后跨 DataSource 实例共享, 二次刷新命中缓存 (<200ms).
+    private val exifCache get() = SystemMediaExifCache.cache
+
+    // P0-2: 后台 EXIF 解析 scope, 不阻塞 queryMedia 返回.
+    // 用 SupervisorJob 确保单个 item 解析失败不影响其他 item.
+    private val backgroundExifScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private data class RawMediaRow(
+        val mediaStoreId: Long,
+        val type: SystemMediaType,
+        val mimeType: String,
+        val displayName: String,
+        val bucketName: String?,
+        val width: Int?,
+        val height: Int?,
+        val dateTakenMillis: Long?,
+        val fileModifiedAtMillis: Long?,
+        val durationMillis: Long?,
+        val sizeBytes: Long?,
+    )
 
     override suspend fun queryMedia(): List<SystemMediaItem> {
         val projection = arrayOf(
@@ -362,7 +493,7 @@ class MediaStoreSystemMediaDataSource(
             append(")")
         }
         val sortOrder = "datetaken DESC, ${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
-        val items = mutableListOf<SystemMediaItem>()
+        val rawRows = mutableListOf<RawMediaRow>()
 
         contentResolver.query(
             MediaStore.Files.getContentUri("external"),
@@ -389,67 +520,180 @@ class MediaStoreSystemMediaDataSource(
                     MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> SystemMediaType.VIDEO
                     else -> SystemMediaType.IMAGE
                 }
-                val mimeType = cursor.getStringOrEmpty(mimeTypeIndex)
-                val displayName = cursor.getStringOrEmpty(displayNameIndex).ifBlank {
-                    "未命名媒体"
-                }
-                val bucketName = cursor.getStringOrNull(bucketNameIndex)
-                val rawWidth = cursor.getIntOrNull(widthIndex)
-                val rawHeight = cursor.getIntOrNull(heightIndex)
-                val contentUri = buildContentUri(type, mediaStoreId)
-                val timeMetadata = resolveDeviceMediaTimeMetadata(
-                    context = appContext,
-                    uri = contentUri,
-                    mediaType = type,
+                rawRows += RawMediaRow(
+                    mediaStoreId = mediaStoreId,
+                    type = type,
+                    mimeType = cursor.getStringOrEmpty(mimeTypeIndex),
+                    displayName = cursor.getStringOrEmpty(displayNameIndex).ifBlank { "未命名媒体" },
+                    bucketName = cursor.getStringOrNull(bucketNameIndex),
+                    width = cursor.getIntOrNull(widthIndex),
+                    height = cursor.getIntOrNull(heightIndex),
                     dateTakenMillis = cursor.getLongOrNull(dateTakenIndex),
                     fileModifiedAtMillis = cursor.getLongOrNull(dateModifiedIndex)?.times(1000L),
-                )
-                val displayTimeMillis = timeMetadata.capturedAtMillis
-                    ?: timeMetadata.fileModifiedAtMillis
-                    ?: System.currentTimeMillis()
-                val dateParts = displayTimeMillis.toDateParts()
-                val width = rawWidth
-                val height = rawHeight
-                val durationMillis = if (type == SystemMediaType.VIDEO) {
-                    cursor.getLongOrNull(durationIndex)
-                } else {
-                    null
-                }
-                val sizeBytes = cursor.getLongOrNull(sizeIndex)
-
-                items += SystemMediaItem(
-                    id = "${type.name.lowercase(Locale.ROOT)}-$mediaStoreId",
-                    mediaStoreId = mediaStoreId,
-                    uri = contentUri,
-                    type = type,
-                    mimeType = mimeType,
-                    displayName = displayName,
-                    bucketName = bucketName,
-                    displayTimeMillis = displayTimeMillis,
-                    capturedAtMillis = timeMetadata.capturedAtMillis,
-                    fileModifiedAtMillis = timeMetadata.fileModifiedAtMillis,
-                    displayTimeSource = if (timeMetadata.capturedAtMillis != null) {
-                        DisplayTimeSourceOriginal
-                    } else if (timeMetadata.fileModifiedAtMillis != null) {
-                        DisplayTimeSourceFileModified
-                    } else {
-                        DisplayTimeSourceImported
-                    },
-                    displayYear = dateParts.year,
-                    displayMonth = dateParts.month,
-                    displayDay = dateParts.day,
-                    width = width,
-                    height = height,
-                    aspectRatio = resolveAspectRatio(width, height),
-                    palette = paletteForSystemMediaId(mediaStoreId),
-                    linkedPostIds = emptyList(),
-                    videoDurationMillis = durationMillis,
-                    sizeBytes = sizeBytes,
+                    durationMillis = if (type == SystemMediaType.VIDEO) cursor.getLongOrNull(durationIndex) else null,
+                    sizeBytes = cursor.getLongOrNull(sizeIndex),
                 )
             }
         }
 
+        if (rawRows.isEmpty()) return emptyList()
+
+        // P0-2: 两阶段 EXIF 解析, 对标小米相册"列表不解析 EXIF"策略.
+        // 阶段1 (同步, <100ms): 命中 exifCache 用缓存, 未命中用 datetaken 兜底, 立即返回列表.
+        // 阶段2 (后台异步): 对未命中项异步解析 EXIF, 解析完成后通过 SystemMediaExifUpdateBus 通知 ViewModel 更新.
+        // 此前对全部 5000 项 awaitAll 阻塞返回 (5s+), 改后 <200ms 返回.
+        val mediaTimePreference = SettingsRepository.getSettingsState().mediaTimePreference
+        val importedAtMillis = System.currentTimeMillis()
+
+        // 阶段1: 同步构建全部 item. 命中缓存用真实 EXIF 时间 + 地点, 未命中用 datetaken 兜底.
+        // 不创建 async 协程, 避免 5000 项 Semaphore(16) 调度开销 (~300ms).
+        val items = rawRows.map { raw ->
+            val cached = exifCache[raw.mediaStoreId]
+            val timeMetadata = if (cached != null && cached.fileModifiedAtMillis == raw.fileModifiedAtMillis) {
+                DeviceMediaTimeMetadata(
+                    capturedAtMillis = cached.capturedAtMillis,
+                    fileModifiedAtMillis = raw.fileModifiedAtMillis,
+                )
+            } else {
+                // 未命中: 用 datetaken 兜底, 不阻塞返回. 后台阶段2 会补全真实 EXIF 时间 + 地点.
+                DeviceMediaTimeMetadata(
+                    capturedAtMillis = raw.dateTakenMillis,
+                    fileModifiedAtMillis = raw.fileModifiedAtMillis,
+                )
+            }
+            buildItemFromRaw(
+                raw = raw,
+                timeMetadata = timeMetadata,
+                importedAtMillis = importedAtMillis,
+                mediaTimePreference = mediaTimePreference,
+                locationLabel = cached?.locationLabel,
+                latitude = cached?.latitude,
+                longitude = cached?.longitude,
+            )
+        }
+
+        // 阶段2: 后台异步补全未命中项的 EXIF, 不阻塞 queryMedia 返回.
+        // 解析完成后更新 exifCache (单例, 跨实例共享) 并通过 bus 通知 ViewModel.
+        val missed = rawRows.filter { raw ->
+            val cached = exifCache[raw.mediaStoreId]
+            cached == null || cached.fileModifiedAtMillis != raw.fileModifiedAtMillis
+        }
+        if (missed.isNotEmpty()) {
+            launchBackgroundExifResolve(missed, importedAtMillis, mediaTimePreference)
+        }
+
         return items
+    }
+
+    private fun buildItemFromRaw(
+        raw: RawMediaRow,
+        timeMetadata: DeviceMediaTimeMetadata,
+        importedAtMillis: Long,
+        mediaTimePreference: MediaTimePreference,
+        locationLabel: String? = null,
+        latitude: Double? = null,
+        longitude: Double? = null,
+    ): SystemMediaItem {
+        val resolvedTime = resolvePreferredMediaDisplayTime(
+            metadata = timeMetadata,
+            importedAtMillis = importedAtMillis,
+            preference = mediaTimePreference,
+        )
+        val dateParts = resolvedTime.displayTimeMillis.toDateParts()
+        val contentUri = buildContentUri(raw.type, raw.mediaStoreId)
+        return SystemMediaItem(
+            id = "${raw.type.name.lowercase(Locale.ROOT)}-${raw.mediaStoreId}",
+            mediaStoreId = raw.mediaStoreId,
+            uri = contentUri,
+            type = raw.type,
+            mimeType = raw.mimeType,
+            displayName = raw.displayName,
+            bucketName = raw.bucketName,
+            displayTimeMillis = resolvedTime.displayTimeMillis,
+            capturedAtMillis = resolvedTime.capturedAtMillis,
+            fileModifiedAtMillis = resolvedTime.fileModifiedAtMillis,
+            displayTimeSource = resolvedTime.displayTimeSource,
+            displayYear = dateParts.year,
+            displayMonth = dateParts.month,
+            displayDay = dateParts.day,
+            width = raw.width,
+            height = raw.height,
+            aspectRatio = resolveAspectRatio(raw.width, raw.height),
+            palette = paletteForSystemMediaId(raw.mediaStoreId),
+            linkedPostIds = emptyList(),
+            videoDurationMillis = raw.durationMillis,
+            sizeBytes = raw.sizeBytes,
+            locationLabel = locationLabel,
+            latitude = latitude,
+            longitude = longitude,
+        )
+    }
+
+    private fun launchBackgroundExifResolve(
+        missed: List<RawMediaRow>,
+        importedAtMillis: Long,
+        mediaTimePreference: MediaTimePreference,
+    ) {
+        backgroundExifScope.launch {
+            val semaphore = Semaphore(EXIF_PARALLELISM)
+            coroutineScope {
+                missed.map { raw ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            val contentUri = buildContentUri(raw.type, raw.mediaStoreId)
+                            val resolved = runCatching {
+                                resolveDeviceMediaTimeMetadata(
+                                    context = appContext,
+                                    uri = contentUri,
+                                    mediaType = raw.type,
+                                    dateTakenMillis = raw.dateTakenMillis,
+                                    fileModifiedAtMillis = raw.fileModifiedAtMillis,
+                                )
+                            }.getOrNull() ?: return@withPermit
+                            // 读取 EXIF GPS (WGS-84) → GCJ-02 → 高德逆地理编码为地点文本.
+                            // 对标照片流/今日痕迹的解析口径 (LifeLocationPickerActivity.triggerReverseGeocode).
+                            val geoResult = runCatching {
+                                readExifGpsLocation(appContext, contentUri)?.let { gps ->
+                                    LocationHelper.reverseGeocodeWithAmap(appContext, gps.latitude, gps.longitude)
+                                }
+                            }.getOrNull()
+                            val locationLabel = geoResult?.label
+                            val latitude = geoResult?.latitude
+                            val longitude = geoResult?.longitude
+                            exifCache[raw.mediaStoreId] = ExifCacheEntry(
+                                fileModifiedAtMillis = raw.fileModifiedAtMillis,
+                                capturedAtMillis = resolved.capturedAtMillis,
+                                locationLabel = locationLabel,
+                                latitude = latitude,
+                                longitude = longitude,
+                            )
+                            // 计算解析后的展示时间字段, 通过 bus 通知 ViewModel 更新对应 item
+                            val resolvedTime = resolvePreferredMediaDisplayTime(
+                                metadata = resolved,
+                                importedAtMillis = importedAtMillis,
+                                preference = mediaTimePreference,
+                            )
+                            val dateParts = resolvedTime.displayTimeMillis.toDateParts()
+                            SystemMediaExifUpdateBus.tryEmit(
+                                SystemMediaExifUpdate(
+                                    mediaStoreId = raw.mediaStoreId,
+                                    displayTimeMillis = resolvedTime.displayTimeMillis,
+                                    capturedAtMillis = resolvedTime.capturedAtMillis,
+                                    fileModifiedAtMillis = resolvedTime.fileModifiedAtMillis,
+                                    displayTimeSource = resolvedTime.displayTimeSource,
+                                    displayYear = dateParts.year,
+                                    displayMonth = dateParts.month,
+                                    displayDay = dateParts.day,
+                                    locationLabel = locationLabel,
+                                    latitude = latitude,
+                                    longitude = longitude,
+                                ),
+                            )
+                        }
+                    }
+                }.awaitAll()
+            }
+        }
     }
 
     private fun buildContentUri(

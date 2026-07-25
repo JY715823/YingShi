@@ -47,8 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,140 +70,13 @@ fun TrashDetailScreen(
     onShowNotice: (String, YingShiNoticeTone) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
-    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        RealTrashDetailScreen(
-            route = route,
-            onBack = onBack,
-            onEntryRemoved = onEntryRemoved,
-            onEntryRestored = onEntryRestored,
-            modifier = modifier,
-        )
-        return
-    }
-
-    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot()
-    val entry = FakeTrashRepository.resolveDetailEntry(route)
-    var showPermanentDeleteConfirm by rememberSaveable(entry?.id) {
-        mutableStateOf(false)
-    }
-
-    if (entry == null) {
-        TrashDetailMissingState(
-            onBack = onBack,
-            modifier = modifier,
-        )
-        return
-    }
-
-    if (entry.type == TrashEntryType.MEDIA_SYSTEM_DELETED || entry.type == TrashEntryType.MEDIA_REMOVED) {
-        TrashMediaViewerDetailPagerScreen(
-            entry = entry,
-            directory = collaboratorDirectory,
-            showPermanentDeleteConfirm = showPermanentDeleteConfirm,
-            onShowPermanentDeleteConfirmChange = { showPermanentDeleteConfirm = it },
-            onBack = onBack,
-            onEntryRemoved = onEntryRemoved,
-            onEntryRestored = onEntryRestored,
-            onShowNotice = onShowNotice,
-            modifier = modifier,
-        )
-        return
-    }
-
-    if (entry.type == TrashEntryType.SMALL_ALBUM_DELETED) {
-        TrashPostViewerDetailScreen(
-            entry = entry,
-            directory = collaboratorDirectory,
-            showPermanentDeleteConfirm = showPermanentDeleteConfirm,
-            onShowPermanentDeleteConfirmChange = { showPermanentDeleteConfirm = it },
-            onBack = onBack,
-            onEntryRemoved = onEntryRemoved,
-            onEntryRestored = onEntryRestored,
-            onShowNotice = onShowNotice,
-            modifier = modifier,
-        )
-        return
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(YingShiThemeTokens.colors.appBackground)
-            .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(
-                horizontal = YingShiThemeTokens.spacing.lg,
-                vertical = YingShiThemeTokens.spacing.md,
-            ),
-        verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
-    ) {
-        TrashDetailTopBar(
-            entry = entry,
-            actorIdentity = resolveTrashActorIdentity(entry, collaboratorDirectory),
-            onBack = onBack,
-            onRestore = {
-                val targetMediaIds = entry.restoreTargetMediaIds()
-                val result = FakeTrashRepository.restoreEntry(entry.id)
-                if (result.success) {
-                    onEntryRestored(targetMediaIds)
-                } else {
-                    onShowNotice(result.message, YingShiNoticeTone.WARNING)
-                }
-            },
-            onRemove = {
-                showPermanentDeleteConfirm = true
-            },
-        )
-
-        TrashDetailStatusCard(entry = entry)
-
-        when (entry.type) {
-            TrashEntryType.LARGE_ALBUM_DELETED -> TrashDeletedLargeAlbumContent(entry = entry)
-            TrashEntryType.SMALL_ALBUM_DELETED -> TrashDeletedPostContent(entry = entry)
-            TrashEntryType.MEDIA_REMOVED -> TrashDeletedMediaContent(
-                entry = entry,
-                systemWide = false,
-            )
-            TrashEntryType.MEDIA_SYSTEM_DELETED -> TrashDeletedMediaContent(
-                entry = entry,
-                systemWide = true,
-            )
-        }
-    }
-
-    if (showPermanentDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showPermanentDeleteConfirm = false },
-            title = { Text("永久删除该回收站项目？") },
-            text = {
-                Text(
-                    "确认后会删除回收站记录。属于媒体删除的项目会同时删除对应的原文件和预览文件，删除后无法恢复。",
-                )
-            },
-            containerColor = YingShiThemeTokens.colors.raisedSurface,
-            titleContentColor = YingShiThemeTokens.colors.titleAccent,
-            textContentColor = YingShiThemeTokens.colors.textSecondary,
-            confirmButton = {
-                TrashDialogActionButton(
-                    text = "永久删除",
-                    danger = true,
-                    onClick = {
-                        showPermanentDeleteConfirm = false
-                        if (FakeTrashRepository.permanentlyDeleteEntry(entry.id)) {
-                            onShowNotice("已永久删除回收站项目", YingShiNoticeTone.SUCCESS)
-                            onEntryRemoved()
-                        } else {
-                            onShowNotice("该删除项不存在或已被移出回收站。", YingShiNoticeTone.WARNING)
-                            onBack()
-                        }
-                    },
-                )
-            },
-            dismissButton = {
-                TrashDialogActionButton(text = "取消", onClick = { showPermanentDeleteConfirm = false })
-            },
-        )
-    }
+    RealTrashDetailScreen(
+        route = route,
+        onBack = onBack,
+        onEntryRemoved = onEntryRemoved,
+        onEntryRestored = onEntryRestored,
+        modifier = modifier,
+    )
 }
 
 @Composable

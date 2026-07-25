@@ -118,7 +118,6 @@ class LedgerImportExportTest {
     private fun account(id: String, name: String): LedgerAccount {
         return LedgerAccount(
             id = id,
-            bookId = "book",
             name = name,
             type = LedgerAccountType.OTHER,
             iconKey = "wallet",

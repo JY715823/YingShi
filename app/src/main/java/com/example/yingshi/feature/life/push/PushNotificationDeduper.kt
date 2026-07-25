@@ -49,13 +49,13 @@ object PushNotificationDeduper {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val claimedAt = prefs.getLong(key, 0L)
         if (claimedAt > 0L && (now - claimedAt) < CROSS_PATH_WINDOW_MS) {
-            Log.d(TAG, "claimRoute: BLOCKED key=$key (claimed ${now - claimedAt}ms ago)")
+            Log.e(TAG, "claimRoute: BLOCKED key=$key (claimed ${now - claimedAt}ms ago)")
             return false
         }
         prefs.edit()
             .putLong(key, now)
             .apply()
-        Log.d(TAG, "claimRoute: CLAIMED key=$key")
+        Log.e(TAG, "claimRoute: CLAIMED key=$key")
         return true
     }
 

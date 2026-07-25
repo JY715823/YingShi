@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.life.LifeLocationPickerActivity
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -155,19 +154,24 @@ fun PhotoViewerScreen(
     val currentOriginalTarget = remember(currentItem) {
         currentItem.toRealOriginalMediaTarget()
     }
-    val currentOriginalState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        if (currentItem.mediaType == AppMediaType.IMAGE) {
-            RealOriginalLoadRepository.getState(currentOriginalTarget)
-        } else {
-            OriginalLoadState.NotLoaded
-        }
+    val currentOriginalState = if (currentItem.mediaType == AppMediaType.IMAGE) {
+        RealOriginalLoadRepository.getState(currentOriginalTarget)
     } else {
-        FakeOriginalLoadRepository.getState(currentItem.mediaId)
+        OriginalLoadState.NotLoaded
     }
-    val currentCacheState = FakeMediaCacheRepository.getState(
-        mediaId = currentItem.mediaId,
-        mediaType = currentItem.mediaType,
-    )
+    val viewerContext = LocalContext.current
+    val currentCacheState = remember(currentItem, currentOriginalState) {
+        // R3-APP-001: Derive cache state from RealOriginalLoadRepository instead of FakeMediaCacheRepository
+        AppMediaCacheState(
+            mediaId = currentItem.mediaId,
+            mediaType = currentItem.mediaType,
+            previewCached = true, // Coil always caches preview thumbnails
+            originalCached = currentOriginalState == OriginalLoadState.Loaded,
+            videoCached = currentItem.mediaType == AppMediaType.VIDEO
+                && java.io.File(viewerContext.cacheDir, "video-cache/${currentItem.mediaId}").exists(),
+            cacheSizeLabel = "", // Size label not needed in viewer context
+        )
+    }
     val uploaderIdentity = remember(collaboratorDirectory, currentItem.uploadedByUserId) {
         collaboratorDirectory.resolve(currentItem.uploadedByUserId)
     }
@@ -191,14 +195,10 @@ fun PhotoViewerScreen(
     }
     val overlayAlpha = baseOverlayAlpha
     val canOpenOriginal = remember(currentItem) {
-        when (RepositoryProvider.currentMode) {
-            RepositoryMode.REAL -> currentItem.mediaType == AppMediaType.IMAGE &&
-                currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType)
-            RepositoryMode.FAKE -> currentItem.mediaType == AppMediaType.IMAGE
-        }
+        currentItem.mediaType == AppMediaType.IMAGE &&
+            currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType)
     }
     val originalActionLabel = if (
-        RepositoryProvider.currentMode == RepositoryMode.REAL &&
         currentOriginalState == OriginalLoadState.Loading &&
         !networkState.isConnected
     ) {
@@ -266,22 +266,15 @@ fun PhotoViewerScreen(
         val safeLat = if (lat.isNaN()) null else lat
         val safeLng = if (lng.isNaN()) null else lng
         coroutineScope.launch {
-            when (RepositoryProvider.currentMode) {
-                RepositoryMode.REAL -> {
-                    val res = RepositoryProvider.lifeConsoleRepository.updateMediaLocation(
-                        mediaId = targetMediaId,
-                        latitude = safeLat,
-                        longitude = safeLng,
-                        locationLabel = label,
-                    )
-                    when (res) {
-                        is ApiResult.Success -> showViewerNotice("位置已更新", emphasized = true)
-                        else -> showViewerNotice("位置更新失败")
-                    }
-                }
-                RepositoryMode.FAKE -> {
-                    showViewerNotice("位置已更新", emphasized = true)
-                }
+            val res = RepositoryProvider.lifeConsoleRepository.updateMediaLocation(
+                mediaId = targetMediaId,
+                latitude = safeLat,
+                longitude = safeLng,
+                locationLabel = label,
+            )
+            when (res) {
+                is ApiResult.Success -> showViewerNotice("位置已更新", emphasized = true)
+                else -> showViewerNotice("位置更新失败")
             }
             // 本地立即更新 viewerItems, 触发 UI 重绘
             viewerItems = viewerItems.map { item ->
@@ -310,7 +303,7 @@ fun PhotoViewerScreen(
         )
     }
     LaunchedEffect(currentItem.mediaId, currentOriginalState) {
-        if (RepositoryProvider.currentMode != RepositoryMode.REAL || currentItem.mediaType != AppMediaType.IMAGE) {
+        if (currentItem.mediaType != AppMediaType.IMAGE) {
             lastNotifiedOriginalState = currentOriginalState
             return@LaunchedEffect
         }
@@ -343,7 +336,7 @@ fun PhotoViewerScreen(
             sourcePostRoute = route.sourcePostRoute,
         )
         relatedPostRoutes = fallbackRoutes + cachedRoutes
-        if (RepositoryProvider.currentMode != RepositoryMode.REAL || postIds.isEmpty()) {
+        if (postIds.isEmpty()) {
             return@LaunchedEffect
         }
         when (val albumResult = RepositoryProvider.albumRepository.getAlbums()) {
@@ -490,36 +483,19 @@ fun PhotoViewerScreen(
             onConfirm = {
                 showDeleteConfirm = false
                 val deletingItem = currentItem
-                when (RepositoryProvider.currentMode) {
-                    RepositoryMode.FAKE -> {
-                        deleteFakeViewerMedia(deletingItem)
-                        val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
-                        if (nextItems.isEmpty()) {
-                            handleBack()
-                        } else {
-                            viewerItems = nextItems
-                            coroutineScope.launch {
-                                pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
-                            }
-                            showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
-                        }
+                coroutineScope.launch {
+                    val message = deleteRealViewerMedia(deletingItem.mediaId)
+                    if (message != null) {
+                        showViewerNotice(message)
+                        return@launch
                     }
-                    RepositoryMode.REAL -> {
-                        coroutineScope.launch {
-                            val message = deleteRealViewerMedia(deletingItem.mediaId)
-                            if (message != null) {
-                                showViewerNotice(message)
-                                return@launch
-                            }
-                            val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
-                            if (nextItems.isEmpty()) {
-                                handleBack()
-                            } else {
-                                viewerItems = nextItems
-                                pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
-                                showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
-                            }
-                        }
+                    val nextItems = viewerItems.filterNot { it.mediaId == deletingItem.mediaId }
+                    if (nextItems.isEmpty()) {
+                        handleBack()
+                    } else {
+                        viewerItems = nextItems
+                        pagerState.scrollToPage(currentIndex.coerceAtMost(nextItems.lastIndex))
+                        showViewerNotice("已删除当前媒体，并写入回收站。", emphasized = true)
                     }
                 }
             },
@@ -569,17 +545,12 @@ fun PhotoViewerScreen(
                 media = viewerItems[page],
                 zoomState = if (page == currentIndex) zoomState else null,
                 videoPlaybackState = if (page == currentIndex) videoPlaybackState else null,
-                originalLoadState = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                    if (viewerItems[page].mediaType == AppMediaType.IMAGE) {
-                        RealOriginalLoadRepository.getState(viewerItems[page].toRealOriginalMediaTarget())
-                    } else {
-                        OriginalLoadState.NotLoaded
-                    }
+                originalLoadState = if (viewerItems[page].mediaType == AppMediaType.IMAGE) {
+                    RealOriginalLoadRepository.getState(viewerItems[page].toRealOriginalMediaTarget())
                 } else {
-                    FakeOriginalLoadRepository.getState(viewerItems[page].mediaId)
+                    OriginalLoadState.NotLoaded
                 },
                 originalLoadingLabel = if (
-                    RepositoryProvider.currentMode == RepositoryMode.REAL &&
                     viewerItems[page].mediaType == AppMediaType.IMAGE &&
                     RealOriginalLoadRepository.getState(viewerItems[page].toRealOriginalMediaTarget()) ==
                     OriginalLoadState.Loading &&
@@ -612,23 +583,21 @@ fun PhotoViewerScreen(
                     }
                 },
                 onOriginalLoadStateChange = { mediaId, state ->
-                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                        val changedItem = viewerItems.firstOrNull { it.mediaId == mediaId }
-                        if (changedItem != null) {
-                            val changedTarget = changedItem.toRealOriginalMediaTarget()
-                            val previousState = RealOriginalLoadRepository.getState(changedTarget)
-                            if (previousState != state) {
-                                RealOriginalLoadRepository.setState(changedTarget, state)
-                                if (mediaId == currentItem.mediaId) {
-                                    when (state) {
-                                        OriginalLoadState.Loaded -> {
-                                            showViewerNotice("原图加载完毕", emphasized = true)
-                                        }
-                                        OriginalLoadState.Failed -> {
-                                            showViewerNotice("原图加载失败，已保留预览")
-                                        }
-                                        else -> Unit
+                    val changedItem = viewerItems.firstOrNull { it.mediaId == mediaId }
+                    if (changedItem != null) {
+                        val changedTarget = changedItem.toRealOriginalMediaTarget()
+                        val previousState = RealOriginalLoadRepository.getState(changedTarget)
+                        if (previousState != state) {
+                            RealOriginalLoadRepository.setState(changedTarget, state)
+                            if (mediaId == currentItem.mediaId) {
+                                when (state) {
+                                    OriginalLoadState.Loaded -> {
+                                        showViewerNotice("原图加载完毕", emphasized = true)
                                     }
+                                    OriginalLoadState.Failed -> {
+                                        showViewerNotice("原图加载失败，已保留预览")
+                                    }
+                                    else -> Unit
                                 }
                             }
                         }
@@ -772,53 +741,31 @@ fun PhotoViewerScreen(
                     openCommentComposerOnSheet = false
                 },
                 onOpenOriginal = {
-                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                        when {
-                            currentItem.mediaType != AppMediaType.IMAGE ||
-                                !currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType) -> {
-                                showViewerNotice("当前媒体没有独立原图")
-                            }
-
-                            currentOriginalState == OriginalLoadState.Loading -> {
-                                showViewerNotice(
-                                    if (networkState.isConnected) {
-                                        "原图加载中"
-                                    } else {
-                                        "网络已断开，恢复后继续加载原图"
-                                    },
-                                )
-                            }
-
-                            currentOriginalState == OriginalLoadState.Loaded -> {
-                                showViewerNotice("已加载原图", emphasized = true)
-                            }
-
-                            else -> {
-                                if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, viewerAccessToken)) {
-                                    showViewerNotice("开始加载原图")
-                                } else {
-                                    showViewerNotice("当前媒体没有独立原图")
-                                }
-                            }
+                    when {
+                        currentItem.mediaType != AppMediaType.IMAGE ||
+                            !currentItem.mediaSource.hasMeaningfulViewerOriginal(currentItem.mediaType) -> {
+                            showViewerNotice("当前媒体没有独立原图")
                         }
-                    } else {
-                        when (currentOriginalState) {
-                            OriginalLoadState.NotLoaded -> {
-                                FakeOriginalLoadRepository.loadOriginal(currentItem.mediaId)
+
+                        currentOriginalState == OriginalLoadState.Loading -> {
+                            showViewerNotice(
+                                if (networkState.isConnected) {
+                                    "原图加载中"
+                                } else {
+                                    "网络已断开，恢复后继续加载原图"
+                                },
+                            )
+                        }
+
+                        currentOriginalState == OriginalLoadState.Loaded -> {
+                            showViewerNotice("已加载原图", emphasized = true)
+                        }
+
+                        else -> {
+                            if (RealOriginalLoadRepository.requestOriginal(context, currentOriginalTarget, viewerAccessToken)) {
                                 showViewerNotice("开始加载原图")
-                            }
-
-                            OriginalLoadState.Loading -> {
-                                showViewerNotice("原图加载中")
-                            }
-
-                            OriginalLoadState.Loaded -> {
-                                showViewerNotice("已加载原图", emphasized = true)
-                            }
-
-                            OriginalLoadState.Failed -> {
-                                FakeOriginalLoadRepository.retryOriginal(currentItem.mediaId)
-                                showViewerNotice("重试加载原图")
+                            } else {
+                                showViewerNotice("当前媒体没有独立原图")
                             }
                         }
                     }

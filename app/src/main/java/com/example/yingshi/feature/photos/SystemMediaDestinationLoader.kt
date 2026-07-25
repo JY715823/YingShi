@@ -7,7 +7,6 @@ import androidx.compose.runtime.produceState
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 
 data class SystemMediaDestinationUiState(
@@ -19,23 +18,13 @@ data class SystemMediaDestinationUiState(
 
 @Composable
 fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState> {
-    val mode = RepositoryProvider.currentMode
     val backendMutationEvent = RealBackendMutationBus.latestEvent.collectAsState().value
     return produceState(
-        initialValue = initialDestinationState(mode),
-        mode,
+        initialValue = initialDestinationState(),
         AuthSessionManager.isLoggedIn,
         backendMutationEvent.version.takeIf { backendMutationEvent.affectsSystemMediaDestinations() } ?: 0,
         BackendDebugConfig.sessionVersion,
     ) {
-        if (mode == RepositoryMode.FAKE) {
-            value = SystemMediaDestinationUiState(
-                albums = FakeAlbumRepository.getAlbums(),
-                posts = FakeAlbumRepository.getPosts(),
-            )
-            return@produceState
-        }
-
         if (!AuthSessionManager.isLoggedIn) {
             value = SystemMediaDestinationUiState(
                 errorMessage = "请先连接服务，才能选择在线小相册作为导入目标。",
@@ -84,13 +73,6 @@ fun rememberSystemMediaDestinationUiState(): State<SystemMediaDestinationUiState
     }
 }
 
-private fun initialDestinationState(mode: RepositoryMode): SystemMediaDestinationUiState {
-    return if (mode == RepositoryMode.FAKE) {
-        SystemMediaDestinationUiState(
-            albums = FakeAlbumRepository.getAlbums(),
-            posts = FakeAlbumRepository.getPosts(),
-        )
-    } else {
-        SystemMediaDestinationUiState(isLoading = true)
-    }
+private fun initialDestinationState(): SystemMediaDestinationUiState {
+    return SystemMediaDestinationUiState(isLoading = true)
 }

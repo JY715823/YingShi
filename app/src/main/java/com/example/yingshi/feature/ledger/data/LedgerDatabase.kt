@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LedgerRecurringOccurrenceEntity::class,
         LedgerSyncChangelogEntity::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(LedgerTypeConverters::class)
@@ -39,7 +39,7 @@ abstract class LedgerDatabase : RoomDatabase() {
                     context.applicationContext,
                     LedgerDatabase::class.java,
                     "yingshi-ledger.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
             }
         }
     }
@@ -108,6 +108,36 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
             """.trimIndent(),
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS index_ledger_sync_changelog_tableName ON ledger_sync_changelog(tableName)")
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // FR-2: 软删除字段扩展（6 张表加 deleted_at_millis）
+        db.execSQL("ALTER TABLE ledger_categories ADD COLUMN deletedAtMillis INTEGER")
+        db.execSQL("ALTER TABLE ledger_accounts ADD COLUMN deletedAtMillis INTEGER")
+        db.execSQL("ALTER TABLE ledger_budgets ADD COLUMN deletedAtMillis INTEGER")
+        db.execSQL("ALTER TABLE ledger_category_budgets ADD COLUMN deletedAtMillis INTEGER")
+        db.execSQL("ALTER TABLE ledger_recurring_rules ADD COLUMN deletedAtMillis INTEGER")
+        db.execSQL("ALTER TABLE ledger_recurring_occurrences ADD COLUMN deletedAtMillis INTEGER")
+        // FR-15: Entity 字段补全
+        db.execSQL("ALTER TABLE ledger_deleted_items ADD COLUMN createdAtMillis INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE ledger_deleted_items ADD COLUMN updatedAtMillis INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE ledger_recurring_occurrences ADD COLUMN updatedAtMillis INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // C1/C2: 资产与账本解耦 + 归属/银行字段
+        db.execSQL("ALTER TABLE ledger_accounts ADD COLUMN ownerUserId TEXT")
+        db.execSQL("ALTER TABLE ledger_accounts ADD COLUMN bankKey TEXT")
+        db.execSQL("ALTER TABLE ledger_accounts ADD COLUMN bankName TEXT")
+        db.execSQL("ALTER TABLE ledger_accounts ADD COLUMN cardNumberTail TEXT")
+        // 索引变更：去 bookId 相关索引（含 unique name 索引），加 ownerUserId 索引
+        db.execSQL("DROP INDEX IF EXISTS index_ledger_accounts_bookId_sortOrder")
+        db.execSQL("DROP INDEX IF EXISTS index_ledger_accounts_bookId_name")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ledger_accounts_ownerUserId_sortOrder ON ledger_accounts(ownerUserId, sortOrder)")
     }
 }
 

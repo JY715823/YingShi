@@ -53,8 +53,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
@@ -486,11 +484,7 @@ internal fun SmallAlbumBelongChip(
 
 internal fun resolveLargeAlbumPalette(albumId: String): PhotoThumbnailPalette? {
     if (albumId.isBlank()) return null
-    return when (RepositoryProvider.currentMode) {
-        RepositoryMode.REAL -> realPaletteFor(albumId)
-        else -> FakeAlbumRepository.getAlbums().firstOrNull { it.id == albumId }?.accent
-            ?: realPaletteFor(albumId)
-    }
+    return realPaletteFor(albumId)
 }
 
 @Composable

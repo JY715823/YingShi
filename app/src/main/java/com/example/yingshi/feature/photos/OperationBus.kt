@@ -62,7 +62,7 @@ internal object OperationBus {
         if (!operationTasks.all { it.isTerminal }) return
 
         val successCount = operationTasks.count { it.state == UploadState.SUCCESS }
-        val failureCount = operationTasks.count { it.state == UploadState.FAILURE }
+        val failureCount = operationTasks.count { it.state == UploadState.FAILED }
         val cancelledCount = operationTasks.count { it.state == UploadState.CANCELLED }
         val resultMediaIds = operationTasks
             .filter { it.state == UploadState.SUCCESS }

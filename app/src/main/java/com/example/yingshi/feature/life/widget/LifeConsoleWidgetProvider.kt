@@ -34,6 +34,14 @@ class LifeConsoleWidgetProvider : AppWidgetProvider() {
             LifeConsoleWidgetController.refreshAll(context)
         }
 
+        /**
+         * FR-5 Round 2 复检修复: 仅刷新本地视图（renderAllFromStore），不触发网络请求。
+         * 用于 DispatchActivity 点击置顶场景，避免不必要的远程拉取。
+         */
+        fun renderAllFromStore(context: Context) {
+            LifeConsoleWidgetController.renderAllFromStore(context)
+        }
+
         fun applySnapshot(context: Context, snapshot: RemoteLifeConsoleToday) {
             LifeConsoleWidgetController.applySnapshot(context, snapshot)
         }
@@ -42,21 +50,7 @@ class LifeConsoleWidgetProvider : AppWidgetProvider() {
 
 internal object LifeConsoleWidgetController {
     private const val EXTRA_SLOT_KEY = "life_console_slot_key"
-    private const val ACTION_REFRESH = "com.example.yingshi.widget.REFRESH_LIFE_CONSOLE"
-    private const val ACTION_BOWEL_ADD = "com.example.yingshi.widget.BOWEL_ADD"
-    private const val ACTION_BOWEL_REMOVE = "com.example.yingshi.widget.BOWEL_REMOVE"
-    private const val ACTION_SLOT_PREV = "com.example.yingshi.widget.SLOT_PREV"
-    private const val ACTION_SLOT_NEXT = "com.example.yingshi.widget.SLOT_NEXT"
-    private const val ACTION_SLOT_DELETE = "com.example.yingshi.widget.SLOT_DELETE"
 
-    private val widgetActions = setOf(
-        ACTION_REFRESH,
-        ACTION_BOWEL_ADD,
-        ACTION_BOWEL_REMOVE,
-        ACTION_SLOT_PREV,
-        ACTION_SLOT_NEXT,
-        ACTION_SLOT_DELETE,
-    )
     private val widgetScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun refreshAll(context: Context) {
@@ -77,13 +71,13 @@ internal object LifeConsoleWidgetController {
 
     fun handleReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
-        if (action !in widgetActions) return
+        if (action !in WidgetActions.ALL) return
 
         ConsoleWidgetBuilder.initRuntime(context)
         val slotKey = intent.getStringExtra(EXTRA_SLOT_KEY)?.let(::slotKeyOrNull)
         when (action) {
-            ACTION_REFRESH -> fetchAndUpdateAll(context)
-            ACTION_BOWEL_ADD -> widgetScope.launch {
+            WidgetActions.ACTION_REFRESH -> fetchAndUpdateAll(context)
+            WidgetActions.ACTION_BOWEL_ADD -> widgetScope.launch {
                 val restoredSnapshot = LifeConsoleWidgetStore.updateBowelOptimistically(context, delta = 1)
                 LifeConsoleWidgetStore.saveStatus(context, "已记录")
                 renderAllFromStore(context)
@@ -105,7 +99,7 @@ internal object LifeConsoleWidgetController {
                     ApiResult.Loading -> Unit
                 }
             }
-            ACTION_BOWEL_REMOVE -> widgetScope.launch {
+            WidgetActions.ACTION_BOWEL_REMOVE -> widgetScope.launch {
                 val restoredSnapshot = LifeConsoleWidgetStore.updateBowelOptimistically(context, delta = -1)
                     ?: return@launch
                 LifeConsoleWidgetStore.saveStatus(context, "已删除")
@@ -126,21 +120,34 @@ internal object LifeConsoleWidgetController {
                     ApiResult.Loading -> Unit
                 }
             }
-            ACTION_SLOT_PREV -> {
+            WidgetActions.ACTION_SLOT_PREV -> {
                 if (slotKey != null) {
+                    // FR-5 AC-1: 任意操作置顶该框
+                    LifeConsoleWidgetStore.saveFrontSlot(context, slotKey)
                     LifeConsoleWidgetStore.moveIndex(context, slotKey, -1)
                     renderAllFromStore(context)
                 }
             }
-            ACTION_SLOT_NEXT -> {
+            WidgetActions.ACTION_SLOT_NEXT -> {
                 if (slotKey != null) {
+                    // FR-5 AC-1: 任意操作置顶该框
+                    LifeConsoleWidgetStore.saveFrontSlot(context, slotKey)
                     LifeConsoleWidgetStore.moveIndex(context, slotKey, 1)
                     renderAllFromStore(context)
                 }
             }
-            ACTION_SLOT_DELETE -> {
+            WidgetActions.ACTION_SLOT_DELETE -> {
                 if (slotKey != null) {
+                    // FR-5 AC-1: 任意操作置顶该框
+                    LifeConsoleWidgetStore.saveFrontSlot(context, slotKey)
                     deleteCurrentMedia(context, slotKey)
+                }
+            }
+            WidgetActions.ACTION_SLOT_TO_FRONT -> {
+                // FR-5: 仅置顶该框（相框点击事件触发）
+                if (slotKey != null) {
+                    LifeConsoleWidgetStore.saveFrontSlot(context, slotKey)
+                    renderAllFromStore(context)
                 }
             }
         }

@@ -18,6 +18,14 @@ interface TrashApi {
         @Query("size") size: Int? = null,
     ): ApiEnvelopeDto<TrashPageResponseDto>
 
+    /**
+     * P1-2 改造: life 回收站列表（按 category 过滤，PERSON/MEAL/null=所有 life）。
+     */
+    @GET("api/trash/life-items")
+    suspend fun getLifeTrashItems(
+        @Query("category") category: String? = null,
+    ): ApiEnvelopeDto<List<TrashItemDto>>
+
     @GET("api/trash/items/{trashItemId}")
     suspend fun getTrashDetail(
         @Path("trashItemId") trashItemId: String,
@@ -45,4 +53,12 @@ interface TrashApi {
 
     @GET("api/trash/pending-cleanup")
     suspend fun getPendingCleanupItems(): ApiEnvelopeDto<List<PendingCleanupDto>>
+
+    /**
+     * P1-2 改造: life 回收站 24h 撤回中心（按 category 过滤）。
+     */
+    @GET("api/trash/life-pending-cleanup")
+    suspend fun getLifePendingCleanupItems(
+        @Query("category") category: String? = null,
+    ): ApiEnvelopeDto<List<PendingCleanupDto>>
 }

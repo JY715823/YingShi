@@ -97,7 +97,7 @@ internal object RealOriginalLoadRepository {
         statesByRequestKey[key] = state
         if (state == OriginalLoadState.Loaded) {
             pendingRequests.remove(key)
-            FakeMediaCacheRepository.markOriginalCached(target.mediaId)
+            // R3-APP-001: Original cached state tracked by RealOriginalLoadRepository itself
         }
     }
 

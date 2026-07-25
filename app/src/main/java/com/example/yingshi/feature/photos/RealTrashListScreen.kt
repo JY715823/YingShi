@@ -188,6 +188,19 @@ fun RealTrashPageScreen(
         SyncVersionTracker.markLocalMutation(SyncModule.SYSTEM_MEDIA)
     }
 
+    fun undoAllPendingEntries() {
+        viewModel.undoAllPendingCleanup(pendingEntries, selectedType)
+        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+    }
+
+    fun purgeAllPendingEntries() {
+        viewModel.purgePendingCleanupEntries(pendingEntries, selectedType)
+        SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+        SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+        SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+        SyncVersionTracker.markLocalMutation(SyncModule.SYSTEM_MEDIA)
+    }
+
     LaunchedEffect(selectedTypeName) {
         if (selectedTypeName != previousSelectedTypeName) {
             onSelectionStateChange(false, emptySet())
@@ -223,7 +236,7 @@ fun RealTrashPageScreen(
             .collect { currentlyStale ->
                 if (currentlyStale) {
                     viewModel.refresh(selectedType)
-                    SyncVersionTracker.markRefreshed(SyncModule.TRASH)
+                    SyncVersionTracker.markRefreshedFresh(SyncModule.TRASH)
                 }
             }
     }
@@ -239,14 +252,20 @@ fun RealTrashPageScreen(
         RealTrashPendingCleanupScreen(
             pendingEntries = pendingEntries,
             directory = collaboratorDirectory,
+            selectedType = selectedType,
             isLoading = uiState.isLoading && pendingEntries.isEmpty(),
             isMutating = uiState.isMutating,
             errorMessage = uiState.errorMessage,
             statusMessage = uiState.statusMessage,
-            onBack = { onShowPendingCleanupChange(false) },
+            onTypeSelected = { type ->
+                onSelectedTypeNameChange(type.name)
+                onShowPendingCleanupChange(false)
+            },
             onRefresh = { viewModel.refresh(selectedType) },
             onUndo = ::undoPendingEntry,
             onPurge = ::purgePendingEntry,
+            onUndoAll = ::undoAllPendingEntries,
+            onPurgeAll = ::purgeAllPendingEntries,
             modifier = modifier,
         )
         return
@@ -264,7 +283,20 @@ fun RealTrashPageScreen(
     ) { targetType ->
         if (targetType.isRealMediaTrashType()) {
         val mediaEntries = entries.sortedByDescending { it.deletedAtMillis }
-        val mediaGridState = rememberLazyGridState()
+        // 修复：使用全局 state store 初始化滚动位置，避免查看态返回后回到顶部
+        val mediaGridState = rememberLazyGridState(
+            initialFirstVisibleItemIndex = GlobalTrashPageStateStore.savedFirstVisibleItemIndex,
+            initialFirstVisibleItemScrollOffset = GlobalTrashPageStateStore.savedFirstVisibleItemScrollOffset,
+        )
+        // 持续保存滚动位置到全局 store
+        androidx.compose.runtime.LaunchedEffect(mediaGridState) {
+            androidx.compose.runtime.snapshotFlow {
+                mediaGridState.firstVisibleItemIndex to mediaGridState.firstVisibleItemScrollOffset
+            }.collect { (index, offset) ->
+                GlobalTrashPageStateStore.savedFirstVisibleItemIndex = index
+                GlobalTrashPageStateStore.savedFirstVisibleItemScrollOffset = offset
+            }
+        }
         val mediaGridColumns = 3
         val rowItems = remember(mediaEntries) {
             mediaEntries.chunked(mediaGridColumns)
@@ -938,21 +970,20 @@ private fun RealTrashCategoryActionRow(
                             },
                         )
                     }
-                    if (pendingCount > 0) {
-                        DropdownMenuItem(
-                            text = {
-                                RealTrashMenuRow(
-                                    text = "待清理",
-                                    trailing = pendingCount.toString(),
-                                    selected = false,
-                                )
-                            },
-                            onClick = {
-                                onMenuExpandedChange(false)
-                                onOpenPendingCleanup()
-                            },
-                        )
-                    }
+                    // 待清理作为同等地位的第五个分类，始终显示
+                    DropdownMenuItem(
+                        text = {
+                            RealTrashMenuRow(
+                                text = "待清理",
+                                trailing = if (pendingCount > 0) pendingCount.toString() else null,
+                                selected = false,
+                            )
+                        },
+                        onClick = {
+                            onMenuExpandedChange(false)
+                            onOpenPendingCleanup()
+                        },
+                    )
                 }
             }
         }
@@ -974,7 +1005,7 @@ private fun RealTrashCategoryActionRow(
 }
 
 @Composable
-private fun RealTrashMenuRow(
+internal fun RealTrashMenuRow(
     text: String,
     trailing: String?,
     selected: Boolean,

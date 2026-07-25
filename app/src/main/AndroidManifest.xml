@@ -134,6 +134,25 @@
             android:name=".feature.life.push.LifePushDismissReceiver"
             android:exported="false" />
 
+        <!-- R3-AND-002: Internal keepalive receiver (exported=false, not reachable from outside) -->
+        <receiver
+            android:name=".feature.life.push.SseInternalKeepAliveReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.yingshi.action.SSE_KEEPALIVE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- R3-AND-002: System broadcast receiver for boot/upgrade (exported=true, system-only actions) -->
+        <receiver
+            android:name=".feature.life.push.SseKeepAliveReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

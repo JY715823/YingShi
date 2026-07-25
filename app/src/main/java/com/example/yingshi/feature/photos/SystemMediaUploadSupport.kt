@@ -187,7 +187,7 @@ internal fun enqueueFakeUploadTask(
                         mediaType = mediaItem.type,
                         previewUri = mediaItem.uri.toString(),
                         progressPercent = 0,
-                        state = UploadState.FAILURE,
+                        state = UploadState.FAILED,
                         statusMessage = "上传失败",
                         errorMessage = tokenResult.message,
                         canRetry = true,
@@ -258,7 +258,7 @@ internal fun enqueueFakeUploadTask(
             is ApiResult.Error -> {
                 UploadManager.updateUploadTask(
                     taskId = uploadId,
-                    state = UploadState.FAILURE,
+                    state = UploadState.FAILED,
                     progressPercent = 100,
                     statusMessage = "上传失败",
                     errorMessage = confirmResult.message,
@@ -278,13 +278,13 @@ internal fun finalizeOperationIfReady(
     if (OperationBus.finalizedOperationIds.contains(operationId)) return
     val operationTasks = UploadManager.uploadTasksState.filter { it.operationId == operationId }
     if (operationTasks.isEmpty()) return
-    if (operationTasks.any { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }) return
+    if (operationTasks.any { it.state == UploadState.FAILED || it.state == UploadState.CANCELLED }) return
     if (operationTasks.all { it.state == UploadState.SUCCESS }) {
         OperationBus.finalizedOperationIds += operationId
         val result = onOperationSuccess()
         UploadManager.updateOperationTasks(
             operationId = operationId,
-            state = if (result.succeeded) UploadState.SUCCESS else UploadState.FAILURE,
+            state = if (result.succeeded) UploadState.SUCCESS else UploadState.FAILED,
             statusMessage = result.message,
             errorMessage = if (result.succeeded) null else result.message,
             canRetry = !result.succeeded,
@@ -428,7 +428,7 @@ internal fun RemoteUploadTask.toUploadTaskUiModel(): SystemMediaUploadTaskUiMode
             UploadState.WAITING -> "等待上传"
             UploadState.UPLOADING -> "正在上传 $progressPercent%"
             UploadState.SUCCESS -> "上传完成"
-            UploadState.FAILURE -> "上传失败"
+            UploadState.FAILED -> "上传失败"
             UploadState.CANCELLED -> "已取消"
         },
         errorMessage = errorMessage,
@@ -482,12 +482,12 @@ internal fun SystemMediaUploadTaskUiModel.toPersistedUploadTaskJson(): JSONObjec
 }
 
 internal fun String.toPersistedUploadState(): UploadState {
-    return runCatching { UploadState.valueOf(ifBlank { UploadState.FAILURE.name }) }
-        .getOrDefault(UploadState.FAILURE)
+    return runCatching { UploadState.valueOf(ifBlank { UploadState.FAILED.name }) }
+        .getOrDefault(UploadState.FAILED)
 }
 
 internal fun UploadState.isTerminalUploadState(): Boolean {
-    return this == UploadState.SUCCESS || this == UploadState.FAILURE || this == UploadState.CANCELLED
+    return this == UploadState.SUCCESS || this == UploadState.FAILED || this == UploadState.CANCELLED
 }
 
 internal fun JSONArray?.toStringSet(): LinkedHashSet<String> {

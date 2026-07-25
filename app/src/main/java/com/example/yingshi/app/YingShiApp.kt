@@ -1,13 +1,13 @@
 package com.example.yingshi.app
 
 import android.app.Activity
+import androidx.core.app.NotificationManagerCompat
+import com.example.yingshi.feature.life.push.SseConnectionManager
+import com.example.yingshi.feature.photos.MediaCacheRepository
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -51,12 +51,10 @@ import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.RemoteCurrentUser
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
 import com.example.yingshi.data.remote.connectivity.NetworkConnectivityMonitor
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.remote.result.isUnauthorized
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.auth.LoginScreen
 import com.example.yingshi.feature.chat.ImportedChatScreen
@@ -73,8 +71,6 @@ import com.example.yingshi.feature.me.EditProfileScreen
 import com.example.yingshi.feature.me.MyScreen
 import com.example.yingshi.feature.me.PersonalProfileRoute
 import com.example.yingshi.feature.me.PersonalProfileScreen
-import com.example.yingshi.feature.photos.FakeAlbumRepository
-import com.example.yingshi.feature.photos.FakeTrashRepository
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
 import com.example.yingshi.feature.photos.AlbumPageStateStore
 import com.example.yingshi.feature.photos.CacheManagementRoute
@@ -163,12 +159,6 @@ fun YingShiApp() {
     }
     var trashSelectedEntryIdsState by rememberSaveable {
         mutableStateOf(emptyList<String>())
-    }
-    var showQuickAddSheet by rememberSaveable {
-        mutableStateOf(false)
-    }
-    var pendingQuickAddImportPreview by remember {
-        mutableStateOf<SystemMediaImportPreview?>(null)
     }
     var lifeSubRoute by remember {
         mutableStateOf<LifeSubRoute>(LifeSubRoute.Life)
@@ -312,19 +302,13 @@ fun YingShiApp() {
         }
     }
 
-    LaunchedEffect(currentUser?.userId, currentUser?.updatedAtMillis, currentUser?.partner?.userId) {
+    LaunchedEffect(currentUser) {
         CollaboratorDirectoryStore.update(currentUser)
         currentUser?.let(AuthSessionManager::saveCurrentUserSnapshot)
     }
 
     LaunchedEffect(currentUser?.userId) {
         SyncVersionTracker.reset()
-    }
-
-    LaunchedEffect(offlineAccessState.isReadOnly) {
-        if (offlineAccessState.isReadOnly) {
-            showQuickAddSheet = false
-        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -420,6 +404,15 @@ fun YingShiApp() {
                 RepositoryProvider.authRepository.logout()
             }
             AuthSessionManager.clearTokens()
+
+            // R3-FR-2: Comprehensive logout cleanup
+            // 1. Clear media disk cache (prevent cross-account data leakage)
+            runCatching { MediaCacheRepository.clearAllMediaCaches(context) }
+            // 2. Clear all notifications (remove stale push notifications from notification bar)
+            runCatching { NotificationManagerCompat.from(context).cancelAll() }
+            // 3. Stop SSE connection (prevent idle polling after logout)
+            runCatching { SseConnectionManager.stop() }
+
             currentUser = null
             authNoticeMessage = null
             profileRefreshMessage = null
@@ -736,19 +729,13 @@ fun YingShiApp() {
         selectedDestinationName = RootDestination.PHOTOS.name
         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
 
-        val resolvedRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            when (val result = RepositoryProvider.postRepository.getPostDetail(postId)) {
-                is ApiResult.Success -> result.data.toPostDetailPlaceholderRoute()
-                is ApiResult.Error -> {
-                    showAppNotice("已进入小相册，详情还在同步。", YingShiNoticeTone.WARNING)
-                    pushSmallAlbumFallbackRoute(postId)
-                }
-                ApiResult.Loading -> pushSmallAlbumFallbackRoute(postId)
+        val resolvedRoute = when (val result = RepositoryProvider.postRepository.getPostDetail(postId)) {
+            is ApiResult.Success -> result.data.toPostDetailPlaceholderRoute()
+            is ApiResult.Error -> {
+                showAppNotice("已进入小相册，详情还在同步。", YingShiNoticeTone.WARNING)
+                pushSmallAlbumFallbackRoute(postId)
             }
-        } else {
-            FakeAlbumRepository.getPost(postId)
-                ?.let(FakeAlbumRepository::toPostDetailRoute)
-                ?: pushSmallAlbumFallbackRoute(postId)
+            ApiResult.Loading -> pushSmallAlbumFallbackRoute(postId)
         }
         val route = resolvedRoute.copy(
             entryNotice = "从推送进入",
@@ -853,68 +840,6 @@ fun YingShiApp() {
         photosTopDestinationName = PhotosTopDestination.PHOTOS.name
         photoFeedScrollTrigger++
     }
-    val quickAddPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
-    ) { uris ->
-        if (uris.isEmpty()) {
-            showAppNotice("已取消导入媒体")
-            return@rememberLauncherForActivityResult
-        }
-        showQuickAddSheet = false
-        runCatching {
-            com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository
-                .buildImportPickedMediaPreview(
-                    context = context,
-                    mediaUris = uris,
-                )
-        }.onSuccess { preview ->
-            if (preview.requestedCount > 0) {
-                pendingQuickAddImportPreview = preview
-            } else {
-                showAppNotice(
-                    "没有找到可导入的图片或视频。",
-                    YingShiNoticeTone.WARNING,
-                )
-            }
-        }.onFailure {
-            showAppNotice(
-                "导入媒体失败，请稍后重试。",
-                YingShiNoticeTone.WARNING,
-            )
-        }
-    }
-
-    pendingQuickAddImportPreview?.let { preview ->
-        SystemMediaImportPreviewDialog(
-            preview = preview,
-            timePreferenceLabel = SettingsRepository.getSettingsState().mediaTimePreference.label,
-            onDismiss = { pendingQuickAddImportPreview = null },
-            onConfirmImport = {
-                val previewSnapshot = pendingQuickAddImportPreview ?: return@SystemMediaImportPreviewDialog
-                if (!previewSnapshot.hasImportableItems) {
-                    pendingQuickAddImportPreview = null
-                    return@SystemMediaImportPreviewDialog
-                }
-                val importedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
-                    context = context,
-                    mediaItems = previewSnapshot.importableItems,
-                )
-                pendingQuickAddImportPreview = null
-                if (importedCount > 0) {
-                    showAppNotice(
-                        "已加入导入队列，完成后会出现在照片流。",
-                        YingShiNoticeTone.SUCCESS,
-                    )
-                } else {
-                    showAppNotice(
-                        "这些媒体已经在导入队列里，或没有可导入的媒体。",
-                        YingShiNoticeTone.WARNING,
-                    )
-                }
-            },
-        )
-    }
-
     LaunchedEffect(operationResults.size) {
         if (operationResults.isEmpty()) return@LaunchedEffect
         val pendingEvents = operationResults.toList()
@@ -1113,8 +1038,7 @@ fun YingShiApp() {
             mediaManagementRoute == null &&
             lifeSubRoute == LifeSubRoute.Life &&
             !isProfileFlowActive &&
-            !photoSelectionShellState.isActive &&
-            !showQuickAddSheet
+            !photoSelectionShellState.isActive
     if (rootExitEligible) {
         BackHandler {
             val now = SystemClock.elapsedRealtime()
@@ -1148,7 +1072,7 @@ fun YingShiApp() {
         backendDiagnosticsRoute == null &&
         cacheManagementRoute == null &&
         !isProfileFlowActive &&
-        lifeSubRoute == LifeSubRoute.Life
+        (selectedDestination != RootDestination.LIFE || lifeSubRoute == LifeSubRoute.Life)
     val showPhotoSelectionBottomBar = showRootBottomBar &&
         selectedDestination == RootDestination.PHOTOS &&
         photosTopDestinationName == PhotosTopDestination.PHOTOS.name &&
@@ -1169,14 +1093,6 @@ fun YingShiApp() {
         AppShellScaffold(
             selectedDestination = selectedDestination,
             onDestinationSelected = { selectedDestinationName = it.name },
-            centerActionEnabled = !offlineAccessState.isReadOnly,
-            onCenterAction = {
-                if (offlineAccessState.isReadOnly) {
-                    showAppNotice("当前为缓存只读，恢复连接后才能继续新建或导入。", YingShiNoticeTone.WARNING)
-                } else {
-                    showQuickAddSheet = true
-                }
-            },
             showBottomBar = showRootBottomBar,
             bottomBarOverride = if (showPhotoSelectionBottomBar) {
                 {
@@ -1238,7 +1154,7 @@ fun YingShiApp() {
                     }
 
                     // 3. 回收站 — 有具体条目跳详情，否则跳回收站列表
-                    !item.trashItemId.isNullOrBlank() && RepositoryProvider.currentMode == RepositoryMode.REAL -> {
+                    !item.trashItemId.isNullOrBlank() -> {
                         notificationCenterRoute = null
                         notificationDetailRoute = null
                         selectedDestinationName = RootDestination.PHOTOS.name
@@ -1275,19 +1191,7 @@ fun YingShiApp() {
                         notificationDetailRoute = null
                         selectedDestinationName = RootDestination.PHOTOS.name
                         photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                        postDetailRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                            item.toNotificationPostRoute()
-                        } else {
-                            FakeAlbumRepository.getPost(item.postId)
-                                ?.let(FakeAlbumRepository::toPostDetailRoute)
-                                ?.copy(
-                                    entryNotice = "从通知进入",
-                                    highlightMediaIds = item.mediaId?.let(::listOf).orEmpty(),
-                                    focusMediaId = item.mediaId,
-                                    autoOpenComment = item.type == NotificationCenterItemType.COMMENT,
-                                )
-                                ?: item.toNotificationPostRoute()
-                        }
+                        postDetailRoute = item.toNotificationPostRoute()
                     }
 
                     // 6. 内容更新（无具体相册时回退到相册列表）
@@ -1558,6 +1462,7 @@ fun YingShiApp() {
                         onSelectedTopDestinationChange = { newName ->
                             photosTopDestinationName = newName
                         },
+                        onPhotoSelectionShellStateChange = { photoSelectionShellState = it },
                     )
                     RootDestination.LIFE -> {
                         when (lifeSubRoute) {
@@ -1595,6 +1500,9 @@ fun YingShiApp() {
                             currentUser = user,
                             onBack = { editProfileRoute = null },
                             onProfileSaved = { updatedUser ->
+                                // 同步更新 CollaboratorDirectoryStore，避免 LaunchedEffect 异步时序导致资产管理等页面读到旧值
+                                CollaboratorDirectoryStore.update(updatedUser)
+                                AuthSessionManager.saveCurrentUserSnapshot(updatedUser)
                                 currentUser = updatedUser
                                 profileRefreshMessage = null
                             },
@@ -1688,50 +1596,17 @@ fun YingShiApp() {
                             }
                         },
                         onDeleteCurrentPost = { postId, deleteMediaSystemWide ->
-                            if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                                if (deleteMediaSystemWide) {
-                                    SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
-                                }
-                                SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
-                                SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
-                                SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
-                                markPostListUpdated(postId, postDetailRoute?.albumId)
-                                gearEditRoute = null
-                                postDetailRoute = null
-                                selectedDestinationName = RootDestination.PHOTOS.name
-                                photosTopDestinationName = PhotosTopDestination.ALBUMS.name
-                                return@GearEditScreen
-                            }
-                            val postSnapshot = FakeAlbumRepository.snapshotPost(postId)
-                            if (postSnapshot == null) {
-                                gearEditRoute = null
-                                postDetailRoute = null
-                                return@GearEditScreen
-                            }
-
                             if (deleteMediaSystemWide) {
-                                val mediaIds = postSnapshot.mediaSnapshots.map { it.mediaId }.toSet()
-                                val relationSnapshotsByMediaId = FakeAlbumRepository.snapshotMediaRelations(mediaIds)
-                                val outcome = FakeAlbumRepository.previewGlobalMediaDelete(mediaIds)
-                                val deletedPostSnapshots = outcome.deletedPostIds.mapNotNull(
-                                    FakeAlbumRepository::snapshotPost,
-                                )
-                                FakeTrashRepository.recordDeletedPost(postSnapshot)
-                                FakeTrashRepository.recordSystemDeletedMedia(
-                                    mediaSnapshots = postSnapshot.mediaSnapshots,
-                                    relationSnapshotsByMediaId = relationSnapshotsByMediaId,
-                                )
-                                deletedPostSnapshots.forEach { snapshot ->
-                                    FakeTrashRepository.recordDeletedPost(snapshot)
-                                }
-                                val appliedOutcome = FakeAlbumRepository.applyGlobalMediaDelete(mediaIds)
-                                FakeAlbumRepository.deletePostsLocally(appliedOutcome.deletedPostIds + postId)
-                            } else {
-                                FakeTrashRepository.recordDeletedPost(postSnapshot)
-                                FakeAlbumRepository.deletePostsLocally(listOf(postId))
+                                SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
                             }
+                            SyncVersionTracker.markLocalMutation(SyncModule.ALBUMS)
+                            SyncVersionTracker.markLocalMutation(SyncModule.TRASH)
+                            SyncVersionTracker.markLocalMutation(SyncModule.NOTIFICATIONS)
+                            markPostListUpdated(postId, postDetailRoute?.albumId)
                             gearEditRoute = null
                             postDetailRoute = null
+                            selectedDestinationName = RootDestination.PHOTOS.name
+                            photosTopDestinationName = PhotosTopDestination.ALBUMS.name
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -1820,74 +1695,5 @@ fun YingShiApp() {
 	        }
     }
 
-    if (showQuickAddSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showQuickAddSheet = false },
-            sheetState = androidx.compose.material3.rememberModalBottomSheetState(
-                skipPartiallyExpanded = true,
-            ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
-                verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.md),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
-                    Text(
-                        text = "照片",
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                    )
-                    TextButton(
-                        onClick = {
-                            showQuickAddSheet = false
-                            runCatching {
-                                quickAddPickerLauncher.launch(
-                                    PickVisualMediaRequest(
-                                        mediaType = ActivityResultContracts.PickVisualMedia.ImageAndVideo,
-                                    ),
-                                )
-	                            }.onFailure {
-	                                showAppNotice(
-	                                    "无法打开系统照片选择器，请稍后重试。",
-	                                    YingShiNoticeTone.WARNING,
-	                                )
-	                            }
-                        },
-                    ) {
-                        Text(text = "导入媒体")
-                    }
-                    TextButton(
-                        onClick = {
-                            showQuickAddSheet = false
-                            selectedDestinationName = RootDestination.PHOTOS.name
-                            createPostRoute = CreatePostRoute(
-                                source = "bottom-quick-add",
-                                initialAppMediaIds = emptyList(),
-                                initialAppMediaItems = emptyList(),
-                            )
-                        },
-                    ) {
-                        Text(text = "新建小相册")
-                    }
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(YingShiThemeTokens.spacing.xs)) {
-                    Text(
-                        text = "记账",
-                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                    )
-                    TextButton(
-                        onClick = {
-                            showQuickAddSheet = false
-                            selectedDestinationName = RootDestination.LIFE.name
-                            lifeSubRoute = LifeSubRoute.LedgerAdd
-                        },
-                    ) {
-                        Text(text = "记一笔")
-                    }
-                }
-            }
-        }
-    }
 }
 }

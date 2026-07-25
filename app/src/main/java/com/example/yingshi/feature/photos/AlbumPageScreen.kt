@@ -33,14 +33,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.sync.StaleBanner
 import com.example.yingshi.feature.sync.SyncModule
 import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 object AlbumPageStateStore {
     var pendingSelectedAlbumId by mutableStateOf<String?>(null)
@@ -58,133 +57,12 @@ fun AlbumPageScreen(
     onCreateSmallAlbum: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        RealAlbumPageScreen(
-            onOpenPost = onOpenPost,
-            onCreateLargeAlbum = onCreateLargeAlbum,
-            onCreateSmallAlbum = onCreateSmallAlbum,
-            modifier = modifier,
-        )
-        return
-    }
-
-    val spacing = YingShiThemeTokens.spacing
-    val colors = YingShiThemeTokens.colors
-    val settingsState = SettingsRepository.getSettingsState()
-    var selectedAlbumId by rememberSaveable(albums) {
-        mutableStateOf(albums.firstOrNull()?.id.orEmpty())
-    }
-    val pendingSelectedAlbumId = AlbumPageStateStore.pendingSelectedAlbumId
-    var densityName by rememberSaveable {
-        mutableStateOf<String?>(null)
-    }
-    LaunchedEffect(Unit) {
-        if (densityName == null) {
-            densityName = settingsState.defaultAlbumGridDensity.name
-        }
-    }
-    LaunchedEffect(pendingSelectedAlbumId, albums) {
-        val targetAlbumId = pendingSelectedAlbumId ?: return@LaunchedEffect
-        if (albums.any { it.id == targetAlbumId }) {
-            selectedAlbumId = targetAlbumId
-            AlbumPageStateStore.pendingSelectedAlbumId = null
-        }
-    }
-    val gridDensity = AlbumGridDensity.valueOf(
-        densityName ?: settingsState.defaultAlbumGridDensity.name,
+    RealAlbumPageScreen(
+        onOpenPost = onOpenPost,
+        onCreateLargeAlbum = onCreateLargeAlbum,
+        onCreateSmallAlbum = onCreateSmallAlbum,
+        modifier = modifier,
     )
-    val gridState = rememberLazyGridState()
-    val filteredPosts = posts.filter { it.albumId == selectedAlbumId }
-    val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
-    var recentlyUpdatedPostId by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(pendingUpdatedPostId, filteredPosts) {
-        val targetPostId = pendingUpdatedPostId ?: return@LaunchedEffect
-        val targetIndex = filteredPosts.indexOfFirst { it.id == targetPostId }
-        if (targetIndex >= 0) {
-            recentlyUpdatedPostId = targetPostId
-            AlbumPageStateStore.pendingUpdatedPostId = null
-            gridState.scrollToItem(targetIndex)
-        }
-    }
-    LaunchedEffect(recentlyUpdatedPostId) {
-        val targetPostId = recentlyUpdatedPostId ?: return@LaunchedEffect
-        delay(4500)
-        if (recentlyUpdatedPostId == targetPostId) {
-            recentlyUpdatedPostId = null
-        }
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        AlbumSwitchSection(
-            albums = albums,
-            selectedAlbumId = selectedAlbumId,
-            onSelectAlbum = { selectedAlbumId = it },
-            onCreateLargeAlbum = onCreateLargeAlbum,
-            onCreateSmallAlbum = { onCreateSmallAlbum(selectedAlbumId.ifBlank { null }) },
-            onRenameAlbum = { album, payload ->
-                FakeAlbumRepository.renameAlbum(
-                    albumId = album.id,
-                    title = payload.title,
-                    subtitle = payload.subtitle,
-                )
-            },
-            onDeleteAlbum = { album ->
-                FakeAlbumRepository.snapshotAlbum(album.id)?.let { snapshot ->
-                    FakeTrashRepository.recordDeletedAlbum(snapshot)
-                    FakeAlbumRepository.deleteAlbumLocally(album.id)
-                    if (selectedAlbumId == album.id) {
-                        selectedAlbumId = FakeAlbumRepository.getAlbums().firstOrNull()?.id.orEmpty()
-                    }
-                }
-            },
-        )
-
-        if (filteredPosts.isEmpty()) {
-            AlbumEmptyStateCard(
-                selectedAlbumTitle = albums.firstOrNull { it.id == selectedAlbumId }?.title,
-                onCreateSmallAlbum = { onCreateSmallAlbum(selectedAlbumId.ifBlank { null }) },
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .discreteZoomLevelGesture(
-                        enabled = true,
-                        levels = AlbumGridDensity.entries.toList(),
-                        currentLevel = gridDensity,
-                        onLevelChange = { densityName = it.name },
-                    ),
-            ) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(gridDensity.columns),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(cardSpacing(gridDensity)),
-                    verticalArrangement = Arrangement.spacedBy(cardSpacing(gridDensity)),
-                    contentPadding = PaddingValues(bottom = spacing.lg),
-                ) {
-                    items(
-                        items = filteredPosts,
-                        key = { it.id },
-                        contentType = { "album-post-${gridDensity.columns}" },
-                    ) { post ->
-                        AlbumPostCard(
-                            post = post,
-                            density = gridDensity,
-                            isRecentlyUpdated = post.id == recentlyUpdatedPostId,
-                            onClick = { onOpenPost(FakeAlbumRepository.toPostDetailRoute(post)) },
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -201,6 +79,8 @@ private fun RealAlbumPageScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
+    // P1-3 诊断日志: 记录每次重组的触发原因
+    android.util.Log.e("AlbumPageScreen", ">>> recompose: backendMutationVersion=${backendMutationEvent.version} affectsAlbums=${backendMutationEvent.affectsAlbums()} postsSize=${uiState.posts.size} isLoading=${uiState.isLoading}")
     val pendingSelectedAlbumId = AlbumPageStateStore.pendingSelectedAlbumId
     val pendingUpdatedPostId = AlbumPageStateStore.pendingUpdatedPostId
     val spacing = YingShiThemeTokens.spacing
@@ -218,13 +98,17 @@ private fun RealAlbumPageScreen(
             viewModel.refresh()
         }
     }
-    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
+    // P1-3 根因修复: 不订阅整个 staleState, 改用 snapshotFlow 直接订阅 albumsStale 字段。
+    // 之前订阅整个 staleState, lifeConsoleStale 变化 (life 操作 + LifeConsoleViewModel 重置)
+    // 会触发 RealAlbumPageScreen 重组, 导致 LazyVerticalGrid 重新执行 (用户感知为"闪")。
     LaunchedEffect(Unit) {
-        snapshotFlow { syncStaleState.albumsStale }
+        snapshotFlow { SyncVersionTracker.staleState.value.albumsStale }
+            .distinctUntilChanged()
             .collect { currentlyStale ->
                 if (currentlyStale) {
-                    viewModel.refresh()
-                    SyncVersionTracker.markRefreshed(SyncModule.ALBUMS)
+                    // 修复：等 refresh 完成后再 markRefreshed，避免 refresh 期间服务端版本又涨
+                    // 导致下次 poll 又 stale=true，形成闪烁循环
+                    viewModel.refreshAndMarkRefreshed()
                 }
             }
     }

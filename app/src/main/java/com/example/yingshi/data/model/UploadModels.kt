@@ -4,7 +4,7 @@ enum class UploadState {
     WAITING,
     UPLOADING,
     SUCCESS,
-    FAILURE,
+    FAILED,
     CANCELLED,
 }
 
@@ -27,6 +27,8 @@ data class CreateUploadTokenPayload(
     val operationMediaCount: Int? = null,
     val sourceItemId: String? = null,
     val domain: String? = null,
+    // life 模块分类: PERSON / MEAL / null（非 life 上传）
+    val lifeCategory: String? = null,
     // FR-18: optional location fields
     val latitude: Double? = null,
     val longitude: Double? = null,
@@ -56,4 +58,14 @@ data class RemoteUploadTask(
     val updatedAtMillis: Long? = null,
     val completedAtMillis: Long? = null,
     val media: RemoteMedia? = null,
+)
+
+/**
+ * FR-3: 分页后的上传历史。
+ * tasks 为本页任务，nextCursor 为下一页游标（null 表示无更多），hasMore 表示是否还有下一页。
+ */
+data class RemoteUploadHistoryPage(
+    val tasks: List<RemoteUploadTask>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
 )

@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Image
@@ -51,6 +50,7 @@ import com.example.yingshi.ui.components.YingShiMistCard
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.YingShiNoticeTone
+import com.example.yingshi.ui.components.YingShiStateLayer
 import com.example.yingshi.ui.components.yingShiHapticClickable
 import com.example.yingshi.ui.components.yingShiRouteReveal
 import com.example.yingshi.ui.components.yingShiSoftReveal
@@ -198,10 +198,23 @@ fun CacheManagementScreen(
                         title = "占用空间",
                         value = readCacheSummary?.let { formatReadCacheSize(context, it.totalBytes) } ?: "统计中",
                     )
-                    CacheInfoRow(
-                        title = "最近更新",
-                        value = readCacheSummary?.lastUpdatedAtMillis?.let(::formatCacheUpdatedAt)
-                            ?: "还没有离线入口缓存",
+                    val lastUpdatedMillis = readCacheSummary?.lastUpdatedAtMillis
+                    val isStale = lastUpdatedMillis != null &&
+                        (System.currentTimeMillis() - lastUpdatedMillis > 7 * 86_400_000L)
+                    val syncTone = when {
+                        lastUpdatedMillis == null -> YingShiNoticeTone.INFO
+                        isStale -> YingShiNoticeTone.WARNING
+                        else -> YingShiNoticeTone.SUCCESS
+                    }
+                    val syncBody = when {
+                        lastUpdatedMillis == null -> "未同步"
+                        isStale -> "最近同步：${AppReadCacheStore.formatRelativeStaleAge(lastUpdatedMillis)}（建议同步）"
+                        else -> "最近同步：${AppReadCacheStore.formatRelativeStaleAge(lastUpdatedMillis)}"
+                    }
+                    YingShiStateLayer(
+                        title = "离线入口同步",
+                        body = syncBody,
+                        tone = syncTone,
                     )
                 }
             }
@@ -554,21 +567,6 @@ private fun formatReadCacheSize(
     bytes: Long,
 ): String {
     return if (bytes <= 0L) "0 B" else Formatter.formatShortFileSize(context, bytes)
-}
-
-private fun formatCacheUpdatedAt(timeMillis: Long): String {
-    return java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA)
-        .format(java.util.Date(timeMillis))
-}
-
-private fun String.toCacheSourceLabel(): String {
-    return when (this) {
-        "settings" -> "设置页"
-        "settings-storage" -> "设置页 / 缓存与存储"
-        "viewer-settings" -> "Viewer 设置入口"
-        "my-page" -> "我的页"
-        else -> this
-    }
 }
 
 @Preview(showBackground = true)

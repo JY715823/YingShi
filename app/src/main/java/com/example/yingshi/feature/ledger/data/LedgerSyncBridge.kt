@@ -11,6 +11,7 @@ import com.example.yingshi.feature.sync.SyncModule
 import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.google.gson.Gson
 import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -43,6 +44,8 @@ interface LedgerSyncBridge {
     suspend fun hydrate(repository: LedgerRepository) {}
 
     suspend fun afterMutation(repository: LedgerRepository) {}
+
+    suspend fun backfillSeedChangelogIfNeeded(repository: LedgerRepository) {}
 }
 
 object NoOpLedgerSyncBridge : LedgerSyncBridge
@@ -71,6 +74,57 @@ class RemoteLedgerSyncBridge(
         return false
     }
 
+    /**
+     * 从 HttpException 响应体中提取服务端返回的实际错误信息。
+     * 服务端 ApiResponse 结构: { "error": { "code": "...", "message": "..." } }
+     */
+    private fun extractServerError(throwable: Throwable): String? {
+        if (throwable !is HttpException) return null
+        return try {
+            val raw = throwable.response()?.errorBody()?.string()
+            if (raw.isNullOrBlank()) return null
+            val parsed = JsonParser.parseString(raw)
+            if (!parsed.isJsonObject) return null
+            val errorObj = parsed.asJsonObject.get("error")
+            if (errorObj != null && errorObj.isJsonObject) {
+                val msg = errorObj.asJsonObject.get("message")?.asString
+                if (!msg.isNullOrBlank()) return msg
+            }
+            // 兜底：尝试直接读取顶层 message
+            parsed.asJsonObject.get("message")?.asString
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override suspend fun backfillSeedChangelogIfNeeded(repository: LedgerRepository) {
+        if (!AuthSessionManager.isLoggedIn) return
+        if (prefs.isSeedChangelogBackfilled()) return
+        // 一次性补全所有本地种子数据的 changelog，确保它们能同步到服务端
+        // 修复：旧版本 ensureSeedData 不记 changelog，导致种子 books/accounts/categories 从未同步
+        // 新增账单时服务端 FK 约束违反 → 500
+        val dao = repository.dao
+        // 修复 2：扫描本地账号表中 bookId 为空字符串的记录，回填为默认账本 ID。
+        // 旧版本 saveAccount 将 bookId 设为 ""（V5_6 解耦误以为服务端也解耦），
+        // 但服务端 ledger_accounts.book_id 仍为 NOT NULL + FK 约束，导致同步 500。
+        val defaultBookId = repository.defaultBookId()
+        dao.getAllAccounts().forEach { account ->
+            if (account.bookId.isBlank()) {
+                dao.updateAccount(account.copy(bookId = defaultBookId, updatedAtMillis = System.currentTimeMillis()))
+            }
+        }
+        dao.getAllBooks().forEach { book ->
+            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "books", rowId = book.id))
+        }
+        dao.getAllAccounts().forEach { account ->
+            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "accounts", rowId = account.id))
+        }
+        dao.getAllCategories().forEach { category ->
+            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "categories", rowId = category.id))
+        }
+        prefs.setSeedChangelogBackfilled(true)
+    }
+
     override suspend fun hydrate(repository: LedgerRepository) {
         if (hydrated || !AuthSessionManager.isLoggedIn) {
             if (!AuthSessionManager.isLoggedIn) hydrated = false
@@ -92,7 +146,6 @@ class RemoteLedgerSyncBridge(
                     if (throwable is HttpException && throwable.code() == 401) {
                         hydrated = false
                         prefs.clearLastSyncVersion()
-                        hydrated = true
                         return
                     }
                     lastError = throwable
@@ -123,6 +176,8 @@ class RemoteLedgerSyncBridge(
 
             val request = buildSyncRequest(dao, changelog)
             var lastError: Throwable? = null
+            var lastErrorCode: Int? = null
+            var lastServerErrorMsg: String? = null
             for (attempt in 0..1) {
                 if (attempt > 0) delay(1000L * (attempt + 1))
                 val response = runCatching {
@@ -134,6 +189,10 @@ class RemoteLedgerSyncBridge(
                         return
                     }
                     lastError = throwable
+                    if (throwable is HttpException) {
+                        lastErrorCode = throwable.code()
+                        lastServerErrorMsg = extractServerError(throwable)
+                    }
                     if (isTransientError(throwable) && attempt < 1) {
                         null // retry
                     } else {
@@ -142,10 +201,79 @@ class RemoteLedgerSyncBridge(
                 }
                 if (response != null) {
                     applySyncResponse(repository, response)
-                    dao.deleteChangelogEntries(changelog.map { it.id })
+                    // P2 修复：服务端可能因 FK 预检跳过部分 row，只删除被接受的 changelog，
+                    // 被拒绝的保留以便下次重试，避免数据永久丢失。
+                    val rejectedRowIds = response.rejectedRowIds
+                        ?.mapNotNull { it.id }
+                        ?.toSet()
+                        ?: emptySet()
+                    val acceptedChangelog = if (rejectedRowIds.isEmpty()) {
+                        changelog
+                    } else {
+                        changelog.filter { it.rowId !in rejectedRowIds }
+                    }
+                    if (acceptedChangelog.isNotEmpty()) {
+                        dao.deleteChangelogEntries(acceptedChangelog.map { it.id })
+                    }
+                    if (rejectedRowIds.isNotEmpty()) {
+                        val reasons = response.rejectedRowIds!!
+                            .take(3)
+                            .joinToString("; ") { "${it.table}/${it.id ?: "null"}: ${it.reason}" }
+                        _syncErrors.tryEmit("部分变更被服务端拒绝（将保留以重试）: $reasons")
+                    }
                     SyncVersionTracker.markLocalMutation(SyncModule.LIFE_CONSOLE)
                     return
                 }
+            }
+            // 400 (非 401) 表示客户端数据格式错误，重试也不会成功 → 清除 changelog 避免死锁阻塞后续同步
+            if (lastErrorCode != null && lastErrorCode in 400..499 && lastErrorCode != 401 && lastErrorCode != 429) {
+                if (lastErrorCode == 409) {
+                    // P3 修复：409 = 服务端状态冲突（如 FK 父表未到位），与 500 路径对称，
+                    // 只清子表 changelog，保留父表（books/accounts/categories）以重试。
+                    // 避免误导性的"格式异常"提示和一刀切清掉全部 changelog 导致数据丢失。
+                    val parentTables = setOf("books", "accounts", "categories")
+                    val safeToDelete = changelog.filter { it.tableName !in parentTables }
+                    if (safeToDelete.isNotEmpty()) {
+                        dao.deleteChangelogEntries(safeToDelete.map { it.id })
+                    }
+                    val detail = lastServerErrorMsg ?: "HTTP 409"
+                    _syncErrors.tryEmit("同步冲突（可能是依赖数据未到位），已保留父表变更以重试。详情: $detail")
+                    return
+                }
+                // 其他 4xx（400/422 等）才是真正的格式错误，清掉全部 changelog
+                dao.deleteChangelogEntries(changelog.map { it.id })
+                val detail = lastServerErrorMsg ?: "HTTP $lastErrorCode"
+                _syncErrors.tryEmit("本地变更格式异常，已跳过以避免阻塞后续同步。详情: $detail")
+                return
+            }
+            // 500 错误：重试仍失败。将服务端返回的真实异常信息透传给用户，便于诊断根因。
+            if (lastErrorCode != null && lastErrorCode >= 500) {
+                // 判断是否为 schema mismatch 类错误（BadSqlGrammar / column not found 等）
+                val isSchemaError = lastServerErrorMsg?.let { msg ->
+                    msg.contains("schema mismatch", ignoreCase = true) ||
+                    msg.contains("Column", ignoreCase = true) ||
+                    msg.contains("not found", ignoreCase = true) ||
+                    msg.contains("BadSqlGrammar", ignoreCase = true) ||
+                    msg.contains("PersistenceException", ignoreCase = true)
+                } ?: false
+
+                if (isSchemaError) {
+                    // schema 问题：清除全部 changelog 避免反复打 500，并提示用户重启服务端
+                    dao.deleteChangelogEntries(changelog.map { it.id })
+                    _syncErrors.tryEmit("同步失败：服务端数据库 schema 异常。$lastServerErrorMsg。请重启服务端后再试。")
+                    return
+                }
+
+                // 非 schema 错误（FK 约束、字段值非法等）：
+                // 只清除子表 changelog（transactions/budgets 等），保留父表。
+                val parentTables = setOf("books", "accounts", "categories")
+                val safeToDelete = changelog.filter { it.tableName !in parentTables }
+                if (safeToDelete.isNotEmpty()) {
+                    dao.deleteChangelogEntries(safeToDelete.map { it.id })
+                }
+                val detail = lastServerErrorMsg ?: "未知服务器错误"
+                _syncErrors.tryEmit("同步失败（服务器错误），已跳过本次变更。详情: $detail")
+                return
             }
             lastError?.let { _syncErrors.tryEmit("同步失败，变更将在下次操作时重试: ${it.message ?: "网络错误"}") }
         }

@@ -112,7 +112,18 @@ object SyncVersionTracker {
     fun setAppInForeground(inForeground: Boolean) {
         appInForeground = inForeground
         if (inForeground) {
-            requestImmediatePoll()
+            // 根因 B 修复: 若 absorb 窗口内有 life 操作, 先让 absorb 优先发挥作用,
+            // 避免立即 poll 时 notificationsStale=true (因 NOTIFICATIONS local 版本尚未同步)
+            // 引发通知中心反复刷新和照片流页面的 Composable 重组开销
+            val hasAbsorbing = synchronized(pendingAutoClearModules) {
+                pendingAutoClearModules.values.any { it > System.currentTimeMillis() }
+            }
+            if (hasAbsorbing) {
+                Log.d(TAG, "setAppInForeground(true): absorb window active, deferring poll")
+                // 不立即 poll, 下次常规 poll 会自动处理 (前台 3s 间隔)
+            } else {
+                requestImmediatePoll()
+            }
         }
     }
 
@@ -124,13 +135,19 @@ object SyncVersionTracker {
         scope = null
     }
 
+    /**
+     * 标记某模块已刷新, 同步 local 版本到上次 poll 的快照。
+     *
+     * 用于非协程上下文 (如 StaleBanner 的 onRefresh 回调)。
+     * 协程上下文请优先使用 [markRefreshedFresh], 后者会先拉取最新服务端版本避免陈旧快照导致 stale 循环。
+     */
     fun markRefreshed(module: SyncModule) {
         val remote = _latestRemoteVersions
         if (remote == null) {
             Log.w(TAG, "markRefreshed($module): no remote versions yet, skip")
             return
         }
-        Log.d(TAG, "markRefreshed($module): updating local version to remote=${remote.photoFeedVersion}")
+        Log.d(TAG, "markRefreshed($module): updating local version to snapshot")
         updateLocalVersionFor(module, remote)
         _staleState.update { current ->
             when (module) {
@@ -144,8 +161,43 @@ object SyncVersionTracker {
         }
     }
 
+    /**
+     * 标记某模块已刷新, 同步 local 版本到最新服务端版本。
+     *
+     * 根因 C 修复: 先拉取最新服务端版本 (而不是用 _latestRemoteVersions 陈旧快照),
+     * 再同步 local。避免 refresh 期间服务端版本又涨导致下次 poll 又 stale=true 的循环。
+     *
+     * 调用方必须在协程内调用。
+     */
+    suspend fun markRefreshedFresh(module: SyncModule) {
+        val freshRemote = fetchRemoteVersions()
+        if (freshRemote != null) {
+            _latestRemoteVersions = freshRemote
+            Log.d(TAG, "markRefreshedFresh($module): fetched fresh remote, syncing local to latest")
+            updateLocalVersionFor(module, freshRemote)
+        } else {
+            val remote = _latestRemoteVersions
+            if (remote == null) {
+                Log.w(TAG, "markRefreshedFresh($module): no remote versions yet, skip")
+                return
+            }
+            Log.d(TAG, "markRefreshedFresh($module): fetch failed, using stale snapshot")
+            updateLocalVersionFor(module, remote)
+        }
+        _staleState.update { current ->
+            when (module) {
+                SyncModule.PHOTO_FEED -> current.copy(photoFeedStale = false)
+                SyncModule.ALBUMS -> current.copy(albumsStale = false)
+                SyncModule.TRASH -> current.copy(trashStale = false)
+                SyncModule.NOTIFICATIONS -> current.copy(notificationsStale = false)
+                SyncModule.LIFE_CONSOLE -> current.copy(lifeConsoleStale = false)
+                SyncModule.SYSTEM_MEDIA -> current.copy(systemMediaStale = false)
+            }
+        }
+    }
+
     fun markLocalMutation(module: SyncModule) {
-        Log.d(TAG, "markLocalMutation($module)")
+        Log.e(TAG, "markLocalMutation($module) appInForeground=$appInForeground")
         if (module == SyncModule.SYSTEM_MEDIA) {
             // SYSTEM_MEDIA has no remote version; set stale directly so the SystemMediaViewModel refreshes.
             _staleState.update { it.copy(systemMediaStale = true) }
@@ -153,8 +205,21 @@ object SyncVersionTracker {
         }
         synchronized(pendingAutoClearModules) {
             pendingAutoClearModules[module] = System.currentTimeMillis() + LOCAL_MUTATION_ABSORB_MILLIS
+            // P1-3 根因修复: notificationVersion 不再包含 lifeConsoleVersion,
+            // life 操作不会让 notificationVersion 涨, 无需 absorb NOTIFICATIONS。
         }
         lastLocalMutationFcmSuppressAt = System.currentTimeMillis()
+        // LIFE_CONSOLE 本地操作不触发立即轮询：
+        // 1. life 操作是本地操作，UI 已直接更新，不需要轮询来刷新
+        // 2. life 操作的 SSE/FCM 推送只发给对方设备，不发给操作者自己
+        // 3. 之前 BUG: markLocalMutation(LIFE_CONSOLE) → requestImmediatePoll → pollVersions
+        //    会计算 photoFeedStale，若服务端 photoFeedVersion 有任何变化（即便已排除 life domain），
+        //    仍可能误判 stale，导致照片流被 life 操作触发刷新
+        // 4. pendingAutoClearModules 吸收窗口会在下次常规轮询时生效（前台 3s，后台 30s）
+        if (module == SyncModule.LIFE_CONSOLE) {
+            Log.e(TAG, "markLocalMutation(LIFE_CONSOLE): skip requestImmediatePoll to avoid photo feed refresh")
+            return
+        }
         requestImmediatePoll()
     }
 
@@ -178,6 +243,8 @@ object SyncVersionTracker {
     }
 
     fun requestImmediatePoll() {
+        // P1-3 诊断日志: 简化日志, 不再打印完整堆栈 (堆栈日志太吵, 淹没关键日志)
+        Log.e(TAG, "requestImmediatePoll: requested")
         pendingImmediatePoll = true
         if (scope == null) {
             startPolling()
@@ -208,7 +275,7 @@ object SyncVersionTracker {
     private suspend fun pollVersions() {
         val remote = fetchRemoteVersions()
         if (remote == null) {
-            Log.w(TAG, "pollVersions: fetchRemoteVersions returned null")
+            Log.e(TAG, "pollVersions: fetchRemoteVersions returned null")
             return
         }
         _latestRemoteVersions = remote
@@ -225,14 +292,23 @@ object SyncVersionTracker {
         }
 
         val now = System.currentTimeMillis()
-        val autoClear = synchronized(pendingAutoClearModules) {
+        // absorb 窗口修复：
+        // 之前的 bug：removeAll { it.value < now } 只移除已过期的 entry，
+        // 正在生效（30s 内）的 entry 不会被加入 autoClear，
+        // 导致 absorb 期内 updateLocalVersionFor 不执行，
+        // 服务端版本回声（本地操作→服务端版本涨→poll 检测到 remote>local）触发 stale=true，
+        // 造成照片流/相册页被本地操作"回声"刷新。
+        // 修复：absorb 期内的模块也同步 local 到 remote，避免回声触发 stale。
+        val absorbActiveModules = synchronized(pendingAutoClearModules) {
+            val active = pendingAutoClearModules.keys.toSet()
+            // 移除已过期的
             pendingAutoClearModules.entries.removeAll { it.value < now }
-            pendingAutoClearModules.keys.toSet()
+            active
         }
-        if (autoClear.isNotEmpty()) {
-            Log.d(TAG, "pollVersions: auto-clearing modules=$autoClear")
+        if (absorbActiveModules.isNotEmpty()) {
+            Log.d(TAG, "pollVersions: absorbing modules=$absorbActiveModules (syncing local to remote to avoid echo stale)")
         }
-        for (module in autoClear) {
+        for (module in absorbActiveModules) {
             updateLocalVersionFor(module, remote)
         }
 
@@ -255,12 +331,12 @@ object SyncVersionTracker {
             maybeShowFallbackNotification(remote)
         }
         if (newStale != previous) {
-            Log.d(TAG, "pollVersions: stale state changed prev=$previous new=$newStale")
-            Log.d(TAG, "pollVersions: remote(photo=${remote.photoFeedVersion} albums=${remote.albumsVersion} trash=${remote.trashVersion} notifications=${remote.effectiveNotificationVersion()} life=${remote.lifeConsoleVersion})")
-            Log.d(TAG, "pollVersions: local(photo=${updatedLocal.photoFeedVersion} albums=${updatedLocal.albumsVersion} trash=${updatedLocal.trashVersion} notifications=${updatedLocal.effectiveNotificationVersion()} life=${updatedLocal.lifeConsoleVersion})")
+            Log.e(TAG, "pollVersions: stale state changed prev=$previous new=$newStale")
+            Log.e(TAG, "pollVersions: remote(photo=${remote.photoFeedVersion} albums=${remote.albumsVersion} trash=${remote.trashVersion} notifications=${remote.effectiveNotificationVersion()} life=${remote.lifeConsoleVersion})")
+            Log.e(TAG, "pollVersions: local(photo=${updatedLocal.photoFeedVersion} albums=${updatedLocal.albumsVersion} trash=${updatedLocal.trashVersion} notifications=${updatedLocal.effectiveNotificationVersion()} life=${updatedLocal.lifeConsoleVersion})")
             _staleState.value = newStale
             if (ctx != null && newStale.lifeConsoleStale && !previous.lifeConsoleStale) {
-                Log.d(TAG, "pollVersions: lifeConsole became stale, refreshing widgets")
+                Log.e(TAG, "pollVersions: lifeConsole became stale, refreshing widgets")
                 LifeConsoleWidgetProvider.refreshAll(ctx)
             }
         }
@@ -270,11 +346,13 @@ object SyncVersionTracker {
         val ctx = appContext ?: return true
         val remoteNotificationVersion = remote.effectiveNotificationVersion()
         if (remoteNotificationVersion <= lastFallbackNotificationVersion) return true
-        Log.d(TAG, "pollVersions: notification version advanced, checking fallback notification")
+        Log.e(TAG, "pollVersions: notification version advanced, checking fallback notification")
         if (!appInForeground) {
             delay(BACKGROUND_FALLBACK_GRACE_MS)
         }
+        Log.e(TAG, "pollVersions: calling NotificationFallbackNotifier.maybeShowLatest")
         val handled = NotificationFallbackNotifier.maybeShowLatest(ctx, remoteNotificationVersion)
+        Log.e(TAG, "pollVersions: fallback result handled=$handled")
         if (handled) {
             lastFallbackNotificationVersion = remoteNotificationVersion
         }
@@ -294,7 +372,7 @@ object SyncVersionTracker {
         return runCatching {
             RemoteServiceFactory.syncApi.getVersions().data
         }.onSuccess { dto ->
-            Log.v(TAG, "fetchRemoteVersions: success photo=${dto.photoFeedVersion} albums=${dto.albumsVersion} notifications=${dto.effectiveNotificationVersion()}")
+            Log.e(TAG, "fetchRemoteVersions: success photo=${dto.photoFeedVersion} albums=${dto.albumsVersion} notifications=${dto.effectiveNotificationVersion()} life=${dto.lifeConsoleVersion}")
         }.onFailure { e ->
             Log.e(TAG, "fetchRemoteVersions: failed — ${e.javaClass.simpleName}: ${e.message}")
         }.getOrNull()
@@ -305,7 +383,11 @@ object SyncVersionTracker {
         return if (appInForeground) FOREGROUND_POLL_INTERVAL_MS else BACKGROUND_POLL_INTERVAL_MS
     }
 
-    private const val FOREGROUND_POLL_INTERVAL_MS = 3000L
+    // P1-3 根因修复: 前台 poll 间隔从 8s 调整为 15s。
+    // 8s 仍然太频繁, 每次 poll 都是网络请求, 且 photos SSE 事件触发的 requestImmediatePoll
+    // 会在 200ms 后执行 pollVersions, 频繁的 poll 增加 staleState 重建几率。
+    // 15s 在实时性和性能之间取得平衡, SSE 推送仍能保证关键事件的即时性。
+    private const val FOREGROUND_POLL_INTERVAL_MS = 15000L
     private const val BACKGROUND_POLL_INTERVAL_MS = 30000L
     private const val BACKGROUND_FALLBACK_GRACE_MS = 2500L
     private const val LOCAL_MUTATION_ABSORB_MILLIS = 30_000L
@@ -313,10 +395,13 @@ object SyncVersionTracker {
 }
 
 private fun SyncVersionsDto.effectiveNotificationVersion(): Long {
+    // P1-3 根因修复: 不再把 lifeConsoleVersion 纳入 fallback 计算。
+    // 服务端 notificationVersion 已不再包含 lifeConsoleVersion, 客户端 fallback 也需对齐。
+    // life 通知完全由 SSE 推送负责, 不依赖 notificationVersion 触发轮询回退,
+    // 避免 life 操作触发 notificationsStale=true → 通知重复推送 + 照片流被间接刷新。
     return notificationVersion.takeIf { it > 0L } ?: maxOf(
         photoFeedVersion,
         albumsVersion,
         trashVersion,
-        lifeConsoleVersion,
     )
 }

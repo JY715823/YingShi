@@ -1,7 +1,6 @@
 package com.example.yingshi.feature.ledger
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerAccount
 import com.example.yingshi.feature.ledger.data.LedgerCategory
 import com.example.yingshi.feature.ledger.data.LedgerCategoryType
@@ -111,7 +111,11 @@ fun LedgerRecurringScreen(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { showBookSheet = true },
+                    .yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(18.dp),
+                        onClick = { showBookSheet = true },
+                    ),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -214,19 +218,20 @@ fun LedgerRecurringScreen(
             title = { Text("确认删除") },
             text = { Text("确定要删除周期规则「${recurringRuleTitle(rule)}」吗？删除后无法恢复。") },
             confirmButton = {
-                androidx.compose.material3.TextButton(
+                LedgerDialogActionButton(
+                    text = "删除",
+                    danger = true,
                     onClick = {
                         onDeleteRule(rule.id)
                         pendingDeleteRule = null
                     },
-                ) {
-                    Text("删除", color = LedgerExpenseRed)
-                }
+                )
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { pendingDeleteRule = null }) {
-                    Text("取消")
-                }
+                LedgerDialogActionButton(
+                    text = "取消",
+                    onClick = { pendingDeleteRule = null },
+                )
             },
         )
     }
@@ -288,7 +293,11 @@ private fun LedgerRecurringRuleRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = onClick,
+            ),
         color = LedgerGroupedHeader,
         shape = RoundedCornerShape(18.dp),
     ) {
@@ -333,7 +342,7 @@ private fun LedgerRecurringRuleRow(
                     color = when (rule.type) {
                         LedgerTransactionType.EXPENSE -> LedgerExpenseRed
                         LedgerTransactionType.INCOME -> LedgerHeaderGreen
-                        LedgerTransactionType.TRANSFER -> MaterialTheme.colorScheme.onSurface
+                        LedgerTransactionType.TRANSFER -> LedgerHeaderGreen
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
@@ -700,7 +709,11 @@ private fun LedgerRecurringPickerRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = onClick,
+            ),
         shape = RoundedCornerShape(18.dp),
         color = LedgerGroupedHeader,
     ) {

@@ -26,7 +26,8 @@ internal object MediaCacheRepository {
         val thumbnailCoverBytes = directorySize(appContext.cacheDir.resolve("coil-media-cache")) +
             directorySize(appContext.cacheDir.resolve("video-posters"))
         val originalMediaBytes = directorySize(AppMediaVideoCache.directory(appContext))
-        val fakeSummary = FakeMediaCacheRepository.getGlobalSummary()
+        // R3-APP-001: Removed FakeMediaCacheRepository.getGlobalSummary() dependency.
+        // Registered counts are set to 0; real cache size is still computed from disk.
         val totalBytes = thumbnailCoverBytes + originalMediaBytes
         return RealMediaCacheSummary(
             thumbnailCoverBytes = thumbnailCoverBytes,
@@ -35,10 +36,10 @@ internal object MediaCacheRepository {
             thumbnailCoverSizeLabel = formatBytes(thumbnailCoverBytes),
             originalMediaSizeLabel = formatBytes(originalMediaBytes),
             totalSizeLabel = formatBytes(totalBytes),
-            registeredMediaCount = fakeSummary.mediaCount,
-            registeredPreviewCount = fakeSummary.previewCachedCount,
-            registeredOriginalCount = fakeSummary.originalCachedCount,
-            registeredVideoCount = fakeSummary.videoCachedCount,
+            registeredMediaCount = 0,
+            registeredPreviewCount = 0,
+            registeredOriginalCount = 0,
+            registeredVideoCount = 0,
         )
     }
 
@@ -54,7 +55,7 @@ internal object MediaCacheRepository {
         }
         val postersCleared = appContext.cacheDir.resolve("video-posters").deleteContentsSafely()
         clearVideoPosterMemoryCache()
-        FakeMediaCacheRepository.clearAllPreviewCaches()
+        // R3-APP-001: Removed FakeMediaCacheRepository.clearAllPreviewCaches()
         RealOriginalLoadRepository.clearAllOriginals()
         return coilCleared && postersCleared
     }
@@ -64,8 +65,7 @@ internal object MediaCacheRepository {
         runCatching { appContext.imageLoader.memoryCache?.clear() }
         val originalsCleared = RealOriginalLoadRepository.clearCachedOriginalFiles(appContext)
         val videoCleared = AppMediaVideoCache.clear(appContext)
-        FakeMediaCacheRepository.clearAllOriginalCaches()
-        FakeMediaCacheRepository.clearAllVideoCaches()
+        // R3-APP-001: Removed FakeMediaCacheRepository.clearAllOriginalCaches() and clearAllVideoCaches()
         return originalsCleared && videoCleared
     }
 

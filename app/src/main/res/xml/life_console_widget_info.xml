@@ -4,9 +4,10 @@
     android:initialLayout="@layout/life_console_widget"
     android:minWidth="250dp"
     android:minHeight="360dp"
+    android:previewImage="@drawable/widget_preview_console"
     android:previewLayout="@layout/life_console_widget"
     android:resizeMode="horizontal|vertical"
-    android:targetCellWidth="4"
-    android:targetCellHeight="5"
+    android:targetCellWidth="5"
+    android:targetCellHeight="7"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

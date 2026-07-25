@@ -5,9 +5,11 @@ import com.example.yingshi.data.remote.dto.MediaImportStatusDto
 import com.example.yingshi.data.remote.dto.MediaImportStatusRequestDto
 import com.example.yingshi.data.remote.dto.MediaDto
 import com.example.yingshi.data.remote.dto.TrashItemDto
+import com.example.yingshi.data.remote.dto.UpdateMediaTimeRequestDto
 import okhttp3.ResponseBody
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Body
 import retrofit2.http.Path
@@ -41,4 +43,11 @@ interface MediaApi {
     suspend fun deleteMediaFromSystem(
         @Path("mediaId") mediaId: String,
     ): ApiEnvelopeDto<TrashItemDto>
+
+    // PATCH 修改媒体显示时间（通用端点，照片流和今日痕迹共用）
+    @PATCH("api/media/{mediaId}/time")
+    suspend fun updateMediaTime(
+        @Path("mediaId") mediaId: String,
+        @Body request: UpdateMediaTimeRequestDto,
+    ): ApiEnvelopeDto<Long>
 }

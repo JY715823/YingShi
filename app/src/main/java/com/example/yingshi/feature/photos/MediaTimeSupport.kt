@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.content.Context
 import android.media.ExifInterface
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import java.text.SimpleDateFormat
@@ -77,8 +78,16 @@ fun resolveDeviceMediaTimeMetadata(
     dateTakenMillis: Long? = null,
     fileModifiedAtMillis: Long? = null,
 ): DeviceMediaTimeMetadata {
-    val normalizedCapturedAt = dateTakenMillis.takeIf { it != null && it > 0L }
-        ?: if (mediaType == SystemMediaType.IMAGE) readExifCapturedAtMillis(context, uri) else null
+    // 优先级调换: IMAGE 先读 EXIF DateTimeOriginal (相机写入文件的真实拍摄时间, 最可靠),
+    // 失败才回退到 MediaStore datetaken 列 (会被网盘 App 改写为下载时刻, 不可靠).
+    // VIDEO 不读 EXIF (视频没有 EXIF 段), 但 fallback 到 MediaMetadataRetriever 读 MP4 creation_time.
+    // 这样与小米相册行为对齐: 网盘下载的去年照片会归到去年, 不再被错归到今天.
+    val normalizedCapturedAt = when (mediaType) {
+        SystemMediaType.IMAGE -> readExifCapturedAtMillis(context, uri)
+            ?: dateTakenMillis.takeIf { it != null && it > 0L }
+        SystemMediaType.VIDEO -> dateTakenMillis.takeIf { it != null && it > 0L }
+            ?: readVideoMetadataCapturedAtMillis(context, uri)
+    }
     return DeviceMediaTimeMetadata(
         capturedAtMillis = normalizedCapturedAt,
         fileModifiedAtMillis = fileModifiedAtMillis?.takeIf { it > 0L },
@@ -194,6 +203,36 @@ private fun readExifCapturedAtMillis(
 }
 
 /**
+ * 从 MP4 box 读取视频真实拍摄时间 (creation_time).
+ *
+ * 视频没有 EXIF 段, 拍摄时间存在 MP4 mvhd/mdhd box 的 creation_time 字段.
+ * MediaStore datetaken 列会被网盘 App 改写为下载时刻, 此函数作为 fallback 提供可靠来源.
+ *
+ * 支持格式:
+ * - QuickTime: "YYYY:MM:DD HH:MM:SS"
+ * - ISO 8601: "yyyyMMddTHHmmss.SSSZ" / "yyyyMMddTHHmmssZ"
+ *
+ * 注意: MediaMetadataRetriever 在 API 29+ 才实现 Closeable, minSdk=24 需手动 release.
+ *
+ * @return 拍摄时间毫秒, 失败返回 null
+ */
+private fun readVideoMetadataCapturedAtMillis(
+    context: Context,
+    uri: Uri,
+): Long? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, uri)
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+            ?.let(::parseExifDateTimeMillis)
+    } catch (error: Throwable) {
+        null
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+/**
  * EXIF GPS 坐标 (WGS-84 原始坐标，调用方需自行转 GCJ-02).
  *
  * 解析策略 (按优先级 fallback, 全部 API 24+ 兼容):
@@ -277,6 +316,11 @@ private fun parseExifDateTimeMillis(rawValue: String): Long? {
         "yyyy-MM-dd HH:mm:ss",
         "yyyy:MM:dd HH:mm:ssXXX",
         "yyyy-MM-dd HH:mm:ssXXX",
+        // MP4 ISO 8601 格式 (MediaMetadataRetriever.METADATA_KEY_DATE)
+        "yyyyMMdd'T'HHmmss.SSSX",
+        "yyyyMMdd'T'HHmmssX",
+        "yyyyMMdd'T'HHmmss.SSS'Z'",
+        "yyyyMMdd'T'HHmmss'Z'",
     )
     return patterns.firstNotNullOfOrNull { pattern ->
         runCatching {

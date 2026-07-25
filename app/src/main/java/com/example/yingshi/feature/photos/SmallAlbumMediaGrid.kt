@@ -70,7 +70,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.components.yingShiClickable
@@ -947,26 +946,9 @@ internal fun SmallAlbumMediaGridSection(
         SmallAlbumDensityTransitionStage.IDLE -> 0f
     }
 
-    fun deleteSelectedMedia() {
+    fun deleteSelectedMedia(deleteMode: String = "directory") {
         val pendingIds = selectedIds.toSet()
         if (pendingIds.isEmpty()) return
-        if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
-            FakeAlbumRepository.applyMediaDelete(
-                postId = postId,
-                mediaIds = pendingIds,
-                semantic = FakeAlbumRepository.MediaDeleteSemantic.DIRECTORY_ONLY,
-            )
-            showDeleteSelectedConfirm = false
-            selectedIds = emptySet()
-            selectionMode = false
-            if (FakeAlbumRepository.getPost(postId) == null) {
-                onEmptyAfterDelete()
-            } else {
-                onRefreshRequest()
-            }
-            onShowNotice("已移出当前小相册")
-            return
-        }
         scope.launch {
             isMutating = true
             showDeleteSelectedConfirm = false
@@ -975,7 +957,7 @@ internal fun SmallAlbumMediaGridSection(
                 when (val result = RepositoryProvider.mediaRepository.deleteMediaFromPost(
                     smallAlbumId = postId,
                     mediaId = mediaId,
-                    deleteMode = "directory",
+                    deleteMode = deleteMode,
                 )) {
                     is ApiResult.Success -> successCount += 1
                     is ApiResult.Error -> {
@@ -996,7 +978,7 @@ internal fun SmallAlbumMediaGridSection(
                 } else {
                     onRefreshRequest()
                 }
-                onShowNotice("已移出当前小相册")
+                onShowNotice(if (deleteMode == "system") "已系统删除并进入回收站" else "已移出当前小相册")
             }
             isMutating = false
         }
@@ -1041,28 +1023,24 @@ internal fun SmallAlbumMediaGridSection(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     )
                 },
-                text = {
-                    Text(
-                        text = if (selectedIds.size == 1) {
-                            "确认后会把这张媒体从当前小相册移除，并写入回收站。"
-                        } else {
-                            "确认后会把这 ${selectedIds.size} 项媒体从当前小相册移除，并写入回收站。"
-                        },
-                    )
-                },
                 confirmButton = {
-                    TrashDialogActionButton(
-                        text = "确认移出",
-                        enabled = !isMutating,
-                        danger = true,
-                        onClick = { deleteSelectedMedia() },
-                    )
-                },
-                dismissButton = {
-                    TrashDialogActionButton(
-                        text = "取消",
-                        onClick = { showDeleteSelectedConfirm = false },
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TrashDialogActionButton(
+                            text = "取消",
+                            onClick = { showDeleteSelectedConfirm = false },
+                        )
+                        TrashDialogActionButton(
+                            text = "系统删除",
+                            enabled = !isMutating,
+                            danger = true,
+                            onClick = { deleteSelectedMedia("system") },
+                        )
+                        TrashDialogActionButton(
+                            text = "确认移出",
+                            enabled = !isMutating,
+                            onClick = { deleteSelectedMedia("directory") },
+                        )
+                    }
                 },
             )
         }

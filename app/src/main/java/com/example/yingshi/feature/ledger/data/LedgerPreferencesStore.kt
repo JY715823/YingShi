@@ -44,10 +44,17 @@ class LedgerPreferencesStore(
         preferences.edit().remove(KEY_LAST_SYNC_VERSION).apply()
     }
 
+    fun isSeedChangelogBackfilled(): Boolean = preferences.getBoolean(KEY_SEED_CHANGELOG_BACKFILLED, false)
+
+    fun setSeedChangelogBackfilled(value: Boolean) {
+        preferences.edit().putBoolean(KEY_SEED_CHANGELOG_BACKFILLED, value).apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "ledger_preferences"
         private const val KEY_DEFAULT_BOOK_ID = "default_book_id"
         private const val KEY_LAST_SYNC_VERSION = "last_sync_version"
+        private const val KEY_SEED_CHANGELOG_BACKFILLED = "seed_changelog_backfilled"
 
         fun resolveDefaultBookId(
             storedBookId: String?,

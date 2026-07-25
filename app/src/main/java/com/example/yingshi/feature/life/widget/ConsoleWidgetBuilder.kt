@@ -11,12 +11,12 @@ import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.feature.life.isVideo
 import java.text.SimpleDateFormat
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import com.example.yingshi.feature.life.LIFE_CONSOLE_ZONE_ID
+import com.example.yingshi.app.AppNavigationRequests
 
 /**
  * Console Widget 视图构建器。
@@ -25,62 +25,69 @@ import com.example.yingshi.feature.life.LIFE_CONSOLE_ZONE_ID
  */
 internal object ConsoleWidgetBuilder {
 
-    private const val ACTION_REFRESH = "com.example.yingshi.widget.REFRESH_LIFE_CONSOLE"
-    private const val ACTION_BOWEL_ADD = "com.example.yingshi.widget.BOWEL_ADD"
-    private const val ACTION_BOWEL_REMOVE = "com.example.yingshi.widget.BOWEL_REMOVE"
-    private const val ACTION_SLOT_PREV = "com.example.yingshi.widget.SLOT_PREV"
-    private const val ACTION_SLOT_NEXT = "com.example.yingshi.widget.SLOT_NEXT"
-    private const val ACTION_SLOT_DELETE = "com.example.yingshi.widget.SLOT_DELETE"
-    private const val LANE_CONSOLE = "console"
-
     data class SlotViews(
-        val imageId: Int,
+        val imageFlipperId: Int,
+        val imageIdA: Int,
+        val imageIdB: Int,
         val emptyId: Int,
         val prevId: Int,
         val nextId: Int,
         val metaId: Int,
+        val frameId: Int,
         val openId: Int? = null,
         val uploadId: Int? = null,
         val deleteId: Int? = null,
     )
 
     val PersonSelfViews = SlotViews(
-        imageId = R.id.widget_person_self_image,
+        imageFlipperId = R.id.widget_person_self_flipper,
+        imageIdA = R.id.widget_person_self_image_a,
+        imageIdB = R.id.widget_person_self_image_b,
         emptyId = R.id.widget_person_self_empty,
         prevId = R.id.widget_person_self_prev,
         nextId = R.id.widget_person_self_next,
         metaId = R.id.widget_person_self_meta,
+        frameId = R.id.widget_person_self_frame,
         openId = R.id.widget_person_self_open,
         uploadId = R.id.widget_person_self_upload,
         deleteId = R.id.widget_person_self_delete,
     )
 
     val PersonPartnerViews = SlotViews(
-        imageId = R.id.widget_person_partner_image,
+        imageFlipperId = R.id.widget_person_partner_flipper,
+        imageIdA = R.id.widget_person_partner_image_a,
+        imageIdB = R.id.widget_person_partner_image_b,
         emptyId = R.id.widget_person_partner_empty,
         prevId = R.id.widget_person_partner_prev,
         nextId = R.id.widget_person_partner_next,
         metaId = R.id.widget_person_partner_meta,
+        frameId = R.id.widget_person_partner_frame,
         openId = R.id.widget_person_partner_open,
     )
 
     val MealSelfViews = SlotViews(
-        imageId = R.id.widget_meal_self_image,
+        imageFlipperId = R.id.widget_meal_self_flipper,
+        imageIdA = R.id.widget_meal_self_image_a,
+        imageIdB = R.id.widget_meal_self_image_b,
         emptyId = R.id.widget_meal_self_empty,
         prevId = R.id.widget_meal_self_prev,
         nextId = R.id.widget_meal_self_next,
         metaId = R.id.widget_meal_self_meta,
+        frameId = R.id.widget_meal_self_frame,
         openId = R.id.widget_meal_self_open,
         uploadId = R.id.widget_meal_self_upload,
         deleteId = R.id.widget_meal_self_delete,
     )
 
     val MealPartnerViews = SlotViews(
-        imageId = R.id.widget_meal_partner_image,
+        imageFlipperId = R.id.widget_meal_partner_flipper,
+        imageIdA = R.id.widget_meal_partner_image_a,
+        imageIdB = R.id.widget_meal_partner_image_b,
         emptyId = R.id.widget_meal_partner_empty,
         prevId = R.id.widget_meal_partner_prev,
         nextId = R.id.widget_meal_partner_next,
         metaId = R.id.widget_meal_partner_meta,
+        frameId = R.id.widget_meal_partner_frame,
         openId = R.id.widget_meal_partner_open,
     )
 
@@ -91,20 +98,66 @@ internal object ConsoleWidgetBuilder {
     ): RemoteViews {
         return RemoteViews(context.packageName, R.layout.life_console_widget).apply {
             setTextViewText(R.id.widget_status, status)
+            setTextViewText(R.id.widget_date, widgetTodayDate())
             bindConsoleActions(context)
+            // FR-5: 根据 front_slot 设置相框层级（setElevation），自己框默认在前
+            applyFrontSlotElevation(context, LifeConsoleWidgetSlotKey.MEAL_SELF)
             bindSlot(context, snapshot, LifeConsoleWidgetSlotKey.MEAL_SELF, MealSelfViews)
             bindSlot(context, snapshot, LifeConsoleWidgetSlotKey.MEAL_PARTNER, MealPartnerViews)
             bindBowel(snapshot)
         }
     }
 
+    /**
+     * FR-5: 根据 front_slot 持久化值设置相框层级（setElevation）。
+     * - 自己框在前 → self elevation=8dp, partner elevation=0dp
+     * - 对方框在前 → self elevation=0dp, partner elevation=8dp
+     *
+     * 实现: 通过 setFloat(viewId, "setElevation", dp) 反射调用 View.setElevation(float)。
+     * 该方法是 @RemotableViewMethod（API 21+），可跨进程在 Launcher 中生效。
+     *
+     * 注意: 原方案使用 setZ 但 View.setZ(float) 不在 RemoteViews 白名单中（无 @RemotableViewMethod 注解），
+     * 调用会被 Launcher 静默丢弃，导致 FR-5 相框层级切换完全失效。复检发现后改用 setElevation。
+     *
+     * 单位换算: setElevation 接收 px，1dp ≈ density * 1px。Widget 在 Launcher 中渲染，
+     * 通过 resources.displayMetrics.density 获取密度后换算为 dp 对应的 px 值。
+     */
+    internal fun RemoteViews.applyFrontSlotElevation(
+        context: Context,
+        selfSlotKey: LifeConsoleWidgetSlotKey,
+    ) {
+        val frontSlot = LifeConsoleWidgetStore.currentFrontSlot(context, selfSlotKey)
+        val (selfFrameId, partnerFrameId) = if (selfSlotKey == LifeConsoleWidgetSlotKey.MEAL_SELF) {
+            R.id.widget_meal_self_frame to R.id.widget_meal_partner_frame
+        } else {
+            R.id.widget_person_self_frame to R.id.widget_person_partner_frame
+        }
+        val selfIsFront = frontSlot == selfSlotKey.storageKey
+        // 8dp 阴影高度足以产生明显视觉层级，避免使用过小值在 MIUI 上看不出效果
+        val density = context.resources.displayMetrics.density
+        val frontElevationPx = 8f * density
+        val backElevationPx = 0f
+        setFloat(selfFrameId, "setElevation", if (selfIsFront) frontElevationPx else backElevationPx)
+        setFloat(partnerFrameId, "setElevation", if (selfIsFront) backElevationPx else frontElevationPx)
+    }
+
     private fun RemoteViews.bindConsoleActions(context: Context) {
+        // FR-2 AC-5: 修复死视图，标题点击打开今日足迹页
+        setOnClickPendingIntent(
+            R.id.widget_open_console,
+            WidgetPendingIntentFactory.openMainIntent(
+                context,
+                AppNavigationRequests.ACTION_OPEN_LIFE_CONSOLE,
+                WidgetActions.LANE_CONSOLE,
+                WidgetActions.RC_CONSOLE_TITLE,
+            ),
+        )
         setOnClickPendingIntent(
             R.id.widget_ledger,
             WidgetPendingIntentFactory.openMainIntent(
                 context,
-                com.example.yingshi.app.AppNavigationRequests.ACTION_OPEN_LEDGER,
-                LANE_CONSOLE,
+                com.example.yingshi.app.AppNavigationRequests.ACTION_OPEN_LEDGER_ADD,
+                WidgetActions.LANE_CONSOLE,
                 11,
             ),
         )
@@ -113,8 +166,8 @@ internal object ConsoleWidgetBuilder {
             WidgetPendingIntentFactory.widgetBroadcast(
                 context,
                 LifeConsoleWidgetProvider::class.java,
-                LANE_CONSOLE,
-                ACTION_REFRESH,
+                WidgetActions.LANE_CONSOLE,
+                WidgetActions.ACTION_REFRESH,
                 12,
             ),
         )
@@ -123,8 +176,8 @@ internal object ConsoleWidgetBuilder {
             WidgetPendingIntentFactory.widgetBroadcast(
                 context,
                 LifeConsoleWidgetProvider::class.java,
-                LANE_CONSOLE,
-                ACTION_BOWEL_ADD,
+                WidgetActions.LANE_CONSOLE,
+                WidgetActions.ACTION_BOWEL_ADD,
                 13,
             ),
         )
@@ -133,8 +186,8 @@ internal object ConsoleWidgetBuilder {
             WidgetPendingIntentFactory.widgetBroadcast(
                 context,
                 LifeConsoleWidgetProvider::class.java,
-                LANE_CONSOLE,
-                ACTION_BOWEL_REMOVE,
+                WidgetActions.LANE_CONSOLE,
+                WidgetActions.ACTION_BOWEL_REMOVE,
                 14,
             ),
         )
@@ -143,7 +196,7 @@ internal object ConsoleWidgetBuilder {
             WidgetPendingIntentFactory.openMediaEntry(
                 context,
                 LifeConsoleWidgetProvider.CATEGORY_MEAL,
-                LANE_CONSOLE,
+                WidgetActions.LANE_CONSOLE,
                 16,
             ),
         )
@@ -165,11 +218,16 @@ internal object ConsoleWidgetBuilder {
         setTextViewText(views.metaId, typePrefix + countText)
         setOnClickPendingIntent(
             views.prevId,
-            WidgetPendingIntentFactory.slotIntent(context, ACTION_SLOT_PREV, slotKey, views.prevId),
+            WidgetPendingIntentFactory.slotIntent(context, WidgetActions.ACTION_SLOT_PREV, slotKey, views.prevId),
         )
         setOnClickPendingIntent(
             views.nextId,
-            WidgetPendingIntentFactory.slotIntent(context, ACTION_SLOT_NEXT, slotKey, views.nextId),
+            WidgetPendingIntentFactory.slotIntent(context, WidgetActions.ACTION_SLOT_NEXT, slotKey, views.nextId),
+        )
+        // FR-5 AC-1: 相框根 FrameLayout 点击置顶（覆盖白区/胶带/间隙，子视图 PendingIntent 优先）
+        setOnClickPendingIntent(
+            views.frameId,
+            WidgetPendingIntentFactory.toFrontIntent(context, slotKey, views.frameId),
         )
 
         if (views.openId != null) {
@@ -179,6 +237,18 @@ internal object ConsoleWidgetBuilder {
                     WidgetPendingIntentFactory.openMediaViewer(
                         context = context,
                         media = media,
+                        slotKey = slotKey,
+                        lane = WidgetPendingIntentFactory.laneFor(slotKey),
+                        requestCode = WidgetPendingIntentFactory.requestCodeFor(slotKey, views.openId),
+                    ),
+                )
+            } else if (slotKey.editable) {
+                // FR-8 AC-1: 空状态点击 + 图标打开上传入口（自己框）
+                setOnClickPendingIntent(
+                    views.openId,
+                    WidgetPendingIntentFactory.openMediaEntry(
+                        context = context,
+                        category = slotKey.category,
                         lane = WidgetPendingIntentFactory.laneFor(slotKey),
                         requestCode = WidgetPendingIntentFactory.requestCodeFor(slotKey, views.openId),
                     ),
@@ -190,7 +260,7 @@ internal object ConsoleWidgetBuilder {
                         context = context,
                         providerClass = WidgetPendingIntentFactory.providerClassFor(slotKey),
                         lane = WidgetPendingIntentFactory.laneFor(slotKey),
-                        action = ACTION_REFRESH,
+                        action = WidgetActions.ACTION_REFRESH,
                         requestCode = WidgetPendingIntentFactory.requestCodeFor(slotKey, views.openId),
                     ),
                 )
@@ -211,31 +281,54 @@ internal object ConsoleWidgetBuilder {
         if (views.deleteId != null) {
             setOnClickPendingIntent(
                 views.deleteId,
-                WidgetPendingIntentFactory.slotIntent(context, ACTION_SLOT_DELETE, slotKey, views.deleteId),
+                WidgetPendingIntentFactory.slotIntent(context, WidgetActions.ACTION_SLOT_DELETE, slotKey, views.deleteId),
             )
             setViewVisibility(views.deleteId, if (media != null && slotKey.editable) View.VISIBLE else View.GONE)
         }
 
         if (media == null) {
-            setViewVisibility(views.imageId, View.GONE)
+            // FR-8: 空状态时隐藏 ‹ › meta 翻页控件，仅保留虚线框+图标+文案
+            setViewVisibility(views.imageFlipperId, View.GONE)
             setViewVisibility(views.emptyId, View.VISIBLE)
             setTextViewText(views.emptyId, emptyHintFor(slotKey))
+            setViewVisibility(views.prevId, View.GONE)
+            setViewVisibility(views.nextId, View.GONE)
+            setViewVisibility(views.metaId, View.GONE)
             return
+        }
+
+        // FR-4 AC-2: 单照片时隐藏 ‹ › 翻页按钮，meta 保留（显示 1/1）
+        if (mediaItems.size <= 1) {
+            setViewVisibility(views.prevId, View.GONE)
+            setViewVisibility(views.nextId, View.GONE)
+        } else {
+            setViewVisibility(views.prevId, View.VISIBLE)
+            setViewVisibility(views.nextId, View.VISIBLE)
         }
 
         val bitmap = LifeConsoleWidgetStore.cachedBitmapFor(context, media)
         if (bitmap != null) {
-            setImageViewBitmap(views.imageId, bitmap)
-            setViewVisibility(views.imageId, View.VISIBLE)
+            // FR-12: ViewFlipper 双缓冲淡入淡出过渡。
+            // 将 bitmap 同时加载到两个子 ImageView，确保设备重启/Launcher 重启后
+            // ViewFlipper 重置到 child 0 时仍能正确显示（showNext 是相对动作，
+            // 无法绝对定位到指定 child，故双加载保证任意 child 显示时均有 bitmap）。
+            // 代价：翻页时旧 bitmap 被立即覆盖，交叉淡入淡出退化为同图淡入淡出，
+            // 但 200ms 动画仍提供平滑过渡感，且彻底避免 re-inflate 后空白/旧图 bug。
+            setImageViewBitmap(views.imageIdA, bitmap)
+            setImageViewBitmap(views.imageIdB, bitmap)
+            setViewVisibility(views.imageFlipperId, View.VISIBLE)
             setViewVisibility(views.emptyId, View.GONE)
+            // showNext 是 RemoteViews 类自身方法（非反射），跨进程安全，触发 in/out 动画
+            showNext(views.imageFlipperId)
         } else {
-            setViewVisibility(views.imageId, View.GONE)
+            setViewVisibility(views.imageFlipperId, View.GONE)
             setViewVisibility(views.emptyId, View.VISIBLE)
             setTextViewText(views.emptyId, if (media.isVideo()) "视频封面同步中" else "图片同步中")
         }
     }
 
     fun RemoteViews.bindBowel(snapshot: RemoteLifeConsoleToday?) {
+        // FR-7: 大便徽标降级为胶囊，仅显示双方计数（latest 文本已移除）
         val currentUserId = snapshot?.currentUser?.userId
         val partnerUserId = snapshot?.partner?.userId
         val bowelSelf = snapshot?.bowel?.users?.firstOrNull { it.userId == currentUserId }
@@ -244,8 +337,6 @@ internal object ConsoleWidgetBuilder {
         val partnerCount = bowelPartner?.count ?: 0
         setTextViewText(R.id.widget_bowel_self_count, selfCount.toString())
         setTextViewText(R.id.widget_bowel_partner_count, partnerCount.toString())
-        setTextViewText(R.id.widget_bowel_self_latest, latestText(bowelSelf?.latestOccurredAtMillis))
-        setTextViewText(R.id.widget_bowel_partner_latest, latestText(bowelPartner?.latestOccurredAtMillis))
     }
 
     fun currentMedia(
@@ -257,29 +348,8 @@ internal object ConsoleWidgetBuilder {
         return slot.mediaItems.getOrNull(index)
     }
 
-    private fun latestText(latestTimeMillis: Long?): String {
-        return latestTimeMillis?.let { "最近 ${formatTime(it)}" } ?: "今天还没有"
-    }
-
     private fun emptyHintFor(slotKey: LifeConsoleWidgetSlotKey): String {
-        return if (slotKey.editable) "点击记录" else "对方还没记录"
-    }
-
-    private fun formatTime(timeMillis: Long): String {
-        val now = System.currentTimeMillis()
-        val diffMs = now - timeMillis
-        val diffMin = diffMs / 60_000
-        if (diffMin < 1) return "刚刚"
-        if (diffMin < 60) return "${diffMin}分钟前"
-        val zoneId = ZoneId.of(LIFE_CONSOLE_ZONE_ID)
-        val today = LocalDate.now(zoneId)
-        val target = Instant.ofEpochMilli(timeMillis).atZone(zoneId)
-        val targetDate = target.toLocalDate()
-        return if (targetDate == today) {
-            String.format("%02d:%02d", target.hour, target.minute)
-        } else {
-            String.format("%02d/%02d", target.monthValue, target.dayOfMonth)
-        }
+        return if (slotKey.editable) "点击记录" else "还没记录"
     }
 
     fun formatAbsoluteTime(timeMillis: Long): String {

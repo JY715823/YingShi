@@ -34,6 +34,8 @@ import com.example.yingshi.ui.components.YingShiNoticeHost
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 private const val PhotoFeedDeleteStatusAutoHideMillis = 3200L
@@ -62,7 +64,16 @@ fun RealPhotoFeedPage(
     )
     val uiState by viewModel.uiState.collectAsState()
     val backendMutationEvent by RealBackendMutationBus.latestEvent.collectAsState()
-    val syncStaleState by SyncVersionTracker.staleState.collectAsState()
+    // P1-3 根因修复: 只订阅 photoFeedStale, 不订阅整个 staleState。
+    // 之前订阅整个 staleState, 任何 stale 字段变化 (lifeConsoleStale/trashStale/notificationsStale)
+    // 都会触发 collectAsState 重组, 让用户感知"照片页自己刷新"。
+    // 使用 map { it.photoFeedStale }.distinctUntilChanged() 确保 only photoFeedStale 变化才触发重组。
+    val photoFeedStale by SyncVersionTracker.staleState
+        .map { it.photoFeedStale }
+        .distinctUntilChanged()
+        .collectAsState(initial = false)
+    // P1-3 诊断日志: 记录每次重组的触发原因
+    android.util.Log.e("RealPhotoFeedPage", ">>> recompose: backendMutationVersion=${backendMutationEvent.version} affectsPhotoFeed=${backendMutationEvent.affectsPhotoFeed()} photoFeedStale=$photoFeedStale isActive=$isActive feedSize=${uiState.feedItems.size}")
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var animatingDeleteMediaIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
@@ -151,6 +162,7 @@ fun RealPhotoFeedPage(
     }
     androidx.compose.runtime.LaunchedEffect(backendMutationEvent.version) {
         if (backendMutationEvent.version > 0 && backendMutationEvent.affectsPhotoFeed()) {
+            android.util.Log.e("RealPhotoFeedPage", ">>> refresh triggered by backendMutationEvent version=${backendMutationEvent.version} scopes=${backendMutationEvent.scopes} postIds=${backendMutationEvent.postIds} mediaIds=${backendMutationEvent.mediaIds}")
             viewModel.refresh()
         }
     }
@@ -160,10 +172,13 @@ fun RealPhotoFeedPage(
             SyncVersionTracker.requestImmediatePoll()
         }
     }
-    LaunchedEffect(isActive) {
-        if (isActive && syncStaleState.photoFeedStale) {
+    LaunchedEffect(isActive, photoFeedStale) {
+        if (isActive && photoFeedStale) {
+            android.util.Log.e("RealPhotoFeedPage", ">>> refresh triggered by photoFeedStale isActive=$isActive")
             if (viewModel.refreshAndAwait()) {
-                SyncVersionTracker.markRefreshed(SyncModule.PHOTO_FEED)
+                // 根因 C 修复: 使用 markRefreshedFresh 先拉最新 remote 再同步 local,
+                // 避免 refresh 期间服务端版本又涨导致下次 poll 又 stale=true 的循环
+                SyncVersionTracker.markRefreshedFresh(SyncModule.PHOTO_FEED)
             }
         }
     }
@@ -172,7 +187,10 @@ fun RealPhotoFeedPage(
             uiState.errorMessage != null ||
             uiState.loadMoreErrorMessage != null ||
             uiState.isLoading,
-        onReconnect = viewModel::refresh,
+        onReconnect = {
+            android.util.Log.e("RealPhotoFeedPage", ">>> refresh triggered by ReconnectRefreshEffect isOfflineReadOnly=${uiState.isOfflineReadOnly} errorMessage=${uiState.errorMessage} isLoading=${uiState.isLoading}")
+            viewModel.refresh()
+        },
         onDisconnect = viewModel::handleConnectivityLost,
     )
     androidx.compose.runtime.LaunchedEffect(selectionShellState) {
@@ -350,7 +368,7 @@ fun RealPhotoFeedPage(
                         onRefresh = {
                             scope.launch {
                                 if (viewModel.refreshAndAwait()) {
-                                    SyncVersionTracker.markRefreshed(SyncModule.PHOTO_FEED)
+                                    SyncVersionTracker.markRefreshedFresh(SyncModule.PHOTO_FEED)
                                 }
                             }
                         },

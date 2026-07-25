@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
-import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.DashboardCustomize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,7 +42,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
-import com.example.yingshi.feature.chat.data.ChatImportDatabase
 import com.example.yingshi.feature.ledger.data.LedgerDatabase
 import com.example.yingshi.ui.components.YingShiBackdropVariant
 import com.example.yingshi.ui.components.YingShiMistBackground
@@ -74,7 +72,6 @@ fun LifeScreen(
     // 动态摘要状态：null = 加载中（显示静态文案），非null = 已加载
     var traceSummary by remember { mutableStateOf<String?>(null) }
     var ledgerSummary by remember { mutableStateOf<String?>(null) }
-    var chatSummary by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val now = LocalDateTime.now()
@@ -137,26 +134,6 @@ fun LifeScreen(
         }
     }
 
-    // 聊天摘要：从 Room 获取消息总数
-    LaunchedEffect(Unit) {
-        try {
-            val stats = withContext(Dispatchers.IO) {
-                val chatDao = ChatImportDatabase.getInstance(context).chatImportDao()
-                val chats = chatDao.getAllChats()
-                val totalMessages = chats.sumOf { chatDao.getMessageCountForChat(it.chatId) }
-                Pair(chats.size, totalMessages)
-            }
-            val (chatCount, totalMessages) = stats
-            chatSummary = when {
-                chatCount == 0 -> "还没有导入"
-                totalMessages > 0 -> "${totalMessages} 条消息"
-                else -> "${chatCount} 个对话"
-            }
-        } catch (_: Throwable) {
-            // 降级为静态文案
-        }
-    }
-
     val ledgerStatus = ledgerSummary ?: "进入账本"
     val ledgerSubtitle = ledgerSummary?.let { "账本、预算和每一笔生活开销" } ?: "账本、预算和每一笔生活开销"
 
@@ -214,17 +191,6 @@ fun LifeScreen(
                         .weight(1f)
                         .yingShiRouteReveal(visible = true),
                     onClick = { onNavigate(LifeSubRoute.Ledger) },
-                )
-                LifeEntryCard(
-                    title = "聊天记录",
-                    summary = "本地离线回看旧对话",
-                    status = chatSummary ?: "打开记录",
-                    accent = LifeEntryAccent.WARM,
-                    icon = Icons.Rounded.ChatBubbleOutline,
-                    modifier = Modifier
-                        .weight(1f)
-                        .yingShiRouteReveal(visible = true),
-                    onClick = { onNavigate(LifeSubRoute.Chat) },
                 )
                 LifeEntryCard(
                     title = "今日痕迹",

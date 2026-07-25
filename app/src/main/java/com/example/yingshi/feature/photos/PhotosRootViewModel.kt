@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.CreateAlbumPayload
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.YingShiNotice
 import com.example.yingshi.ui.components.YingShiNoticeTone
@@ -115,9 +114,7 @@ class PhotosRootViewModel : ViewModel() {
             ) {
                 is ApiResult.Success -> {
                     AlbumPageStateStore.pendingSelectedAlbumId = result.data.albumId
-                    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                        notifyRealBackendAlbumsChanged()
-                    }
+                    notifyRealBackendAlbumsChanged()
                     _createAlbumDraft.value = CreateAlbumDraft()
                     _dialogState.value = _dialogState.value.copy(showCreateAlbumDialog = false)
                     showNotice("已创建大相册", YingShiNoticeTone.SUCCESS)
@@ -139,6 +136,11 @@ class PhotosRootViewModel : ViewModel() {
 
     fun updateTrashUiState(newState: TrashUiState) {
         _trashUiState.value = newState
+    }
+
+    // 原子化更新：避免连续两次 copy() 用同一旧快照导致第一次写入被覆盖（stale closure 问题）
+    fun updateTrashUiState(transform: (TrashUiState) -> TrashUiState) {
+        _trashUiState.value = transform(_trashUiState.value)
     }
 
     fun exitTrashSelection() {

@@ -4,6 +4,7 @@
     android:initialLayout="@layout/life_people_widget"
     android:minWidth="320dp"
     android:minHeight="560dp"
+    android:previewImage="@drawable/widget_preview_people"
     android:previewLayout="@layout/life_people_widget"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="5"

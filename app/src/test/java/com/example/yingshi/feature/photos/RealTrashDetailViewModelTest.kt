@@ -3,7 +3,7 @@ package com.example.yingshi.feature.photos
 import com.example.yingshi.data.model.AuthTokens
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.result.ApiResult
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -50,7 +50,7 @@ class RealTrashDetailViewModelTest {
         fakeRepo = FakeTrashRepository()
         AuthSessionManager.clearTokensPreservingReadCache()
         AuthSessionManager.saveTokens(validTokens())
-        BackendAutoLoginManager.markLoggedOut("test-setup")
+        BackendSessionProbe.markLoggedOut("test-setup")
     }
 
     @After

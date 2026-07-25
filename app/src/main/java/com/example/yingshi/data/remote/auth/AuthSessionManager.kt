@@ -97,10 +97,21 @@ object AuthSessionManager : TokenProvider {
     private var sessionPreferences: SharedPreferences? = null
     private var currentUserSnapshot: RemoteCurrentUser? = null
     private var installDeviceId: String = UUID.randomUUID().toString()
+    private var initialized: Boolean = false
     var sessionVersion by mutableIntStateOf(0)
         private set
 
     fun init(context: Context) {
+        // P1-3 根因修复: init() 只在首次调用时初始化和递增 sessionVersion。
+        // 之前每次调用都 sessionVersion += 1, 导致:
+        //   SseKeepAliveReceiver.onReceive / WidgetMediaEntryActivity.onCreate / LifePushDispatchActivity.onCreate
+        //   等场景调用 init() → sessionVersion += 1 → backendSessionKey 变化
+        //   → PhotosRootScreen 的 key() 变化 → HorizontalPager 页面内容销毁重建
+        //   → RealPhotoFeedViewModel 被重新创建 → feedItems 变空再恢复 → 用户感知"闪"。
+        // 这些场景调用 init() 只是为了确保单例已初始化 (因为可能在非 Application 进程的上下文执行),
+        // 不应导致 sessionVersion 变化。
+        if (initialized) return
+        initialized = true
         sessionPreferences = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         AppReadCacheStore.init(context.applicationContext)
         tokenStore = SharedPreferencesTokenStore(
@@ -156,9 +167,14 @@ object AuthSessionManager : TokenProvider {
     }
 
     fun saveCurrentUserSnapshot(user: RemoteCurrentUser) {
+        val previous = currentUserSnapshot
         currentUserSnapshot = user
         AppReadCacheStore.writeCurrentUser(user)
         sessionPreferences?.edit()?.putString(KEY_LAST_SIGNED_IN_ACCOUNT, user.account.trim())?.persist()
+        // 改名/换头像/改简介后也要让依赖 sessionVersion 的组件 (如头像图片 cache key) 刷新
+        if (previous == null || previous != user) {
+            sessionVersion += 1
+        }
     }
 
     fun clearCurrentUserSnapshot() {

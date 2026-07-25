@@ -134,7 +134,7 @@ fun NotificationCenterScreen(
         snapshotFlow { syncStaleState.notificationsStale }.collect { currentlyStale ->
             if (currentlyStale) {
                 viewModel.refresh()
-                SyncVersionTracker.markRefreshed(SyncModule.NOTIFICATIONS)
+                SyncVersionTracker.markRefreshedFresh(SyncModule.NOTIFICATIONS)
             }
         }
     }

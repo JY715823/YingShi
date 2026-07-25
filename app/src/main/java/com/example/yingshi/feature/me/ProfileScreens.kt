@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -69,9 +71,6 @@ import com.example.yingshi.ui.components.yingShiRouteReveal
 import com.example.yingshi.ui.components.yingShiSoftReveal
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.launch
 
 private const val TITLE_PROFILE = "个人主页"
@@ -93,7 +92,6 @@ private const val MESSAGE_AVATAR_PICK_CANCELLED = "已取消选择头像"
 private const val MESSAGE_AVATAR_PICK_FAILED = "无法读取选中的头像"
 private const val MESSAGE_AVATAR_TOO_LARGE = "头像文件不能超过 10MB"
 private const val TEXT_UNFILLED = "未填写"
-private const val TEXT_UNRECORDED = "未记录"
 private const val FALLBACK_AVATAR_FILE_NAME = "avatar.jpg"
 private const val FALLBACK_AVATAR_MIME_TYPE = "image/jpeg"
 private const val MAX_AVATAR_FILE_SIZE_BYTES = 10L * 1024 * 1024
@@ -132,6 +130,7 @@ fun PersonalProfileScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .verticalScroll(scrollState),
         ) {
             // ── Header: back + title ──
@@ -397,11 +396,12 @@ fun EditProfileScreen(
     val colors = YingShiThemeTokens.colors
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var displayName by rememberSaveable(currentUser.userId) { mutableStateOf(currentUser.displayName) }
-    var bio by rememberSaveable(currentUser.userId) { mutableStateOf(currentUser.bio.orEmpty()) }
+    var displayName by rememberSaveable(currentUser.userId, currentUser.displayName) { mutableStateOf(currentUser.displayName) }
+    var bio by rememberSaveable(currentUser.userId, currentUser.bio) { mutableStateOf(currentUser.bio.orEmpty()) }
     var isSaving by remember { mutableStateOf(false) }
     var isUploadingAvatar by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var avatarUploadProgress by remember { mutableStateOf<Int?>(null) }
     val scrollState = rememberScrollState()
 
     val avatarPickerLauncher = rememberLauncherForActivityResult(
@@ -419,6 +419,7 @@ fun EditProfileScreen(
             }
             isUploadingAvatar = true
             errorMessage = null
+            avatarUploadProgress = 0
             val uploadResult = runCatching {
                 RepositoryProvider.authRepository.uploadCurrentUserAvatar(
                     fileName = uri.resolvePickedDisplayName(context),
@@ -428,6 +429,7 @@ fun EditProfileScreen(
                     openInputStream = {
                         context.contentResolver.openInputStream(uri) ?: error(MESSAGE_AVATAR_PICK_FAILED)
                     },
+                    onProgress = { progress -> avatarUploadProgress = progress },
                 )
             }.getOrElse {
                 ApiResult.Error(
@@ -450,6 +452,7 @@ fun EditProfileScreen(
                 }
                 ApiResult.Loading -> Unit
             }
+            avatarUploadProgress = null
             isUploadingAvatar = false
         }
     }
@@ -462,6 +465,7 @@ fun EditProfileScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .verticalScroll(scrollState),
         ) {
             // ── Header: back + title ──
@@ -515,14 +519,14 @@ fun EditProfileScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(64.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .height(88.dp)
+                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                             .background(
                                 Brush.linearGradient(
                                     colors = listOf(
-                                        colors.primaryContainer.copy(alpha = 0.45f),
-                                        colors.memoryContainer.copy(alpha = 0.35f),
-                                        colors.glowWash.copy(alpha = 0.40f),
+                                        colors.primaryContainer.copy(alpha = 0.55f),
+                                        colors.memoryContainer.copy(alpha = 0.40f),
+                                        colors.glowWash.copy(alpha = 0.50f),
                                     ),
                                 ),
                             ),
@@ -532,7 +536,7 @@ fun EditProfileScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .offset(y = (-28).dp),
+                            .offset(y = (-44).dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
@@ -559,14 +563,31 @@ fun EditProfileScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .offset(y = (-20).dp),
+                            .offset(y = (-36).dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = if (isUploadingAvatar) ACTION_UPLOADING_AVATAR else ACTION_UPDATE_AVATAR,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.titleAccent,
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(spacing.xs),
+                            modifier = Modifier.padding(horizontal = spacing.xl),
+                        ) {
+                            Text(
+                                text = if (isUploadingAvatar) ACTION_UPLOADING_AVATAR else ACTION_UPDATE_AVATAR,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.titleAccent,
+                            )
+                            avatarUploadProgress?.let { progress ->
+                                LinearProgressIndicator(
+                                    progress = { progress / 100f },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(50)),
+                                    color = colors.primaryAction,
+                                    trackColor = colors.dividerSoft.copy(alpha = 0.34f),
+                                )
+                            }
+                        }
                     }
 
                     // Name field
@@ -760,15 +781,6 @@ private fun EditBioField(
 // ─────────────────────────────────────────────────────────────
 //  Helpers
 // ─────────────────────────────────────────────────────────────
-
-private fun formatEpochMillis(epochMillis: Long?): String {
-    if (epochMillis == null || epochMillis <= 0L) {
-        return TEXT_UNRECORDED
-    }
-    return runCatching {
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(epochMillis))
-    }.getOrDefault(TEXT_UNRECORDED)
-}
 
 private fun Uri.resolvePickedDisplayName(context: Context): String {
     return context.contentResolver.query(

@@ -80,6 +80,14 @@ object RealBackendMutationBus {
             nextVersion
         }
         _latestEvent.value = event.copy(version = nextVersion)
+        // Logging must never break a successful mutation. This also keeps JVM
+        // tests usable where Android's Log backend is intentionally absent.
+        runCatching {
+            android.util.Log.d(
+                "RealBackendMutationBus",
+                "notifyChanged version=$nextVersion scopes=${event.scopes} postIds=${event.postIds} mediaIds=${event.mediaIds}",
+            )
+        }
     }
 }
 

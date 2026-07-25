@@ -211,15 +211,16 @@ object AppReadCacheStore {
         userId: String,
         notificationId: String,
     ): CachedPayload<RemoteNotification>? {
+        val cachedList = readNotifications(userId)
         return read(
             scope = "$NOTIFICATION_DETAIL_SCOPE-$notificationId",
             userId = userId,
             payloadType = RemoteNotification::class.java,
-        ) ?: readNotifications(userId)?.payload?.items
+        ) ?: cachedList?.payload?.items
             ?.firstOrNull { it.notificationId == notificationId }
             ?.let { notification ->
                 CachedPayload(
-                    cachedAtMillis = readNotifications(userId)?.cachedAtMillis ?: System.currentTimeMillis(),
+                    cachedAtMillis = cachedList?.cachedAtMillis ?: System.currentTimeMillis(),
                     payload = notification,
                 )
             }
@@ -296,6 +297,33 @@ object AppReadCacheStore {
                 totalBytes = files.sumOf(File::length),
                 lastUpdatedAtMillis = files.maxOfOrNull(File::lastModified)?.takeIf { it > 0L },
             )
+        }
+    }
+
+    /**
+     * 将缓存时间戳格式化为相对当前的 stale-age 字符串，供 UI 展示。
+     *
+     * - null → "未同步"
+     * - < 60s → "刚刚"
+     * - < 60min → "X 分钟前"
+     * - < 24h → "X 小时前"
+     * - else → "X 天前"
+     *
+     * 色调（正常/WARNING）由 UI 层根据 7 天阈值自行判定。
+     */
+    fun formatRelativeStaleAge(cachedAtMillis: Long?): String {
+        if (cachedAtMillis == null) return "未同步"
+        val diffMillis = System.currentTimeMillis() - cachedAtMillis
+        if (diffMillis < 0) return "刚刚" // 时钟回退兜底
+        val seconds = diffMillis / 1000
+        val minutes = seconds / 60
+        val hours = minutes / 60
+        val days = hours / 24
+        return when {
+            seconds < 60 -> "刚刚"
+            minutes < 60 -> "$minutes 分钟前"
+            hours < 24 -> "$hours 小时前"
+            else -> "$days 天前"
         }
     }
 

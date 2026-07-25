@@ -51,7 +51,12 @@ internal fun buildSystemMediaScrubberYearMarkers(
             timeMillis = item.displayTimeMillis,
         )
     }
-    return buildPhotoFeedScrubberYearMarkers(anchors)
+    val allMarkers = buildPhotoFeedScrubberYearMarkers(anchors)
+    // 只保留近6年的年份标记, 避免旧年份过多导致堆叠.
+    // 滑条范围不受影响, 仍可滑到最旧的媒体.
+    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+    val minYear = currentYear - 5
+    return allMarkers.filter { it.year >= minYear }
 }
 
 // TODO: 确认是否死代码，主函数实际调用 PhotoFeedTimeScrubber

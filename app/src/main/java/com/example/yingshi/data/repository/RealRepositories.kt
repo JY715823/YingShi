@@ -29,6 +29,7 @@ import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.RemoteUploadHistoryPage
 import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
@@ -56,6 +57,7 @@ import com.example.yingshi.data.remote.dto.RefreshTokenRequestDto
 import com.example.yingshi.data.remote.dto.RegisterPushTokenRequestDto
 import com.example.yingshi.data.remote.dto.ResendLoginChallengeRequestDto
 import com.example.yingshi.data.remote.dto.UpdateLocationRequestDto
+import com.example.yingshi.data.remote.dto.UpdateMediaTimeRequestDto
 import com.example.yingshi.data.remote.dto.UpdateProfileRequestDto
 import com.example.yingshi.data.remote.dto.UpdateAlbumRequestDto
 import com.example.yingshi.data.remote.dto.VerifyLoginChallengeRequestDto
@@ -196,6 +198,27 @@ class RealMediaRepository(
                 ApiResult.Error(
                     code = "MEDIA_DELETE_REQUEST_FAILED",
                     message = backendRequestErrorMessage(it, "删除媒体失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    override suspend fun updateMediaTime(
+        mediaId: String,
+        displayTimeMillis: Long,
+    ): ApiResult<Long> {
+        return runCatching {
+            mediaApi.updateMediaTime(
+                mediaId = mediaId,
+                request = UpdateMediaTimeRequestDto(displayTimeMillis = displayTimeMillis),
+            ).data
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "MEDIA_UPDATE_TIME_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "更新媒体时间失败，请稍后重试。"),
                     throwable = it,
                 )
             },
@@ -879,6 +902,38 @@ class RealTrashRepository(
             },
         )
     }
+
+    // P1-2 改造: life 回收站列表（按 category 过滤）
+    override suspend fun getLifeTrashItems(category: String?): ApiResult<List<RemoteTrashItem>> {
+        return runCatching {
+            trashApi.getLifeTrashItems(category).data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_TRASH_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "读取今日痕迹回收站失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
+
+    // P1-2 改造: life 回收站 24h 撤回中心（按 category 过滤）
+    override suspend fun getLifePendingCleanupItems(category: String?): ApiResult<List<RemotePendingCleanup>> {
+        return runCatching {
+            trashApi.getLifePendingCleanupItems(category).data.map { it.toRemoteModel() }
+        }.fold(
+            onSuccess = { ApiResult.Success(it) },
+            onFailure = {
+                ApiResult.Error(
+                    code = "LIFE_TRASH_PENDING_REQUEST_FAILED",
+                    message = backendRequestErrorMessage(it, "读取今日痕迹待处理项目失败，请稍后重试。"),
+                    throwable = it,
+                )
+            },
+        )
+    }
 }
 
 class RealUploadRepository(
@@ -909,9 +964,18 @@ class RealUploadRepository(
                     operationMediaCount = payload.operationMediaCount,
                     sourceItemId = payload.sourceItemId,
                     domain = payload.domain,
+                    lifeCategory = payload.lifeCategory,
                     latitude = payload.latitude,
                     longitude = payload.longitude,
                     locationLabel = payload.locationLabel,
+                    idempotencyKey = payload.operationId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { operationId ->
+                            payload.sourceItemId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { sourceItemId -> "$operationId:$sourceItemId" }
+                        }
+                        ?.take(128),
                 ),
             ).data.toRemoteModel().also { token ->
                 uploadTokens[token.uploadId] = token
@@ -1085,13 +1149,20 @@ class RealUploadRepository(
         state: String?,
         operationType: String?,
         pageSize: Int,
-    ): ApiResult<List<RemoteUploadTask>> {
+        cursor: String?,
+    ): ApiResult<RemoteUploadHistoryPage> {
         return runCatching {
-            uploadApi.getUploadHistory(
+            val envelope = uploadApi.getUploadHistory(
                 state = state,
                 operationType = operationType,
                 pageSize = pageSize,
-            ).data.map { it.toRemoteModel() }
+                cursor = cursor,
+            )
+            RemoteUploadHistoryPage(
+                tasks = envelope.data.map { it.toRemoteModel() },
+                nextCursor = envelope.page?.nextCursor,
+                hasMore = envelope.page?.hasMore == true,
+            )
         }.fold(
             onSuccess = { ApiResult.Success(it) },
             onFailure = {
@@ -1864,6 +1935,7 @@ class RealAuthRepository(
         mimeType: String,
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
+        onProgress: (Int) -> Unit,
     ): ApiResult<RemoteCurrentUser> {
         return runCatching {
             val filePart = MultipartBody.Part.createFormData(
@@ -1873,7 +1945,7 @@ class RealAuthRepository(
                     expectedLengthBytes = fileSizeBytes,
                     mimeType = mimeType,
                     openInputStream = openInputStream,
-                    onProgressPercent = {},
+                    onProgressPercent = onProgress,
                 ),
             )
             authApi.uploadCurrentUserAvatar(filePart).data.toRemoteModel()

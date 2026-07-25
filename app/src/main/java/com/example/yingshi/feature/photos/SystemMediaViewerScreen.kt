@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +47,7 @@ import com.example.yingshi.ui.components.YingShiNoticeTone
 import com.example.yingshi.ui.components.rememberYingShiMotionEnabled
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import com.example.yingshi.feature.life.LifeLocationPickerActivity
 import kotlinx.coroutines.launch
 
 @Composable
@@ -70,13 +73,13 @@ fun SystemMediaViewerScreen(
     val currentIndex = pagerState.currentPage.coerceIn(0, (viewerItems.size - 1).coerceAtLeast(0))
     val currentItem = viewerItems.getOrNull(currentIndex)
     val zoomState = remember { ViewerZoomState() }
-    var showMenuSheet by rememberSaveable { mutableStateOf(false) }
     var showAddToPostDialog by rememberSaveable { mutableStateOf(false) }
     var addToPostError by rememberSaveable { mutableStateOf<String?>(null) }
     var isImmersive by rememberSaveable { mutableStateOf(false) }
     var pendingTrashIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableIntStateOf(0) }
+    var pendingImportItem by remember { mutableStateOf<SystemMediaItem?>(null) }
     val destinationUiState by rememberSystemMediaDestinationUiState()
     val albums = destinationUiState.albums
     val posts = destinationUiState.posts
@@ -143,6 +146,37 @@ fun SystemMediaViewerScreen(
             }
     }
 
+    fun performImportToApp(item: SystemMediaItem) {
+        pendingImportItem = item
+    }
+
+    fun confirmImportToApp() {
+        val item = pendingImportItem ?: return
+        pendingImportItem = null
+        val queuedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
+            context = context,
+            mediaItems = listOf(item),
+        )
+        showNotice(
+            message = if (queuedCount > 0) {
+                "已加入导入队列。"
+            } else {
+                "当前媒体无法导入照片流。"
+            },
+            tone = if (queuedCount > 0) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
+        )
+    }
+
+    fun performAddToPost(item: SystemMediaItem) {
+        addToPostError = null
+        val destinationError = destinationUiState.errorMessage
+        if (destinationError != null && posts.isEmpty()) {
+            showNotice(destinationError, YingShiNoticeTone.WARNING)
+        } else {
+            showAddToPostDialog = true
+        }
+    }
+
     currentItem?.let { item ->
         if (showAddToPostDialog) {
             SystemMediaPostDestinationDialog(
@@ -186,6 +220,34 @@ fun SystemMediaViewerScreen(
             )
         }
 
+    }
+
+    pendingImportItem?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingImportItem = null },
+            title = {
+                Text(
+                    text = "导入到照片流",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            },
+            text = {
+                Text(
+                    text = "确认将这张${item.type.label}（${formatSystemViewerDisplayTime(item.displayTimeMillis)}）导入到照片流吗？",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = ::confirmImportToApp) {
+                    Text("导入")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingImportItem = null }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 
     DisposableEffect(currentItem?.id) {
@@ -288,7 +350,7 @@ fun SystemMediaViewerScreen(
                     SystemMediaViewerTopScrim(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(124.dp),
+                            .height(168.dp),
                     )
                     Row(
                         modifier = Modifier
@@ -299,8 +361,11 @@ fun SystemMediaViewerScreen(
                         SystemMediaViewerTopBar(
                             currentIndex = currentIndex,
                             totalCount = viewerItems.size,
-                            showMenu = true,
                             overlaysVisible = !zoomState.isZoomed,
+                            itemImported = currentItem?.isImportedToApp == true,
+                            locationLabel = currentItem?.locationLabel,
+                            latitude = currentItem?.latitude,
+                            longitude = currentItem?.longitude,
                             onBack = {
                                 if (zoomState.isZoomed) {
                                     zoomState.reset()
@@ -308,7 +373,30 @@ fun SystemMediaViewerScreen(
                                     onBack()
                                 }
                             },
-                            onOpenMenu = { showMenuSheet = true },
+                            onImportToApp = {
+                                currentItem?.let(::performImportToApp)
+                            },
+                            onAddToPost = {
+                                currentItem?.let(::performAddToPost)
+                            },
+                            onMoveToTrash = {
+                                currentItem?.let(::launchSystemTrashRequest)
+                            },
+                            onOpenLocation = {
+                                currentItem?.let { item ->
+                                    val lat = item.latitude ?: return@let
+                                    val lng = item.longitude ?: return@let
+                                    val intent = LifeLocationPickerActivity.intent(
+                                        context = context,
+                                        initialLat = lat,
+                                        initialLng = lng,
+                                        initialLabel = item.locationLabel,
+                                        title = "查看位置",
+                                        readOnly = true,
+                                    )
+                                    context.startActivity(intent)
+                                }
+                            },
                         )
                     }
                 }
@@ -332,15 +420,17 @@ fun SystemMediaViewerScreen(
                     SystemMediaViewerBottomScrim(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(188.dp),
+                            .height(124.dp),
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
-                    ) {
-                        SystemMediaViewerInfoCard(item = currentItem)
+                    currentItem?.let { item ->
+                        SystemMediaViewerInfoCard(
+                            item = item,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = YingShiThemeTokens.spacing.lg, vertical = YingShiThemeTokens.spacing.md),
+                        )
                     }
                 }
             }
@@ -360,41 +450,6 @@ fun SystemMediaViewerScreen(
         )
     }
 
-    if (showMenuSheet && currentItem != null) {
-        SystemMediaViewerMenuSheet(
-            itemImported = currentItem.isImportedToApp,
-            onDismiss = { showMenuSheet = false },
-            onImportToApp = {
-                showMenuSheet = false
-                val queuedCount = LocalSystemMediaBridgeRepository.enqueueImportToAppUpload(
-                    context = context,
-                    mediaItems = listOf(currentItem),
-                )
-                showNotice(
-                    message = if (queuedCount > 0) {
-                        "已加入导入队列。"
-                    } else {
-                        "当前媒体无法导入照片流。"
-                    },
-                    tone = if (queuedCount > 0) YingShiNoticeTone.SUCCESS else YingShiNoticeTone.WARNING,
-                )
-            },
-            onAddToPost = {
-                addToPostError = null
-                showMenuSheet = false
-                val destinationError = destinationUiState.errorMessage
-                if (destinationError != null && posts.isEmpty()) {
-                    showNotice(destinationError, YingShiNoticeTone.WARNING)
-                } else {
-                    showAddToPostDialog = true
-                }
-            },
-            onMoveToTrash = {
-                showMenuSheet = false
-                launchSystemTrashRequest(currentItem)
-            },
-        )
-    }
 }
 
 @Preview(showBackground = true)

@@ -7,4 +7,43 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- ============================================================ -->
+    <!-- Widget 色板（镜像 App Color.kt token，受设计约束保护，单向镜像） -->
+    <!-- Round 1 FR-1: 视觉语言统一                                    -->
+    <!-- ============================================================ -->
+    <color name="widget_app_background">#FFF1FBFD</color>
+    <color name="widget_section_background">#FFDFF5F4</color>
+    <color name="widget_raised_surface">#FFFFFC</color>
+    <color name="widget_primary_container">#FFBDEFFF</color>
+    <color name="widget_primary_pressed">#FFA7E9FF</color>
+    <color name="widget_title_accent">#FF26313A</color>
+    <color name="widget_gold_accent">#FF9A6A2A</color>
+    <color name="widget_glass_stroke">#FFA9E5F2</color>
+    <color name="widget_glow_wash">#FFE7FAFF</color>
+    <color name="widget_text_primary">#FF1F2933</color>
+    <color name="widget_text_secondary">#FF556B75</color>
+    <color name="widget_divider_soft">#FFC7E6EC</color>
+    <color name="widget_aura_warm">#D0FFF4D9</color>
+    <color name="widget_aura_cool">#C4AEEBFF</color>
+    <color name="widget_destructive">#FFBA1A1A</color>
+    <color name="widget_memory_accent">#FFA2473D</color>
+    <color name="widget_soft_green">#FFD8F2E6</color>
+
+    <!-- Widget 专用辅助色（不镜像 App，仅 widget 内部使用） -->
+    <color name="widget_polaroid_shadow">#33000000</color>
+    <color name="widget_polaroid_stroke">#A0A9E5F2</color>
+    <color name="widget_polaroid_highlight_top">#30FFFFFF</color>
+    <color name="widget_polaroid_highlight_bottom">#00FFFFFF</color>
+    <color name="widget_tape_pink">#C0BDEFFF</color>
+    <color name="widget_tape_pink_stripe">#80FFE1DA</color>
+    <color name="widget_tape_mint">#C0DFF5F4</color>
+    <color name="widget_tape_mint_stripe">#80D8F2E6</color>
+    <color name="widget_tape_gold">#C0E6C88A</color>
+    <color name="widget_tape_gold_stripe">#80FFF4D9</color>
+    <color name="widget_tape_blue">#C0A9E5F2</color>
+    <color name="widget_tape_blue_stripe">#80E7FAFF</color>
+    <color name="widget_heart_color">#A0A2473D</color>
+    <color name="widget_capsule_bg">#E6FFFFFC</color>
+    <color name="widget_capsule_stroke">#80A9E5F2</color>
 </resources>

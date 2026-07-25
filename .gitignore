@@ -76,3 +76,8 @@ app/release/
 # Firebase local config, generated per Firebase project.
 google-services.json
 **/google-services.json
+
+# R8/ProGuard mapping files (FR-9)
+mapping.txt
+**/mapping.txt
+*.aab

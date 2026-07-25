@@ -1,8 +1,8 @@
 package com.example.yingshi.feature.ledger
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Icon
@@ -28,11 +31,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,26 +48,43 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerBook
 import com.example.yingshi.feature.ledger.data.LedgerBookTemplateDaily
-import com.example.yingshi.feature.ledger.data.LedgerBookTemplates
 import com.example.yingshi.feature.ledger.data.LedgerSeedData
-import com.example.yingshi.feature.ledger.data.ledgerBookTemplateLabel
+import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+
+private enum class LedgerBookScope {
+    MINE,
+    PARTNER,
+    OURS,
+}
+
+private fun LedgerBook.matchesBookScope(
+    scope: LedgerBookScope,
+    currentUserId: String?,
+    partnerUserId: String?,
+): Boolean = when (scope) {
+    LedgerBookScope.MINE -> creatorUserId == null || creatorUserId == currentUserId
+    LedgerBookScope.PARTNER -> partnerUserId != null && creatorUserId == partnerUserId
+    LedgerBookScope.OURS -> creatorUserId == SHARED_OWNER_FLAG
+}
 
 private val LedgerBookColorOptions = listOf(
-    0xFF47B972,
-    0xFF3CB4A5,
-    0xFF58B16B,
-    0xFF4B82F5,
-    0xFFF59E4A,
-    0xFF9C6ADE,
+    0xFF47B972, 0xFF3CB4A5, 0xFF58B16B, 0xFF4B82F5,
+    0xFFF59E4A, 0xFF9C6ADE, 0xFFE85D75, 0xFF6C7CE0,
+    0xFF2BB6CF, 0xFFB8C24D, 0xFFE0A23C, 0xFF5E7C8B,
+    0xFFD94560, 0xFF3FA7D6, 0xFF8BC34A, 0xFFF06292,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LedgerBooksScreen(
     uiState: LedgerUiState,
     onBack: () -> Unit,
-    onSaveBook: (String?, String, String, Long, () -> Unit) -> Unit,
+    onSaveBook: (String?, String, Long, String?, () -> Unit) -> Unit,
     onSetDefaultBook: (String) -> Unit,
     onArchiveBook: (String) -> Unit,
     onRestoreBook: (String) -> Unit,
@@ -68,73 +92,157 @@ fun LedgerBooksScreen(
     var showCreateSheet by rememberSaveable { mutableStateOf(false) }
     var editingBook by remember { mutableStateOf<LedgerBook?>(null) }
     var actionBook by remember { mutableStateOf<LedgerBook?>(null) }
+    val directory = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
+    val currentUserId = directory.currentUser?.userId
+    val partnerUserId = directory.partner?.userId
+    val mineLabel = directory.currentUser?.displayName ?: "我的"
+    val partnerLabel = directory.partner?.displayName ?: "对方的"
+    val scopes = LedgerBookScope.entries
+    var selectedScopeName by rememberSaveable { mutableStateOf(LedgerBookScope.MINE.name) }
+    val selectedScope = LedgerBookScope.valueOf(selectedScopeName)
+    val pagerState = rememberPagerState(
+        initialPage = scopes.indexOf(selectedScope).coerceAtLeast(0),
+        pageCount = { scopes.size },
+    )
+    val coroutineScope = rememberCoroutineScope()
+
+    fun scopeLabel(scope: LedgerBookScope): String = when (scope) {
+        LedgerBookScope.MINE -> mineLabel
+        LedgerBookScope.PARTNER -> partnerLabel
+        LedgerBookScope.OURS -> "我们"
+    }
+
+    LaunchedEffect(selectedScopeName) {
+        val targetPage = scopes.indexOf(LedgerBookScope.valueOf(selectedScopeName))
+        if (targetPage >= 0 && targetPage != pagerState.currentPage) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+    // 立即同步 currentPage → selectedScopeName，避免滑动后 tab 选中延迟
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { currentPage ->
+                val pageScope = scopes.getOrNull(currentPage) ?: return@collect
+                if (pageScope.name != selectedScopeName) {
+                    selectedScopeName = pageScope.name
+                }
+            }
+    }
 
     LedgerPageScaffold(
         title = "账本管理",
         onBack = onBack,
         action = {
-            Text(
-                text = "+",
-                modifier = Modifier.clickable { showCreateSheet = true },
-                color = LedgerHeaderGreen,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        },
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .navigationBarsPadding()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            contentPadding = PaddingValues(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
+            // 对方账本页下不显示新增按钮
+            if (selectedScope != LedgerBookScope.PARTNER) {
                 Surface(
-                    color = LedgerRaisedSurface,
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .yingShiClickable(
+                            pressedScale = 0.94f,
+                            shape = CircleShape,
+                        ) { showCreateSheet = true },
+                    shape = CircleShape,
+                    color = LedgerPrimaryAction,
+                    border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.88f)),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            text = "重新进入记账时，会优先打开默认账本。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "账本可归档后恢复，历史数据会保留。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = LedgerMuted,
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "新增账本",
+                            tint = LedgerHeaderGreen,
+                            modifier = Modifier.size(25.dp),
                         )
                     }
                 }
             }
-            item {
-                Text("可用账本", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
-            }
-            items(uiState.books, key = { it.id }) { book ->
-                LedgerBookRow(
-                    book = book,
-                    isDefault = book.id == uiState.defaultBookId,
-                    archived = false,
-                    onClick = { actionBook = book },
-                )
-            }
-            if (uiState.archivedBooks.isNotEmpty()) {
-                item {
-                    Text("已归档", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
-                }
-                items(uiState.archivedBooks, key = { it.id }) { book ->
-                    LedgerBookRow(
-                        book = book,
-                        isDefault = false,
-                        archived = true,
-                        onClick = { actionBook = book },
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                scopes.forEach { scope ->
+                    LedgerSegmentChip(
+                        text = scopeLabel(scope),
+                        selected = selectedScope == scope,
+                        modifier = Modifier.weight(1f),
+                        horizontalPadding = 14.dp,
+                        verticalPadding = 8.dp,
+                        largeText = true,
+                        onClick = {
+                            selectedScopeName = scope.name
+                            coroutineScope.launch {
+                                pagerState.scrollToPage(scopes.indexOf(scope))
+                            }
+                        },
                     )
+                }
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f),
+                key = { page -> scopes[page].name },
+            ) { page ->
+                val pageScope = scopes[page]
+                val visibleBooks = uiState.books.filter { it.matchesBookScope(pageScope, currentUserId, partnerUserId) }
+                val visibleArchivedBooks = uiState.archivedBooks.filter { it.matchesBookScope(pageScope, currentUserId, partnerUserId) }
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item {
+                        Text("可用账本", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
+                    }
+                    if (visibleBooks.isEmpty()) {
+                        item {
+                            Surface(
+                                color = LedgerRaisedSurface,
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = "暂无账本",
+                                    modifier = Modifier.padding(vertical = 32.dp, horizontal = 16.dp),
+                                    color = LedgerMuted,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                    } else {
+                        items(visibleBooks, key = { it.id }) { book ->
+                            LedgerBookRow(
+                                book = book,
+                                isDefault = book.id == uiState.defaultBookId,
+                                archived = false,
+                                onClick = { actionBook = book },
+                            )
+                        }
+                    }
+                    if (visibleArchivedBooks.isNotEmpty()) {
+                        item {
+                            Text("已归档", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = LedgerMuted)
+                        }
+                        items(visibleArchivedBooks, key = { it.id }) { book ->
+                            LedgerBookRow(
+                                book = book,
+                                isDefault = false,
+                                archived = true,
+                                onClick = { actionBook = book },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -142,9 +250,13 @@ fun LedgerBooksScreen(
 
     if (showCreateSheet) {
         LedgerBookEditorSheet(
+            defaultOwnerUserId = currentUserId,
+            partnerUserId = partnerUserId,
+            mineLabel = mineLabel,
+            partnerLabel = partnerLabel,
             onDismiss = { showCreateSheet = false },
-            onSave = { name, template, coverColor ->
-                onSaveBook(null, name, template, coverColor) {
+            onSave = { name, coverColor, ownerUserId ->
+                onSaveBook(null, name, coverColor, ownerUserId) {
                     showCreateSheet = false
                 }
             },
@@ -153,9 +265,13 @@ fun LedgerBooksScreen(
     editingBook?.let { book ->
         LedgerBookEditorSheet(
             initial = book,
+            defaultOwnerUserId = currentUserId,
+            partnerUserId = partnerUserId,
+            mineLabel = mineLabel,
+            partnerLabel = partnerLabel,
             onDismiss = { editingBook = null },
-            onSave = { name, _, coverColor ->
-                onSaveBook(book.id, name, book.template, coverColor) {
+            onSave = { name, coverColor, _ ->
+                onSaveBook(book.id, name, coverColor, book.creatorUserId) {
                     editingBook = null
                 }
             },
@@ -181,12 +297,13 @@ fun LedgerBooksScreen(
                             onSetDefaultBook(book.id)
                         },
                     )
-                    add(
-                        LedgerSheetAction("归档账本", destructive = true) {
-                            onArchiveBook(book.id)
-                        },
-                    )
                 }
+                // 默认账本也可归档, 归档后自动将下一个设为默认
+                add(
+                    LedgerSheetAction("归档账本", destructive = true) {
+                        onArchiveBook(book.id)
+                    },
+                )
             }
         }
         LedgerActionSheet(
@@ -257,20 +374,20 @@ fun LedgerSettingsScreen(
             }
             item {
                 LedgerSettingsSection(title = "保留项") {
-                    LedgerStaticSettingRow(
+                    LedgerSettingsRow(
                         title = "周期记账",
                         subtitle = "新增、编辑周期规则，进入后自动补齐到期账单。",
                         value = "进入",
                         onClick = onOpenRecurring,
                     )
-                    LedgerStaticSettingRow(
+                    LedgerSettingsRow(
                         title = "自定义背景",
                         subtitle = "选择一张喜欢的图，作为账本背景。",
                         onClick = {
                             android.widget.Toast.makeText(context, "即将上线", android.widget.Toast.LENGTH_SHORT).show()
                         },
                     )
-                    LedgerStaticSettingRow(
+                    LedgerSettingsRow(
                         title = "小组件",
                         subtitle = "在桌面快速查看这个月的小账。",
                         onClick = {
@@ -322,7 +439,11 @@ private fun LedgerBookRow(
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = onClick,
+            ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
@@ -366,18 +487,6 @@ private fun LedgerBookRow(
                         LedgerLabelBadge(text = "已归档", color = LedgerMuted, background = LedgerGroupedHeader)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LedgerLabelBadge(
-                        text = ledgerBookTemplateLabel(book.template),
-                        color = LedgerMuted,
-                        background = LedgerGroupedHeader,
-                    )
-                    Text(
-                        text = book.currencySymbol,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = LedgerMuted,
-                    )
-                }
             }
             Icon(
                 Icons.Default.MoreHoriz,
@@ -392,15 +501,27 @@ private fun LedgerBookRow(
 @Composable
 private fun LedgerBookEditorSheet(
     initial: LedgerBook? = null,
+    defaultOwnerUserId: String? = null,
+    partnerUserId: String? = null,
+    mineLabel: String = "我的",
+    partnerLabel: String = "对方的",
     onDismiss: () -> Unit,
-    onSave: (name: String, template: String, coverColor: Long) -> Unit,
+    onSave: (name: String, coverColor: Long, ownerUserId: String?) -> Unit,
 ) {
     var name by rememberSaveable(initial?.id) { mutableStateOf(initial?.name.orEmpty()) }
-    var template by rememberSaveable(initial?.id) {
-        mutableStateOf(initial?.template ?: LedgerBookTemplateDaily)
-    }
     var coverColor by rememberSaveable(initial?.id) {
-        mutableStateOf(initial?.coverColor ?: LedgerSeedData.defaultCoverColor(template))
+        mutableStateOf(initial?.coverColor ?: LedgerSeedData.defaultCoverColor(LedgerBookTemplateDaily))
+    }
+    // 归属选择：0=我的, 1=对方, 2=我们
+    var ownerScope by rememberSaveable(initial?.id) {
+        mutableIntStateOf(
+            when {
+                initial?.creatorUserId == null -> 0
+                initial.creatorUserId == partnerUserId -> 1
+                initial.creatorUserId == SHARED_OWNER_FLAG -> 2
+                else -> 0
+            },
+        )
     }
 
     LedgerBottomSheetDialog(onDismiss = onDismiss) {
@@ -413,7 +534,14 @@ private fun LedgerBookEditorSheet(
             LedgerSheetHeader(
                 title = if (initial == null) "新增账本" else "编辑账本",
                 onDismiss = onDismiss,
-                onConfirm = { onSave(name.trim(), template, coverColor) },
+                onConfirm = {
+                    val resolvedOwner = when (ownerScope) {
+                        1 -> partnerUserId
+                        2 -> SHARED_OWNER_FLAG
+                        else -> defaultOwnerUserId
+                    }
+                    onSave(name.trim(), coverColor, resolvedOwner)
+                },
             )
             OutlinedTextField(
                 value = name,
@@ -422,56 +550,64 @@ private fun LedgerBookEditorSheet(
                 label = { Text("账本名称") },
                 singleLine = true,
             )
-            Text("模板", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            // 归属选择（仅新增时可选，编辑时锁定）
             if (initial == null) {
+                Text("归属", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    LedgerBookTemplates.forEach { option ->
-                        LedgerSegmentChip(
-                            text = ledgerBookTemplateLabel(option),
-                            selected = option == template,
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                template = option
-                                coverColor = LedgerSeedData.defaultCoverColor(option)
-                            },
-                        )
-                    }
-                }
-            } else {
-                Surface(
-                    color = LedgerGroupedHeader,
-                    shape = RoundedCornerShape(18.dp),
-                ) {
-                    Text(
-                        text = ledgerBookTemplateLabel(template),
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
+                    LedgerSegmentChip(
+                        text = mineLabel,
+                        selected = ownerScope == 0,
+                        modifier = Modifier.weight(1f),
+                        onClick = { ownerScope = 0 },
+                    )
+                    LedgerSegmentChip(
+                        text = partnerLabel,
+                        selected = ownerScope == 1,
+                        modifier = Modifier.weight(1f),
+                        onClick = { ownerScope = 1 },
+                    )
+                    LedgerSegmentChip(
+                        text = "我们",
+                        selected = ownerScope == 2,
+                        modifier = Modifier.weight(1f),
+                        onClick = { ownerScope = 2 },
                     )
                 }
             }
             Text("主题色", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            Row(
+            // 16 色分两行展示，每行 8 个，用 SpaceEvenly 占满整行
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                LedgerBookColorOptions.forEach { option ->
-                    Surface(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .clickable { coverColor = option },
-                        shape = CircleShape,
-                        color = ledgerColor(option),
-                        border = BorderStroke(
-                            width = if (coverColor == option) 2.dp else 0.dp,
-                            color = if (coverColor == option) LedgerMuted.copy(alpha = 0.22f) else Color.Transparent,
-                        ),
+                LedgerBookColorOptions.chunked(8).forEach { rowOptions ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        Box(modifier = Modifier.fillMaxSize())
+                        rowOptions.forEach { option ->
+                            Surface(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .yingShiClickable(
+                                        pressedScale = 0.94f,
+                                        shape = CircleShape,
+                                        onClick = { coverColor = option },
+                                    ),
+                                shape = CircleShape,
+                                color = ledgerColor(option),
+                                border = BorderStroke(
+                                    width = if (coverColor == option) 2.5.dp else 0.dp,
+                                    color = if (coverColor == option) LedgerHeaderGreen else Color.Transparent,
+                                ),
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize())
+                            }
+                        }
                     }
                 }
             }
@@ -507,59 +643,20 @@ private fun LedgerSettingsSection(
 private fun LedgerSettingsRow(
     title: String,
     subtitle: String,
-    value: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = LedgerMuted,
-            )
-        }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else LedgerMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Icon(
-            Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = if (enabled) LedgerMuted else LedgerDivider,
-            modifier = Modifier.size(18.dp),
-        )
-    }
-}
-
-@Composable
-private fun LedgerStaticSettingRow(
-    title: String,
-    subtitle: String,
     value: String? = null,
+    enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .yingShiClickable(
+                enabled = enabled && onClick != null,
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = { onClick?.invoke() },
+            )
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -580,20 +677,30 @@ private fun LedgerStaticSettingRow(
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
-                color = LedgerHeaderGreen,
+                color = if (enabled) LedgerHeaderGreen else LedgerMuted,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Icon(
+            Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = if (enabled) LedgerMuted else LedgerDivider,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
 @Composable
-private fun LedgerLabelBadge(
+internal fun LedgerLabelBadge(
     text: String,
     color: Color,
     background: Color,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
+        modifier = modifier,
         shape = RoundedCornerShape(999.dp),
         color = background,
     ) {
@@ -621,7 +728,11 @@ private fun LedgerSheetHeader(
             text = "取消",
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onDismiss)
+                .yingShiClickable(
+                    pressedScale = 0.94f,
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = onDismiss,
+                )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             color = LedgerMuted,
             style = MaterialTheme.typography.bodyLarge,
@@ -636,7 +747,11 @@ private fun LedgerSheetHeader(
             text = "保存",
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(onClick = onConfirm)
+                .yingShiClickable(
+                    pressedScale = 0.94f,
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = onConfirm,
+                )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
             color = LedgerHeaderGreen,
             style = MaterialTheme.typography.bodyLarge,

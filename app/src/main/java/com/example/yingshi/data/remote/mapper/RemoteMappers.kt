@@ -27,6 +27,7 @@ import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UploadState
+import android.util.Log
 import com.example.yingshi.data.remote.dto.AlbumDto
 import com.example.yingshi.data.remote.dto.CommentDto
 import com.example.yingshi.data.remote.dto.CommentListResponseDto
@@ -373,6 +374,7 @@ fun TrashItemDto.toRemoteModel(): RemoteTrashItem {
         sourceMediaAspectRatio = sourceMediaAspectRatio,
         sourceMediaDurationMillis = sourceMediaDurationMillis,
         sourceMediaMimeType = sourceMediaMimeType,
+        lifeCategory = lifeCategory,
     )
 }
 
@@ -472,8 +474,11 @@ private fun String.toUploadState(): UploadState {
         "waiting" -> UploadState.WAITING
         "uploading" -> UploadState.UPLOADING
         "success" -> UploadState.SUCCESS
-        "failure", "failed" -> UploadState.FAILURE
+        "failure", "failed" -> UploadState.FAILED
         "cancelled" -> UploadState.CANCELLED
-        else -> UploadState.FAILURE
+        else -> {
+            Log.w("RemoteMappers", "Unknown upload state: $this, defaulting to WAITING")
+            UploadState.WAITING
+        }
     }
 }

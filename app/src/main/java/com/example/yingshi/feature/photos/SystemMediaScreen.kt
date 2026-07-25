@@ -458,7 +458,9 @@ fun SystemMediaScreen(
                     backendMutationEvent.affectsSystemMediaDestinations()
                 )
         ) {
-            viewModel.refresh(forceRefresh = true)
+            // S 级刷新: 后端变更先走本地 overlay 快速反馈 (上传/删除已同步更新 overlay).
+            // 网络级 getImportStatus 校验由 SyncVersionTracker.staleState 路径异步处理.
+            viewModel.startBackgroundRefresh(useLocalOverlayOnly = true)
         }
     }
 
@@ -820,13 +822,14 @@ fun SystemMediaScreen(
                             enter = fadeIn(),
                             exit = fadeOut(),
                             modifier = Modifier
-                                .align(Alignment.CenterEnd)
+                                .align(Alignment.TopEnd)
                                 .fillMaxHeight(),
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .width(184.dp),
+                                    .width(184.dp)
+                                    .padding(bottom = 80.dp),
                             ) {
                                 PhotoFeedTimeScrubber(
                                     modifier = Modifier.matchParentSize(),

@@ -23,8 +23,9 @@ import androidx.compose.ui.unit.dp
 import coil.imageLoader
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
+import com.example.yingshi.feature.sync.SyncModule
+import com.example.yingshi.feature.sync.SyncVersionTracker
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiViewerSurface
 import java.text.SimpleDateFormat
@@ -40,7 +41,7 @@ internal fun PrefetchViewerMediaAssets(
     currentIndex: Int,
     accessToken: String?,
 ) {
-    if (RepositoryProvider.currentMode != RepositoryMode.REAL || items.isEmpty()) return
+    if (items.isEmpty()) return
 
     val context = LocalContext.current
     val targets = remember(items, currentIndex) {
@@ -153,6 +154,10 @@ internal suspend fun deleteRealViewerMedia(mediaId: String): String? {
                 item = result.data,
                 fallbackActorUserId = currentCollaboratorActorUserId(),
             )
+            // 立即清除本地导入 overlay, 避免刷新完成前 Viewer 仍显示"已导入".
+            // 与 RealTrashViewModels 永久删除路径保持一致.
+            LocalSystemMediaBridgeRepository.forgetImportStatusByAppMediaId(mediaId)
+            invalidateSystemMediaMetadataCache(clearDisk = true)
             notifyRealBackendContentChanged(
                 mediaIds = setOf(mediaId),
             )
@@ -351,14 +356,8 @@ internal fun applyTimeEdit(
     showViewerNotice: (String, Boolean) -> Unit,
 ) {
     setShowTimeEditorSheet(false)
-    FakePhotoFeedRepository.updateMediaDisplayTime(
-        mediaId = currentItem.mediaId,
-        displayTimeMillis = nextTimeMillis,
-    )
-    MediaTimeOverrides.put(currentItem.mediaId, nextTimeMillis)
-    // Trigger a real-backend refresh so the photo-feed re-maps with the new time
-    notifyRealBackendContentChanged(mediaIds = setOf(currentItem.mediaId))
     val currentMediaId = currentItem.mediaId
+    // 即时反馈：先更新本地 viewer 顺序, 让用户看到改动
     val nextItems = viewerItems
         .map { item ->
             if (item.mediaId == currentMediaId) {
@@ -376,6 +375,23 @@ internal fun applyTimeEdit(
         pagerState.scrollToPage(nextIndex)
     }
     showViewerNotice("时间已修改", true)
+    // 异步持久化到服务端 (替换原 MediaTimeOverrides 假持久化)
+    if (!AuthSessionManager.isLoggedIn) {
+        showViewerNotice("未登录, 修改仅在本地有效", false)
+        return
+    }
+    coroutineScope.launch {
+        when (val result = RepositoryProvider.mediaRepository.updateMediaTime(currentMediaId, nextTimeMillis)) {
+            is ApiResult.Success -> {
+                SyncVersionTracker.markLocalMutation(SyncModule.PHOTO_FEED)
+                notifyRealBackendContentChanged(mediaIds = setOf(currentMediaId))
+            }
+            is ApiResult.Error -> {
+                showViewerNotice(result.toBackendUiMessage("时间修改失败, 请重试"), false)
+            }
+            ApiResult.Loading -> Unit
+        }
+    }
 }
 
 @Preview(showBackground = true)

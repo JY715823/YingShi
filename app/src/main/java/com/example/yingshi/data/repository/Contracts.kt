@@ -28,6 +28,7 @@ import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.RemoteUploadHistoryPage
 import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
@@ -64,6 +65,15 @@ interface MediaRepository {
     suspend fun systemDeleteMedia(
         mediaId: String,
     ): ApiResult<RemoteTrashItem>
+
+    /**
+     * 修改媒体显示时间。服务端会把 displayTimeSource 置为 "MANUAL"。
+     * 成功后由调用方触发 SyncVersionTracker.markLocalMutation 抑制立即 stale。
+     */
+    suspend fun updateMediaTime(
+        mediaId: String,
+        displayTimeMillis: Long,
+    ): ApiResult<Long>
 }
 
 interface AlbumRepository {
@@ -177,6 +187,16 @@ interface TrashRepository {
     suspend fun purgeTrashItem(trashItemId: String): ApiResult<RemoteTrashItem>
     suspend fun undoMoveTrashItemOut(trashItemId: String): ApiResult<RemoteTrashItem>
     suspend fun getPendingCleanupItems(): ApiResult<List<RemotePendingCleanup>>
+
+    /**
+     * P1-2 改造: life 回收站列表（按 category 过滤，PERSON/MEAL/null=所有 life）。
+     */
+    suspend fun getLifeTrashItems(category: String? = null): ApiResult<List<RemoteTrashItem>>
+
+    /**
+     * P1-2 改造: life 回收站 24h 撤回中心（按 category 过滤）。
+     */
+    suspend fun getLifePendingCleanupItems(category: String? = null): ApiResult<List<RemotePendingCleanup>>
 }
 
 interface UploadRepository {
@@ -220,7 +240,8 @@ interface UploadRepository {
         state: String? = null,
         operationType: String? = null,
         pageSize: Int = 50,
-    ): ApiResult<List<RemoteUploadTask>>
+        cursor: String? = null,
+    ): ApiResult<RemoteUploadHistoryPage>
 
     suspend fun dismissUpload(
         uploadId: String,
@@ -266,6 +287,7 @@ interface AuthRepository {
         mimeType: String,
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
+        onProgress: (Int) -> Unit = {},
     ): ApiResult<RemoteCurrentUser>
 }
 

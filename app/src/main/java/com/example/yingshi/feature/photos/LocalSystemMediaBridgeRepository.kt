@@ -2,6 +2,7 @@ package com.example.yingshi.feature.photos
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.State
 
 object LocalSystemMediaBridgeRepository {
 
@@ -40,6 +41,17 @@ object LocalSystemMediaBridgeRepository {
     val uploadTasks: List<SystemMediaUploadTaskUiModel>
         get() = UploadManager.uploadTasks
 
+    // FR-3: 分页状态转发，UI 通过此读取
+    val remoteHistoryHasMore: State<Boolean>
+        get() = UploadManager.remoteHistoryHasMore
+
+    val remoteHistoryLoadingMore: State<Boolean>
+        get() = UploadManager.remoteHistoryLoadingMore
+
+    // FR-3 AC-7: loadMore 失败标记转发
+    val remoteHistoryLoadMoreFailed: State<Boolean>
+        get() = UploadManager.remoteHistoryLoadMoreFailed
+
     val operationResults: List<OperationResultEvent>
         get() = OperationBus.operationResults
 
@@ -55,6 +67,11 @@ object LocalSystemMediaBridgeRepository {
 
     fun refreshRemoteUploadHistory() {
         UploadManager.refreshRemoteUploadHistory()
+    }
+
+    // FR-3: 触发加载下一页历史任务
+    fun loadMoreUploadHistory() {
+        UploadManager.loadMoreUploadHistory()
     }
 
     fun remainingUploadTaskCount(): Int {

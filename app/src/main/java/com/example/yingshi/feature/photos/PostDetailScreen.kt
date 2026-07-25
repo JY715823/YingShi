@@ -26,7 +26,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.sync.StaleBanner
 import com.example.yingshi.feature.sync.SyncModule
@@ -49,146 +48,14 @@ fun PostDetailScreen(
     onOpenCacheManagement: (CacheManagementRoute) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val colors = YingShiThemeTokens.colors
-    if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-        RealPostDetailScreen(
-            route = route,
-            onBack = onBack,
-            onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
-            onOpenPostDetail = onOpenPostDetail,
-            onOpenCacheManagement = onOpenCacheManagement,
-            modifier = modifier,
-        )
-        return
-    }
-
-    val detail = FakeAlbumRepository.getPostDetail(route)
-    var inPostViewerInitialPage by rememberSaveable(route.postId) {
-        mutableStateOf<Int?>(null)
-    }
-    var mediaCommentPage by rememberSaveable(route.postId) {
-        mutableStateOf<Int?>(null)
-    }
-    var showSmallAlbumComments by rememberSaveable(route.postId) {
-        mutableStateOf(false)
-    }
-    var actionNotice by rememberSaveable(route.postId) {
-        mutableStateOf<String?>(null)
-    }
-    var actionNoticeVersion by rememberSaveable(route.postId) {
-        mutableStateOf(0)
-    }
-
-    fun showActionNotice(message: String) {
-        actionNotice = message
-        actionNoticeVersion += 1
-    }
-
-    LaunchedEffect(actionNoticeVersion) {
-        val version = actionNoticeVersion
-        if (version <= 0 || actionNotice.isNullOrBlank()) return@LaunchedEffect
-        delay(2600L)
-        if (actionNoticeVersion == version) {
-            actionNotice = null
-        }
-    }
-
-    LaunchedEffect(route.autoOpenComment, route.focusMediaId, detail) {
-        if (!route.autoOpenComment) return@LaunchedEffect
-        val targetId = route.focusMediaId
-        if (targetId != null) {
-            val targetIndex = detail.mediaItems.indexOfFirst { it.id == targetId }
-            if (targetIndex >= 0) {
-                mediaCommentPage = targetIndex
-            }
-        } else {
-            showSmallAlbumComments = true
-        }
-    }
-
-    BackHandler(enabled = mediaCommentPage != null) {
-        mediaCommentPage = null
-    }
-    BackHandler(enabled = showSmallAlbumComments) {
-        showSmallAlbumComments = false
-    }
-    BackHandler(enabled = inPostViewerInitialPage != null) {
-        inPostViewerInitialPage = null
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.appBackground),
-    ) {
-        SmallAlbumDetailContent(
-            detail = detail,
-            highlightMediaIds = route.highlightMediaIds,
-            focusMediaId = route.focusMediaId,
-            feedbackNonce = route.feedbackNonce,
-            onBack = onBack,
-            onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
-            onOpenMediaViewer = { page -> inPostViewerInitialPage = page },
-            onOpenSmallAlbumComments = { showSmallAlbumComments = true },
-            actionNotice = actionNotice,
-            onShowActionNotice = ::showActionNotice,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        if (showSmallAlbumComments) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.16f))
-                    .clickable { showSmallAlbumComments = false },
-            )
-            FakeSmallAlbumCommentSheet(
-                postId = detail.postId,
-                onClose = { showSmallAlbumComments = false },
-                onShowNotice = ::showActionNotice,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = YingShiThemeTokens.spacing.lg)
-                    .padding(bottom = YingShiThemeTokens.spacing.lg),
-            )
-        }
-
-        mediaCommentPage?.let { page ->
-            val media = detail.mediaItems.getOrNull(page.coerceAtLeast(0))
-            if (media == null) {
-                mediaCommentPage = null
-                return@let
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(YingShiThemeTokens.colors.viewerBackground.copy(alpha = 0.16f))
-                    .clickable { mediaCommentPage = null },
-            )
-            MediaCommentPlaceholderSheet(
-                media = media,
-                onClose = { mediaCommentPage = null },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = YingShiThemeTokens.spacing.lg)
-                    .padding(bottom = YingShiThemeTokens.spacing.lg),
-            )
-        }
-
-        val viewerInitialPage = inPostViewerInitialPage
-        if (viewerInitialPage != null) {
-            PhotoViewerScreen(
-                route = detail.toInPostViewerRoute(initialIndex = viewerInitialPage),
-                onBack = { inPostViewerInitialPage = null },
-                onOpenPostDetail = {
-                    inPostViewerInitialPage = null
-                    onOpenPostDetail(it)
-                },
-                onOpenCacheManagement = onOpenCacheManagement,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
+    RealPostDetailScreen(
+        route = route,
+        onBack = onBack,
+        onOpenGearEdit = { onOpenGearEdit(GearEditRoute(route.postId)) },
+        onOpenPostDetail = onOpenPostDetail,
+        onOpenCacheManagement = onOpenCacheManagement,
+        modifier = modifier,
+    )
 }
 
 @Composable

@@ -10,6 +10,13 @@ data class LedgerSyncRequestDto(
 data class LedgerSyncResponseDto(
     val versionMillis: Long,
     val changes: LedgerChangesDto,
+    val rejectedRowIds: List<RejectedRowRefDto>? = null,
+)
+
+data class RejectedRowRefDto(
+    val table: String,
+    val id: String?,
+    val reason: String,
 )
 
 data class LedgerChangesDto(

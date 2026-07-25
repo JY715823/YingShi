@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,7 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -90,8 +94,20 @@ private enum class TransferCenterCategory(
     ADD_TO_EXISTING_POST("加入小相册", "没有加入小相册记录", "追加到已有小相册的任务会显示在这里。"),
 }
 
+// FR-11.1: 时间筛选枚举。millisBack=null 表示不限制（ALL）。
+private enum class TransferTimeRange(
+    val label: String,
+    val millisBack: Long?,
+) {
+    TODAY("今天", 24L * 60 * 60 * 1000),
+    WEEK("7天", 7L * 24 * 60 * 60 * 1000),
+    MONTH("30天", 30L * 24 * 60 * 60 * 1000),
+    ALL("全部", null),
+}
+
 private object TransferCenterStateStore {
     var selectedCategory: TransferCenterCategory = TransferCenterCategory.ALL
+    var selectedTimeRange: TransferTimeRange = TransferTimeRange.ALL
     var firstVisibleItemIndex: Int = 0
     var firstVisibleItemScrollOffset: Int = 0
     val collapsedOperationIds: MutableSet<String> = linkedSetOf()
@@ -124,14 +140,31 @@ fun TransferCenterScreen(
     val spacing = YingShiThemeTokens.spacing
     val context = LocalContext.current
     var selectedCategory by rememberSaveable { mutableStateOf(TransferCenterStateStore.selectedCategory) }
+    var selectedTimeRange by rememberSaveable { mutableStateOf(TransferCenterStateStore.selectedTimeRange) }
     var showCategoryMenu by remember { mutableStateOf(false) }
     val tasks = LocalSystemMediaBridgeRepository.uploadTasks
+    // FR-3: 分页状态读取
+    val hasMore = LocalSystemMediaBridgeRepository.remoteHistoryHasMore.value
+    val isLoadingMore = LocalSystemMediaBridgeRepository.remoteHistoryLoadingMore.value
+    val loadMoreFailed = LocalSystemMediaBridgeRepository.remoteHistoryLoadMoreFailed.value
+    // FR-11.1: 时间筛选阈值
+    val timeThreshold = selectedTimeRange.millisBack?.let { System.currentTimeMillis() - it }
     val operationGroups = tasks
         .groupBy { it.operationId }
         .values
         .map { it.sortedByDescending(SystemMediaUploadTaskUiModel::transferSortMillis) }
         .sortedByDescending { group -> group.maxOf { it.transferSortMillis() } }
         .filter { group -> group.matchesTransferCategory(selectedCategory) }
+        .filter { group ->
+            // FR-11.1: 时间筛选
+            timeThreshold == null || group.maxOf { it.transferSortMillis() } >= timeThreshold
+        }
+    // FR-11.4: 当前可见的所有可重试 operationId（用于"重试全部"按钮）
+    val retryableOperationIds = remember(operationGroups) {
+        operationGroups
+            .filter { group -> group.any { it.canRetry } }
+            .map { group -> group.first().operationId }
+    }
     val dateSections = remember(operationGroups) {
         operationGroups.toTransferDateSections()
     }
@@ -174,12 +207,27 @@ fun TransferCenterScreen(
     LaunchedEffect(selectedCategory) {
         TransferCenterStateStore.selectedCategory = selectedCategory
     }
+    LaunchedEffect(selectedTimeRange) {
+        TransferCenterStateStore.selectedTimeRange = selectedTimeRange
+    }
     LaunchedEffect(listState) {
         snapshotFlow {
             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }.collect { (index, offset) ->
             TransferCenterStateStore.firstVisibleItemIndex = index
             TransferCenterStateStore.firstVisibleItemScrollOffset = offset
+        }
+    }
+    // FR-3: 滚动到最后 5 项时触发 loadMore
+    LaunchedEffect(listState, operationGroups.size) {
+        snapshotFlow {
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val totalItems = listState.layoutInfo.totalItemsCount
+            lastVisibleIndex to totalItems
+        }.collect { (lastVisible, total) ->
+            if (total > 0 && lastVisible >= total - 5) {
+                LocalSystemMediaBridgeRepository.loadMoreUploadHistory()
+            }
         }
     }
 
@@ -217,6 +265,28 @@ fun TransferCenterScreen(
                         color = colors.textSecondary,
                     )
                 }
+                if (retryableOperationIds.isNotEmpty()) {
+                    TransferActionPill(
+                        text = "重试全部",
+                        icon = Icons.Default.Refresh,
+                        onClick = {
+                            var retriedTotal = 0
+                            retryableOperationIds.forEach { opId ->
+                                retriedTotal += LocalSystemMediaBridgeRepository
+                                    .retryUploadOperation(context, opId)
+                            }
+                            if (retriedTotal > 0) {
+                                showNotice(
+                                    if (retriedTotal > 1) "已重试 $retriedTotal 项失败任务"
+                                    else "已重新加入传输队列",
+                                    YingShiNoticeTone.SUCCESS,
+                                )
+                            } else {
+                                showNotice("当前没有可重试的任务", YingShiNoticeTone.WARNING)
+                            }
+                        },
+                    )
+                }
                 if (operationGroups.isNotEmpty()) {
                     TransferActionPill(
                         text = "清空",
@@ -244,6 +314,21 @@ fun TransferCenterScreen(
                             )
                         }
                     }
+                }
+            }
+            // FR-11.1: 时间筛选条
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                items(TransferTimeRange.entries) { range ->
+                    TransferFilterChip(
+                        text = range.label,
+                        selected = range == selectedTimeRange,
+                        onClick = {
+                            selectedTimeRange = range
+                        },
+                    )
                 }
             }
             if (showClearCompletedDialog) {
@@ -330,6 +415,17 @@ fun TransferCenterScreen(
                             )
                         }
                     }
+                    // FR-3: 分页加载 footer（含失败重试态）
+                    if (hasMore || isLoadingMore || loadMoreFailed) {
+                        item(key = "footer-load-more") {
+                            TransferLoadMoreFooter(
+                                isLoading = isLoadingMore,
+                                hasMore = hasMore,
+                                failed = loadMoreFailed,
+                                onRetry = { LocalSystemMediaBridgeRepository.loadMoreUploadHistory() },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -396,7 +492,7 @@ private fun TransferOperationCard(
         )
     }
     val successCount = tasks.count { it.state == UploadState.SUCCESS }
-    val failureCount = tasks.count { it.state == UploadState.FAILURE }
+    val failureCount = tasks.count { it.state == UploadState.FAILED }
     val cancelledCount = tasks.count { it.state == UploadState.CANCELLED }
     val problemTasks = tasks
         .filter { it.isTransferProblem() }
@@ -421,10 +517,10 @@ private fun TransferOperationCard(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(radius.lg),
+        shape = RoundedCornerShape(radius.sm),
         color = colors.raisedSurface.copy(alpha = 0.96f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.62f)),
-        shadowElevation = 0.dp,
+        shadowElevation = 1.dp,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
             Row(
@@ -626,7 +722,7 @@ internal fun hasUnseenTransferProblem(tasks: Iterable<SystemMediaUploadTaskUiMod
 }
 
 private fun SystemMediaUploadTaskUiModel.isTransferProblem(): Boolean {
-    return state == UploadState.FAILURE || state == UploadState.CANCELLED || canRetry
+    return state == UploadState.FAILED || state == UploadState.CANCELLED || canRetry
 }
 
 @Composable
@@ -680,8 +776,8 @@ private fun TransferFailureDetails(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(radius.md),
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.20f)),
+        color = colors.destructiveContainer.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, colors.destructive.copy(alpha = 0.20f)),
     ) {
         Column(
             modifier = Modifier.padding(spacing.md),
@@ -690,7 +786,7 @@ private fun TransferFailureDetails(
             Text(
                 text = "失败与重试",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                color = colors.onDestructiveContainer,
             )
             Text(
                 text = failureRetryExplanation(
@@ -712,25 +808,48 @@ private fun TransferFailureDetails(
 @Composable
 private fun TransferFailureDetailLine(task: SystemMediaUploadTaskUiModel) {
     val spacing = YingShiThemeTokens.spacing
+    val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spacing.xxs),
     ) {
+        // FR-11.2: 标题行字号 bodySmall -> bodyMedium，配色 destructive 系
         Text(
             text = "${task.mediaType.transferLabel()} · ${failureCurrentStateLabel(task)}",
-            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.titleAccent,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.onDestructiveContainer,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            text = failureReasonLabel(task),
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.textSecondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        // FR-11.2: 失败原因标签 + 正文左右排列，标签 destructive 配色，正文 bodyMedium 字号
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(radius.sm),
+                color = colors.destructive.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, colors.destructive.copy(alpha = 0.32f)),
+            ) {
+                Text(
+                    text = "失败原因",
+                    modifier = Modifier.padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.destructive,
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = failureReasonLabel(task),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onDestructiveContainer,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -797,7 +916,7 @@ private fun TransferMediaTile(
                     TransferIconActionButton(icon = Icons.Default.Pause, contentDescription = "暂停", onClick = onPause)
                     TransferIconActionButton(icon = Icons.Default.Close, contentDescription = "取消", onClick = onCancel)
                 }
-                task.canRetry || task.state == UploadState.FAILURE -> {
+                task.canRetry || task.state == UploadState.FAILED -> {
                     TransferIconActionButton(icon = Icons.Default.Refresh, contentDescription = "重试", onClick = onRetry)
                     if (task.canCancel) {
                         TransferIconActionButton(icon = Icons.Default.Close, contentDescription = "取消", onClick = onCancel)
@@ -812,7 +931,7 @@ private fun TransferMediaTile(
                 .fillMaxWidth()
                 .height(3.dp),
             color = when (task.state) {
-                UploadState.FAILURE -> MaterialTheme.colorScheme.error
+                UploadState.FAILED -> colors.destructive
                 UploadState.CANCELLED -> colors.textSecondary
                 else -> colors.primaryActionPressed
             },
@@ -1131,7 +1250,7 @@ private fun failureCurrentStateLabel(task: SystemMediaUploadTaskUiModel): String
         UploadState.WAITING -> "等待重试"
         UploadState.UPLOADING -> "正在处理 ${task.progressPercent}%"
         UploadState.SUCCESS -> "已成功"
-        UploadState.FAILURE -> "失败"
+        UploadState.FAILED -> "失败"
         UploadState.CANCELLED -> "已取消"
     }
 }
@@ -1141,7 +1260,7 @@ private fun failureReasonLabel(task: SystemMediaUploadTaskUiModel): String {
     task.statusMessage?.takeIf { it.isNotBlank() }?.let { return it }
     return when (task.state) {
         UploadState.CANCELLED -> "任务已取消，未继续上传。"
-        UploadState.FAILURE -> "上传失败，可重试。"
+        UploadState.FAILED -> "上传失败，可重试。"
         else -> "当前项需要重试。"
     }
 }
@@ -1201,7 +1320,7 @@ private fun List<SystemMediaUploadTaskUiModel>.matchesTransferCategory(
     return when (category) {
         TransferCenterCategory.ALL -> true
         TransferCenterCategory.RUNNING -> any { it.canPause }
-        TransferCenterCategory.RETRYABLE -> any { it.canRetry || it.state == UploadState.FAILURE }
+        TransferCenterCategory.RETRYABLE -> any { it.canRetry || it.state == UploadState.FAILED }
         TransferCenterCategory.COMPLETED -> all { it.state == UploadState.SUCCESS }
         TransferCenterCategory.CANCELLED -> any { it.state == UploadState.CANCELLED }
         TransferCenterCategory.IMPORT_TO_APP -> first().operationType ==
@@ -1262,7 +1381,7 @@ internal fun calculateTransferOperationProcessedCount(
     totalCount: Int,
 ): Int {
     val virtualCompletedCount = (totalCount - tasks.size).coerceAtLeast(0)
-    return (virtualCompletedCount + tasks.count { it.isTerminal && !it.canRetry })
+    return (virtualCompletedCount + tasks.count { it.isTerminal })
         .coerceIn(0, totalCount.coerceAtLeast(0))
 }
 
@@ -1274,7 +1393,7 @@ internal fun calculateTransferOperationProgressPercent(
     if (totalCount <= 0) return 0
     val virtualCompletedUnits = (totalCount - tasks.size).coerceAtLeast(0) * 100
     val taskUnits = tasks.sumOf { task ->
-        if (task.isTerminal && !task.canRetry) {
+        if (task.isTerminal) {
             100
         } else {
             task.progressPercent.coerceIn(0, 100)
@@ -1298,8 +1417,112 @@ private fun compactTaskStateLabel(task: SystemMediaUploadTaskUiModel): String {
         UploadState.WAITING -> "等待"
         UploadState.UPLOADING -> "上传中"
         UploadState.SUCCESS -> "完成"
-        UploadState.FAILURE -> "失败"
+        UploadState.FAILED -> "失败"
         UploadState.CANCELLED -> if (task.canRetry) "暂停" else "取消"
+    }
+}
+
+// FR-11.1: 时间筛选 Chip，参考 NotificationFilterChip 配色，无 count badge
+@Composable
+private fun TransferFilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    Surface(
+        modifier = Modifier
+            .yingShiClickable(
+                shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                pressedScale = 0.97f,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+        color = if (selected) {
+            colors.primaryContainer.copy(alpha = 0.88f)
+        } else {
+            colors.sectionBackground.copy(alpha = 0.72f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                colors.glassStroke.copy(alpha = 0.78f)
+            } else {
+                colors.dividerSoft.copy(alpha = 0.64f)
+            },
+        ),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.xs),
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = colors.titleAccent,
+        )
+    }
+}
+
+// FR-3: 分页加载 footer，四态：加载失败(可重试) / 加载中 / 还有更多 / 已加载全部（防御性兜底）
+@Composable
+private fun TransferLoadMoreFooter(
+    isLoading: Boolean,
+    hasMore: Boolean,
+    failed: Boolean,
+    onRetry: () -> Unit,
+) {
+    val spacing = YingShiThemeTokens.spacing
+    val colors = YingShiThemeTokens.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = spacing.md),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        when {
+            // FR-3 AC-7: 加载失败显示"加载失败，点击重试"，不影响已有列表
+            failed -> {
+                Text(
+                    text = "加载失败，点击重试",
+                    modifier = Modifier.yingShiClickable(
+                        shape = RoundedCornerShape(YingShiThemeTokens.radius.capsule),
+                        pressedScale = 0.97f,
+                        onClick = onRetry,
+                    ),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.destructive,
+                )
+            }
+            isLoading -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = colors.primaryActionPressed,
+                )
+                Spacer(modifier = Modifier.width(spacing.xs))
+                Text(
+                    text = "加载更多…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textSecondary,
+                )
+            }
+            hasMore -> {
+                Text(
+                    text = "上拉加载更多",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textSecondary,
+                )
+            }
+            else -> {
+                Text(
+                    text = "已加载全部",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textSecondary,
+                )
+            }
+        }
     }
 }
 
@@ -1312,5 +1535,65 @@ private fun TransferCenterScreenPreview() {
             onBack = { },
             onOpenTaskMedia = { },
         )
+    }
+}
+
+// PV-1: 时间筛选 Chip 预览（选中 + 未选中）
+@Preview(showBackground = true, name = "TransferFilterChip")
+@Composable
+private fun TransferFilterChipPreview() {
+    YingShiTheme {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TransferFilterChip(text = "今天", selected = true, onClick = {})
+            TransferFilterChip(text = "7天", selected = false, onClick = {})
+            TransferFilterChip(text = "30天", selected = false, onClick = {})
+            TransferFilterChip(text = "全部", selected = false, onClick = {})
+        }
+    }
+}
+
+// PV-2: 分页 footer 四态预览
+@Preview(showBackground = true, name = "TransferLoadMoreFooter")
+@Composable
+private fun TransferLoadMoreFooterPreview() {
+    YingShiTheme {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TransferLoadMoreFooter(isLoading = false, hasMore = true, failed = true, onRetry = {})
+            TransferLoadMoreFooter(isLoading = true, hasMore = true, failed = false, onRetry = {})
+            TransferLoadMoreFooter(isLoading = false, hasMore = true, failed = false, onRetry = {})
+            TransferLoadMoreFooter(isLoading = false, hasMore = false, failed = false, onRetry = {})
+        }
+    }
+}
+
+// PV-3: 失败原因标签增强预览
+@Preview(showBackground = true, name = "TransferFailureDetailLine")
+@Composable
+private fun TransferFailureDetailLinePreview() {
+    YingShiTheme {
+        val sampleTask = SystemMediaUploadTaskUiModel(
+            taskId = "task-failed-1",
+            operationId = "op-1",
+            mediaId = "media-1",
+            fileName = "IMG_2024.jpg",
+            targetLabel = "导入照片流",
+            mediaType = SystemMediaType.IMAGE,
+            progressPercent = 62,
+            state = UploadState.FAILED,
+            errorMessage = "网络连接超时，服务器未在 30 秒内响应上传请求。",
+            canRetry = true,
+        )
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TransferFailureDetailLine(task = sampleTask)
+        }
     }
 }

@@ -28,6 +28,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiThemeTokens
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun StaleBanner(
@@ -35,8 +37,13 @@ fun StaleBanner(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val staleState by SyncVersionTracker.staleState.collectAsState()
-    val isStale = staleState.isStale(module)
+    // P1-3 根因修复: 只订阅当前模块的 stale 字段, 不订阅整个 staleState。
+    // 之前订阅整个 staleState, lifeConsoleStale 变化 (life 操作 + LifeConsoleViewModel 重置)
+    // 会触发 StaleBanner 重组, 进而导致照片流/相册页整个 Compose 树重组 (用户感知为"闪")。
+    val isStale by SyncVersionTracker.staleState
+        .map { it.isStale(module) }
+        .distinctUntilChanged()
+        .collectAsState(initial = false)
     val motion = YingShiThemeTokens.motion
     val colors = YingShiThemeTokens.colors
 

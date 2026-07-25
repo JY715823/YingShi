@@ -7,7 +7,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.chat.data.ChatImportProgress
 import com.example.yingshi.feature.chat.data.ChatReadingAnchor
@@ -836,11 +835,7 @@ class ImportedChatViewModel(
 
     companion object {
         private fun createRepository(application: Application): ImportedChatRepository {
-            val syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                RemoteChatSyncBridge()
-            } else {
-                NoOpChatSyncBridge
-            }
+            val syncBridge = RemoteChatSyncBridge()
             return ImportedChatRepository(
                 appContext = application,
                 syncBridge = syncBridge,

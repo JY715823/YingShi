@@ -4,10 +4,10 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import com.example.yingshi.data.model.RemoteUploadTask
 import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.MutationKind
 import com.example.yingshi.feature.photos.LocalSystemMediaBridgeRepository.OperationResultEvent
@@ -59,9 +59,19 @@ internal object UploadManager {
     private const val UploadTasksItemsKey = "tasks_json"
     private const val MaxConcurrentRealUploads = 2
 
+    /** FR-7: Minimum interval (ms) between upload enqueue calls to prevent double-click duplicates. */
+    private const val ENQUEUE_DEBOUNCE_MS = 1000L
+    private var lastEnqueueTimestamp = 0L
+
     internal val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     internal val uploadSemaphore = Semaphore(MaxConcurrentRealUploads)
     internal val uploadTasksState = mutableStateListOf<SystemMediaUploadTaskUiModel>()
+    // FR-3: 分页状态字段，UI 通过 LocalSystemMediaBridgeRepository 读取
+    internal val remoteHistoryCursor = mutableStateOf<String?>(null)
+    internal val remoteHistoryHasMore = mutableStateOf(false)
+    internal val remoteHistoryLoadingMore = mutableStateOf(false)
+    // FR-3 AC-7: loadMore 失败标记，UI 据此显示"加载失败，点击重试"
+    internal val remoteHistoryLoadMoreFailed = mutableStateOf(false)
     internal val uploadJobsByTaskId = linkedMapOf<String, Job>()
     internal val realUploadedMediaIdsByOperationId = linkedMapOf<String, LinkedHashMap<String, String>>()
     internal val operationRequestsById = linkedMapOf<String, PendingOperationRequest>()
@@ -82,13 +92,50 @@ internal object UploadManager {
     }
 
     internal fun refreshRemoteUploadHistory() {
-        if (RepositoryProvider.currentMode != RepositoryMode.REAL) return
         uploadScope.launch {
+            remoteHistoryLoadingMore.value = true
+            remoteHistoryLoadMoreFailed.value = false
             when (val result = RepositoryProvider.uploadRepository.getUploadHistory(pageSize = 100)) {
-                is ApiResult.Success -> mergeRemoteUploadHistory(result.data)
-                is ApiResult.Error -> debugUploadLog("history refresh failed: ${result.message}", result.throwable)
+                is ApiResult.Success -> {
+                    remoteHistoryCursor.value = result.data.nextCursor
+                    remoteHistoryHasMore.value = result.data.hasMore
+                    mergeRemoteUploadHistory(result.data.tasks)
+                }
+                is ApiResult.Error -> {
+                    debugUploadLog("history refresh failed: ${result.message}", result.throwable)
+                    remoteHistoryLoadMoreFailed.value = true
+                }
                 ApiResult.Loading -> Unit
             }
+            remoteHistoryLoadingMore.value = false
+        }
+    }
+
+    // FR-3: 加载下一页历史任务。守卫：isLoadingMore / !hasMore / cursor=null 时直接返回。
+    internal fun loadMoreUploadHistory() {
+        if (remoteHistoryLoadingMore.value) return
+        if (!remoteHistoryHasMore.value) return
+        val currentCursor = remoteHistoryCursor.value ?: return
+        uploadScope.launch {
+            remoteHistoryLoadingMore.value = true
+            remoteHistoryLoadMoreFailed.value = false
+            when (val result = RepositoryProvider.uploadRepository.getUploadHistory(
+                pageSize = 100,
+                cursor = currentCursor,
+            )) {
+                is ApiResult.Success -> {
+                    remoteHistoryCursor.value = result.data.nextCursor
+                    remoteHistoryHasMore.value = result.data.hasMore
+                    mergeRemoteUploadHistory(result.data.tasks)
+                }
+                is ApiResult.Error -> {
+                    debugUploadLog("history load more failed: ${result.message}", result.throwable)
+                    // FR-3 AC-7: 标记失败，UI 显示"加载失败，点击重试"，不影响已有列表
+                    remoteHistoryLoadMoreFailed.value = true
+                }
+                ApiResult.Loading -> Unit
+            }
+            remoteHistoryLoadingMore.value = false
         }
     }
 
@@ -96,7 +143,7 @@ internal object UploadManager {
         return uploadTasksState.count { task ->
             task.state == UploadState.WAITING ||
                 task.state == UploadState.UPLOADING ||
-                (task.state == UploadState.FAILURE && task.canRetry)
+                (task.state == UploadState.FAILED && task.canRetry)
         }
     }
 
@@ -223,6 +270,13 @@ internal object UploadManager {
         additionalAppMediaIds: List<String> = emptyList(),
         additionalAppCoverMediaId: String? = null,
     ): Int {
+        // FR-7: Debounce to prevent double-click duplicate uploads
+        val now = System.currentTimeMillis()
+        if (now - lastEnqueueTimestamp < ENQUEUE_DEBOUNCE_MS) {
+            return 0
+        }
+        lastEnqueueTimestamp = now
+
         ImportOverlayStore.warmPersistentImportOverlay(context)
         val normalizedItems = normalizeSystemMedia(mediaItems)
         publishDuplicateNoticeIfNeeded(
@@ -230,22 +284,13 @@ internal object UploadManager {
             skippedCount = mediaItems.size - normalizedItems.size,
         )
         if (normalizedItems.isEmpty()) return 0
-        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            enqueueCreatePostUploadReal(
-                context = context,
-                mediaItems = normalizedItems,
-                draft = draft,
-                additionalAppMediaIds = additionalAppMediaIds,
-                additionalAppCoverMediaId = additionalAppCoverMediaId,
-            )
-        } else {
-            enqueueCreatePostUploadFake(
-                mediaItems = normalizedItems,
-                draft = draft,
-                additionalAppMediaIds = additionalAppMediaIds,
-                additionalAppCoverMediaId = additionalAppCoverMediaId,
-            )
-        }
+        return enqueueCreatePostUploadReal(
+            context = context,
+            mediaItems = normalizedItems,
+            draft = draft,
+            additionalAppMediaIds = additionalAppMediaIds,
+            additionalAppCoverMediaId = additionalAppCoverMediaId,
+        )
     }
 
     internal fun importSystemMediaToApp(
@@ -284,16 +329,10 @@ internal object UploadManager {
         )
         val normalizedItems = dedupedItems.items
         if (normalizedItems.isEmpty()) return 0
-        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            enqueueImportToAppUploadReal(
-                context = context,
-                mediaItems = normalizedItems,
-            )
-        } else {
-            enqueueImportToAppUploadFake(
-                mediaItems = normalizedItems,
-            )
-        }
+        return enqueueImportToAppUploadReal(
+            context = context,
+            mediaItems = normalizedItems,
+        )
     }
 
     internal fun enqueueImportPickedMediaToAppUpload(
@@ -359,20 +398,12 @@ internal object UploadManager {
             skippedCount = mediaItems.size - normalizeSystemMedia(mediaItems).size,
         )
         if (normalizedItems.isEmpty()) return 0
-        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            enqueueAddToExistingPostUploadReal(
-                context = context,
-                postId = postId,
-                mediaItems = normalizedItems,
-                postTitle = postTitle,
-            )
-        } else {
-            enqueueAddToExistingPostUploadFake(
-                postId = postId,
-                mediaItems = normalizedItems,
-                postTitle = postTitle,
-            )
-        }
+        return enqueueAddToExistingPostUploadReal(
+            context = context,
+            postId = postId,
+            mediaItems = normalizedItems,
+            postTitle = postTitle,
+        )
     }
 
     internal fun buildImportToAppPreview(
@@ -439,14 +470,12 @@ internal object UploadManager {
         uploadTasksState.removeAll { it.taskId == taskId }
         cleanupOperationIfIdle(task.operationId)
         persistUploadTasks()
-        if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            uploadScope.launch {
-                when (val result = RepositoryProvider.uploadRepository.dismissUpload(task.taskId)) {
-                    is ApiResult.Error -> debugUploadLog("dismiss failed task=${task.taskId}: ${result.message}", result.throwable)
-                    is ApiResult.Success,
-                    ApiResult.Loading,
-                    -> Unit
-                }
+        uploadScope.launch {
+            when (val result = RepositoryProvider.uploadRepository.dismissUpload(task.taskId)) {
+                is ApiResult.Error -> debugUploadLog("dismiss failed task=${task.taskId}: ${result.message}", result.throwable)
+                is ApiResult.Success,
+                ApiResult.Loading,
+                -> Unit
             }
         }
     }
@@ -517,40 +546,17 @@ internal object UploadManager {
         request: ImportToAppOperationRequest,
         retryItem: SystemMediaItem,
     ): Boolean {
-        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            enqueueRealUploadTask(
-                context = context,
-                operationId = operationId,
-                mediaItem = retryItem,
-                targetLabel = request.targetLabel,
-                sourceItems = request.mediaItems,
-                finalizeAction = { uploadedMedia ->
-                    finalizeImportToAppReal(uploadedMedia)
-                },
-            )
-            true
-        } else {
-            enqueueFakeUploadTask(
-                operationId = operationId,
-                mediaItem = retryItem,
-                targetLabel = request.targetLabel,
-                onOperationSuccess = {
-                    val importedCount = importSystemMediaToApp(request.mediaItems)
-                    OperationResultEvent(
-                        eventId = if (importedCount > 0) "$operationId-success" else "$operationId-failure",
-                        operationId = operationId,
-                        operationType = OperationType.IMPORT_TO_APP,
-                        succeeded = importedCount > 0,
-                        message = if (importedCount > 0) {
-                            "导入完成"
-                        } else {
-                            "没有可导入的媒体"
-                        },
-                    )
-                },
-            )
-            true
-        }
+        enqueueRealUploadTask(
+            context = context,
+            operationId = operationId,
+            mediaItem = retryItem,
+            targetLabel = request.targetLabel,
+            sourceItems = request.mediaItems,
+            finalizeAction = { uploadedMedia ->
+                finalizeImportToAppReal(uploadedMedia)
+            },
+        )
+        return true
     }
 
     private fun retryCreatePostUpload(
@@ -560,66 +566,31 @@ internal object UploadManager {
         retryItem: SystemMediaItem,
         existingPostRoute: PostDetailPlaceholderRoute?,
     ): Boolean {
-        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            enqueueRealUploadTask(
-                context = context,
-                operationId = operationId,
-                mediaItem = retryItem,
-                targetLabel = request.targetLabel,
-                sourceItems = listOf(retryItem),
-                finalizeAction = { uploadedMedia ->
-                    if (existingPostRoute != null) {
-                        finalizeAppendToPostReal(
-                            postId = existingPostRoute.postId,
-                            sourceItems = listOf(retryItem),
-                            uploadedMedia = uploadedMedia,
-                        )
-                    } else {
-                        finalizeCreatePostReal(
-                            draft = request.draft,
-                            sourceItems = request.mediaItems,
-                            uploadedMedia = uploadedMedia,
-                            additionalAppMediaIds = request.additionalAppMediaIds,
-                            additionalAppCoverMediaId = request.additionalAppCoverMediaId,
-                        )
-                    }
-                },
-            )
-            true
-        } else {
-            enqueueFakeUploadTask(
-                operationId = operationId,
-                mediaItem = retryItem,
-                targetLabel = request.targetLabel,
-                onOperationSuccess = {
-                    val createdPost = createPostFromSystemMediaDraft(
-                        draft = request.draft,
-                        mediaItems = request.mediaItems,
-                        additionalAppMediaItems = request.additionalAppMediaIds
-                            .mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem),
+        enqueueRealUploadTask(
+            context = context,
+            operationId = operationId,
+            mediaItem = retryItem,
+            targetLabel = request.targetLabel,
+            sourceItems = listOf(retryItem),
+            finalizeAction = { uploadedMedia ->
+                if (existingPostRoute != null) {
+                    finalizeAppendToPostReal(
+                        postId = existingPostRoute.postId,
+                        sourceItems = listOf(retryItem),
+                        uploadedMedia = uploadedMedia,
                     )
-                    if (createdPost == null) {
-                        OperationResultEvent(
-                            eventId = "$operationId-failure",
-                            operationId = operationId,
-                            operationType = OperationType.CREATE_POST,
-                            succeeded = false,
-                            message = "小相册创建失败，可重试。",
-                        )
-                    } else {
-                        OperationResultEvent(
-                            eventId = "$operationId-success",
-                            operationId = operationId,
-                            operationType = OperationType.CREATE_POST,
-                            succeeded = true,
-                            message = "小相册创建完成",
-                            postRoute = FakeAlbumRepository.toPostDetailRoute(createdPost),
-                        )
-                    }
-                },
-            )
-            true
-        }
+                } else {
+                    finalizeCreatePostReal(
+                        draft = request.draft,
+                        sourceItems = request.mediaItems,
+                        uploadedMedia = uploadedMedia,
+                        additionalAppMediaIds = request.additionalAppMediaIds,
+                        additionalAppCoverMediaId = request.additionalAppCoverMediaId,
+                    )
+                }
+            },
+        )
+        return true
     }
 
     private fun retryAddToExistingPostUpload(
@@ -628,47 +599,21 @@ internal object UploadManager {
         request: AddToExistingPostOperationRequest,
         retryItem: SystemMediaItem,
     ): Boolean {
-        return if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            enqueueRealUploadTask(
-                context = context,
-                operationId = operationId,
-                mediaItem = retryItem,
-                targetLabel = request.targetLabel,
-                sourceItems = request.mediaItems,
-                finalizeAction = { uploadedMedia ->
-                    finalizeAppendToPostReal(
-                        postId = request.postId,
-                        sourceItems = request.mediaItems,
-                        uploadedMedia = uploadedMedia,
-                    )
-                },
-            )
-            true
-        } else {
-            enqueueFakeUploadTask(
-                operationId = operationId,
-                mediaItem = retryItem,
-                targetLabel = request.targetLabel,
-                onOperationSuccess = {
-                    val addedCount = addSystemMediaToExistingPost(request.postId, request.mediaItems)
-                    val postRoute = FakeAlbumRepository.getPost(request.postId)
-                        ?.let(FakeAlbumRepository::toPostDetailRoute)
-                    OperationResultEvent(
-                        eventId = if (addedCount > 0) "$operationId-success" else "$operationId-failure",
-                        operationId = operationId,
-                        operationType = OperationType.ADD_TO_EXISTING_POST,
-                        succeeded = addedCount > 0,
-                        message = if (addedCount > 0) {
-                            "已加入小相册"
-                        } else {
-                            "这些媒体已在目标小相册中"
-                        },
-                        postRoute = postRoute.takeIf { addedCount > 0 },
-                    )
-                },
-            )
-            true
-        }
+        enqueueRealUploadTask(
+            context = context,
+            operationId = operationId,
+            mediaItem = retryItem,
+            targetLabel = request.targetLabel,
+            sourceItems = request.mediaItems,
+            finalizeAction = { uploadedMedia ->
+                finalizeAppendToPostReal(
+                    postId = request.postId,
+                    sourceItems = request.mediaItems,
+                    uploadedMedia = uploadedMedia,
+                )
+            },
+        )
+        return true
     }
 
     internal fun rememberUploadedMediaId(
@@ -778,7 +723,7 @@ internal object UploadManager {
             if (task.operationId == operationId) {
                 uploadTasksState[index] = task.copy(
                     state = state,
-                    progressPercent = if (state == UploadState.FAILURE || state == UploadState.CANCELLED) {
+                    progressPercent = if (state == UploadState.FAILED || state == UploadState.CANCELLED) {
                         task.progressPercent.coerceAtLeast(0)
                     } else {
                         task.progressPercent.coerceAtLeast(100)
@@ -808,7 +753,7 @@ internal object UploadManager {
             if (task.operationId == operationId && task.resultMediaId?.isNotBlank() == true) {
                 uploadTasksState[index] = task.copy(
                     state = state,
-                    progressPercent = if (state == UploadState.FAILURE || state == UploadState.CANCELLED) {
+                    progressPercent = if (state == UploadState.FAILED || state == UploadState.CANCELLED) {
                         task.progressPercent.coerceAtLeast(0)
                     } else {
                         task.progressPercent.coerceAtLeast(100)
@@ -830,7 +775,7 @@ internal object UploadManager {
             val task = uploadTasksState[index]
             if (
                 task.operationId == operationId &&
-                (task.state == UploadState.FAILURE || task.state == UploadState.CANCELLED)
+                (task.state == UploadState.FAILED || task.state == UploadState.CANCELLED)
             ) {
                 uploadTasksState[index] = task.copy(
                     statusMessage = "未加入新小相册",
@@ -865,7 +810,7 @@ internal object UploadManager {
                 mediaType = mediaType,
                 previewUri = previewUri,
                 progressPercent = 0,
-                state = UploadState.FAILURE,
+                state = UploadState.FAILED,
                 statusMessage = statusMessage,
                 errorMessage = errorMessage,
                 canRetry = true,
@@ -880,7 +825,7 @@ internal object UploadManager {
         val meta = OperationBus.operationTaskMeta(operationId)
         val operationTasks = uploadTasksState.filter { it.operationId == operationId }
         val successCount = operationTasks.count { it.state == UploadState.SUCCESS }
-        val failureCount = operationTasks.count { it.state == UploadState.FAILURE }
+        val failureCount = operationTasks.count { it.state == UploadState.FAILED }
         val cancelledCount = operationTasks.count { it.state == UploadState.CANCELLED }
         uploadTasksState.indices.forEach { index ->
             val task = uploadTasksState[index]

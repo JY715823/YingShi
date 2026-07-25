@@ -349,7 +349,7 @@ private fun RealTrashPostViewerDetailContent(
                     val target = originalTargets[currentMediaPage]
                     PostMediaInfoRow(
                         media = currentMedia,
-                        commentCount = FakeCommentRepository.mediaCommentCount(currentMedia.id),
+                        commentCount = 0, // R3-APP-001: Real comment count available in post detail, not trash context
                         originalLoadState = RealOriginalLoadRepository.getState(target),
                         showOriginalAction = currentMedia.mediaType == AppMediaType.IMAGE,
                         onCommentClick = { selectedMediaId = currentMedia.id },

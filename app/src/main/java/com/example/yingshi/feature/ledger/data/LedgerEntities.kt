@@ -68,6 +68,7 @@ data class LedgerCategoryEntity(
     val type: LedgerCategoryType,
     val sortOrder: Int,
     val hidden: Boolean = false,
+    val deletedAtMillis: Long? = null,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
 )
@@ -75,13 +76,12 @@ data class LedgerCategoryEntity(
 @Entity(
     tableName = "ledger_accounts",
     indices = [
-        Index(value = ["bookId", "sortOrder"]),
-        Index(value = ["bookId", "name"], unique = true),
+        Index(value = ["ownerUserId", "sortOrder"]),
     ],
 )
 data class LedgerAccountEntity(
     @PrimaryKey val id: String,
-    val bookId: String,
+    val bookId: String = "",
     val name: String,
     val type: LedgerAccountType,
     val iconKey: String,
@@ -92,7 +92,12 @@ data class LedgerAccountEntity(
     val includeInTotal: Boolean = true,
     val hidden: Boolean = false,
     val note: String = "",
+    val ownerUserId: String? = null,
+    val bankKey: String? = null,
+    val bankName: String? = null,
+    val cardNumberTail: String? = null,
     val sortOrder: Int,
+    val deletedAtMillis: Long? = null,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
 )
@@ -136,6 +141,7 @@ data class LedgerBudgetEntity(
     val startMillis: Long,
     val endMillis: Long,
     val totalAmountCents: Long,
+    val deletedAtMillis: Long? = null,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
 )
@@ -151,6 +157,7 @@ data class LedgerCategoryBudgetEntity(
     val budgetId: String,
     val categoryId: String,
     val amountCents: Long,
+    val deletedAtMillis: Long? = null,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
 )
@@ -171,6 +178,8 @@ data class LedgerDeletedItemEntity(
     val amountCents: Long,
     val deletedAtMillis: Long,
     val expiresAtMillis: Long,
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = 0L,
 )
 
 @Entity(
@@ -194,6 +203,7 @@ data class LedgerRecurringRuleEntity(
     val endAtMillis: Long?,
     val nextOccurrenceAtMillis: Long,
     val enabled: Boolean,
+    val deletedAtMillis: Long? = null,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
 )
@@ -210,5 +220,7 @@ data class LedgerRecurringOccurrenceEntity(
     val ruleId: String,
     val transactionId: String,
     val occurrenceAtMillis: Long,
+    val deletedAtMillis: Long? = null,
     val createdAtMillis: Long,
+    val updatedAtMillis: Long = 0L,
 )

@@ -10,7 +10,7 @@ import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.data.repository.TrashRepository
@@ -73,7 +73,7 @@ class RealTrashListViewModel(
                     )
                     return@launch
                 }
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                val loginOutcome = BackendSessionProbe.probeSessionState(
                     force = false,
                     reason = "real_trash_list_refresh",
                 )
@@ -113,6 +113,7 @@ class RealTrashListViewModel(
             val successPendingItems = (pendingResult as? ApiResult.Success)?.data.orEmpty()
             if (pendingResult is ApiResult.Success) {
                 lastKnownPendingEntries = successPendingItems
+                    .filter { it.item.lifeCategory == null } // P1-2e: 防御性过滤 life 媒体, 防止旧缓存残留
                     .map { it.toTrashPendingCleanupUiModel() }
                     .sortedBy { it.undoDeadlineMillis }
             }
@@ -145,6 +146,7 @@ class RealTrashListViewModel(
             successItems.forEach(TrashActorHintStore::record)
 
             val deduplicatedEntries = successItems
+                .filter { it.lifeCategory == null } // P1-2e: 防御性过滤 life 媒体, 防止旧缓存残留
                 .map { it.toTrashEntryUiModel() }
                 .distinctBy { it.businessIdentityKey() }
 
@@ -359,6 +361,54 @@ class RealTrashListViewModel(
         }
     }
 
+    fun undoAllPendingCleanup(
+        entries: List<TrashPendingCleanupUiModel>,
+        selectedType: TrashEntryType?,
+    ) {
+        if (entries.isEmpty()) return
+        if (_uiState.value.isOfflineReadOnly) {
+            _uiState.update { it.copy(errorMessage = "缓存只读模式下不能撤销回收站操作。") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isMutating = true,
+                    errorMessage = null,
+                    statusMessage = null,
+                )
+            }
+            var successCount = 0
+            var failureCount = 0
+            entries.forEach { pending ->
+                when (val result = trashRepository.undoMoveTrashItemOut(pending.entry.id)) {
+                    is ApiResult.Success -> successCount += 1
+                    is ApiResult.Error -> failureCount += 1
+                    ApiResult.Loading -> Unit
+                }
+            }
+            if (successCount > 0) {
+                notifyRealBackendContentChanged()
+            }
+            refresh(selectedType)
+            _uiState.update {
+                it.copy(
+                    isMutating = false,
+                    statusMessage = when {
+                        successCount > 0 && failureCount > 0 -> "撤销完成：成功 $successCount 项，失败 $failureCount 项。"
+                        successCount > 0 -> "已恢复 $successCount 项。"
+                        else -> null
+                    },
+                    errorMessage = if (successCount == 0 && failureCount > 0) {
+                        "撤销失败，条目仍保留在待清理。"
+                    } else {
+                        it.errorMessage
+                    },
+                )
+            }
+        }
+    }
+
     companion object {
         fun factory(initialSelectedType: TrashEntryType? = null): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -393,7 +443,7 @@ class RealTrashDetailViewModel(
                     )
                     return@launch
                 }
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                val loginOutcome = BackendSessionProbe.probeSessionState(
                     force = false,
                     reason = "real_trash_detail_refresh",
                 )
@@ -419,6 +469,15 @@ class RealTrashDetailViewModel(
             }
             when (val result = trashRepository.getTrashDetail(route.entryId)) {
                 is ApiResult.Success -> {
+                    // P1-3 隔离修复 C1: photo 回收站 detail 拒绝显示 life item, 防止异常 ID 进入照片回收站
+                    val lifeCategory = result.data.item.lifeCategory
+                    if (!lifeCategory.isNullOrBlank()) {
+                        _uiState.value = RealTrashDetailUiState(
+                            isLoading = false,
+                            errorMessage = "该条目不属于照片回收站。",
+                        )
+                        return@launch
+                    }
                     TrashActorHintStore.record(result.data.item)
                     val nextState = _uiState.value.copy(
                         isLoading = false,
@@ -659,6 +718,7 @@ private fun CachedTrashList.toUiState(
     statusMessage: String? = null,
 ): RealTrashListUiState {
     val entries = items
+        .filter { it.lifeCategory == null } // P1-2e: 防御性过滤 life 媒体, 防止旧缓存残留
         .map { it.toTrashEntryUiModel() }
         .distinctBy { it.businessIdentityKey() }
     return RealTrashListUiState(

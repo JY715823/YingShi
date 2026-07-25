@@ -4,9 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.example.yingshi.app.AppNavigationRequests
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
-import com.example.yingshi.feature.photos.FakeAlbumRepository
 import com.example.yingshi.feature.photos.GlobalPhotoFeedPageStateStore
 import com.example.yingshi.feature.photos.PostDetailPlaceholderRoute
 import com.example.yingshi.feature.photos.toPostDetailPlaceholderRoute
@@ -131,19 +129,13 @@ internal fun YingShiDeepLinkHandlers(
         setSelectedDestinationName(RootDestination.PHOTOS.name)
         setPhotosTopDestinationName(PhotosTopDestination.ALBUMS.name)
 
-        val resolvedRoute = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            when (val result = RepositoryProvider.postRepository.getPostDetail(postId)) {
-                is ApiResult.Success -> result.data.toPostDetailPlaceholderRoute()
-                is ApiResult.Error -> {
-                    showAppNotice("已进入小相册，详情还在同步。", YingShiNoticeTone.WARNING)
-                    pushSmallAlbumFallbackRoute(postId)
-                }
-                ApiResult.Loading -> pushSmallAlbumFallbackRoute(postId)
+        val resolvedRoute = when (val result = RepositoryProvider.postRepository.getPostDetail(postId)) {
+            is ApiResult.Success -> result.data.toPostDetailPlaceholderRoute()
+            is ApiResult.Error -> {
+                showAppNotice("已进入小相册，详情还在同步。", YingShiNoticeTone.WARNING)
+                pushSmallAlbumFallbackRoute(postId)
             }
-        } else {
-            FakeAlbumRepository.getPost(postId)
-                ?.let(FakeAlbumRepository::toPostDetailRoute)
-                ?: pushSmallAlbumFallbackRoute(postId)
+            ApiResult.Loading -> pushSmallAlbumFallbackRoute(postId)
         }
         val route = resolvedRoute.copy(
             entryNotice = "从推送进入",

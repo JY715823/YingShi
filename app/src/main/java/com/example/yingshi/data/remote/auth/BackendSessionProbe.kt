@@ -4,49 +4,45 @@ import com.example.yingshi.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class BackendAutoLoginPhase {
+enum class SessionProbePhase {
     Idle,
     LoggingIn,
     Success,
     Failed,
 }
 
-data class BackendAutoLoginUiState(
-    val phase: BackendAutoLoginPhase = BackendAutoLoginPhase.Idle,
+data class SessionProbeUiState(
+    val phase: SessionProbePhase = SessionProbePhase.Idle,
     val message: String = "尚未尝试会话恢复",
     val account: String = BuildConfig.DEFAULT_PRIMARY_ACCOUNT,
     val lastReason: String = "",
     val lastAttemptAtMillis: Long? = null,
 ) {
     val inFlight: Boolean
-        get() = phase == BackendAutoLoginPhase.LoggingIn
+        get() = phase == SessionProbePhase.LoggingIn
 }
 
-data class BackendAutoLoginOutcome(
+data class SessionProbeOutcome(
     val success: Boolean,
     val message: String,
     val displayName: String? = null,
 )
 
-// Default values from BuildConfig — email addresses available in all build types,
-// password only in debug (empty string in release).
-val DEFAULT_PRIMARY_ACCOUNT: String get() = BuildConfig.DEFAULT_PRIMARY_ACCOUNT
-val DEFAULT_SECONDARY_ACCOUNT: String get() = BuildConfig.DEFAULT_SECONDARY_ACCOUNT
-val DEFAULT_TEMP_PASSWORD: String get() = BuildConfig.DEFAULT_TEMP_PASSWORD
+// Top-level defaults are declared in BackendAutoLoginManager.kt (same package).
 
-object BackendAutoLoginManager {
+object BackendSessionProbe {
     val DEFAULT_DEMO_ACCOUNT: String get() = BuildConfig.DEFAULT_PRIMARY_ACCOUNT
     val DEFAULT_DEMO_PASSWORD: String get() = BuildConfig.DEFAULT_TEMP_PASSWORD
     val SECONDARY_DEMO_ACCOUNT: String get() = BuildConfig.DEFAULT_SECONDARY_ACCOUNT
 
-    private val state = MutableStateFlow(BackendAutoLoginUiState(account = DEFAULT_PRIMARY_ACCOUNT))
+    private val state = MutableStateFlow(SessionProbeUiState(account = DEFAULT_DEMO_ACCOUNT))
 
     val uiState = state.asStateFlow()
 
-    suspend fun loginDefault(
+    suspend fun probeSessionState(
         force: Boolean = false,
         reason: String = "app_start",
-    ): BackendAutoLoginOutcome {
+    ): SessionProbeOutcome {
         val startedAt = System.currentTimeMillis()
         if (AuthSessionManager.isLoggedIn) {
             val snapshot = AuthSessionManager.getCurrentUserSnapshot()
@@ -55,14 +51,14 @@ object BackendAutoLoginManager {
             } else {
                 "当前登录会话仍有效：${snapshot?.displayName}"
             }
-            state.value = BackendAutoLoginUiState(
-                phase = BackendAutoLoginPhase.Success,
+            state.value = SessionProbeUiState(
+                phase = SessionProbePhase.Success,
                 message = successMessage,
-                account = snapshot?.account ?: DEFAULT_PRIMARY_ACCOUNT,
+                account = snapshot?.account ?: DEFAULT_DEMO_ACCOUNT,
                 lastReason = reason,
                 lastAttemptAtMillis = startedAt,
             )
-            return BackendAutoLoginOutcome(
+            return SessionProbeOutcome(
                 success = true,
                 message = successMessage,
                 displayName = snapshot?.displayName,
@@ -73,14 +69,14 @@ object BackendAutoLoginManager {
             "save_base_url" -> "服务地址已更新，请重新登录。"
             else -> "当前没有可自动恢复的登录会话，请重新登录。"
         }
-        state.value = BackendAutoLoginUiState(
-            phase = BackendAutoLoginPhase.Failed,
+        state.value = SessionProbeUiState(
+            phase = SessionProbePhase.Failed,
             message = message,
-            account = AuthSessionManager.getCurrentUserSnapshot()?.account ?: DEFAULT_PRIMARY_ACCOUNT,
+            account = AuthSessionManager.getCurrentUserSnapshot()?.account ?: DEFAULT_DEMO_ACCOUNT,
             lastReason = reason,
             lastAttemptAtMillis = startedAt,
         )
-        return BackendAutoLoginOutcome(
+        return SessionProbeOutcome(
             success = false,
             message = message,
         )
@@ -88,7 +84,7 @@ object BackendAutoLoginManager {
 
     fun markLoggedOut(message: String = "已清除登录") {
         state.value = state.value.copy(
-            phase = BackendAutoLoginPhase.Idle,
+            phase = SessionProbePhase.Idle,
             message = message,
             lastReason = "manual_logout",
             lastAttemptAtMillis = System.currentTimeMillis(),

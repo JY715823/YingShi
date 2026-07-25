@@ -33,6 +33,7 @@ import com.example.yingshi.data.model.RemoteTrashDetail
 import com.example.yingshi.data.model.RemoteTrashItem
 import com.example.yingshi.data.model.RemoteUploadToken
 import com.example.yingshi.data.model.RemoteUploadTask
+import com.example.yingshi.data.model.RemoteUploadHistoryPage
 import com.example.yingshi.data.model.UploadState
 import com.example.yingshi.data.model.UpdatePostAlbumsPayload
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
@@ -114,6 +115,13 @@ class FakeMediaRepositoryShell : MediaRepository {
             code = "NOT_IMPLEMENTED",
             message = "FAKE media delete keeps using local fake flow in this stage",
         )
+    }
+
+    override suspend fun updateMediaTime(
+        mediaId: String,
+        displayTimeMillis: Long,
+    ): ApiResult<Long> {
+        return ApiResult.Success(displayTimeMillis)
     }
 }
 
@@ -588,6 +596,15 @@ class FakeTrashRepositoryShell : TrashRepository {
             },
         )
     }
+
+    // P1-2 改造: life 回收站 fake 实现，复用 photo trash 数据但 lifeCategory=null（fake 不区分）
+    override suspend fun getLifeTrashItems(category: String?): ApiResult<List<RemoteTrashItem>> {
+        return ApiResult.Success(emptyList())
+    }
+
+    override suspend fun getLifePendingCleanupItems(category: String?): ApiResult<List<RemotePendingCleanup>> {
+        return ApiResult.Success(emptyList())
+    }
 }
 
 class FakeUploadRepositoryShell : UploadRepository {
@@ -683,15 +700,35 @@ class FakeUploadRepositoryShell : UploadRepository {
         state: String?,
         operationType: String?,
         pageSize: Int,
-    ): ApiResult<List<RemoteUploadTask>> {
+        cursor: String?,
+    ): ApiResult<RemoteUploadHistoryPage> {
         val stateFilter = state?.lowercase()
         val typeFilter = operationType?.uppercase()
+        val filtered = fakeUploadTasks.values
+            .filter { task -> stateFilter == null || task.state.name.lowercase() == stateFilter }
+            .filter { task -> typeFilter == null || task.operationType == typeFilter }
+            .sortedByDescending { it.updatedAtMillis ?: 0L }
+        // cursor 格式 "updatedAt:id"，模拟服务端 keyset 分页
+        val cursorThreshold = cursor?.let { c ->
+            c.split(":").firstOrNull()?.toLongOrNull()
+        }
+        val paged = filtered
+            .filter { task -> cursorThreshold == null || (task.updatedAtMillis ?: 0L) < cursorThreshold }
+            .take(pageSize)
+        val hasMore = paged.size == pageSize && filtered.any { task ->
+            val taskTime = task.updatedAtMillis ?: 0L
+            (cursorThreshold == null || taskTime < cursorThreshold) && task !in paged
+        }
+        val nextCursor = if (hasMore && paged.isNotEmpty()) {
+            val lastTask = paged.last()
+            "${lastTask.updatedAtMillis ?: 0L}:${lastTask.uploadId}"
+        } else null
         return ApiResult.Success(
-            fakeUploadTasks.values
-                .filter { task -> stateFilter == null || task.state.name.lowercase() == stateFilter }
-                .filter { task -> typeFilter == null || task.operationType == typeFilter }
-                .sortedByDescending { it.updatedAtMillis ?: 0L }
-                .take(pageSize),
+            RemoteUploadHistoryPage(
+                tasks = paged,
+                nextCursor = nextCursor,
+                hasMore = hasMore,
+            ),
         )
     }
 
@@ -821,6 +858,7 @@ class FakeAuthRepositoryShell : AuthRepository {
         mimeType: String,
         fileSizeBytes: Long,
         openInputStream: () -> InputStream,
+        onProgress: (Int) -> Unit,
     ): ApiResult<RemoteCurrentUser> {
         val fakeAvatarUrl = "content://fake-avatar/${System.currentTimeMillis()}-${fileName.ifBlank { "avatar" }}"
         val updatedProfile = fakeAuthUpdateAvatar(fakeAvatarUrl)

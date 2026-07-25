@@ -1,11 +1,11 @@
 package com.example.yingshi.feature.ledger
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
@@ -25,11 +25,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -69,6 +72,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -77,7 +81,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.yingshi.feature.ledger.data.LedgerAccount
+import com.example.yingshi.feature.ledger.data.LedgerAccountDraft
 import com.example.yingshi.feature.ledger.data.LedgerAccountType
+import com.example.yingshi.feature.ledger.data.LedgerBankCatalog
+import com.example.yingshi.feature.ledger.data.LedgerBankIcon
 import com.example.yingshi.feature.ledger.data.LedgerBudgetPeriod
 import com.example.yingshi.feature.ledger.data.LedgerCategory
 import com.example.yingshi.feature.ledger.data.LedgerCategoryStat
@@ -93,16 +100,28 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableFloatStateOf
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
+import com.example.yingshi.ui.components.yingShiClickable
+import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 
-private enum class LedgerAssetScope(val label: String) {
-    ALL("全部"),
-    MINE("我的"),
-    PARTNER("女朋友的"),
+private enum class LedgerAssetScope {
+    MINE,
+    PARTNER,
+    OURS,
 }
+
+/** "我们"共同资产的 ownerUserId 标识值 */
+internal const val SHARED_OWNER_FLAG = "shared"
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -110,22 +129,16 @@ fun LedgerAssetsScreen(
     uiState: LedgerUiState,
     onBack: () -> Unit,
     onEditTransaction: (LedgerTransaction) -> Unit,
-    onSaveAccount: (
-        String?,
-        String,
-        LedgerAccountType,
-        Long,
-        Boolean,
-        String,
-    ) -> Unit,
+    onSaveAccount: (LedgerAccountDraft) -> Unit,
     onToggleAccountHidden: (String, Boolean) -> Unit,
     onReorderAccounts: (List<String>) -> Unit,
+    onOpenAccountDetail: (String) -> Unit = {},
+    onTransferFromAccount: (String) -> Unit = {},
 ) {
-    var showAccountDetail by remember { mutableStateOf<LedgerAccount?>(null) }
     var editingAccount by remember { mutableStateOf<LedgerAccount?>(null) }
     var actionAccount by remember { mutableStateOf<LedgerAccount?>(null) }
     var showCreateAccountSheet by rememberSaveable { mutableStateOf(false) }
-    var selectedScopeName by rememberSaveable { mutableStateOf(LedgerAssetScope.ALL.name) }
+    var selectedScopeName by rememberSaveable { mutableStateOf(LedgerAssetScope.MINE.name) }
     val assetScopes = LedgerAssetScope.entries
     val selectedScope = LedgerAssetScope.valueOf(selectedScopeName)
     val pagerState = rememberPagerState(
@@ -133,6 +146,17 @@ fun LedgerAssetsScreen(
         pageCount = { assetScopes.size },
     )
     val coroutineScope = rememberCoroutineScope()
+    val directory = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
+    val currentUserId = directory.currentUser?.userId
+    val partnerUserId = directory.partner?.userId
+    val mineLabel = directory.currentUser?.displayName ?: "我的"
+    val partnerLabel = directory.partner?.displayName ?: "对方的"
+
+    fun scopeLabel(scope: LedgerAssetScope): String = when (scope) {
+        LedgerAssetScope.MINE -> mineLabel
+        LedgerAssetScope.PARTNER -> partnerLabel
+        LedgerAssetScope.OURS -> "我们"
+    }
 
     LaunchedEffect(selectedScopeName) {
         val targetPage = assetScopes.indexOf(LedgerAssetScope.valueOf(selectedScopeName))
@@ -140,32 +164,43 @@ fun LedgerAssetsScreen(
             pagerState.animateScrollToPage(targetPage)
         }
     }
-    LaunchedEffect(pagerState.currentPage) {
-        val pageScope = assetScopes.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
-        if (pageScope.name != selectedScopeName) {
-            selectedScopeName = pageScope.name
-        }
+    // 立即同步 currentPage → selectedScopeName，避免滑动后 tab 选中延迟
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }
+            .distinctUntilChanged()
+            .collect { currentPage ->
+                val pageScope = assetScopes.getOrNull(currentPage) ?: return@collect
+                if (pageScope.name != selectedScopeName) {
+                    selectedScopeName = pageScope.name
+                }
+            }
     }
 
     LedgerPageScaffold(
         title = "资产管理",
         onBack = onBack,
         action = {
-            Surface(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clickable { showCreateAccountSheet = true },
-                shape = CircleShape,
-                color = LedgerPrimaryAction,
-                border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.88f)),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "新增账户",
-                        tint = LedgerHeaderGreen,
-                        modifier = Modifier.size(25.dp),
-                    )
+            // 对方资产页下不显示新增按钮
+            if (selectedScope != LedgerAssetScope.PARTNER) {
+                Surface(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .yingShiClickable(
+                            pressedScale = 0.94f,
+                            shape = CircleShape,
+                        ) { showCreateAccountSheet = true },
+                    shape = CircleShape,
+                    color = LedgerPrimaryAction,
+                    border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.88f)),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "新增账户",
+                            tint = LedgerHeaderGreen,
+                            modifier = Modifier.size(25.dp),
+                        )
+                    }
                 }
             }
         },
@@ -183,7 +218,7 @@ fun LedgerAssetsScreen(
             ) {
                 assetScopes.forEach { scope ->
                     LedgerSegmentChip(
-                        text = scope.label,
+                        text = scopeLabel(scope),
                         selected = selectedScope == scope,
                         modifier = Modifier.weight(1f),
                         horizontalPadding = 14.dp,
@@ -192,7 +227,7 @@ fun LedgerAssetsScreen(
                         onClick = {
                             selectedScopeName = scope.name
                             coroutineScope.launch {
-                                pagerState.animateScrollToPage(assetScopes.indexOf(scope))
+                                pagerState.scrollToPage(assetScopes.indexOf(scope))
                             }
                         },
                     )
@@ -205,32 +240,18 @@ fun LedgerAssetsScreen(
                 key = { page -> assetScopes[page].name },
             ) { page ->
                 val pageScope = assetScopes[page]
-                val visibleAccounts = uiState.allAccounts.filter { account -> account.matchesAssetScope(pageScope) }
+                val visibleAccounts = uiState.allAccounts.filter { account -> account.matchesAssetScope(pageScope, currentUserId, partnerUserId) }
                 LedgerAssetsScopePage(
                     allAccounts = uiState.allAccounts,
                     visibleAccounts = visibleAccounts,
                     onReorderAccounts = onReorderAccounts,
-                    onOpenAccount = { showAccountDetail = it },
+                    onOpenAccount = { onOpenAccountDetail(it.id) },
                     onMoreAccount = { actionAccount = it },
                 )
             }
         }
     }
 
-    showAccountDetail?.let { account ->
-        LedgerTransactionsDetailSheet(
-            title = "${account.name}账单",
-            transactions = uiState.allTransactions
-                .filter { transaction -> transaction.belongsToLedgerAccount(account.id) }
-                .sortedByDescending { it.occurredAtMillis },
-            currencySymbol = uiState.currencySymbol,
-            onDismiss = { showAccountDetail = null },
-            onTransactionClick = {
-                showAccountDetail = null
-                onEditTransaction(it)
-            },
-        )
-    }
     actionAccount?.let { account ->
         LedgerActionSheet(
             title = account.name,
@@ -247,9 +268,10 @@ fun LedgerAssetsScreen(
     }
     if (showCreateAccountSheet) {
         LedgerAccountEditorSheet(
+            defaultOwnerUserId = currentUserId,
             onDismiss = { showCreateAccountSheet = false },
-            onSave = { name, type, initialBalanceCents, includeInTotal, note ->
-                onSaveAccount(null, name, type, initialBalanceCents, includeInTotal, note)
+            onSave = { draft ->
+                onSaveAccount(draft)
                 showCreateAccountSheet = false
             },
         )
@@ -257,9 +279,10 @@ fun LedgerAssetsScreen(
     editingAccount?.let { account ->
         LedgerAccountEditorSheet(
             initial = account,
+            defaultOwnerUserId = currentUserId,
             onDismiss = { editingAccount = null },
-            onSave = { name, type, initialBalanceCents, includeInTotal, note ->
-                onSaveAccount(account.id, name, type, initialBalanceCents, includeInTotal, note)
+            onSave = { draft ->
+                onSaveAccount(draft)
                 editingAccount = null
             },
         )
@@ -338,25 +361,39 @@ private fun AccountRow(
     Surface(
         color = LedgerRaisedSurface,
         shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().yingShiClickable(
+            pressedScale = 0.96f,
+            shape = RoundedCornerShape(18.dp),
+            onClick = onClick,
+        ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(ledgerColor(account.color)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(accountIcon(account.type), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
+            val bank = remember(account.id) { LedgerBankCatalog.findByKey(account.bankKey) }
+            if (bank != null) {
+                LedgerBankIcon(bank = bank, size = 38.dp)
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(ledgerColor(account.color)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(accountIcon(account.type), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(account.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    val displayName = if (bank != null && account.type == LedgerAccountType.DEBIT_CARD && !account.cardNumberTail.isNullOrBlank()) {
+                        "${bank.shortName}储蓄卡(${account.cardNumberTail})"
+                    } else {
+                        account.name
+                    }
+                    Text(displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     if (account.hidden) {
                         LedgerHiddenBadge()
                     }
@@ -367,32 +404,31 @@ private fun AccountRow(
                     color = LedgerSubtleText,
                 )
             }
-            Text(formatAmountValue(account.balanceCents), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+            Text(formatAmountValue(account.balanceCents), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Icon(
                 Icons.Default.MoreHoriz,
                 contentDescription = "更多",
                 modifier = Modifier
                     .size(18.dp)
-                    .clickable(onClick = onMoreClick),
+                    .yingShiClickable(
+                        pressedScale = 0.94f,
+                        shape = CircleShape,
+                        onClick = onMoreClick,
+                    ),
             )
         }
     }
 }
 
-private fun LedgerAccount.matchesAssetScope(scope: LedgerAssetScope): Boolean {
-    val isPartner = listOf(name, note).any { text ->
-        text.contains("女朋友") ||
-            text.contains("女友") ||
-            text.contains("对象") ||
-            text.contains("另一半") ||
-            text.contains("她的") ||
-            text.contains("partner", ignoreCase = true)
-    }
-    return when (scope) {
-        LedgerAssetScope.ALL -> true
-        LedgerAssetScope.MINE -> !isPartner
-        LedgerAssetScope.PARTNER -> isPartner
-    }
+private fun LedgerAccount.matchesAssetScope(
+    scope: LedgerAssetScope,
+    currentUserId: String?,
+    partnerUserId: String?,
+): Boolean = when (scope) {
+    // legacy 账户(ownerUserId 为 null)归入 MINE，与账本维度一致
+    LedgerAssetScope.MINE -> ownerUserId.isNullOrBlank() || ownerUserId == currentUserId
+    LedgerAssetScope.PARTNER -> !partnerUserId.isNullOrBlank() && ownerUserId == partnerUserId
+    LedgerAssetScope.OURS -> ownerUserId == SHARED_OWNER_FLAG
 }
 
 private fun mergeScopedAccountOrder(
@@ -467,6 +503,21 @@ fun LedgerStatsScreen(
             .sortedByDescending { it.amountCents }
     }
 
+    if (uiState.isLoading) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(LedgerPageBackground)
+                .statusBarsPadding(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.dp,
+                color = LedgerHeaderGreen,
+            )
+        }
+    } else {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -568,6 +619,7 @@ fun LedgerStatsScreen(
             },
         )
     }
+    }
 }
 
 @Composable
@@ -635,7 +687,7 @@ private fun StatsSummaryCard(
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (uiState.selectedStatsMode == LedgerStatsMode.WEEK || uiState.selectedStatsMode == LedgerStatsMode.MONTH || uiState.selectedStatsMode == LedgerStatsMode.YEAR) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "上一周期", modifier = Modifier.size(18.dp).clickable { onShiftPeriod(-1) })
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "上一周期", modifier = Modifier.size(18.dp).yingShiClickable(pressedScale = 0.94f, shape = CircleShape) { onShiftPeriod(-1) })
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(
@@ -645,11 +697,15 @@ private fun StatsSummaryCard(
                 )
                 if (uiState.selectedStatsMode == LedgerStatsMode.WEEK || uiState.selectedStatsMode == LedgerStatsMode.MONTH || uiState.selectedStatsMode == LedgerStatsMode.YEAR) {
                     Spacer(Modifier.width(6.dp))
-                    Icon(Icons.Default.ChevronRight, contentDescription = "下一周期", modifier = Modifier.size(18.dp).clickable { onShiftPeriod(1) })
+                    Icon(Icons.Default.ChevronRight, contentDescription = "下一周期", modifier = Modifier.size(18.dp).yingShiClickable(pressedScale = 0.94f, shape = CircleShape) { onShiftPeriod(1) })
                 }
                 Spacer(Modifier.weight(1f))
                 Row(
-                    modifier = Modifier.clickable(onClick = onBookClick),
+                    modifier = Modifier.yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(18.dp),
+                        onClick = onBookClick,
+                    ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LedgerBookTitleWithCreator(
@@ -689,11 +745,11 @@ private fun StatsSummaryMetric(
     title: String,
     value: String,
     modifier: Modifier = Modifier,
-    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    valueColor: androidx.compose.ui.graphics.Color = LedgerHeaderGreen,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = LedgerSubtleText, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-        Text(value, color = valueColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(value, color = valueColor, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -732,7 +788,10 @@ private fun StatsToggleChip(
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = if (selected) color.copy(alpha = 0.14f) else LedgerGroupedHeader,
-        modifier = Modifier.clickable { onToggleKey(key) },
+        modifier = Modifier.yingShiClickable(
+            pressedScale = 0.94f,
+            shape = RoundedCornerShape(12.dp),
+        ) { onToggleKey(key) },
     ) {
         Box(modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)) {
             Text(
@@ -749,12 +808,25 @@ private fun StatsToggleChip(
 private fun LedgerTrendChart(
     dailyStats: List<LedgerDailyStat>,
     selectedLineKeys: Set<String>,
+    onPointSelected: ((Int) -> Unit)? = null,
 ) {
     val displayStats = dailyStats.ifEmpty { listOf(LedgerDailyStat(0L, 0L, 0L)) }
+    val screenMaxLabels = (LocalConfiguration.current.screenWidthDp / 32).coerceIn(3, 10)
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(210.dp),
+            .height(210.dp)
+            .pointerInput(displayStats) {
+                detectTapGestures { offset ->
+                    if (onPointSelected == null || displayStats.size <= 1) return@detectTapGestures
+                    val graphLeft = 54.dp.toPx()
+                    val graphRight = size.width.toFloat() - 12.dp.toPx()
+                    val graphWidth = graphRight - graphLeft
+                    val ratio = ((offset.x - graphLeft) / graphWidth).coerceIn(0f, 1f)
+                    val index = (ratio * (displayStats.size - 1)).roundToInt().coerceIn(0, displayStats.size - 1)
+                    onPointSelected.invoke(index)
+                }
+            },
     ) {
         val maxValue = displayStats.maxOf {
             maxOf(it.expenseCents, it.incomeCents, kotlin.math.abs(it.incomeCents - it.expenseCents), 1L)
@@ -817,7 +889,8 @@ private fun LedgerTrendChart(
             drawText(formatAmountValue(maxValue.toLong()), graphLeft - 2.dp.toPx(), graphTop + 10.dp.toPx(), textPaint)
             drawText("-${formatAmountValue(maxValue.toLong())}", graphLeft - 2.dp.toPx(), graphBottom - 4.dp.toPx(), textPaint)
         }
-        val labelStep = kotlin.math.max(1, displayStats.size / 6)
+        // FR-26: label step adapts to screen width (smaller screens show fewer labels)
+        val labelStep = kotlin.math.max(1, displayStats.size / screenMaxLabels)
         displayStats.forEachIndexed { index, stat ->
             if (index % labelStep != 0 && index != displayStats.lastIndex) return@forEachIndexed
             val x = xFor(index)
@@ -875,9 +948,11 @@ private fun LedgerDonutChart(
     uiState: LedgerUiState,
     categoryType: LedgerCategoryType,
     onCategoryTypeChange: (LedgerCategoryType) -> Unit,
+    onCategorySelected: ((Int) -> Unit)? = null,
 ) {
     var rotation by rememberSaveable { mutableStateOf(-110f) }
     var dragAngle by remember { mutableStateOf<Float?>(null) }
+    var selectedSegmentIndex by remember { mutableStateOf<Int?>(null) }
     val total = categoryStats.sumOf { it.amountCents }.coerceAtLeast(1L).toFloat()
     Box(
         modifier = Modifier
@@ -888,6 +963,25 @@ private fun LedgerDonutChart(
         Canvas(
             modifier = Modifier
                 .size(300.dp)
+                .pointerInput(categoryStats, onCategorySelected) {
+                    if (onCategorySelected == null || categoryStats.isEmpty()) return@pointerInput
+                    detectTapGestures { offset ->
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val tapAngle = pointerAngleDegrees(offset, center)
+                        var angle = ((tapAngle - rotation) % 360f + 360f) % 360f
+                        val totalLocal = categoryStats.sumOf { it.amountCents }.coerceAtLeast(1L).toFloat()
+                        var cumulative = 0f
+                        for ((index, stat) in categoryStats.withIndex()) {
+                            val sweep = stat.amountCents / totalLocal * 360f
+                            if (angle >= cumulative && angle < cumulative + sweep) {
+                                selectedSegmentIndex = index
+                                onCategorySelected(index)
+                                break
+                            }
+                            cumulative += sweep
+                        }
+                    }
+                }
                 .pointerInput(categoryStats) {
                     val center = Offset(size.width / 2f, size.height / 2f)
                     detectDragGestures(
@@ -1012,7 +1106,10 @@ private fun LedgerDonutChart(
             Surface(
                 shape = CircleShape,
                 color = if (categoryType == LedgerCategoryType.EXPENSE) LedgerHeaderGreen else LedgerExpenseRed,
-                modifier = Modifier.clickable {
+                modifier = Modifier.yingShiClickable(
+                    pressedScale = 0.94f,
+                    shape = CircleShape,
+                ) {
                     onCategoryTypeChange(
                         if (categoryType == LedgerCategoryType.EXPENSE) LedgerCategoryType.INCOME else LedgerCategoryType.EXPENSE,
                     )
@@ -1043,7 +1140,11 @@ private fun LedgerCategoryStatRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = onClick,
+            ),
         color = LedgerRaisedSurface,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1066,7 +1167,7 @@ private fun LedgerCategoryStatRow(
                 Text(
                     "${amountPrefix}${formatAmountValue(stat.amountCents)}",
                     color = amountColor,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.End,
                 )
@@ -1102,9 +1203,9 @@ private fun StatsCompareCard(uiState: LedgerUiState) {
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(formatAmountValue(thisMonth), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(formatAmountValue(thisMonth), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             LedgerTag(currentLabel, LedgerHeaderGreen)
-            Text(lastMonth?.let(::formatAmountValue) ?: "--", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(lastMonth?.let(::formatAmountValue) ?: "--", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             LedgerTag(previousLabel ?: "无可比", LedgerGroupedHeader)
         }
     }
@@ -1119,7 +1220,7 @@ private fun LedgerTag(text: String, backgroundColor: Color) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            color = if (backgroundColor == LedgerHeaderGreen) LedgerRaisedSurface else MaterialTheme.colorScheme.onSurface,
+            color = if (backgroundColor == LedgerHeaderGreen) LedgerRaisedSurface else LedgerHeaderGreen,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Bold,
         )
@@ -1238,7 +1339,10 @@ fun LedgerBudgetScreen(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable { showBookSheet = true },
+                    .yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(18.dp),
+                    ) { showBookSheet = true },
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1338,7 +1442,10 @@ fun LedgerBudgetScreen(
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { categoryBudgetTarget = category.id },
+                        .yingShiClickable(
+                            pressedScale = 0.96f,
+                            shape = RoundedCornerShape(18.dp),
+                        ) { categoryBudgetTarget = category.id },
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1473,6 +1580,7 @@ fun LedgerCalendarScreen(
     val selectedTransactions = remember(uiState.transactions, selectedDayStart) {
         uiState.transactions.filter { dayStart(it.occurredAtMillis) == selectedDayStart }
     }
+    var swipeStartX by remember { mutableFloatStateOf(0f) }
     LedgerPageScaffold(title = uiState.bookName, creatorUserId = uiState.bookCreatorUserId, onBack = onBack, action = {
         IconButton(onClick = onAdd, modifier = Modifier.size(44.dp)) {
             Icon(LedgerActionIcons.Add, contentDescription = "补记一笔", tint = LedgerHeaderGreen, modifier = Modifier.size(22.dp))
@@ -1509,10 +1617,26 @@ fun LedgerCalendarScreen(
 
             item {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(uiState.selectedMonth) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { offset -> swipeStartX = offset.x },
+                                onDragEnd = { },
+                                onHorizontalDrag = { change, _ ->
+                                    val totalDrag = change.position.x - swipeStartX
+                                    if (totalDrag > 100f) {
+                                        onSelectMonth(uiState.selectedMonth.minusMonths(1))
+                                        swipeStartX = change.position.x
+                                    } else if (totalDrag < -100f) {
+                                        onSelectMonth(uiState.selectedMonth.plusMonths(1))
+                                        swipeStartX = change.position.x
+                                    }
+                                },
+                            )
+                        },
                     color = LedgerRaisedSurface,
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
@@ -1593,7 +1717,11 @@ private fun LedgerCalendarDayCell(
             .height(76.dp)
             .padding(2.dp)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                pressedScale = 0.94f,
+                shape = RoundedCornerShape(12.dp),
+                onClick = onClick,
+            ),
         color = if (selected) LedgerGlowWash else Color.Transparent,
         shape = RoundedCornerShape(12.dp),
         border = if (selected) BorderStroke(1.dp, LedgerHeaderGreen.copy(alpha = 0.72f)) else null,
@@ -1608,7 +1736,7 @@ private fun LedgerCalendarDayCell(
         ) {
             Text(
                 text = if (cell.isToday) "今" else cell.date.dayOfMonth.toString(),
-                color = if (selected) LedgerHeaderGreen else MaterialTheme.colorScheme.onBackground,
+                color = if (selected) LedgerHeaderGreen else LedgerMuted,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -1653,7 +1781,6 @@ private fun LedgerCalendarSelectedDayCard(
         modifier = Modifier.fillMaxWidth(),
         color = LedgerRaisedSurface,
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1667,15 +1794,18 @@ private fun LedgerCalendarSelectedDayCard(
                     Text(
                         text = "收 ${formatAmountValue(income)} · 支 ${formatAmountValue(expense)}",
                         color = LedgerSubtleText,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.titleMedium,
                     )
                 }
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable(onClick = onAdd),
+                        .yingShiClickable(
+                            pressedScale = 0.94f,
+                            shape = RoundedCornerShape(12.dp),
+                            onClick = onAdd,
+                        ),
                     color = LedgerPrimaryAction,
-                    border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = 0.82f)),
                 ) {
                     Text(
                         text = "补记",
@@ -1769,6 +1899,7 @@ fun LedgerSearchScreen(
     var showBatchAccountSheet by rememberSaveable { mutableStateOf(false) }
     var showBatchTransferSideSheet by rememberSaveable { mutableStateOf(false) }
     var batchTransferSide by rememberSaveable { mutableStateOf<LedgerTransferAccountSide?>(null) }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
 
     val selectedTransactions = remember(uiState.searchResults, uiState.selectedSearchTransactionIds) {
         uiState.searchResults.filter { it.id in uiState.selectedSearchTransactionIds }
@@ -1823,15 +1954,15 @@ fun LedgerSearchScreen(
                             modifier = Modifier.padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SearchFilterChip("类型:${searchTypeLabel(uiState.searchFilter.type)}", uiState.searchFilter.type != LedgerSearchTransactionType.ALL) { showTypeSheet = true }
-                                SearchFilterChip("分类:$categoryLabel", uiState.searchFilter.categoryId != null) { showCategorySheet = true }
-                                SearchFilterChip("账户:$accountLabel", uiState.searchFilter.accountId != null) { showAccountSheet = true }
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item { SearchFilterChip("类型:${searchTypeLabel(uiState.searchFilter.type)}", uiState.searchFilter.type != LedgerSearchTransactionType.ALL) { showTypeSheet = true } }
+                                item { SearchFilterChip("分类:$categoryLabel", uiState.searchFilter.categoryId != null) { showCategorySheet = true } }
+                                item { SearchFilterChip("账户:$accountLabel", uiState.searchFilter.accountId != null) { showAccountSheet = true } }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SearchFilterChip(dateLabel, uiState.searchFilter.startDate != null || uiState.searchFilter.endDate != null) { showDateRangeDialog = true }
-                                SearchFilterChip(amountLabel, uiState.searchFilter.minAmountCents != null || uiState.searchFilter.maxAmountCents != null) { showAmountRangeDialog = true }
-                                SearchFilterChip("清空", false, onClick = onClearFilters)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item { SearchFilterChip(dateLabel, uiState.searchFilter.startDate != null || uiState.searchFilter.endDate != null) { showDateRangeDialog = true } }
+                                item { SearchFilterChip(amountLabel, uiState.searchFilter.minAmountCents != null || uiState.searchFilter.maxAmountCents != null) { showAmountRangeDialog = true } }
+                                item { SearchFilterChip("清空", false, onClick = onClearFilters) }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 SearchFilterChip(if (uiState.isSearchSelectionMode) "退出多选" else "多选", uiState.isSearchSelectionMode, onClick = onToggleSelectionMode)
@@ -1892,7 +2023,7 @@ fun LedgerSearchScreen(
                     ) {
                         Text("${selectedTransactions.size}项", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.weight(1f))
-                        LedgerDialogActionButton(text = "删除", onClick = onDeleteSelected, danger = true)
+                        LedgerDialogActionButton(text = "删除", onClick = { showBatchDeleteConfirm = true }, danger = true)
                         LedgerDialogActionButton(
                             text = "改分类",
                             onClick = { showBatchCategorySheet = true },
@@ -2028,6 +2159,22 @@ fun LedgerSearchScreen(
             },
         )
     }
+    if (showBatchDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteConfirm = false },
+            title = { Text("确认删除") },
+            text = { Text("确定要删除选中的 ${selectedTransactions.size} 条记录吗？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBatchDeleteConfirm = false
+                    onDeleteSelected()
+                }) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteConfirm = false }) { Text("取消") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -2060,7 +2207,11 @@ private fun SearchTransactionRow(
                     tint = if (selected) LedgerHeaderGreen else LedgerMuted,
                     modifier = Modifier
                         .padding(start = 12.dp)
-                        .clickable(onClick = onClick),
+                        .yingShiClickable(
+                            pressedScale = 0.94f,
+                            shape = CircleShape,
+                            onClick = onClick,
+                        ),
                 )
             }
             Box(modifier = Modifier.weight(1f)) {
@@ -2087,9 +2238,17 @@ fun LedgerCategoriesScreen(
     var actionCategory by remember { mutableStateOf<LedgerCategory?>(null) }
     var showCreateCategorySheet by rememberSaveable { mutableStateOf(false) }
     val type = LedgerCategoryType.valueOf(selectedType)
+    // 拦截系统返回键, 确保 from 新增账单页时返回到新增页而非记账首页
+    BackHandler { onBack() }
     val categories = remember(uiState.allCategories, type) {
         uiState.allCategories.filter { it.type == type }
     }
+    // "其他" 始终置底：从可拖动列表中分离，固定显示在底部
+    val isOtherCategory: (LedgerCategory) -> Boolean = { cat ->
+        cat.name.trim().equals("其他", ignoreCase = true) || cat.id.startsWith("cat-other-")
+    }
+    val pinnedBottomCategory = remember(categories) { categories.firstOrNull(isOtherCategory) }
+    val reorderableCategories = remember(categories) { categories.filterNot(isOtherCategory) }
 
     Column(
         modifier = Modifier
@@ -2123,49 +2282,117 @@ fun LedgerCategoriesScreen(
         if (categories.isEmpty()) {
             LedgerEmptyStateCompact("暂无分类，点击下方添加")
         } else {
-            LedgerLongPressReorderList(
-                items = categories,
-                keyOf = { it.id },
-                modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 8.dp),
-                onOrderCommitted = { onReorderCategories(type, it) },
-                itemHeight = 66.dp,
-            ) { category, isDragging ->
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .alpha(if (category.hidden) 0.62f else if (isDragging) 0.92f else 1f)
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .weight(1f)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(ledgerColor(category.color)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
+                if (reorderableCategories.isNotEmpty()) {
+                    LedgerLongPressReorderList(
+                        items = reorderableCategories,
+                        keyOf = { it.id },
+                        modifier = Modifier.weight(1f),
+                        onOrderCommitted = { orderedIds ->
+                            // "其他" 始终在末尾
+                            val fullOrder = if (pinnedBottomCategory != null) {
+                                orderedIds + pinnedBottomCategory.id
+                            } else {
+                                orderedIds
+                            }
+                            onReorderCategories(type, fullOrder)
+                        },
+                        itemHeight = 66.dp,
+                    ) { category, isDragging ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(if (category.hidden) 0.62f else 1f)
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(ledgerColor(category.color)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
+                            }
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(category.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                if (category.hidden) {
+                                    LedgerHiddenBadge()
+                                }
+                            }
+                            Icon(
+                                Icons.Default.MoreHoriz,
+                                contentDescription = "更多",
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .yingShiClickable(
+                                        pressedScale = 0.94f,
+                                        shape = CircleShape,
+                                    ) { actionCategory = category },
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.weight(1f))
                 }
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(category.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                    if (category.hidden) {
-                        LedgerHiddenBadge()
+                // 固定置底的 "其他" 分类（不可拖动）
+                if (pinnedBottomCategory != null) {
+                    val category = pinnedBottomCategory
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 6.dp),
+                        thickness = 1.dp,
+                        color = LedgerDivider.copy(alpha = 0.5f),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(if (category.hidden) 0.62f else 1f)
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(ledgerColor(category.color)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(ledgerIcon(category.iconKey), contentDescription = null, tint = LedgerRaisedSurface, modifier = Modifier.size(18.dp))
+                        }
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(category.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                            if (category.hidden) {
+                                LedgerHiddenBadge()
+                            }
+                        }
+                        Icon(
+                            Icons.Default.MoreHoriz,
+                            contentDescription = "更多",
+                            modifier = Modifier
+                                .size(18.dp)
+                                .yingShiClickable(
+                                    pressedScale = 0.94f,
+                                    shape = CircleShape,
+                                ) { actionCategory = category },
+                        )
                     }
                 }
-                Icon(
-                    Icons.Default.MoreHoriz,
-                    contentDescription = "更多",
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clickable { actionCategory = category },
-                )
             }
-        }
         }
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -2175,7 +2402,10 @@ fun LedgerCategoriesScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showCreateCategorySheet = true }
+                    .yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(18.dp),
+                    ) { showCreateCategorySheet = true }
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
@@ -2233,14 +2463,18 @@ private fun CategoryManageTab(
 ) {
     Column(
         modifier = modifier
-            .clickable(onClick = onClick)
+            .yingShiClickable(
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = onClick,
+            )
             .padding(top = 6.dp, bottom = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
             text = text,
-            color = if (selected) LedgerHeaderGreen else MaterialTheme.colorScheme.onSurface,
+            color = if (selected) LedgerHeaderGreen else LedgerMuted,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
         )

@@ -31,8 +31,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
 @Composable
@@ -177,21 +175,6 @@ fun AppContentMediaThumbnail(
         showVideoPosterImage && directPosterBitmap == null -> videoPosterPainter.state
         else -> previewState
     }
-    LaunchedEffect(mediaType, originalImageUrl, originalLoadState, originalState) {
-        if (RepositoryProvider.currentMode != RepositoryMode.FAKE) return@LaunchedEffect
-        if (mediaType != AppMediaType.IMAGE || originalImageUrl.isNullOrBlank()) return@LaunchedEffect
-        when {
-            originalLoadState == OriginalLoadState.Loading &&
-                originalState is AsyncImagePainter.State.Success -> {
-                onOriginalLoadStateChange(OriginalLoadState.Loaded)
-            }
-            (originalLoadState == OriginalLoadState.Loading ||
-                originalLoadState == OriginalLoadState.Loaded) &&
-                originalState is AsyncImagePainter.State.Error -> {
-                onOriginalLoadStateChange(OriginalLoadState.Failed)
-            }
-        }
-    }
     val showImage = directPosterBitmap != null ||
         (showVideoPosterImage || previewRequest != null || showOriginalImage) &&
         activeState !is AsyncImagePainter.State.Error
@@ -304,21 +287,18 @@ private fun canExtractPosterOnClient(url: String): Boolean {
 private fun thumbnailMemoryCacheKey(
     url: String?,
     cacheKey: String?,
-    requestSize: Int,
+    @Suppress("UNUSED_PARAMETER") requestSize: Int,
 ): String? {
-    if (!cacheKey.isNullOrBlank()) {
-        return if (requestSize >= 512) {
-            cacheKey
-        } else {
-            "$cacheKey:size:$requestSize"
-        }
-    }
+    // P1 修复：统一缓存键，不再按 requestSize 加 ":size:$size" 后缀。
+    // 此前 requestSize < 512 时键为 "cacheKey:size:256"，与 requestSize >= 512 时的 "cacheKey"
+    // 不互通，导致 density 切换（COMFORT_3=720 ↔ OVERVIEW_8=256）时内存缓存 100% miss，
+    // 所有可见缩略图需重新请求，表现为"切密度后一片空白几秒"。
+    // 统一键后，Coil 配合 precision(INEXACT) 会自动下采样已缓存的较大图，
+    // density 切换时毫秒级出图。磁盘缓存键本就与 size 无关（sharedMediaDiskCacheKey），
+    // 此处只统一内存键即可。
+    if (!cacheKey.isNullOrBlank()) return cacheKey
     if (url.isNullOrBlank()) return null
-    return if (requestSize >= 512) {
-        sharedPreviewMemoryCacheKey(url)
-    } else {
-        sharedSizedPreviewMemoryCacheKey(url, requestSize)
-    }
+    return sharedPreviewMemoryCacheKey(url)
 }
 
 @Composable

@@ -72,7 +72,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.navigation.PhotosTopDestination
 import com.example.yingshi.ui.components.YingShiAuroraBackdrop
@@ -129,6 +128,7 @@ fun PhotosRootScreen(
     onOpenCreatePost: (CreatePostRoute) -> Unit = {},
     onAddedMediaToPost: (PostDetailPlaceholderRoute) -> Unit = {},
     onSelectedTopDestinationChange: (String) -> Unit = {},
+    onPhotoSelectionShellStateChange: (PhotosRootSelectionUiState) -> Unit = { },
 ) {
     val vm: PhotosRootViewModel = viewModel()
     val dialogState by vm.dialogState.collectAsState()
@@ -138,9 +138,6 @@ fun PhotosRootScreen(
     val photoShareInFlight by vm.photoShareInFlight.collectAsState()
     val inlineVideoAutoPlayEnabled by vm.inlineVideoAutoPlayEnabled.collectAsState()
     val trashSelectionExitNonce by vm.trashSelectionExitNonce.collectAsState()
-
-    // FR-4: FAKE/REAL conditional data loading
-    val isFakeMode = RepositoryProvider.currentMode == RepositoryMode.FAKE
 
     val onTrashSelectedTypeNameChange: (String) -> Unit = { }
     val trashShowPendingCleanup: Boolean = false
@@ -154,7 +151,6 @@ fun PhotosRootScreen(
     val onTrashRestoreTargetMediaIds: (List<String>) -> Unit = { }
     val photoFeedScrollTrigger: Int = selectionParams.photoFeedScrollTrigger.toInt()
     val photoSelectionClearTrigger: Int = selectionParams.photoSelectionClearTrigger.toInt()
-    val onPhotoSelectionShellStateChange: (PhotosRootSelectionUiState) -> Unit = { }
     val photoSelectionAction: PhotoSelectionShellAction? = null
     val photoSelectionActionNonce: Int = 0
 
@@ -165,14 +161,14 @@ fun PhotosRootScreen(
         mutableStateOf(PhotoFeedSelectionState())
     }
     val coroutineScope = rememberCoroutineScope()
-    val albumSummaries = remember(isFakeMode) {
-        if (isFakeMode) FakeAlbumRepository.getAlbums() else emptyList()
+    val albumSummaries = remember(false) {
+        if (false) FakeAlbumRepository.getAlbums() else emptyList()
     }
-    val albumPosts = remember(isFakeMode) {
-        if (isFakeMode) FakeAlbumRepository.getPosts() else emptyList()
+    val albumPosts = remember(false) {
+        if (false) FakeAlbumRepository.getPosts() else emptyList()
     }
-    val feedItems = remember(isFakeMode) {
-        if (isFakeMode) FakePhotoFeedRepository.getPhotoFeed() else emptyList()
+    val feedItems = remember(false) {
+        if (false) FakePhotoFeedRepository.getPhotoFeed() else emptyList()
     }
     val initialPage = remember(selectedTopDestinationName) {
         PhotosTopDestination.valueOf(selectedTopDestinationName).ordinal
@@ -192,17 +188,12 @@ fun PhotosRootScreen(
     }
     val photoSelectionShellState = when {
         !isPhotoSelectionMode -> PhotosRootSelectionUiState()
-        RepositoryProvider.currentMode == RepositoryMode.REAL -> {
+        else -> {
             realPhotoSelectionUiState.copy(
                 isActive = true,
                 selectedCount = photoSelectionState.selectedCount,
             )
         }
-
-        else -> PhotosRootSelectionUiState(
-            isActive = true,
-            selectedCount = photoSelectionState.selectedCount,
-        )
     }
 
     fun showNotice(
@@ -310,17 +301,9 @@ fun PhotosRootScreen(
     LaunchedEffect(photoSelectionActionNonce, selectedSection, isPhotoSelectionMode) {
         if (
             photoSelectionActionNonce <= 0 ||
-            !isPhotoSelectionMode ||
-            RepositoryProvider.currentMode == RepositoryMode.REAL
+            !isPhotoSelectionMode
         ) {
             return@LaunchedEffect
-        }
-        when (photoSelectionAction) {
-            PhotoSelectionShellAction.SHARE -> shareSelectedFakeMedia()
-            PhotoSelectionShellAction.CREATE -> createPostFromFakeSelection()
-            PhotoSelectionShellAction.ADD -> addFakeSelectionToPost()
-            PhotoSelectionShellAction.DELETE -> requestFakeSelectionDelete()
-            null -> Unit
         }
     }
     DisposableEffect(Unit) {
@@ -450,7 +433,7 @@ fun PhotosRootScreen(
                             destructive = true,
                             onClick = {
                                 vm.updateDialogState(dialogState.copy(showDeleteConfirm = false))
-                                if (isFakeMode) {
+                                if (false) {
                                     val feedItems = FakePhotoFeedRepository.getPhotoFeed()
                                     val selectedMedia = feedItems.filter { selectedIds.contains(it.mediaId) }
                                     if (selectedMedia.isEmpty()) {
@@ -522,7 +505,7 @@ fun PhotosRootScreen(
                         vm.updateDialogState(dialogState.copy(addToPostDialogMessage = "没有找到可加入的媒体，请重新选择。"))
                         return@SystemMediaPostDestinationDialog
                     }
-                    if (isFakeMode) {
+                    if (false) {
                         val existingMediaIds = FakeAlbumRepository.getManagedPostMedia(postId)
                             ?.mapTo(mutableSetOf()) { it.id }
                             .orEmpty()
@@ -586,37 +569,20 @@ fun PhotosRootScreen(
                 key(backendSessionKey, PhotosTopDestination.entries[page].name) {
                     when (PhotosTopDestination.entries[page]) {
                         PhotosTopDestination.PHOTOS -> {
-                            if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                                RealPhotoFeedPage(
-                                    modifier = Modifier.fillMaxSize(),
-                                    selectionState = photoSelectionState,
-                                    onSelectionStateChange = { photoSelectionState = it },
-                                    onSelectionShellStateChange = { realPhotoSelectionUiState = it },
-                                    selectionAction = photoSelectionAction,
-                                    selectionActionNonce = photoSelectionActionNonce,
-                                    onOpenViewer = onOpenViewer,
-                                    onOpenCreatePost = onOpenCreatePost,
-                                    onAddedMediaToPost = onAddedMediaToPost,
-                                    scrollTrigger = photoFeedScrollTrigger,
-                                    inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
-                                    isActive = selectedSection == PhotosTopDestination.PHOTOS,
-                                )
-                            } else {
-                                val feedItems = FakePhotoFeedRepository.getPhotoFeed()
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    PhotoFeedScreen(
-                                        feedItems = feedItems,
-                                        modifier = Modifier.fillMaxSize(),
-                                        selectionState = photoSelectionState,
-                                        onSelectionStateChange = { photoSelectionState = it },
-                                        onOpenViewer = onOpenViewer,
-                                        scrollTrigger = photoFeedScrollTrigger,
-                                        inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
-                                        onShowNotice = { message -> showNotice(message) },
-                                        presentation = PhotoFeedPresentation.MAIN_STREAM,
-                                    )
-                                }
-                            }
+                            RealPhotoFeedPage(
+                                modifier = Modifier.fillMaxSize(),
+                                selectionState = photoSelectionState,
+                                onSelectionStateChange = { photoSelectionState = it },
+                                onSelectionShellStateChange = { realPhotoSelectionUiState = it },
+                                selectionAction = photoSelectionAction,
+                                selectionActionNonce = photoSelectionActionNonce,
+                                onOpenViewer = onOpenViewer,
+                                onOpenCreatePost = onOpenCreatePost,
+                                onAddedMediaToPost = onAddedMediaToPost,
+                                scrollTrigger = photoFeedScrollTrigger,
+                                inlineVideoAutoPlayEnabled = inlineVideoAutoPlayEnabled,
+                                isActive = selectedSection == PhotosTopDestination.PHOTOS,
+                            )
                         }
 
                         PhotosTopDestination.ALBUMS -> {
@@ -646,13 +612,18 @@ fun PhotosRootScreen(
                             TrashPageScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 selectedTypeName = trashUi.selectedTypeName,
-                                onSelectedTypeNameChange = { vm.updateTrashUiState(trashUi.copy(selectedTypeName = it)) },
+                                onSelectedTypeNameChange = { name ->
+                                    // 用 transform 原子更新，避免 stale closure 覆盖
+                                    vm.updateTrashUiState { it.copy(selectedTypeName = name, showPendingCleanup = false) }
+                                },
                                 showPendingCleanup = trashUi.showPendingCleanup,
-                                onShowPendingCleanupChange = { vm.updateTrashUiState(trashUi.copy(showPendingCleanup = it)) },
+                                onShowPendingCleanupChange = { pending ->
+                                    vm.updateTrashUiState { it.copy(showPendingCleanup = pending) }
+                                },
                                 selectionMode = trashUi.selectionMode,
                                 selectedEntryIds = trashUi.selectedEntryIds.toSet(),
                                 onSelectionStateChange = { mode, ids ->
-                                    vm.updateTrashUiState(trashUi.copy(selectionMode = mode, selectedEntryIds = ids.toList()))
+                                    vm.updateTrashUiState { it.copy(selectionMode = mode, selectedEntryIds = ids.toList()) }
                                 },
                                 onOpenTrashDetail = onOpenTrashDetail,
                                 onRestoreTargetMediaIds = onTrashRestoreTargetMediaIds,

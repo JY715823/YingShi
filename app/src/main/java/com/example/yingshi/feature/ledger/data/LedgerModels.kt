@@ -1,8 +1,6 @@
 package com.example.yingshi.feature.ledger.data
 
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 data class LedgerBook(
     val id: String,
@@ -28,7 +26,6 @@ data class LedgerCategory(
 
 data class LedgerAccount(
     val id: String,
-    val bookId: String,
     val name: String,
     val type: LedgerAccountType,
     val iconKey: String,
@@ -38,6 +35,10 @@ data class LedgerAccount(
     val includeInTotal: Boolean,
     val hidden: Boolean,
     val note: String,
+    val ownerUserId: String? = null,
+    val bankKey: String? = null,
+    val bankName: String? = null,
+    val cardNumberTail: String? = null,
 )
 
 data class LedgerTransaction(
@@ -126,12 +127,15 @@ data class LedgerCategoryDraft(
 
 data class LedgerAccountDraft(
     val id: String? = null,
-    val bookId: String,
     val name: String,
     val type: LedgerAccountType,
     val initialBalanceCents: Long,
     val includeInTotal: Boolean,
     val note: String,
+    val ownerUserId: String? = null,
+    val bankKey: String? = null,
+    val bankName: String? = null,
+    val cardNumberTail: String? = null,
 )
 
 data class LedgerBookDraft(
@@ -218,36 +222,6 @@ data class LedgerSearchFilter(
             minAmountCents == null &&
             maxAmountCents == null
     }
-
-    fun matches(transaction: LedgerTransaction): Boolean {
-        val query = keyword.trim()
-        if (query.isNotBlank()) {
-            val amountText = transaction.amountCents.toString()
-            val matched = transaction.remark.contains(query, ignoreCase = true) ||
-                transaction.category?.name?.contains(query, ignoreCase = true) == true ||
-                transaction.account?.name?.contains(query, ignoreCase = true) == true ||
-                transaction.toAccount?.name?.contains(query, ignoreCase = true) == true ||
-                amountText.contains(query)
-            if (!matched) return false
-        }
-        if (type != LedgerSearchTransactionType.ALL) {
-            val matchedType = when (type) {
-                LedgerSearchTransactionType.ALL -> true
-                LedgerSearchTransactionType.EXPENSE -> transaction.type == LedgerTransactionType.EXPENSE
-                LedgerSearchTransactionType.INCOME -> transaction.type == LedgerTransactionType.INCOME
-                LedgerSearchTransactionType.TRANSFER -> transaction.type == LedgerTransactionType.TRANSFER
-            }
-            if (!matchedType) return false
-        }
-        if (!categoryId.isNullOrBlank() && transaction.category?.id != categoryId) return false
-        if (!accountId.isNullOrBlank() && !transaction.belongsToLedgerAccount(accountId)) return false
-        val occurredDate = Instant.ofEpochMilli(transaction.occurredAtMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        if (startDate != null && occurredDate.isBefore(startDate)) return false
-        if (endDate != null && occurredDate.isAfter(endDate)) return false
-        if (minAmountCents != null && transaction.amountCents < minAmountCents) return false
-        if (maxAmountCents != null && transaction.amountCents > maxAmountCents) return false
-        return true
-    }
 }
 
 fun LedgerTransaction.belongsToLedgerAccount(accountId: String): Boolean {
@@ -331,7 +305,6 @@ fun LedgerCategoryEntity.toDomain() = LedgerCategory(
 
 fun LedgerAccountEntity.toDomain() = LedgerAccount(
     id = id,
-    bookId = bookId,
     name = name,
     type = type,
     iconKey = iconKey,
@@ -341,6 +314,10 @@ fun LedgerAccountEntity.toDomain() = LedgerAccount(
     includeInTotal = includeInTotal,
     hidden = hidden,
     note = note,
+    ownerUserId = ownerUserId,
+    bankKey = bankKey,
+    bankName = bankName,
+    cardNumberTail = cardNumberTail,
 )
 
 fun LedgerRecurringRuleEntity.toDomain(

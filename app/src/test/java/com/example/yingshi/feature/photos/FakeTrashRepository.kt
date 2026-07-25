@@ -24,6 +24,8 @@ internal class FakeTrashRepository : TrashRepository {
     var purgeResult: ApiResult<RemoteTrashItem> = ApiResult.Success(sampleRemoteTrashItem())
     var undoResult: ApiResult<RemoteTrashItem> = ApiResult.Success(sampleRemoteTrashItem())
     var pendingItemsResult: ApiResult<List<RemotePendingCleanup>> = ApiResult.Success(emptyList())
+    var lifeTrashItemsResult: ApiResult<List<RemoteTrashItem>> = ApiResult.Success(emptyList())
+    var lifePendingCleanupResult: ApiResult<List<RemotePendingCleanup>> = ApiResult.Success(emptyList())
 
     // 按 id 返回不同结果（可选，用于部分失败场景）
     var restoreResultsById: Map<String, ApiResult<RemoteTrashItem>> = emptyMap()
@@ -38,6 +40,8 @@ internal class FakeTrashRepository : TrashRepository {
     val purgeCalls = mutableListOf<String>()
     val undoCalls = mutableListOf<String>()
     var getPendingCleanupCalls = 0
+    val getLifeTrashItemsCalls = mutableListOf<String?>()
+    val getLifePendingCleanupCalls = mutableListOf<String?>()
 
     override suspend fun getTrashItems(type: String?): ApiResult<List<RemoteTrashItem>> {
         getTrashItemsCalls.add(type)
@@ -74,6 +78,16 @@ internal class FakeTrashRepository : TrashRepository {
         return pendingItemsResult
     }
 
+    override suspend fun getLifeTrashItems(category: String?): ApiResult<List<RemoteTrashItem>> {
+        getLifeTrashItemsCalls.add(category)
+        return lifeTrashItemsResult
+    }
+
+    override suspend fun getLifePendingCleanupItems(category: String?): ApiResult<List<RemotePendingCleanup>> {
+        getLifePendingCleanupCalls.add(category)
+        return lifePendingCleanupResult
+    }
+
     fun reset() {
         getTrashItemsCalls.clear()
         getTrashDetailCalls.clear()
@@ -82,5 +96,7 @@ internal class FakeTrashRepository : TrashRepository {
         purgeCalls.clear()
         undoCalls.clear()
         getPendingCleanupCalls = 0
+        getLifeTrashItemsCalls.clear()
+        getLifePendingCleanupCalls.clear()
     }
 }

@@ -9,7 +9,6 @@ import com.example.yingshi.data.model.CreatePostPayload
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.AlbumRepository
 import com.example.yingshi.data.repository.PostRepository
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -335,7 +334,6 @@ class PostComposerViewModel(
             _uiState.update { it.copy(localMessage = "请至少选择一个相册。") }
             return
         }
-        val mode = RepositoryProvider.currentMode
         val draft = CreatePostDraft(
             title = state.title.trim(),
             summary = state.summary.trim(),
@@ -347,93 +345,62 @@ class PostComposerViewModel(
 
         // 分支 1: 系统媒体非空
         if (state.selectedSystemMediaItems.isNotEmpty()) {
-            if (mode == RepositoryMode.REAL) {
-                val queuedCount = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
-                    context = context,
-                    mediaItems = state.selectedSystemMediaItems,
-                    draft = draft,
-                    additionalAppMediaIds = state.selectedAppMediaIds,
-                    additionalAppCoverMediaId = state.resolvedCoverMediaId,
-                )
-                if (queuedCount > 0) {
-                    Toast.makeText(
-                        context,
-                        if (state.selectedSystemMediaItems.all { it.isImportedToApp }) {
-                            "正在复用已导入媒体创建小相册。"
-                        } else {
-                            "已加入上传队列，完成后会创建新小相册。"
-                        },
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                    onSubmittedToBackground()
-                } else {
-                    _uiState.update { it.copy(localMessage = "当前媒体已在目标位置或暂时不可处理，请刷新后重试。") }
-                }
+            val queuedCount = LocalSystemMediaBridgeRepository.enqueueCreatePostUpload(
+                context = context,
+                mediaItems = state.selectedSystemMediaItems,
+                draft = draft,
+                additionalAppMediaIds = state.selectedAppMediaIds,
+                additionalAppCoverMediaId = state.resolvedCoverMediaId,
+            )
+            if (queuedCount > 0) {
+                Toast.makeText(
+                    context,
+                    if (state.selectedSystemMediaItems.all { it.isImportedToApp }) {
+                        "正在复用已导入媒体创建小相册。"
+                    } else {
+                        "已加入上传队列，完成后会创建新小相册。"
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
+                onSubmittedToBackground()
             } else {
-                val createdPost = LocalSystemMediaBridgeRepository.createPostFromSystemMediaDraft(
-                    draft = draft,
-                    mediaItems = state.selectedSystemMediaItems,
-                    additionalAppMediaItems = state.selectedAppMediaIds.mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem),
-                )
-                if (createdPost == null) {
-                    _uiState.update { it.copy(localMessage = "本地新小相册创建失败，请稍后重试。") }
-                } else {
-                    onSuccess(FakeAlbumRepository.toPostDetailRoute(createdPost))
-                }
+                _uiState.update { it.copy(localMessage = "当前媒体已在目标位置或暂时不可处理，请刷新后重试。") }
             }
             return
         }
 
         // 分支 2: App 媒体非空
         if (state.selectedAppMediaItems.isNotEmpty()) {
-            if (mode == RepositoryMode.REAL) {
-                viewModelScope.launch {
-                    _uiState.update { it.copy(isSubmitting = true) }
-                    val result = postRepository.createPost(
-                        CreatePostPayload(
-                            title = draft.title.ifBlank { "新小相册" },
-                            summary = draft.summary,
-                            participantUserIds = draft.participantUserIds,
-                            displayTimeMillis = draft.displayTimeMillis,
-                            albumId = draft.requireAlbumId(),
-                            initialMediaIds = state.selectedAppMediaIds,
-                            coverMediaId = state.resolvedCoverMediaId,
-                        ),
-                    )
-                    _uiState.update { it.copy(isSubmitting = false) }
-                    when (result) {
-                        is ApiResult.Success -> {
-                            notifyRealBackendPostChanged(postIds = setOf(result.data.postId))
-                            onSuccess(
-                                result.data.toPostDetailPlaceholderRoute(
-                                    selectedAlbumId = state.selectedAlbumIds.first(),
-                                ).copy(
-                                    highlightMediaIds = state.selectedAppMediaIds.distinct(),
-                                    focusMediaId = state.selectedAppMediaIds.firstOrNull(),
-                                ),
-                            )
-                        }
-                        is ApiResult.Error -> {
-                            _uiState.update { it.copy(localMessage = result.toBackendUiMessage("创建小相册失败，请稍后重试。")) }
-                        }
-                        ApiResult.Loading -> Unit
-                    }
-                }
-            } else {
-                val selectedItems = state.selectedAppMediaIds.mapNotNull(FakePhotoFeedRepository::findPhotoFeedItem)
-                val createdPost = FakeAlbumRepository.createConfiguredLocalPostFromPhotoFeedItems(
-                    draft = draft,
-                    mediaItems = selectedItems,
+            viewModelScope.launch {
+                _uiState.update { it.copy(isSubmitting = true) }
+                val result = postRepository.createPost(
+                    CreatePostPayload(
+                        title = draft.title.ifBlank { "新小相册" },
+                        summary = draft.summary,
+                        participantUserIds = draft.participantUserIds,
+                        displayTimeMillis = draft.displayTimeMillis,
+                        albumId = draft.requireAlbumId(),
+                        initialMediaIds = state.selectedAppMediaIds,
+                        coverMediaId = state.resolvedCoverMediaId,
+                    ),
                 )
-                if (createdPost == null) {
-                    _uiState.update { it.copy(localMessage = "本地新小相册创建失败，请稍后重试。") }
-                } else {
-                    onSuccess(
-                        FakeAlbumRepository.toPostDetailRoute(createdPost).copy(
-                            highlightMediaIds = state.selectedAppMediaIds.distinct(),
-                            focusMediaId = state.selectedAppMediaIds.firstOrNull(),
-                        ),
-                    )
+                _uiState.update { it.copy(isSubmitting = false) }
+                when (result) {
+                    is ApiResult.Success -> {
+                        notifyRealBackendPostChanged(postIds = setOf(result.data.postId))
+                        onSuccess(
+                            result.data.toPostDetailPlaceholderRoute(
+                                selectedAlbumId = state.selectedAlbumIds.first(),
+                            ).copy(
+                                highlightMediaIds = state.selectedAppMediaIds.distinct(),
+                                focusMediaId = state.selectedAppMediaIds.firstOrNull(),
+                            ),
+                        )
+                    }
+                    is ApiResult.Error -> {
+                        _uiState.update { it.copy(localMessage = result.toBackendUiMessage("创建小相册失败，请稍后重试。")) }
+                    }
+                    ApiResult.Loading -> Unit
                 }
             }
             return
@@ -455,9 +422,7 @@ class PostComposerViewModel(
             _uiState.update { it.copy(isSubmitting = false) }
             when (result) {
                 is ApiResult.Success -> {
-                    if (mode == RepositoryMode.REAL) {
-                        notifyRealBackendPostChanged(postIds = setOf(result.data.postId))
-                    }
+                    notifyRealBackendPostChanged(postIds = setOf(result.data.postId))
                     onSuccess(
                         result.data.toPostDetailPlaceholderRoute(
                             selectedAlbumId = state.selectedAlbumIds.first(),

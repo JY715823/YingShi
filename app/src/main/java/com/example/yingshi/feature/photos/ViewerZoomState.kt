@@ -19,7 +19,9 @@ internal const val MaxViewerScale = 6f
 internal const val MaxViewerElasticScale = 9f
 internal const val ViewerDoubleTapScale = 2.5f
 internal const val ViewerZoomResetThreshold = 1.02f
-internal const val ViewerFastDoubleTapWindowMillis = 260L
+// 单击/双击判定窗口. 此前 260ms 偏长, 用户感觉单击响应迟钝.
+// 降到 200ms (Android ViewConfiguration.doubleTapTimeout = 200ms), 单击快 60ms, 双击仍能识别.
+internal const val ViewerFastDoubleTapWindowMillis = 200L
 
 internal class ViewerZoomState {
     var scale by mutableStateOf(MinViewerScale)

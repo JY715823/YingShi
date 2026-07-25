@@ -16,7 +16,7 @@ import com.example.yingshi.data.model.RemotePostSummary
 import com.example.yingshi.data.model.UpdateAlbumPayload
 import com.example.yingshi.data.model.toCommentListState
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.AlbumRepository
 import com.example.yingshi.data.repository.AuthRepository
@@ -99,114 +99,135 @@ class AlbumPageRealViewModel(
         refresh()
     }
 
+    /**
+     * 修复：refresh 完成后再 markRefreshed，避免 refresh 期间服务端版本又涨
+     * 导致下次 poll 又 stale=true，形成闪烁循环。
+     *
+     * 根因 C 修复: 使用 markRefreshedFresh (suspend) 先拉取最新服务端版本再同步 local,
+     * 彻底避免用陈旧快照导致下次 poll 又 stale=true 的循环。
+     */
+    fun refreshAndMarkRefreshed() {
+        refreshJob?.cancel()
+        val requestVersion = ++refreshVersion
+        refreshJob = viewModelScope.launch {
+            refreshInternal(requestVersion)
+            // refresh 完成后标记已刷新，先拉最新 remote 再同步 local
+            SyncVersionTracker.markRefreshedFresh(SyncModule.ALBUMS)
+        }
+    }
+
     fun refresh() {
         refreshJob?.cancel()
         val requestVersion = ++refreshVersion
         refreshJob = viewModelScope.launch {
-            val cachedDirectory = withContext(Dispatchers.IO) { readCachedDirectory() }
-            if (cachedDirectory != null && _uiState.value.albums.isEmpty()) {
-                applyCachedDirectory(cachedDirectory)
-            }
-            if (!AuthSessionManager.isLoggedIn) {
-                if (cachedDirectory != null && OfflineAccessManager.state.isReadOnly) {
-                    applyCachedDirectory(
-                        cachedDirectory = cachedDirectory,
-                        statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
-                        isOfflineReadOnly = true,
-                    )
-                    return@launch
-                }
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
-                    force = false,
-                    reason = "real_album_refresh",
-                )
-                if (!loginOutcome.success) {
-                    if (requestVersion != refreshVersion) return@launch
-                    _uiState.value = AlbumPageRealUiState(
-                        tokenMissing = true,
-                        errorMessage = loginOutcome.message.ifBlank {
-                            "需要先完成登录，请检查连接设置后再打开相册。"
-                        },
-                    )
-                    return@launch
-                }
-            }
-
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    isOfflineReadOnly = false,
-                    tokenMissing = false,
-                    errorMessage = null,
-                    postsErrorMessage = null,
-                )
-            }
-            when (val result = albumRepository.getAlbums()) {
-                is ApiResult.Success -> {
-                    if (requestVersion != refreshVersion) return@launch
-                    val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
-                    val cachedPreviewMediaByPostId = cachedDirectory.cachedPreviewMediaByPostId()
-                    val persistedAlbums = mergeRemoteAlbumsWithPendingOverrides(result.data)
-                    val albums = persistedAlbums.map { album -> album.toAlbumSummaryUiModel() }
-                    val selectedAlbumId = _uiState.value.selectedAlbumId
-                        ?.takeIf { currentId -> albums.any { it.id == currentId } }
-                        ?: albums.firstOrNull()?.id
-                    OfflineAccessManager.clear()
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isPostsLoading = false,
-                        isPostsRefreshing = false,
-                        isOfflineReadOnly = false,
-                        albums = albums,
-                        selectedAlbumId = selectedAlbumId,
-                        posts = selectedAlbumId?.let { resolvedAlbumId ->
-                            cachedAlbumPostCards(resolvedAlbumId)
-                                ?: cachedPostsByAlbumId[resolvedAlbumId]
-                                    .orEmpty()
-                                    .map { post ->
-                                        post.toAlbumPostCardUiModelWithPreviewCache(
-                                            selectedAlbumId = resolvedAlbumId,
-                                            previewMediaByPostId = cachedPreviewMediaByPostId,
-                                        )
-                                    }
-                        }.orEmpty(),
-                        statusMessage = _uiState.value.statusMessage.clearRecoveredNetworkStatus(),
-                    )
-                    withContext(Dispatchers.IO) {
-                        persistAlbumDirectory(
-                            albums = persistedAlbums,
-                            postsByAlbumId = cachedPostsByAlbumId,
-                        )
-                    }
-                    if (selectedAlbumId != null) {
-                        loadAlbumPosts(
-                            albumId = selectedAlbumId,
-                            showBlockingIndicator = !cachedPostsByAlbumId.containsKey(selectedAlbumId),
-                        )
-                    }
-                }
-                is ApiResult.Error -> {
-                    if (requestVersion != refreshVersion) return@launch
-                    if (cachedDirectory != null && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
-                        val message = result.offlineReadOnlyMessage()
-                        OfflineAccessManager.enterReadOnly(message)
-                        applyCachedDirectory(
-                            cachedDirectory = cachedDirectory,
-                            statusMessage = message,
-                            isOfflineReadOnly = true,
-                        )
-                    } else {
-                        _uiState.value = AlbumPageRealUiState(
-                            isLoading = false,
-                            errorMessage = result.toBackendUiMessage("读取相册失败。"),
-                        )
-                    }
-                }
-                ApiResult.Loading -> Unit
-            }
+            refreshInternal(requestVersion)
             if (refreshVersion == requestVersion) {
                 refreshJob = null
             }
+        }
+    }
+
+    private suspend fun refreshInternal(requestVersion: Int) {
+        val cachedDirectory = withContext(Dispatchers.IO) { readCachedDirectory() }
+        if (cachedDirectory != null && _uiState.value.albums.isEmpty()) {
+            applyCachedDirectory(cachedDirectory)
+        }
+        if (!AuthSessionManager.isLoggedIn) {
+            if (cachedDirectory != null && OfflineAccessManager.state.isReadOnly) {
+                applyCachedDirectory(
+                    cachedDirectory = cachedDirectory,
+                    statusMessage = OfflineAccessManager.state.message ?: OfflineReadOnlyDefaultMessage,
+                    isOfflineReadOnly = true,
+                )
+                return
+            }
+            val loginOutcome = BackendSessionProbe.probeSessionState(
+                force = false,
+                reason = "real_album_refresh",
+            )
+            if (!loginOutcome.success) {
+                if (requestVersion != refreshVersion) return
+                _uiState.value = AlbumPageRealUiState(
+                    tokenMissing = true,
+                    errorMessage = loginOutcome.message.ifBlank {
+                        "需要先完成登录，请检查连接设置后再打开相册。"
+                    },
+                )
+                return
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                isLoading = true,
+                isOfflineReadOnly = false,
+                tokenMissing = false,
+                errorMessage = null,
+                postsErrorMessage = null,
+            )
+        }
+        when (val result = albumRepository.getAlbums()) {
+            is ApiResult.Success -> {
+                if (requestVersion != refreshVersion) return
+                val cachedPostsByAlbumId = cachedDirectory?.postsByAlbumId.orEmpty()
+                val cachedPreviewMediaByPostId = cachedDirectory.cachedPreviewMediaByPostId()
+                val persistedAlbums = mergeRemoteAlbumsWithPendingOverrides(result.data)
+                val albums = persistedAlbums.map { album -> album.toAlbumSummaryUiModel() }
+                val selectedAlbumId = _uiState.value.selectedAlbumId
+                    ?.takeIf { currentId -> albums.any { it.id == currentId } }
+                    ?: albums.firstOrNull()?.id
+                OfflineAccessManager.clear()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isPostsLoading = false,
+                    isPostsRefreshing = false,
+                    isOfflineReadOnly = false,
+                    albums = albums,
+                    selectedAlbumId = selectedAlbumId,
+                    posts = selectedAlbumId?.let { resolvedAlbumId ->
+                        cachedAlbumPostCards(resolvedAlbumId)
+                            ?: cachedPostsByAlbumId[resolvedAlbumId]
+                                .orEmpty()
+                                .map { post ->
+                                    post.toAlbumPostCardUiModelWithPreviewCache(
+                                        selectedAlbumId = resolvedAlbumId,
+                                        previewMediaByPostId = cachedPreviewMediaByPostId,
+                                    )
+                                }
+                    }.orEmpty(),
+                    statusMessage = _uiState.value.statusMessage.clearRecoveredNetworkStatus(),
+                )
+                withContext(Dispatchers.IO) {
+                    persistAlbumDirectory(
+                        albums = persistedAlbums,
+                        postsByAlbumId = cachedPostsByAlbumId,
+                    )
+                }
+                if (selectedAlbumId != null) {
+                    loadAlbumPosts(
+                        albumId = selectedAlbumId,
+                        showBlockingIndicator = !cachedPostsByAlbumId.containsKey(selectedAlbumId),
+                    )
+                }
+            }
+            is ApiResult.Error -> {
+                if (requestVersion != refreshVersion) return
+                if (cachedDirectory != null && (OfflineAccessManager.state.isReadOnly || result.shouldFallbackToReadCache())) {
+                    val message = result.offlineReadOnlyMessage()
+                    OfflineAccessManager.enterReadOnly(message)
+                    applyCachedDirectory(
+                        cachedDirectory = cachedDirectory,
+                        statusMessage = message,
+                        isOfflineReadOnly = true,
+                    )
+                } else {
+                    _uiState.value = AlbumPageRealUiState(
+                        isLoading = false,
+                        errorMessage = result.toBackendUiMessage("读取相册失败。"),
+                    )
+                }
+            }
+            ApiResult.Loading -> Unit
         }
     }
 
@@ -996,7 +1017,7 @@ class PostDetailRealViewModel(
                 }
             }
             if (!AuthSessionManager.isLoggedIn) {
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                val loginOutcome = BackendSessionProbe.probeSessionState(
                     force = false,
                     reason = "real_post_detail_refresh",
                 )

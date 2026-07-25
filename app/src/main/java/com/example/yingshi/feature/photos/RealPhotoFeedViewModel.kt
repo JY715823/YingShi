@@ -9,7 +9,7 @@ import com.example.yingshi.data.cache.OfflineAccessManager
 import com.example.yingshi.data.cache.OfflineReadOnlyDefaultMessage
 import com.example.yingshi.data.model.RemoteMedia
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.MediaRepository
 import com.example.yingshi.data.repository.RepositoryProvider
@@ -83,7 +83,7 @@ class RealPhotoFeedViewModel(
                     completion.complete(false)
                     return@launch
                 }
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                val loginOutcome = BackendSessionProbe.probeSessionState(
                     force = false,
                     reason = "real_photo_feed_refresh",
                 )

@@ -58,51 +58,38 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger_books WHERE id = :bookId LIMIT 1")
     suspend fun getBook(bookId: String): LedgerBookEntity?
 
-    @Query("SELECT * FROM ledger_books WHERE isDeleted = 0 AND lower(trim(name)) = lower(trim(:name)) LIMIT 1")
-    suspend fun findBookByName(name: String): LedgerBookEntity?
-
-    @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId AND hidden = 0 ORDER BY type ASC, sortOrder ASC")
+    @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId AND hidden = 0 AND deletedAtMillis IS NULL ORDER BY type ASC, sortOrder ASC")
     fun observeVisibleCategories(bookId: String): Flow<List<LedgerCategoryEntity>>
 
-    @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId ORDER BY type ASC, sortOrder ASC")
+    @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId AND deletedAtMillis IS NULL ORDER BY type ASC, sortOrder ASC")
     fun observeAllCategories(bookId: String): Flow<List<LedgerCategoryEntity>>
-
-    @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId AND type = :type AND hidden = 0 ORDER BY sortOrder ASC")
-    fun observeCategoriesByType(bookId: String, type: LedgerCategoryType): Flow<List<LedgerCategoryEntity>>
 
     @Query("SELECT * FROM ledger_categories WHERE id = :categoryId LIMIT 1")
     suspend fun getCategory(categoryId: String): LedgerCategoryEntity?
 
-    @Query("SELECT * FROM ledger_categories WHERE bookId = :bookId AND type = :type AND name = :name LIMIT 1")
-    suspend fun findCategoryByName(bookId: String, type: LedgerCategoryType, name: String): LedgerCategoryEntity?
-
-    @Query("SELECT * FROM ledger_accounts WHERE bookId = :bookId AND hidden = 0 ORDER BY sortOrder ASC")
-    fun observeVisibleAccounts(bookId: String): Flow<List<LedgerAccountEntity>>
-
     @Query(
         """
-        SELECT a.*
-        FROM ledger_accounts a
-        INNER JOIN ledger_books b ON b.id = a.bookId
-        WHERE b.isDeleted = 0 AND a.hidden = 0
-        ORDER BY a.bookId ASC, a.sortOrder ASC
+        SELECT * FROM ledger_accounts
+        WHERE hidden = 0 AND deletedAtMillis IS NULL
+        ORDER BY sortOrder ASC
         """,
     )
     fun observeVisibleAccountsAcrossBooks(): Flow<List<LedgerAccountEntity>>
 
-    @Query("SELECT * FROM ledger_accounts WHERE bookId = :bookId ORDER BY sortOrder ASC")
-    fun observeAllAccounts(bookId: String): Flow<List<LedgerAccountEntity>>
+    @Query("SELECT * FROM ledger_accounts WHERE deletedAtMillis IS NULL ORDER BY sortOrder ASC")
+    suspend fun getAllAccountsGlobally(): List<LedgerAccountEntity>
+
+    @Query("SELECT * FROM ledger_accounts WHERE deletedAtMillis IS NULL ORDER BY sortOrder ASC")
+    fun observeAllAccountsGlobally(): Flow<List<LedgerAccountEntity>>
 
     @Query("SELECT * FROM ledger_accounts WHERE id = :accountId LIMIT 1")
     suspend fun getAccount(accountId: String): LedgerAccountEntity?
-
-    @Query("SELECT * FROM ledger_accounts WHERE bookId = :bookId AND name = :name LIMIT 1")
-    suspend fun findAccountByName(bookId: String, name: String): LedgerAccountEntity?
 
     @Query(
         """
         SELECT * FROM ledger_recurring_rules
         WHERE bookId = :bookId
+        AND deletedAtMillis IS NULL
         ORDER BY enabled DESC, nextOccurrenceAtMillis ASC, createdAtMillis ASC
         """,
     )
@@ -118,6 +105,7 @@ interface LedgerDao {
         INNER JOIN ledger_books b ON b.id = r.bookId
         WHERE b.isDeleted = 0
         AND r.enabled = 1
+        AND r.deletedAtMillis IS NULL
         AND r.nextOccurrenceAtMillis <= :nowMillis
         AND (r.endAtMillis IS NULL OR r.nextOccurrenceAtMillis <= r.endAtMillis)
         ORDER BY r.nextOccurrenceAtMillis ASC
@@ -181,7 +169,7 @@ interface LedgerDao {
     @Query("SELECT * FROM ledger_transactions WHERE id = :transactionId LIMIT 1")
     suspend fun getTransaction(transactionId: String): LedgerTransactionEntity?
 
-    @Query("SELECT COUNT(*) FROM ledger_transactions WHERE bookId = :bookId")
+    @Query("SELECT COUNT(*) FROM ledger_transactions WHERE bookId = :bookId AND deletedAtMillis IS NULL")
     suspend fun countTransactionsByBook(bookId: String): Int
 
     @Query(
@@ -243,6 +231,7 @@ interface LedgerDao {
         AND period = :period
         AND startMillis = :startMillis
         AND endMillis = :endMillis
+        AND deletedAtMillis IS NULL
         LIMIT 1
         """,
     )
@@ -253,16 +242,16 @@ interface LedgerDao {
         endMillis: Long,
     ): Flow<LedgerBudgetEntity?>
 
-    @Query("SELECT * FROM ledger_budgets WHERE id = :budgetId LIMIT 1")
+    @Query("SELECT * FROM ledger_budgets WHERE id = :budgetId AND deletedAtMillis IS NULL LIMIT 1")
     suspend fun getBudget(budgetId: String): LedgerBudgetEntity?
 
-    @Query("SELECT * FROM ledger_category_budgets WHERE budgetId = :budgetId")
+    @Query("SELECT * FROM ledger_category_budgets WHERE budgetId = :budgetId AND deletedAtMillis IS NULL")
     fun observeCategoryBudgets(budgetId: String): Flow<List<LedgerCategoryBudgetEntity>>
 
-    @Query("SELECT * FROM ledger_category_budgets WHERE budgetId = :budgetId")
+    @Query("SELECT * FROM ledger_category_budgets WHERE budgetId = :budgetId AND deletedAtMillis IS NULL")
     suspend fun getCategoryBudgets(budgetId: String): List<LedgerCategoryBudgetEntity>
 
-    @Query("SELECT COALESCE(SUM(amountCents), 0) FROM ledger_category_budgets WHERE budgetId = :budgetId")
+    @Query("SELECT COALESCE(SUM(amountCents), 0) FROM ledger_category_budgets WHERE budgetId = :budgetId AND deletedAtMillis IS NULL")
     suspend fun categoryBudgetTotal(budgetId: String): Long
 
     @Query("SELECT * FROM ledger_deleted_items WHERE bookId = :bookId ORDER BY deletedAtMillis DESC")
@@ -439,6 +428,8 @@ interface LedgerDao {
                 amountCents = transaction.amountCents,
                 deletedAtMillis = deletedAtMillis,
                 expiresAtMillis = expiresAtMillis,
+                createdAtMillis = deletedAtMillis,
+                updatedAtMillis = deletedAtMillis,
             ),
         )
     }
@@ -482,32 +473,6 @@ interface LedgerDao {
         }
     }
 
-    @Transaction
-    suspend fun replaceAllData(snapshot: LedgerLocalSnapshot) {
-        clearRecurringOccurrences()
-        clearRecurringRules()
-        clearDeletedItems()
-        clearCategoryBudgets()
-        clearBudgets()
-        clearTransactions()
-        clearAccounts()
-        clearCategories()
-        clearBooks()
-        if (snapshot.books.isNotEmpty()) insertBooks(snapshot.books)
-        if (snapshot.categories.isNotEmpty()) insertCategories(snapshot.categories)
-        if (snapshot.accounts.isNotEmpty()) insertAccounts(snapshot.accounts)
-        if (snapshot.transactions.isNotEmpty()) insertTransactionsRaw(snapshot.transactions)
-        if (snapshot.budgets.isNotEmpty()) insertBudgets(snapshot.budgets)
-        if (snapshot.categoryBudgets.isNotEmpty()) insertCategoryBudgets(snapshot.categoryBudgets)
-        if (snapshot.deletedItems.isNotEmpty()) insertDeletedItems(snapshot.deletedItems)
-        if (snapshot.recurringRules.isNotEmpty()) {
-            snapshot.recurringRules.forEach { insertRecurringRule(it) }
-        }
-        if (snapshot.recurringOccurrences.isNotEmpty()) {
-            snapshot.recurringOccurrences.forEach { insertRecurringOccurrence(it) }
-        }
-    }
-
     // ── Changelog operations ──────────────────────────────────────────
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -521,6 +486,34 @@ interface LedgerDao {
 
     @Query("DELETE FROM ledger_sync_changelog")
     suspend fun clearChangelog()
+
+    @Query("SELECT COUNT(*) FROM ledger_sync_changelog")
+    suspend fun countChangelogEntries(): Int
+
+    @Query(
+        """
+        DELETE FROM ledger_sync_changelog
+        WHERE id IN (
+            SELECT id FROM ledger_sync_changelog
+            WHERE isDelete = 0
+            ORDER BY changedAtMillis ASC
+            LIMIT :count
+        )
+        """,
+    )
+    suspend fun deleteOldestNonDeleteChangelog(count: Int)
+
+    @Query(
+        """
+        DELETE FROM ledger_sync_changelog
+        WHERE id IN (
+            SELECT id FROM ledger_sync_changelog
+            ORDER BY changedAtMillis ASC
+            LIMIT :count
+        )
+        """,
+    )
+    suspend fun deleteOldestChangelog(count: Int)
 
     // ── Upsert operations for sync (no balance tracking) ──────────────
 
@@ -578,4 +571,31 @@ interface LedgerDao {
 
     @Query("DELETE FROM ledger_recurring_occurrences WHERE id = :id")
     suspend fun hardDeleteRecurringOccurrence(id: String)
+
+    // ── Soft-delete operations for sync (FR-3) ─────────────────────────
+    // Sets deletedAtMillis + updatedAtMillis so business queries filter the row out
+    // and the next outbound sync propagates the update. Named "...ForSync" to
+    // distinguish from business-logic soft deletes (e.g. softDeleteTransaction which
+    // also reverts account balance and creates a DeletedItem).
+
+    @Query("UPDATE ledger_categories SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteCategory(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_accounts SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteAccount(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_transactions SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteTransactionForSync(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_budgets SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteBudget(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_category_budgets SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteCategoryBudget(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_recurring_rules SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteRecurringRule(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
+
+    @Query("UPDATE ledger_recurring_occurrences SET deletedAtMillis = :deletedAtMillis, updatedAtMillis = :updatedAtMillis WHERE id = :id")
+    suspend fun softDeleteRecurringOccurrence(id: String, deletedAtMillis: Long, updatedAtMillis: Long)
 }

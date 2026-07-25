@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import java.text.SimpleDateFormat
@@ -922,23 +921,6 @@ internal suspend fun loadCreatePostUiState(
     val defaultDisplayTime = initialItems.maxOfOrNull { it.displayTimeMillis } ?: System.currentTimeMillis()
     val defaultCoverId = initialItems.firstOrNull()?.id
     val defaultParticipantUserIds = defaultCurrentCollaboratorUserIds().toList()
-    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
-        val albums = FakeAlbumRepository.getAlbums()
-        val defaultAlbumId = route.initialAlbumId?.takeIf { initialId -> albums.any { it.id == initialId } }
-            ?: albums.firstOrNull()?.id
-        return CreatePostUiState(
-            isLoading = false,
-            albums = albums,
-            title = "",
-            summary = "",
-            displayTimeMillis = defaultDisplayTime,
-            selectedAlbumIds = defaultAlbumId?.let(::listOf).orEmpty(),
-            participantUserIds = defaultParticipantUserIds,
-            initialMediaItems = initialItems,
-            selectedCoverSourceMediaId = defaultCoverId,
-        )
-    }
-
     if (!AuthSessionManager.isLoggedIn) {
         return CreatePostUiState(
             isLoading = false,
@@ -986,9 +968,6 @@ internal suspend fun loadCreatePostUiState(
 }
 
 internal suspend fun loadCreatePostAppMediaItems(): List<CreatePostAppMediaItem> {
-    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
-        return FakePhotoFeedRepository.getPhotoFeed().map(PhotoFeedItem::toCreatePostAppMediaItem)
-    }
     if (!AuthSessionManager.isLoggedIn) return emptyList()
     return when (val result = RepositoryProvider.mediaRepository.getMediaFeedPage(pageSize = 80)) {
         is ApiResult.Success -> result.data.items.map { it.toPhotoFeedItem().toCreatePostAppMediaItem() }

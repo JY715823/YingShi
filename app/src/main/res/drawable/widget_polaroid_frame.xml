@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  拍立得相纸背景（FR-2 布局重构）
+  白底 + 阴影 + 高光 + 描边
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 外阴影 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_polaroid_shadow" />
+            <corners android:radius="6dp" />
+            <padding
+                android:left="1dp"
+                android:top="1dp"
+                android:right="1dp"
+                android:bottom="2dp" />
+        </shape>
+    </item>
+    <!-- 白底 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_raised_surface" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+    <!-- 内高光（顶部） -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="@color/widget_polaroid_highlight_top"
+                android:endColor="@color/widget_polaroid_highlight_bottom"
+                android:angle="270" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+    <!-- 描边 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="0.5dp"
+                android:color="@color/widget_polaroid_stroke" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+</layer-list>

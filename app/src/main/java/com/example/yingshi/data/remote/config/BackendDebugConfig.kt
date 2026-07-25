@@ -51,6 +51,9 @@ object BackendDebugConfig {
     fun currentBaseUrl(): String = normalizeBaseUrl(settings.baseUrl)
 
     fun updateBaseUrl(rawBaseUrl: String) {
+        if (BuildConfig.BUILD_TYPE == "release") {
+            return
+        }
         val nextValue = normalizeBaseUrl(rawBaseUrl)
         if (nextValue == settings.baseUrl) {
             return

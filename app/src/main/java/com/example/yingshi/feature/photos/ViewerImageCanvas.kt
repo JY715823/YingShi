@@ -28,6 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,17 +54,14 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.components.yingShiMediaEnterMotion
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlin.math.min
 
-// Round 8 第十八轮: 阈值从 2.2f 提高到 3.0f.
-// 手机截图典型比例约 2.22 (1080x2400), 旧阈值会误判截图为长图, 导致非完全沉浸态需下滑才能看全.
-// 真正的长图 (聊天记录拼接/长截图) 比例通常 >= 3.0, 提高阈值可让截图正常等比缩放铺满.
-internal const val LongImageHeightWidthRatioThreshold = 3.0f
+// A 2:1 cutoff catches long screenshots/receipts while ordinary 4:5 and
+// 9:16 portraits remain in the regular viewer path.
+internal const val LongImageHeightWidthRatioThreshold = 2.0f
 
 internal fun Modifier.viewerZoomGesture(
     zoomState: ViewerZoomState,
@@ -121,48 +122,68 @@ internal fun Modifier.viewerSingleTapGesture(
 ): Modifier {
     if (!enabled) return this
     return pointerInput(onTap, onDoubleTap) {
-        var lastTapUptimeMillis = 0L
-        var lastTapPosition: Offset? = null
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val start = down.position
-            var pointerCountExceeded = false
-            var moved = false
-            var consumed = down.isConsumed
-            var upPosition = start
-            while (true) {
-                val event = awaitPointerEvent()
-                val pressed = event.changes.filter { it.pressed }
-                if (pressed.size > 1) pointerCountExceeded = true
-                event.changes.forEach { change ->
-                    if (change.isConsumed) consumed = true
-                    if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
-                        moved = true
-                    }
-                    if (change.id == down.id && !change.pressed) {
-                        upPosition = change.position
-                    }
-                }
-                if (pressed.isEmpty()) {
-                    if (!pointerCountExceeded && !moved && !consumed) {
-                        val now = SystemClock.uptimeMillis()
-                        val previousTapPosition = lastTapPosition
-                        val doubleTapDistance = viewConfiguration.touchSlop * 8f
-                        val isDoubleTap = onDoubleTap != null &&
-                            previousTapPosition != null &&
-                            now - lastTapUptimeMillis <= ViewerFastDoubleTapWindowMillis &&
-                            (upPosition - previousTapPosition).getDistance() <= doubleTapDistance
-                        if (isDoubleTap) {
-                            lastTapUptimeMillis = 0L
-                            lastTapPosition = null
-                            onDoubleTap?.invoke(upPosition, size)
-                        } else {
-                            lastTapUptimeMillis = now
-                            lastTapPosition = upPosition
-                            onTap(upPosition, size)
+        // 用 coroutineScope 包裹, 以便 launch 延迟触发 onTap.
+        // 此前在每次抬手时立即触发 onTap, 导致双击会先触发单击(收起信息)再触发双击(缩放).
+        // 修复: 抬手后延迟 ViewerFastDoubleTapWindowMillis 触发 onTap, 若期间出现第二次 tap 则取消并触发 onDoubleTap.
+        coroutineScope {
+            var pendingTapJob: Job? = null
+            var lastTapUptimeMillis = 0L
+            var lastTapPosition: Offset? = null
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val start = down.position
+                var pointerCountExceeded = false
+                var moved = false
+                var consumed = down.isConsumed
+                var upPosition = start
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val pressed = event.changes.filter { it.pressed }
+                    if (pressed.size > 1) pointerCountExceeded = true
+                    event.changes.forEach { change ->
+                        if (change.isConsumed) consumed = true
+                        if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
+                            moved = true
+                        }
+                        if (change.id == down.id && !change.pressed) {
+                            upPosition = change.position
                         }
                     }
-                    break
+                    // 滑动/多指时取消 pending tap, 避免误触发单击.
+                    if (moved || pointerCountExceeded) {
+                        pendingTapJob?.cancel()
+                        pendingTapJob = null
+                        lastTapUptimeMillis = 0L
+                        lastTapPosition = null
+                    }
+                    if (pressed.isEmpty()) {
+                        if (!pointerCountExceeded && !moved && !consumed) {
+                            val now = SystemClock.uptimeMillis()
+                            val previousTapPosition = lastTapPosition
+                            val doubleTapDistance = viewConfiguration.touchSlop * 8f
+                            val isDoubleTap = onDoubleTap != null &&
+                                previousTapPosition != null &&
+                                now - lastTapUptimeMillis <= ViewerFastDoubleTapWindowMillis &&
+                                (upPosition - previousTapPosition).getDistance() <= doubleTapDistance
+                            if (isDoubleTap) {
+                                pendingTapJob?.cancel()
+                                lastTapUptimeMillis = 0L
+                                lastTapPosition = null
+                                onDoubleTap?.invoke(upPosition, size)
+                            } else {
+                                pendingTapJob?.cancel()
+                                lastTapUptimeMillis = now
+                                lastTapPosition = upPosition
+                                val tapPosition = upPosition
+                                val tapSize = size
+                                pendingTapJob = launch {
+                                    delay(ViewerFastDoubleTapWindowMillis)
+                                    onTap(tapPosition, tapSize)
+                                }
+                            }
+                        }
+                        break
+                    }
                 }
             }
         }
@@ -547,19 +568,6 @@ internal fun ViewerImageCanvas(
         originalLoadState == OriginalLoadState.Failed -> ViewerImageFailureReason.ORIGINAL_FAILED
         previewRequest != null && previewState is AsyncImagePainter.State.Error -> ViewerImageFailureReason.PREVIEW_FAILED
         else -> ViewerImageFailureReason.NONE
-    }
-
-    LaunchedEffect(media.mediaId, originalUrl, originalLoadState, originalState) {
-        if (RepositoryProvider.currentMode != RepositoryMode.FAKE) return@LaunchedEffect
-        when {
-            originalLoadState == OriginalLoadState.Loading &&
-                originalState is AsyncImagePainter.State.Success -> {
-                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Loaded)
-            }
-            shouldRequestOriginal && originalState is AsyncImagePainter.State.Error -> {
-                onOriginalLoadStateChange(media.mediaId, OriginalLoadState.Failed)
-            }
-        }
     }
 
     Box(

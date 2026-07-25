@@ -11,7 +11,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.yingshi.data.remote.auth.AuthSessionManager
 import com.example.yingshi.data.remote.result.ApiResult
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.messaging.FirebaseMessaging
@@ -37,9 +36,6 @@ class PushTokenRefreshWorker(
         // 1. Guard: must be logged in and in REAL mode
         if (AuthSessionManager.peekTokens()?.accessToken.isNullOrBlank()) {
             return@withContext Result.success() // not a failure — just nothing to do
-        }
-        if (RepositoryProvider.currentMode != RepositoryMode.REAL) {
-            return@withContext Result.success()
         }
 
         // 2. Read current FCM token

@@ -1,7 +1,6 @@
 package com.example.yingshi.feature.photos
 
 import com.example.yingshi.data.model.RemoteTrashItem
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 
 private data class TrashActorHint(
@@ -58,6 +57,6 @@ object TrashActorHintStore {
 
 internal fun currentCollaboratorActorUserId(): String? {
     return CollaboratorDirectoryStore.snapshot(
-        fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+        fallbackToFakeProfile = false,
     ).currentUser?.userId
 }

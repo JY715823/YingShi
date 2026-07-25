@@ -3,6 +3,7 @@ package com.example.yingshi.feature.ledger
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.activity.compose.BackHandler
 import android.view.WindowManager
 
 import androidx.compose.animation.Crossfade
@@ -14,7 +15,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,7 +68,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextRange
@@ -102,6 +105,7 @@ fun LedgerAddTransactionScreen(
     uiState: LedgerUiState,
     initialTransaction: LedgerTransaction? = null,
     initialOccurredAtMillis: Long? = null,
+    initialTransferFromAccountId: String? = null,
     onBack: () -> Unit,
     onSelectBook: (String) -> Unit,
     onSaveCategory: (String?, String, String, Long, LedgerCategoryType) -> Unit,
@@ -148,7 +152,28 @@ fun LedgerAddTransactionScreen(
                 ?.let(::add)
         }.distinctBy { it.id }
     }
-    val visibleAccounts = uiState.accounts
+    val visibleAccounts = remember(uiState.accounts, uiState.currentBookId, uiState.bookCreatorUserId) {
+        // 资产必须与账本归属对应：谁的账本就只能用他的资产
+        val directory = com.example.yingshi.feature.photos.CollaboratorDirectoryStore.snapshot(
+            fallbackToFakeProfile = false,
+        )
+        val currentUserId = directory.currentUser?.userId
+        val partnerUserId = directory.partner?.userId
+        val bookCreatorUserId = uiState.bookCreatorUserId
+        uiState.accounts.filter { account ->
+            when {
+                // "我们" 的账本 → 只能用 "我们" 的共同资产
+                bookCreatorUserId == SHARED_OWNER_FLAG ->
+                    account.ownerUserId == SHARED_OWNER_FLAG
+                // 对方的账本 → 只能用对方的资产
+                !partnerUserId.isNullOrBlank() && bookCreatorUserId == partnerUserId ->
+                    account.ownerUserId == partnerUserId
+                // 我的账本（含 creatorUserId 为 null 的 legacy 账本）→ 用我的资产（含 ownerUserId 为 null 的 legacy 资产）
+                else ->
+                    account.ownerUserId == currentUserId || account.ownerUserId.isNullOrBlank()
+            }
+        }
+    }
     val accountOptions = remember(visibleAccounts, initialTransaction?.id) {
         buildList {
             addAll(visibleAccounts)
@@ -160,13 +185,58 @@ fun LedgerAddTransactionScreen(
                 ?.let(::add)
         }.distinctBy { it.id }
     }
-    val newDraftPrimaryAccountId = remember(uiState.defaultAccountIdForCurrentBook, visibleAccounts) {
+    // 转账模式：所有账户共享（不隔离归属），用于转出和转入选择
+    val transferAccountOptions = remember(uiState.allAccounts, initialTransaction?.id) {
+        val nonHidden = uiState.allAccounts.filter { !it.hidden }
+        buildList {
+            addAll(nonHidden)
+            initialTransaction?.account
+                ?.takeIf { account -> nonHidden.none { it.id == account.id } }
+                ?.let(::add)
+            initialTransaction?.toAccount
+                ?.takeIf { account -> nonHidden.none { it.id == account.id } }
+                ?.let(::add)
+        }.distinctBy { it.id }
+    }
+    // 按归属分组的账户列表（用于转账三 tab 选择器）
+    val transferScopedAccounts = remember(transferAccountOptions) {
+        val directory = com.example.yingshi.feature.photos.CollaboratorDirectoryStore.snapshot(
+            fallbackToFakeProfile = false,
+        )
+        val currentUserId = directory.currentUser?.userId
+        val partnerUserId = directory.partner?.userId
+        listOf(
+            transferAccountOptions.filter { it.ownerUserId.isNullOrBlank() || it.ownerUserId == currentUserId },
+            transferAccountOptions.filter { !partnerUserId.isNullOrBlank() && it.ownerUserId == partnerUserId },
+            transferAccountOptions.filter { it.ownerUserId == SHARED_OWNER_FLAG },
+        )
+    }
+    val transferScopeLabels = remember {
+        val directory = com.example.yingshi.feature.photos.CollaboratorDirectoryStore.snapshot(
+            fallbackToFakeProfile = false,
+        )
+        listOf(
+            directory.currentUser?.displayName ?: "我的",
+            directory.partner?.displayName ?: "对方的",
+            "我们",
+        )
+    }
+    // 根据当前交易类型选择账户列表
+    val effectiveAccountOptions = if (type == LedgerTransactionType.TRANSFER) transferAccountOptions else accountOptions
+    val newDraftPrimaryAccountId = remember(uiState.defaultAccountIdForCurrentBook, visibleAccounts, initialTransferFromAccountId, transferAccountOptions) {
+        // 优先使用从账户详情页传入的转账账户
+        if (!initialTransferFromAccountId.isNullOrBlank()) {
+            if (transferAccountOptions.any { it.id == initialTransferFromAccountId }) {
+                return@remember initialTransferFromAccountId
+            }
+        }
         uiState.defaultAccountIdForCurrentBook
             ?.takeIf { defaultId -> visibleAccounts.any { it.id == defaultId } }
             ?: visibleAccounts.firstOrNull()?.id.orEmpty()
     }
-    val newDraftTransferInAccountId = remember(newDraftPrimaryAccountId, visibleAccounts) {
-        visibleAccounts.firstOrNull { it.id != newDraftPrimaryAccountId }?.id
+    val newDraftTransferInAccountId = remember(newDraftPrimaryAccountId, visibleAccounts, transferAccountOptions, type) {
+        val sourceList = if (type == LedgerTransactionType.TRANSFER) transferAccountOptions else visibleAccounts
+        sourceList.firstOrNull { it.id != newDraftPrimaryAccountId }?.id
     }
     var selectedCategoryId by rememberSaveable(initialTransaction?.id, categoryOptions.firstOrNull()?.id) {
         mutableStateOf(initialTransaction?.category?.id ?: categoryOptions.firstOrNull()?.id)
@@ -192,6 +262,9 @@ fun LedgerAddTransactionScreen(
     var isRemarkEditing by rememberSaveable { mutableStateOf(false) }
     var remarkKeyboardObservedVisible by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showCategoryManager) {
+        showCategoryManager = false
+    }
     val normalizedExpression = sanitizeAmountExpression(expression)
     val evaluatedExpression = LedgerCalculator.evaluate(normalizedExpression)
     val amountCents = evaluatedExpression?.toCentsOrNull() ?: normalizedExpression.toCentsOrNull() ?: 0L
@@ -202,6 +275,7 @@ fun LedgerAddTransactionScreen(
     val imeBottom = WindowInsets.ime.getBottom(density)
     val currentImeBottom by rememberUpdatedState(imeBottom)
     val imeBottomDp = with(density) { imeBottom.toDp() }
+    var bottomPanelHeight by remember { mutableStateOf(BottomPanelOverlayHeight) }
 
     LaunchedEffect(isRemarkEditing) {
         if (!isRemarkEditing) {
@@ -219,17 +293,17 @@ fun LedgerAddTransactionScreen(
         }
     }
 
-    LaunchedEffect(uiState.currentBookId, type, accountOptions, categoryOptions, initialTransaction?.id) {
-        val accountIds = accountOptions.map { it.id }
+    LaunchedEffect(uiState.currentBookId, type, effectiveAccountOptions, categoryOptions, initialTransaction?.id) {
+        val accountIds = effectiveAccountOptions.map { it.id }
         val primaryAccountId = if (initialTransaction == null) {
             newDraftPrimaryAccountId
         } else {
-            accountOptions.firstOrNull()?.id.orEmpty()
+            effectiveAccountOptions.firstOrNull()?.id.orEmpty()
         }
         val secondaryAccountId = if (initialTransaction == null) {
-            newDraftTransferInAccountId ?: accountOptions.firstOrNull { it.id != primaryAccountId }?.id ?: primaryAccountId
+            newDraftTransferInAccountId ?: effectiveAccountOptions.firstOrNull { it.id != primaryAccountId }?.id ?: primaryAccountId
         } else {
-            accountOptions.getOrNull(1)?.id ?: primaryAccountId
+            effectiveAccountOptions.getOrNull(1)?.id ?: primaryAccountId
         }
         if (selectedAccountId !in accountIds) {
             selectedAccountId = primaryAccountId
@@ -296,7 +370,7 @@ fun LedgerAddTransactionScreen(
             ) { currentType ->
                 if (currentType == LedgerTransactionType.TRANSFER) {
                     LedgerTransferSelector(
-                        accounts = accountOptions,
+                        accounts = effectiveAccountOptions,
                         selectedFromAccountId = selectedAccountId,
                         selectedToAccountId = selectedToAccountId,
                         onFromClick = {
@@ -315,7 +389,7 @@ fun LedgerAddTransactionScreen(
                     )
                 } else {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
+                        columns = GridCells.Adaptive(minSize = 72.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f),
@@ -323,7 +397,7 @@ fun LedgerAddTransactionScreen(
                             start = 14.dp,
                             end = 14.dp,
                             top = 4.dp,
-                            bottom = BottomPanelOverlayHeight,
+                            bottom = bottomPanelHeight + 12.dp,
                         ),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -348,15 +422,19 @@ fun LedgerAddTransactionScreen(
 
             LedgerAmountKeyboardPanel(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter),
+                    .align(Alignment.BottomCenter)
+                    .onGloballyPositioned { coords ->
+                        val h = with(density) { coords.size.height.toDp() }
+                        if (h > 0.dp) bottomPanelHeight = h
+                    },
                 type = type,
                 isEditing = initialTransaction != null,
                 amountText = amountDisplayText,
                 hasPendingCalculation = hasPendingCalculation,
                 remark = remark,
                 dateLabel = formatLedgerPickerDate(occurredAtMillis),
-                accountLabel = accountOptions.firstOrNull { it.id == selectedAccountId }?.name ?: "请选择账户",
-                accountType = accountOptions.firstOrNull { it.id == selectedAccountId }?.type ?: com.example.yingshi.feature.ledger.data.LedgerAccountType.CASH,
+                accountLabel = effectiveAccountOptions.firstOrNull { it.id == selectedAccountId }?.name ?: "请选择账户",
+                accountType = effectiveAccountOptions.firstOrNull { it.id == selectedAccountId }?.type ?: com.example.yingshi.feature.ledger.data.LedgerAccountType.CASH,
                 onRemarkClick = { isRemarkEditing = true },
                 onDateClick = { showDateSheet = true },
                 onAccountClick = {
@@ -453,22 +531,32 @@ fun LedgerAddTransactionScreen(
         )
     }
     if (showAccountSheet) {
+        val pickerTarget = LedgerAccountPickerTarget.valueOf(accountPickerTarget)
+        val isTransferPicker = pickerTarget == LedgerAccountPickerTarget.TRANSFER_FROM || pickerTarget == LedgerAccountPickerTarget.TRANSFER_TO
         LedgerAccountPickerSheet(
-            accounts = accountOptions,
-            selectedAccountId = when (LedgerAccountPickerTarget.valueOf(accountPickerTarget)) {
+            accounts = if (isTransferPicker) transferAccountOptions else accountOptions,
+            selectedAccountId = when (pickerTarget) {
                 LedgerAccountPickerTarget.PRIMARY,
                 LedgerAccountPickerTarget.TRANSFER_FROM -> selectedAccountId
                 LedgerAccountPickerTarget.TRANSFER_TO -> selectedToAccountId ?: selectedAccountId
             },
+            title = when (pickerTarget) {
+                LedgerAccountPickerTarget.TRANSFER_FROM -> "转出账户"
+                LedgerAccountPickerTarget.TRANSFER_TO -> "转入账户"
+                else -> "账户"
+            },
             onDismiss = { showAccountSheet = false },
             onSelect = {
-                when (LedgerAccountPickerTarget.valueOf(accountPickerTarget)) {
+                when (pickerTarget) {
                     LedgerAccountPickerTarget.PRIMARY,
                     LedgerAccountPickerTarget.TRANSFER_FROM -> selectedAccountId = it
                     LedgerAccountPickerTarget.TRANSFER_TO -> selectedToAccountId = it
                 }
                 showAccountSheet = false
             },
+            // 转账模式使用三 tab 选择器
+            scopeLabels = if (isTransferPicker) transferScopeLabels else null,
+            scopedAccounts = if (isTransferPicker) transferScopedAccounts else null,
         )
     }
     if (showCategoryManager) {
@@ -535,7 +623,11 @@ private fun LedgerAddTopBar(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .clickable(onClick = onBookClick),
+                .yingShiClickable(
+                    pressedScale = 0.96f,
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = onBookClick,
+                ),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -577,7 +669,11 @@ private fun LedgerAddTypeTabs(
                 label = "tabIndicatorWidth",
             )
             Column(
-                modifier = Modifier.clickable { onSelected(type) },
+                modifier = Modifier.yingShiClickable(
+                    pressedScale = 0.96f,
+                    shape = RoundedCornerShape(12.dp),
+                    onClick = { onSelected(type) },
+                ),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
@@ -616,7 +712,11 @@ private fun LedgerCategoryGridItem(
         label = "categoryBorderWidth",
     )
     Column(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.yingShiClickable(
+            pressedScale = 0.94f,
+            shape = RoundedCornerShape(12.dp),
+            onClick = onClick,
+        ),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -699,7 +799,11 @@ private fun TransferAccountBox(
         modifier = Modifier
             .fillMaxWidth()
             .height(76.dp)
-            .clickable(onClick = onClick),
+            .yingShiClickable(
+                pressedScale = 0.97f,
+                shape = RoundedCornerShape(24.dp),
+                onClick = onClick,
+            ),
         color = LedgerRaisedSurface,
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
@@ -754,31 +858,32 @@ private fun LedgerAmountKeyboardPanel(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
                     text = if (remark.isBlank()) "添加备注" else remark,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onRemarkClick() },
+                        .yingShiClickable(
+                            pressedScale = 0.98f,
+                            onClick = { onRemarkClick() },
+                        ),
                     color = if (remark.isBlank()) LedgerMuted else LedgerHeaderGreen,
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Text(
+                    text = amountText.ifBlank { "0.00" },
+                    color = amountColor,
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Text(
-                text = amountText.ifBlank { "0.00" },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                color = amountColor,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 32.sp),
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -788,7 +893,11 @@ private fun LedgerAmountKeyboardPanel(
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onDateClick),
+                        .yingShiClickable(
+                            pressedScale = 0.96f,
+                            shape = RoundedCornerShape(18.dp),
+                            onClick = onDateClick,
+                        ),
                     shape = RoundedCornerShape(18.dp),
                     color = LedgerPageBackground,
                     border = BorderStroke(1.dp, LedgerDivider),
@@ -806,7 +915,11 @@ private fun LedgerAmountKeyboardPanel(
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onAccountClick),
+                        .yingShiClickable(
+                            pressedScale = 0.96f,
+                            shape = RoundedCornerShape(18.dp),
+                            onClick = onAccountClick,
+                        ),
                     shape = RoundedCornerShape(18.dp),
                     color = LedgerPageBackground,
                     border = BorderStroke(1.dp, LedgerDivider),
@@ -968,7 +1081,7 @@ private fun LedgerFloatingRemarkBar(
             Spacer(Modifier.width(12.dp))
             Text(
                 text = amountText.ifBlank { "0.00" },
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = amountColor,
                 maxLines = 1,
             )
@@ -986,6 +1099,7 @@ private fun LedgerKeyboardKey(
     textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleLarge,
     onClick: () -> Unit,
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
     val isDeleteKey = text == "⌫"
     val keyShape = RoundedCornerShape(12.dp)
     val background = when {
@@ -1022,7 +1136,10 @@ private fun LedgerKeyboardKey(
                 enabled = enabled,
                 pressedScale = 0.985f,
                 shape = keyShape,
-                onClick = onClick,
+                onClick = {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onClick()
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {

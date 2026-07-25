@@ -99,6 +99,7 @@ import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.AppContentMediaThumbnail
 import com.example.yingshi.feature.photos.AppMediaType
 import com.example.yingshi.feature.photos.PhotoThumbnailPalette
+import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 import com.example.yingshi.feature.photos.resolveAppMediaType
 import com.example.yingshi.feature.photos.toAppContentMediaSource
 import com.example.yingshi.feature.photos.TrashDialogActionButton
@@ -431,7 +432,7 @@ fun LifeConsoleScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
-            // 第2行: 刷新 + 历史记录按钮 (右对齐)
+            // 第2行: 刷新 + 历史记录 + 回收站按钮 (右对齐)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.sm, alignment = Alignment.End),
@@ -452,6 +453,14 @@ fun LifeConsoleScreen(
                     text = "历史记录",
                     onClick = { viewModel.setShowHistoryPage(true) },
                     enabled = !uiState.isHistoryLoading,
+                    containerColor = colors.sectionBackground.copy(alpha = 0.90f),
+                    contentColor = colors.titleAccent,
+                )
+                // P1-2: 今日痕迹回收站入口 (人物/吃饭 媒体回收 + 24h 撤回中心)
+                LifeConsolePillAction(
+                    text = "回收站",
+                    icon = Icons.Filled.Delete,
+                    onClick = { context.startActivity(LifeTrashActivity.intent(context)) },
                     containerColor = colors.sectionBackground.copy(alpha = 0.90f),
                     contentColor = colors.titleAccent,
                 )
@@ -783,6 +792,14 @@ private fun LifeConsoleHistoryPanel(
     )
     // Round 8 问题3: 查看模式状态
     var viewMode by remember { mutableStateOf(LifeConsoleHistoryViewMode.AGGREGATED) }
+    // 响应式用户名: 优先使用 CollaboratorDirectoryStore (实时更新), 回退到服务端快照
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
+    val resolvedSelfLabel = collaboratorDirectory.currentUser?.displayName
+        ?: history?.currentUser?.displayName
+        ?: "我"
+    val resolvedPartnerLabel = collaboratorDirectory.partner?.displayName
+        ?: history?.partner?.displayName
+        ?: "对方"
 
     Column(
         modifier = modifier
@@ -925,8 +942,10 @@ private fun LifeConsoleHistoryPanel(
                                 ) {
                                     LifeConsoleHistoryBowelDayCard(
                                         day = day,
-                                        currentUser = history.currentUser,
-                                        partner = history.partner,
+                                        selfUserId = history.currentUser.userId,
+                                        partnerUserId = history.partner?.userId,
+                                        selfLabel = resolvedSelfLabel,
+                                        partnerLabel = resolvedPartnerLabel,
                                         onLocationClick = onLocationClick,
                                     )
                                 }
@@ -955,8 +974,8 @@ private fun LifeConsoleHistoryPanel(
                                 ) {
                                     LifeConsoleHistoryDaySection(
                                         day = day,
-                                        selfLabel = history.currentUser.displayName,
-                                        partnerLabel = history.partner?.displayName ?: "对方",
+                                        selfLabel = resolvedSelfLabel,
+                                        partnerLabel = resolvedPartnerLabel,
                                         viewMode = viewMode,
                                         category = category,
                                         onOpenMedia = onOpenMedia,
@@ -1055,8 +1074,10 @@ private fun LifeConsoleHistoryTimelineItem(
 @Composable
 private fun LifeConsoleHistoryBowelDayCard(
     day: RemoteLifeConsoleBowelHistoryDay,
-    currentUser: com.example.yingshi.data.model.RemoteLifeConsoleUser,
-    partner: com.example.yingshi.data.model.RemoteLifeConsoleUser?,
+    selfUserId: String,
+    partnerUserId: String?,
+    selfLabel: String,
+    partnerLabel: String,
     onLocationClick: (LocationUpdateTarget) -> Unit = {},
 ) {
     val colors = YingShiThemeTokens.colors
@@ -1091,8 +1112,8 @@ private fun LifeConsoleHistoryBowelDayCard(
             // 双方都展示，无地点时显示"添加地点"胶囊，可点击进入位置选择页。
             day.users.forEach { user ->
                 val name = when (user.userId) {
-                    currentUser.userId -> currentUser.displayName
-                    partner?.userId -> partner.displayName
+                    selfUserId -> selfLabel
+                    partnerUserId -> partnerLabel
                     else -> user.userId
                 }
                 // 用户名标签
@@ -1731,6 +1752,13 @@ private fun LifeConsoleTodayPager(
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 3 })
 
     // Round 8 问题5a: 不再根据 initialSlotKey 强制切换 pager 页 — 用户在哪个页上传就留在哪个页
+    // 响应式用户名: 优先使用 CollaboratorDirectoryStore (实时更新), 回退到服务端快照
+    val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(fallbackToFakeProfile = false)
+    val resolvedSelfLabel = collaboratorDirectory.currentUser?.displayName
+        ?: snapshot.currentUser.displayName
+    val resolvedPartnerLabel = collaboratorDirectory.partner?.displayName
+        ?: snapshot.partner?.displayName
+        ?: "对方"
 
     Column(
         modifier = modifier,
@@ -1757,8 +1785,8 @@ private fun LifeConsoleTodayPager(
                     slot2 = snapshot.personPartner,
                     slotKey1 = LifeConsoleSlotKeys.PERSON_SELF,
                     slotKey2 = LifeConsoleSlotKeys.PERSON_PARTNER,
-                    selfLabel = snapshot.currentUser.displayName,
-                    partnerLabel = snapshot.partner?.displayName ?: "对方",
+                    selfLabel = resolvedSelfLabel,
+                    partnerLabel = resolvedPartnerLabel,
                     accentColor = LifePersonAccent,
                     isBusy = isBusy,
                     initialMediaId = initialMediaId,
@@ -1775,8 +1803,8 @@ private fun LifeConsoleTodayPager(
                     slot2 = snapshot.mealPartner,
                     slotKey1 = LifeConsoleSlotKeys.MEAL_SELF,
                     slotKey2 = LifeConsoleSlotKeys.MEAL_PARTNER,
-                    selfLabel = snapshot.currentUser.displayName,
-                    partnerLabel = snapshot.partner?.displayName ?: "对方",
+                    selfLabel = resolvedSelfLabel,
+                    partnerLabel = resolvedPartnerLabel,
                     accentColor = LifeMealAccent,
                     isBusy = isBusy,
                     initialMediaId = initialMediaId,
@@ -1790,6 +1818,8 @@ private fun LifeConsoleTodayPager(
                 )
                 2 -> LifeConsoleTodayBowelPage(
                     snapshot = snapshot,
+                    selfLabel = resolvedSelfLabel,
+                    partnerLabel = resolvedPartnerLabel,
                     isBusy = isBusy,
                     isAddingBowel = isAddingBowel,
                     pendingLocationBowelEventIds = pendingLocationBowelEventIds,
@@ -2260,6 +2290,8 @@ private fun LifeConsoleTodayMediaSlotCard(
 @Composable
 private fun LifeConsoleTodayBowelPage(
     snapshot: RemoteLifeConsoleToday,
+    selfLabel: String,
+    partnerLabel: String,
     isBusy: Boolean,
     isAddingBowel: Boolean,
     pendingLocationBowelEventIds: Set<String>,
@@ -2279,8 +2311,6 @@ private fun LifeConsoleTodayBowelPage(
     val partnerSummary = snapshot.bowel.users.firstOrNull { it.userId == partnerUserId }
     val selfEvents = (selfSummary?.events ?: emptyList()).sortedByDescending { it.occurredAtMillis }
     val partnerEvents = (partnerSummary?.events ?: emptyList()).sortedByDescending { it.occurredAtMillis }
-    val selfLabel = snapshot.currentUser.displayName
-    val partnerLabel = snapshot.partner?.displayName ?: "对方"
 
     // Round 8: HorizontalPager 已有有限高度，可以用 verticalScroll
     Column(

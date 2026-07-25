@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  霞鹜文楷 Lite 字体族定义（FR-1 视觉语言统一）
+  OFL 开源许可证，可商用打包
+  来源: https://github.com/lxgw/LxgwWenKai-Lite
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        android:font="@font/lxgw_wenkai_lite_regular" />
+</font-family>

@@ -11,11 +11,17 @@ import android.os.Bundle
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.amap.api.services.core.LatLonPoint
+import com.amap.api.services.geocoder.GeocodeResult
+import com.amap.api.services.geocoder.GeocodeSearch
+import com.amap.api.services.geocoder.RegeocodeQuery
+import com.amap.api.services.geocoder.RegeocodeResult
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -436,6 +442,85 @@ object LocationHelper {
         return wgs84ToGcj02(wgsLat, wgsLng)
     }
 
+    /**
+     * 高德逆地理编码 (suspend, 对标 LifeLocationPickerActivity.triggerReverseGeocode).
+     *
+     * 用于系统媒体 Viewer: 读取 EXIF GPS (WGS-84) → GCJ-02 → 高德 GeocodeSearch 逆地理.
+     * 与照片流/今日痕迹保持一致的地点解析口径:
+     *   - formatAddress (高德标准格式化地址) 优先
+     *   - 否则取最近 POI 标题
+     *   - 都失败返回 "纬度,经度" 坐标格式
+     *
+     * @param wgsLat EXIF 中的 WGS-84 纬度
+     * @param wgsLng EXIF 中的 WGS-84 经度
+     * @return (label, gcjLat, gcjLng); label 失败时为坐标格式, gcj 坐标始终返回
+     */
+    suspend fun reverseGeocodeWithAmap(
+        context: Context,
+        wgsLat: Double,
+        wgsLng: Double,
+    ): ReverseGeocodeResult {
+        val (gcjLat, gcjLng) = wgs84ToGcj02Public(wgsLat, wgsLng)
+        val appContext = context.applicationContext
+        val label = runCatching {
+            withTimeoutOrNull(AMAP_REVERSE_GEOCODE_TIMEOUT_MS) {
+                suspendCancellableCoroutine { cont ->
+                    val search = GeocodeSearch(appContext)
+                    search.setOnGeocodeSearchListener(object : GeocodeSearch.OnGeocodeSearchListener {
+                        override fun onRegeocodeSearched(result: RegeocodeResult?, rCode: Int) {
+                            val addr = result?.regeocodeAddress
+                            val text = addr?.formatAddress?.takeIf { it.isNotBlank() }
+                                ?: addr?.pois?.takeIf { it.isNotEmpty() }?.get(0)?.title
+                                ?: formatCoordinates(gcjLat, gcjLng)
+                            if (cont.isActive) cont.resume(text)
+                        }
+                        override fun onGeocodeSearched(result: GeocodeResult?, rCode: Int) {}
+                    })
+                    val query = RegeocodeQuery(LatLonPoint(gcjLat, gcjLng), 200f, GeocodeSearch.AMAP)
+                    search.getFromLocationAsyn(query)
+                }
+            }
+        }.getOrNull() ?: formatCoordinates(gcjLat, gcjLng)
+        return ReverseGeocodeResult(label = label, latitude = gcjLat, longitude = gcjLng)
+    }
+
+    private const val AMAP_REVERSE_GEOCODE_TIMEOUT_MS = 4_000L
+
+    /**
+     * 同步逆地理编码 (IO 线程调用, Android Geocoder 兜底).
+     *
+     * 保留旧路径用于不支持高德 SDK 的场景; 主路径请使用 [reverseGeocodeWithAmap].
+     */
+    fun reverseGeocodeSync(
+        context: Context,
+        wgsLat: Double,
+        wgsLng: Double,
+    ): String {
+        val (gcjLat, gcjLng) = wgs84ToGcj02Public(wgsLat, wgsLng)
+        val appContext = context.applicationContext
+        return runCatching {
+            val geocoder = android.location.Geocoder(appContext, java.util.Locale.CHINA)
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(gcjLat, gcjLng, 1)
+            val addr = addresses?.firstOrNull()
+            when {
+                !addr?.locality.isNullOrBlank() && !addr?.thoroughfare.isNullOrBlank() ->
+                    "${addr.adminArea ?: ""}${addr.locality}${addr.thoroughfare}"
+                !addr?.locality.isNullOrBlank() ->
+                    "${addr.adminArea ?: ""}${addr.locality}"
+                !addr?.adminArea.isNullOrBlank() ->
+                    addr.adminArea
+                else -> null
+            } ?: formatCoordinates(gcjLat, gcjLng)
+        }.getOrNull() ?: formatCoordinates(gcjLat, gcjLng)
+    }
+
+    private fun formatCoordinates(lat: Double, lng: Double): String {
+        val latDir = if (lat >= 0) "N" else "S"
+        val lngDir = if (lng >= 0) "E" else "W"
+        return "%.4f°%s, %.4f°%s".format(kotlin.math.abs(lat), latDir, kotlin.math.abs(lng), lngDir)
+    }
+
     private fun wgs84ToGcj02(wgsLat: Double, wgsLng: Double): Pair<Double, Double> {
         if (outOfChina(wgsLat, wgsLng)) return Pair(wgsLat, wgsLng)
         val a = 6378245.0
@@ -479,6 +564,15 @@ object LocationHelper {
  * Plain location data holder. Latitude/longitude in degrees (GCJ-02 坐标系).
  */
 data class LocationSnapshot(
+    val latitude: Double,
+    val longitude: Double,
+)
+
+/**
+ * 高德逆地理编码结果. latitude/longitude 为 GCJ-02 坐标系.
+ */
+data class ReverseGeocodeResult(
+    val label: String,
     val latitude: Double,
     val longitude: Double,
 )

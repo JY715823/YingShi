@@ -39,6 +39,7 @@ interface UploadApi {
         @Query("state") state: String? = null,
         @Query("operationType") operationType: String? = null,
         @Query("pageSize") pageSize: Int? = null,
+        @Query("cursor") cursor: String? = null,
     ): ApiEnvelopeDto<List<UploadTaskDto>>
 
     @POST("api/uploads/{uploadId}/confirm")

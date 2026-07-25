@@ -9,6 +9,14 @@ data class MediaAccessDto(
     val revision: String? = null,
 )
 
+/**
+ * 修改媒体显示时间请求体（对应 PATCH /api/media/{mediaId}/time）。
+ * 服务端会将 displayTimeSource 置为 "MANUAL"。
+ */
+data class UpdateMediaTimeRequestDto(
+    val displayTimeMillis: Long,
+)
+
 data class MediaDto(
     val mediaId: String,
     val mediaType: String? = null,

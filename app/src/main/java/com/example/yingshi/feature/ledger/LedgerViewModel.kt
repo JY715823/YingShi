@@ -33,7 +33,6 @@ import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionDraft
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
 import com.example.yingshi.feature.photos.CollaboratorDirectoryStore
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,6 +66,8 @@ data class LedgerUiState(
     val bookName: String = "日常账本",
     val bookCreatorUserId: String? = null,
     val currencySymbol: String = "¥",
+    val currentUserId: String? = null,
+    val partnerUserId: String? = null,
     val selectedMonth: YearMonth = YearMonth.now(),
     val selectedDate: LocalDate = LocalDate.now(),
     val selectedBudgetPeriod: LedgerBudgetPeriod = LedgerBudgetPeriod.MONTH,
@@ -90,8 +91,26 @@ data class LedgerUiState(
     val isSearchSelectionMode: Boolean = false,
     val message: String? = null,
 ) {
+    // 全局净资产：跨所有账本、所有归属
     val netAssetCents: Long
         get() = allAccounts.filter { it.includeInTotal && !it.hidden }.sumOf { it.balanceCents }
+
+    // 按当前账本归属过滤的净资产：谁的账本就显示谁的资产
+    val scopedNetAssetCents: Long
+        get() {
+            val eligible = allAccounts.filter { it.includeInTotal && !it.hidden }
+            return when {
+                // "我们" 的账本 → 只统计共同资产
+                bookCreatorUserId == "shared" ->
+                    eligible.filter { it.ownerUserId == "shared" }.sumOf { it.balanceCents }
+                // 对方的账本 → 只统计对方的资产
+                !partnerUserId.isNullOrBlank() && bookCreatorUserId == partnerUserId ->
+                    eligible.filter { it.ownerUserId == partnerUserId }.sumOf { it.balanceCents }
+                // 我的账本（含 legacy creatorUserId 为 null）→ 统计我的资产（含 legacy ownerUserId 为 null）
+                else ->
+                    eligible.filter { it.ownerUserId == currentUserId || it.ownerUserId.isNullOrBlank() }.sumOf { it.balanceCents }
+            }
+        }
 
     val totalBudgetUsedCents: Long
         get() = stats.expenseCents
@@ -115,11 +134,15 @@ class LedgerViewModel(
     init {
         viewModelScope.launch {
             repository.ensureSeedData()
+            // 优先启动本地数据订阅，让用户立即看到缓存数据，避免无网络时长时间转圈
+            observeCatalog()
+            // 后台并行拉取服务端数据，完成后 Room Flow 会自动重发新数据
             repository.hydrateFromBackendIfNeeded()
+            // 补全旧版本遗漏的种子数据 changelog，确保种子 books/accounts/categories 同步到服务端
+            repository.backfillSeedChangelogIfNeeded()
             if (repository.shouldSeedDemoData) {
                 repository.ensureDemoData()
             }
-            observeCatalog()
         }
         viewModelScope.launch {
             repository.syncErrors.collect { error ->
@@ -130,7 +153,7 @@ class LedgerViewModel(
 
     fun refreshBookCreatorsFromCollaborators() {
         val currentUserId = CollaboratorDirectoryStore.snapshot(
-            fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+            fallbackToFakeProfile = false,
         ).currentUser?.userId
         if (currentUserId.isNullOrBlank()) return
         viewModelScope.launch {
@@ -183,18 +206,43 @@ class LedgerViewModel(
             _uiState.update { it.copy(message = "该账本不可用") }
             return
         }
-        if (archived && targetBook.id == _uiState.value.defaultBookId) {
-            _uiState.update { it.copy(message = "默认账本不能归档") }
-            return
-        }
-        if (archived && activeBooks.size <= 1) {
-            _uiState.update { it.copy(message = "至少保留一个可见账本") }
-            return
-        }
+        // 允许归档最后一个账本: 删了空了的话就不管了, 下次创建新的就是默认
         viewModelScope.launch {
             repository.setBookArchived(bookId, archived)
-            _uiState.update {
-                it.copy(message = if (archived) "账本已归档" else "账本已恢复")
+            // 归档默认账本时, 自动将下一个可用账本设为默认
+            if (archived && targetBook.id == _uiState.value.defaultBookId) {
+                val nextBook = activeBooks.filter { it.id != bookId }.firstOrNull()
+                if (nextBook != null) {
+                    preferencesStore.setDefaultBookId(nextBook.id)
+                    _uiState.update {
+                        it.copy(
+                            defaultBookId = nextBook.id,
+                            currentBookId = nextBook.id,
+                            defaultAccountIdForCurrentBook = it.defaultAccountIdsByBook[nextBook.id],
+                            searchFilter = it.searchFilter.copy(categoryId = null, accountId = null),
+                            selectedSearchTransactionIds = emptySet(),
+                            isSearchSelectionMode = false,
+                            message = "账本已归档，已切换默认账本",
+                        )
+                    }
+                    observe()
+                } else {
+                    // 没有下一个账本了, 清空默认账本, 下次创建新的就是默认
+                    preferencesStore.setDefaultBookId(null)
+                    _uiState.update {
+                        it.copy(
+                            defaultBookId = null,
+                            currentBookId = "",
+                            defaultAccountIdForCurrentBook = null,
+                            message = "账本已归档",
+                        )
+                    }
+                    observe()
+                }
+            } else {
+                _uiState.update {
+                    it.copy(message = if (archived) "账本已归档" else "账本已恢复")
+                }
             }
         }
     }
@@ -226,6 +274,7 @@ class LedgerViewModel(
         name: String,
         template: String,
         coverColor: Long,
+        ownerUserId: String? = null,
         onSaved: () -> Unit = {},
     ) {
         val normalizedName = name.trim()
@@ -247,6 +296,7 @@ class LedgerViewModel(
                     name = normalizedName,
                     template = template,
                     coverColor = coverColor,
+                    creatorUserId = ownerUserId,
                 ),
             )
             _uiState.update {
@@ -595,39 +645,25 @@ class LedgerViewModel(
     }
 
     fun saveAccount(
-        accountId: String? = null,
-        name: String,
-        type: com.example.yingshi.feature.ledger.data.LedgerAccountType,
-        initialBalanceCents: Long,
-        includeInTotal: Boolean,
-        note: String,
+        draft: LedgerAccountDraft,
         onSaved: () -> Unit = {},
     ) {
-        val normalizedName = name.trim()
+        val normalizedName = draft.name.trim()
         if (normalizedName.isBlank()) {
             _uiState.update { it.copy(message = "请输入账户名称") }
             return
         }
+        val accountId = draft.id
         val duplicate = _uiState.value.allAccounts.any {
             it.id != accountId &&
                 it.name.equals(normalizedName, ignoreCase = true)
         }
         if (duplicate) {
-            _uiState.update { it.copy(message = "同账本下该账户名称已存在") }
+            _uiState.update { it.copy(message = "该账户名称已存在") }
             return
         }
         viewModelScope.launch {
-            repository.saveAccount(
-                LedgerAccountDraft(
-                    id = accountId,
-                    bookId = _uiState.value.currentBookId,
-                    name = normalizedName,
-                    type = type,
-                    initialBalanceCents = initialBalanceCents,
-                    includeInTotal = includeInTotal,
-                    note = note,
-                ),
-            )
+            repository.saveAccount(draft.copy(name = normalizedName))
             _uiState.update { it.copy(message = if (accountId == null) "账户已新增" else "账户已更新") }
             onSaved()
         }
@@ -635,7 +671,7 @@ class LedgerViewModel(
 
     fun reorderAccounts(orderedIds: List<String>) {
         viewModelScope.launch {
-            repository.reorderAccounts(_uiState.value.currentBookId, orderedIds)
+            repository.reorderAccounts(orderedIds)
             _uiState.update { it.copy(message = "账户顺序已更新") }
             observe()
         }
@@ -645,6 +681,13 @@ class LedgerViewModel(
         viewModelScope.launch {
             repository.setAccountHidden(accountId, hidden)
             _uiState.update { it.copy(message = if (hidden) "账户已隐藏" else "账户已显示") }
+        }
+    }
+
+    fun deleteAccount(accountId: String) {
+        viewModelScope.launch {
+            repository.deleteAccount(accountId)
+            _uiState.update { it.copy(message = "账户已删除") }
         }
     }
 
@@ -795,8 +838,11 @@ class LedgerViewModel(
                 budget = budget,
                 categoryId = categoryId,
                 amountCents = amountCents,
-            )
-            _uiState.update { it.copy(message = "分类预算已更新") }
+            ).let { ok ->
+                _uiState.update {
+                    it.copy(message = if (ok) "分类预算已更新" else "分类预算总额不能超过总预算")
+                }
+            }
             observe()
         }
     }
@@ -836,7 +882,7 @@ class LedgerViewModel(
                     preferencesStore.setDefaultBookId(resolvedDefaultBookId)
                 }
 
-                val visibleAccountsByBook = visibleAccounts.groupBy { it.bookId }
+                val visibleAccountsByBook = books.associate { it.id to visibleAccounts }
                 val resolvedDefaultAccountIdsByBook = books.associate { book ->
                     val visibleAccountIds = visibleAccountsByBook[book.id].orEmpty().map { it.id }
                     val resolvedDefaultAccountId = LedgerPreferencesStore.resolveDefaultAccountId(
@@ -906,8 +952,8 @@ class LedgerViewModel(
                 repository.observeBook(bookId),
                 repository.observeVisibleCategories(bookId),
                 repository.observeAllCategories(bookId),
-                repository.observeVisibleAccounts(bookId),
-                repository.observeAllAccounts(bookId),
+                repository.observeAllVisibleAccounts(),
+                repository.observeAllAccountsGlobally(),
                 repository.observeTransactions(bookId),
                 repository.observeTransactionsInRange(bookId, monthRange.startMillis, monthRange.endMillis),
                 repository.observeRecurringRules(bookId),
@@ -937,6 +983,7 @@ class LedgerViewModel(
                 @Suppress("UNCHECKED_CAST")
                 val deletedItems = values[10] as List<LedgerDeletedItem>
                 val previous = _uiState.value
+                val directory = CollaboratorDirectoryStore.snapshot(fallbackToFakeProfile = false)
                 LedgerUiState(
                     isLoading = false,
                     books = previous.books,
@@ -949,6 +996,8 @@ class LedgerViewModel(
                     bookName = book?.name ?: "日常账本",
                     bookCreatorUserId = book?.creatorUserId,
                     currencySymbol = book?.currencySymbol ?: "¥",
+                    currentUserId = directory.currentUser?.userId,
+                    partnerUserId = directory.partner?.userId,
                     selectedMonth = previous.selectedMonth,
                     selectedDate = previous.selectedDate,
                     selectedBudgetPeriod = previous.selectedBudgetPeriod,
@@ -1041,17 +1090,13 @@ class LedgerViewModel(
         private fun createLedgerRepository(application: Application): LedgerRepository {
             val dao = LedgerDatabase.getInstance(application).ledgerDao()
             val prefs = LedgerPreferencesStore(application)
-            val syncBridge = if (RepositoryProvider.currentMode == RepositoryMode.REAL) {
-                RemoteLedgerSyncBridge(prefs = prefs)
-            } else {
-                com.example.yingshi.feature.ledger.data.NoOpLedgerSyncBridge
-            }
+            val syncBridge = RemoteLedgerSyncBridge(prefs = prefs)
             return LedgerRepository(
                 dao = dao,
                 syncBridge = syncBridge,
                 currentUserIdProvider = {
                     CollaboratorDirectoryStore.snapshot(
-                        fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+                        fallbackToFakeProfile = false,
                     ).currentUser?.userId
                 },
             )

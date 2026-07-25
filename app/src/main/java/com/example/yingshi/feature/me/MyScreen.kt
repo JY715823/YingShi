@@ -1,5 +1,6 @@
 package com.example.yingshi.feature.me
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -222,11 +224,20 @@ private fun PartnerCard(
     val spacing = YingShiThemeTokens.spacing
     val radius = YingShiThemeTokens.radius
     val colors = YingShiThemeTokens.colors
+    val context = LocalContext.current
     val displayName = partner?.displayName?.takeIf { it.isNotBlank() } ?: "另一半"
-    val intro = partner?.bio?.takeIf { it.isNotBlank() } ?: TEXT_PARTNER_HINT
+    val intro = if (partner == null) {
+        "点击设置对方信息"
+    } else {
+        partner.bio?.takeIf { it.isNotBlank() } ?: TEXT_PARTNER_HINT
+    }
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .yingShiHapticClickable(enabled = partner == null) {
+                Toast.makeText(context, "功能开发中，敬请期待", Toast.LENGTH_SHORT).show()
+            },
         shape = RoundedCornerShape(radius.lg),
         color = colors.raisedSurface.copy(alpha = 0.94f),
         border = BorderStroke(1.dp, colors.dividerSoft.copy(alpha = 0.52f)),

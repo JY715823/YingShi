@@ -31,10 +31,13 @@ data class CreateUploadTokenRequestDto(
     val operationMediaCount: Int? = null,
     val sourceItemId: String? = null,
     val domain: String? = null,
+    // life 模块分类: PERSON / MEAL / null（非 life 上传）
+    val lifeCategory: String? = null,
     // FR-18: optional location fields (all nullable, server-side reverse geocoding fallback applies)
     val latitude: Double? = null,
     val longitude: Double? = null,
     val locationLabel: String? = null,
+    val idempotencyKey: String? = null,
 )
 
 data class UploadCompleteResponseDto(

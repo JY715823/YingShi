@@ -38,12 +38,20 @@ val releaseApiBaseUrl = configuredReleaseApiBaseUrl
 
 gradle.taskGraph.whenReady {
     val releaseTaskRequested = allTasks.any { task ->
-        task.name.contains("Release")
+        task.name.contains("Release") && !task.name.contains("assembleDebug")
     }
     if (releaseTaskRequested && configuredReleaseApiBaseUrl == null) {
         throw GradleException(
             "Release builds require YINGSHI_RELEASE_API_BASE_URL=https://your-api-domain/ " +
                 "via Gradle property or environment variable.",
+        )
+    }
+    // R3-REL-001: Release tasks require signing configuration
+    if (releaseTaskRequested && !hasSigningConfig) {
+        throw GradleException(
+            "Release builds require signing configuration. " +
+            "Create keystore.properties with storeFile, storePassword, keyAlias, keyPassword. " +
+            "Unsigned release builds are not allowed."
         )
     }
 }
@@ -85,9 +93,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Default account emails for UI pre-fill (not security-sensitive)
-        buildConfigField("String", "DEFAULT_PRIMARY_ACCOUNT", "\"1085060329@qq.com\"")
-        buildConfigField("String", "DEFAULT_SECONDARY_ACCOUNT", "\"2926315047@qq.com\"")
+        // R3-PRIV-002: Do NOT embed personal email addresses in build artifacts.
+        // Debug builds may use environment variables for convenience.
+        buildConfigField("String", "DEFAULT_PRIMARY_ACCOUNT", "\"\"")
+        buildConfigField("String", "DEFAULT_SECONDARY_ACCOUNT", "\"\"")
 
         // Round 7: 高德地图 Android key (位置选择页 E2)
         manifestPlaceholders["AMAP_API_KEY"] = "d4f794bb299372394f06fe512949adba"
@@ -100,6 +109,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // FR-5: Lint configuration — abort on errors, warnings are non-fatal
+    lint {
+        abortOnError = true
+        warningsAsErrors = false
+        disable += setOf("ObsoleteLintCustomCheck")
     }
 
     signingConfigs {
@@ -144,6 +160,7 @@ android {
             if (hasSigningConfig) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            // R3-REL-001: Signing enforcement is handled by gradle.taskGraph.whenReady check above
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

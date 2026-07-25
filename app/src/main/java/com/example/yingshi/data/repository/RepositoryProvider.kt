@@ -2,14 +2,7 @@ package com.example.yingshi.data.repository
 
 import com.example.yingshi.data.remote.config.RemoteServiceFactory
 
-enum class RepositoryMode {
-    FAKE,
-    REAL,
-}
-
 object RepositoryProvider {
-    val currentMode: RepositoryMode
-        get() = RepositoryMode.REAL
 
     val mediaRepository: MediaRepository
         get() = RealMediaRepository(RemoteServiceFactory.mediaApi)

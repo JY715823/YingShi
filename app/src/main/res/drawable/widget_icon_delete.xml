@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FR-4: 删除图标（相纸白区底条，自己框，红色小图标，alpha 0.62） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:alpha="0.62">
+    <path
+        android:strokeColor="@color/widget_destructive"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4,7 L20,7 M9,7 L9,5 C9,4.4 9.4,4 10,4 L14,4 C14.6,4 15,4.4 15,5 L15,7 M6,7 L7,20 C7,20.6 7.4,21 8,21 L16,21 C16.6,21 17,20.6 17,20 L18,7 M10,10 L10,18 M14,10 L14,18" />
+</vector>

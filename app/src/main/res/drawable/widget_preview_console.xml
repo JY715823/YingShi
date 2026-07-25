@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FR-11: Widget previewImage 兜底（API 24-30 设备选择器预览）。
+  占位预览图：展现 widget 基本结构（标题+双相框+底部胶囊）。
+  后续真机验证时替换为真机截图 PNG（mipmap-xxhdpi/widget_console_preview.png）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="360dp"
+    android:viewportWidth="250"
+    android:viewportHeight="360">
+
+    <!-- 透明背景（widget 实际为全透明） -->
+
+    <!-- 标题区 -->
+    <path
+        android:fillColor="#FF26313A"
+        android:pathData="M20,20 h210 v28 h-210 z" />
+    <path
+        android:fillColor="#FF9A6A2A"
+        android:pathData="M20,52 h120 v10 h-120 z" />
+
+    <!-- 上相框（对方·吃饭） -->
+    <path
+        android:fillColor="#FFFFFC"
+        android:strokeColor="#A0A9E5F2"
+        android:strokeWidth="0.5"
+        android:pathData="M30,80 h190 v110 h-190 z" />
+    <!-- 胶带 -->
+    <path
+        android:fillColor="#C0BDEFFF"
+        android:pathData="M100,75 h50 v12 h-50 z" />
+    <!-- 照片区 -->
+    <path
+        android:fillColor="#FFDFF5F4"
+        android:pathData="M35,90 h180 v85 h-180 z" />
+
+    <!-- 下相框（自己·吃饭） -->
+    <path
+        android:fillColor="#FFFFFC"
+        android:strokeColor="#A0A9E5F2"
+        android:strokeWidth="0.5"
+        android:pathData="M30,210 h190 v110 h-190 z" />
+    <!-- 胶带 -->
+    <path
+        android:fillColor="#C0E6C88A"
+        android:pathData="M100,205 h50 v12 h-50 z" />
+    <!-- 照片区 -->
+    <path
+        android:fillColor="#FFDFF5F4"
+        android:pathData="M35,220 h180 v85 h-180 z" />
+
+    <!-- 底部胶囊（大便徽标） -->
+    <path
+        android:fillColor="#E6FFFFFC"
+        android:pathData="M30,335 h90 v20 q0,5 -5,5 h-80 q-5,0 -5,-5 z" />
+    <path
+        android:fillColor="#FF26313A"
+        android:pathData="M40,342 h10 v6 h-10 z" />
+    <path
+        android:fillColor="#E6FFFFFC"
+        android:pathData="M130,335 h90 v20 q0,5 -5,5 h-80 q-5,0 -5,-5 z" />
+    <path
+        android:fillColor="#FF9A6A2A"
+        android:pathData="M140,342 h10 v6 h-10 z" />
+</vector>

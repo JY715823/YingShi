@@ -15,6 +15,11 @@ class LedgerRepository(
     private val syncBridge: LedgerSyncBridge = NoOpLedgerSyncBridge,
     private val currentUserIdProvider: () -> String? = { null },
 ) {
+    companion object {
+        private const val CHANGELOG_MAX_ENTRIES = 1000
+        private const val CHANGELOG_TRIM_MARGIN = 100
+        private const val CHANGELOG_HARD_CAP = 2000
+    }
     val shouldSeedDemoData: Boolean
         get() = syncBridge.shouldSeedDemoData
 
@@ -29,23 +34,28 @@ class LedgerRepository(
         ).forEach { book ->
             if (dao.getBook(book.id) == null) {
                 dao.insertBook(book)
+                // 记录 changelog，确保种子账本同步到服务端，避免后续交易因 bookId 不存在而 500
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "books", rowId = book.id))
             }
         }
         if (currentUserId != null) {
             dao.getAllBooks().forEach { book ->
                 if (book.creatorUserId.isNullOrBlank()) {
                     dao.updateBook(book.copy(creatorUserId = currentUserId, updatedAtMillis = nowMillis))
+                    recordChangelog(LedgerSyncChangelogEntity(tableName = "books", rowId = book.id))
                 }
             }
         }
         LedgerSeedData.defaultAccounts(nowMillis).forEach { account ->
             if (dao.getAccount(account.id) == null) {
                 dao.insertAccount(account)
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "accounts", rowId = account.id))
             }
         }
         LedgerSeedData.defaultCategories(nowMillis).forEach { category ->
             if (dao.getCategory(category.id) == null) {
                 dao.insertCategory(category)
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = category.id))
             }
         }
         backfillMissingBookCreatorUserIds(nowMillis)
@@ -62,22 +72,8 @@ class LedgerRepository(
         backfillMissingBookCreatorUserIds()
     }
 
-    suspend fun exportLocalSnapshot(): LedgerLocalSnapshot {
-        return LedgerLocalSnapshot(
-            books = dao.getAllBooks(),
-            categories = dao.getAllCategories(),
-            accounts = dao.getAllAccounts(),
-            transactions = dao.getAllTransactions(),
-            budgets = dao.getAllBudgets(),
-            categoryBudgets = dao.getAllCategoryBudgets(),
-            deletedItems = dao.getAllDeletedItems(),
-            recurringRules = dao.getAllRecurringRules(),
-            recurringOccurrences = dao.getAllRecurringOccurrences(),
-        )
-    }
-
-    suspend fun replaceLocalSnapshot(snapshot: LedgerLocalSnapshot) {
-        dao.replaceAllData(snapshot)
+    suspend fun backfillSeedChangelogIfNeeded() {
+        syncBridge.backfillSeedChangelogIfNeeded(this)
     }
 
     suspend fun upsertSyncResponse(snapshot: LedgerLocalSnapshot) {
@@ -93,17 +89,41 @@ class LedgerRepository(
     }
 
     suspend fun deleteSyncRows(deletedRows: List<DeletedRowRefDto>) {
+        // FR-3: 7 tables use soft delete (set deletedAtMillis + updatedAtMillis) so that
+        // business queries filter them out AND the next outbound sync propagates the
+        // tombstone. books keeps hard delete (uses isDeleted boolean archive).
+        // deleted_items keeps hard delete (deletedAtMillis is a business NOT NULL field).
+        val now = System.currentTimeMillis()
         deletedRows.forEach { ref ->
             when (ref.table) {
                 "books" -> dao.hardDeleteBook(ref.id)
-                "categories" -> dao.hardDeleteCategory(ref.id)
-                "accounts" -> dao.hardDeleteAccount(ref.id)
-                "transactions" -> dao.hardDeleteTransaction(ref.id)
-                "budgets" -> dao.deleteBudget(ref.id)
-                "category_budgets" -> dao.deleteCategoryBudget(ref.id)
+                "categories" -> dao.softDeleteCategory(ref.id, now, now)
+                "accounts" -> dao.softDeleteAccount(ref.id, now, now)
+                "transactions" -> dao.softDeleteTransactionForSync(ref.id, now, now)
+                "budgets" -> dao.softDeleteBudget(ref.id, now, now)
+                "category_budgets" -> dao.softDeleteCategoryBudget(ref.id, now, now)
                 "deleted_items" -> dao.hardDeleteDeletedItem(ref.id)
-                "recurring_rules" -> dao.deleteRecurringRule(ref.id)
-                "recurring_occurrences" -> dao.hardDeleteRecurringOccurrence(ref.id)
+                "recurring_rules" -> dao.softDeleteRecurringRule(ref.id, now, now)
+                "recurring_occurrences" -> dao.softDeleteRecurringOccurrence(ref.id, now, now)
+            }
+        }
+    }
+
+    /**
+     * FR-22: 写入 changelog 并执行上限保护。
+     * - 超 MAX_ENTRIES(1000) 时删除最旧的 TRIM_MARGIN(100) 条非删除条目（保留 tombstone）
+     * - 全 isDelete=true 且仍超 HARD_CAP(2000) 时兜底删除最旧条目
+     */
+    private suspend fun recordChangelog(entry: LedgerSyncChangelogEntity) {
+        dao.insertChangelogEntry(entry)
+        val count = dao.countChangelogEntries()
+        if (count > CHANGELOG_MAX_ENTRIES) {
+            val overflow = count - CHANGELOG_MAX_ENTRIES + CHANGELOG_TRIM_MARGIN
+            dao.deleteOldestNonDeleteChangelog(overflow)
+            // 兜底：全 isDelete=true 时仍超限
+            val remaining = dao.countChangelogEntries()
+            if (remaining > CHANGELOG_HARD_CAP) {
+                dao.deleteOldestChangelog(remaining - CHANGELOG_MAX_ENTRIES)
             }
         }
     }
@@ -127,12 +147,6 @@ class LedgerRepository(
         rows.map { it.toDomain() }
     }
 
-    fun observeAllBooks(): Flow<List<LedgerBook>> = dao.observeAllBooks().map { rows ->
-        rows.map { it.toDomain() }
-    }
-
-    fun observePrimaryBook(): Flow<LedgerBook?> = dao.observePrimaryBook().map { it?.toDomain() }
-
     fun observeBook(bookId: String): Flow<LedgerBook?> = dao.observeBook(bookId).map { it?.toDomain() }
 
     fun observeVisibleCategories(bookId: String): Flow<List<LedgerCategory>> =
@@ -141,24 +155,16 @@ class LedgerRepository(
     fun observeAllCategories(bookId: String): Flow<List<LedgerCategory>> =
         dao.observeAllCategories(bookId).map { rows -> rows.map { it.toDomain() } }
 
-    fun observeCategoriesByType(bookId: String, type: LedgerCategoryType): Flow<List<LedgerCategory>> =
-        dao.observeCategoriesByType(bookId, type).map { rows -> rows.map { it.toDomain() } }
-
-    fun observeVisibleAccounts(bookId: String): Flow<List<LedgerAccount>> =
-        dao.observeVisibleAccounts(bookId).map { rows -> rows.map { it.toDomain() } }
-
     fun observeAllVisibleAccounts(): Flow<List<LedgerAccount>> =
         dao.observeVisibleAccountsAcrossBooks().map { rows -> rows.map { it.toDomain() } }
 
-    fun observeAllAccounts(bookId: String): Flow<List<LedgerAccount>> =
-        dao.observeAllAccounts(bookId).map { rows -> rows.map { it.toDomain() } }
-
-    fun observeAccounts(bookId: String): Flow<List<LedgerAccount>> = observeVisibleAccounts(bookId)
+    fun observeAllAccountsGlobally(): Flow<List<LedgerAccount>> =
+        dao.observeAllAccountsGlobally().map { rows -> rows.map { it.toDomain() } }
 
     fun observeTransactions(bookId: String): Flow<List<LedgerTransaction>> = combine(
         dao.observeTransactions(bookId),
         dao.observeAllCategories(bookId),
-        dao.observeAllAccounts(bookId),
+        dao.observeAllAccountsGlobally(),
     ) { transactions, categories, accounts ->
         mapTransactions(
             transactions = transactions,
@@ -174,7 +180,7 @@ class LedgerRepository(
     ): Flow<List<LedgerTransaction>> = combine(
         dao.observeTransactionsInRange(bookId, startMillis, endMillis),
         dao.observeAllCategories(bookId),
-        dao.observeAllAccounts(bookId),
+        dao.observeAllAccountsGlobally(),
     ) { transactions, categories, accounts ->
         mapTransactions(
             transactions = transactions,
@@ -212,7 +218,7 @@ class LedgerRepository(
                 maxAmountCents = maxAmountCents,
             ),
             dao.observeAllCategories(bookId),
-            dao.observeAllAccounts(bookId),
+            dao.observeAllAccountsGlobally(),
         ) { transactions, categories, accounts ->
             mapTransactions(
                 transactions = transactions,
@@ -280,14 +286,12 @@ class LedgerRepository(
     fun observeRecurringRules(bookId: String): Flow<List<LedgerRecurringRule>> = combine(
         dao.observeRecurringRules(bookId),
         dao.observeAllCategories(bookId),
-        dao.observeAllAccounts(bookId),
+        dao.observeAllAccountsGlobally(),
     ) { rules, categories, accounts ->
         val categoriesById = categories.associateBy({ it.id }, { it.toDomain() })
         val accountsById = accounts.associateBy({ it.id }, { it.toDomain() })
         rules.map { it.toDomain(categoriesById, accountsById) }
     }
-
-    suspend fun findBookByName(name: String): LedgerBook? = dao.findBookByName(name)?.toDomain()
 
     suspend fun saveBook(draft: LedgerBookDraft): String {
         val now = System.currentTimeMillis()
@@ -313,12 +317,9 @@ class LedgerRepository(
                 ),
             )
             val seedCategories = LedgerSeedData.seedCategoriesForTemplate(bookId, template, now)
-            val seedAccounts = LedgerSeedData.seedAccountsForTemplate(bookId, template, now)
             dao.insertCategories(seedCategories)
-            dao.insertAccounts(seedAccounts)
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "books", rowId = bookId))
-            seedCategories.forEach { dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "categories", rowId = it.id)) }
-            seedAccounts.forEach { dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "accounts", rowId = it.id)) }
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "books", rowId = bookId))
+            seedCategories.forEach { recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = it.id)) }
             syncBridge.afterMutation(this)
             bookId
         } else {
@@ -329,7 +330,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "books", rowId = existing.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "books", rowId = existing.id))
             syncBridge.afterMutation(this)
             existing.id
         }
@@ -337,7 +338,7 @@ class LedgerRepository(
 
     suspend fun setBookArchived(bookId: String, archived: Boolean) {
         dao.setBookArchived(bookId, archived, System.currentTimeMillis())
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "books", rowId = bookId))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "books", rowId = bookId))
         syncBridge.afterMutation(this)
     }
 
@@ -355,15 +356,15 @@ class LedgerRepository(
                         updatedAtMillis = now,
                     ),
                 )
-                dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "categories", rowId = categoryId))
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = categoryId))
             }
         }
         syncBridge.afterMutation(this)
     }
 
-    suspend fun reorderAccounts(bookId: String, orderedIds: List<String>) {
+    suspend fun reorderAccounts(orderedIds: List<String>) {
         val now = System.currentTimeMillis()
-        val accounts = dao.observeAllAccounts(bookId).first()
+        val accounts = dao.getAllAccountsGlobally()
             .associateBy { it.id }
         orderedIds.distinct().forEachIndexed { index, accountId ->
             val account = accounts[accountId] ?: return@forEachIndexed
@@ -374,7 +375,7 @@ class LedgerRepository(
                         updatedAtMillis = now,
                     ),
                 )
-                dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "accounts", rowId = accountId))
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "accounts", rowId = accountId))
             }
         }
         syncBridge.afterMutation(this)
@@ -396,9 +397,11 @@ class LedgerRepository(
                 frequency = draft.frequency,
             )
         }
+        // 防御：bookId / accountId 为 NOT NULL，空值兜底到默认账本
+        val resolvedBookId = draft.bookId.takeIf { it.isNotBlank() } ?: defaultBookId()
         val entity = LedgerRecurringRuleEntity(
             id = existing?.id ?: UUID.randomUUID().toString(),
-            bookId = draft.bookId,
+            bookId = resolvedBookId,
             type = draft.type,
             categoryId = draft.categoryId,
             accountId = draft.accountId,
@@ -418,7 +421,7 @@ class LedgerRepository(
         } else {
             dao.updateRecurringRule(entity)
         }
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = entity.id))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = entity.id))
         syncBridge.afterMutation(this)
         return entity.id
     }
@@ -431,14 +434,14 @@ class LedgerRepository(
                 updatedAtMillis = System.currentTimeMillis(),
             ),
         )
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = ruleId))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = ruleId))
         syncBridge.afterMutation(this)
     }
 
     suspend fun deleteRecurringRule(ruleId: String) {
         dao.deleteRecurringOccurrencesByRuleId(ruleId)
         dao.deleteRecurringRule(ruleId)
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = ruleId, isDelete = true))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = ruleId, isDelete = true))
         syncBridge.afterMutation(this)
     }
 
@@ -460,11 +463,12 @@ class LedgerRepository(
                     transactionId = transactionId,
                     occurrenceAtMillis = occurrenceAtMillis,
                     createdAtMillis = nowMillis,
+                    updatedAtMillis = nowMillis,
                 )
                 val occurrenceExists = dao.getRecurringOccurrence(cursor.id, occurrenceAtMillis) != null
                 if (!occurrenceExists) {
                     dao.insertRecurringOccurrence(occurrence)
-                    dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "recurring_occurrences", rowId = occurrenceId))
+                    recordChangelog(LedgerSyncChangelogEntity(tableName = "recurring_occurrences", rowId = occurrenceId))
                     changed = true
                 }
                 val transactionExists = dao.getTransaction(transactionId) != null
@@ -485,7 +489,7 @@ class LedgerRepository(
                             updatedAtMillis = nowMillis,
                         ),
                     )
-                    dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId))
+                    recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId))
                     changed = true
                 }
                 val next = LedgerRecurringScheduler.nextOccurrenceAfter(
@@ -500,7 +504,7 @@ class LedgerRepository(
             }
             if (cursor.nextOccurrenceAtMillis != rule.nextOccurrenceAtMillis) {
                 dao.updateRecurringRule(cursor)
-                dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = cursor.id))
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "recurring_rules", rowId = cursor.id))
                 changed = true
             }
             if (changed) {
@@ -511,9 +515,12 @@ class LedgerRepository(
 
     suspend fun saveTransaction(draft: LedgerTransactionDraft) {
         val now = System.currentTimeMillis()
+        // 防御：若 UI 传入空 bookId（如刚归档最后一个账本后 currentBookId=""），
+        // 回退到默认账本，避免服务端 FK 约束违反触发 500 死循环。
+        val resolvedBookId = draft.bookId.takeIf { it.isNotBlank() } ?: defaultBookId()
         val entity = LedgerTransactionEntity(
             id = draft.id ?: UUID.randomUUID().toString(),
-            bookId = draft.bookId,
+            bookId = resolvedBookId,
             categoryId = draft.categoryId,
             accountId = draft.accountId,
             toAccountId = draft.toAccountId,
@@ -530,17 +537,19 @@ class LedgerRepository(
         } else {
             dao.updateTransaction(entity)
         }
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = entity.id))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = entity.id))
         syncBridge.afterMutation(this)
     }
 
     suspend fun saveTransactions(drafts: List<LedgerTransactionDraft>) {
         if (drafts.isEmpty()) return
         val now = System.currentTimeMillis()
+        // 批量导入同样需要 bookId 兜底，避免个别 draft 携带空 bookId
+        val fallbackBookId = defaultBookId()
         val entities = drafts.map { draft ->
             LedgerTransactionEntity(
                 id = draft.id ?: UUID.randomUUID().toString(),
-                bookId = draft.bookId,
+                bookId = draft.bookId.takeIf { it.isNotBlank() } ?: fallbackBookId,
                 categoryId = draft.categoryId,
                 accountId = draft.accountId,
                 toAccountId = draft.toAccountId,
@@ -555,7 +564,7 @@ class LedgerRepository(
         }
         dao.insertTransactions(entities)
         entities.forEach { entity ->
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = entity.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = entity.id))
         }
         syncBridge.afterMutation(this)
     }
@@ -563,14 +572,50 @@ class LedgerRepository(
     suspend fun saveCategory(draft: LedgerCategoryDraft) {
         val now = System.currentTimeMillis()
         val existing = draft.id?.let { dao.getCategory(it) }
-        val sortOrder = existing?.sortOrder ?: (
-            dao.observeAllCategories(draft.bookId).first()
-                .filter { it.type == draft.type }
-                .maxOfOrNull { it.sortOrder }?.plus(1) ?: 0
-            )
+        // 防御：bookId NOT NULL + FK，空值兜底到默认账本
+        val resolvedBookId = draft.bookId.takeIf { it.isNotBlank() } ?: defaultBookId()
+        val sameTypeCategories = dao.observeAllCategories(resolvedBookId).first()
+            .filter { it.type == draft.type }
+
+        // "其他" 分类始终置底：新增分类时插入到 "其他" 前面（同 book + 同 type）
+        // 识别规则：名称为 "其他"（不区分大小写）或 id 以 "cat-other-" 开头
+        val otherCategory = sameTypeCategories.firstOrNull { existingCat ->
+            existingCat.name.trim().equals("其他", ignoreCase = true) ||
+                existingCat.id.startsWith("cat-other-")
+        }
+
+        val sortOrder = if (existing != null) {
+            existing.sortOrder
+        } else when {
+            // 找到 "其他"：插入到它前面，把它和后面所有项后移 +1
+            otherCategory != null -> {
+                val insertAt = otherCategory.sortOrder
+                sameTypeCategories
+                    .filter { it.sortOrder >= insertAt && it.id != otherCategory.id }
+                    .forEach { cat ->
+                        dao.updateCategory(
+                            cat.copy(
+                                sortOrder = cat.sortOrder + 1,
+                                updatedAtMillis = now,
+                            ),
+                        )
+                        recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = cat.id))
+                    }
+                // "其他" 自己也后移
+                dao.updateCategory(
+                    otherCategory.copy(
+                        sortOrder = otherCategory.sortOrder + 1,
+                        updatedAtMillis = now,
+                    ),
+                )
+                recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = otherCategory.id))
+                insertAt
+            }
+            else -> sameTypeCategories.maxOfOrNull { it.sortOrder }?.plus(1) ?: 0
+        }
         val entity = LedgerCategoryEntity(
             id = existing?.id ?: UUID.randomUUID().toString(),
-            bookId = draft.bookId,
+            bookId = resolvedBookId,
             name = draft.name.trim(),
             iconKey = draft.iconKey,
             color = draft.color,
@@ -585,13 +630,13 @@ class LedgerRepository(
         } else {
             dao.updateCategory(entity)
         }
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "categories", rowId = entity.id))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = entity.id))
         syncBridge.afterMutation(this)
     }
 
     suspend fun setCategoryHidden(categoryId: String, hidden: Boolean) {
         dao.setCategoryHidden(categoryId, hidden, System.currentTimeMillis())
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "categories", rowId = categoryId))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "categories", rowId = categoryId))
         syncBridge.afterMutation(this)
     }
 
@@ -599,7 +644,7 @@ class LedgerRepository(
         val now = System.currentTimeMillis()
         val existing = draft.id?.let { dao.getAccount(it) }
         val sortOrder = existing?.sortOrder ?: (
-            dao.observeAllAccounts(draft.bookId).first()
+            dao.getAllAccountsGlobally()
                 .maxOfOrNull { it.sortOrder }?.plus(1) ?: 0
             )
         val iconKey = defaultAccountIconKey(draft.type)
@@ -609,9 +654,17 @@ class LedgerRepository(
         } else {
             existing.balanceCents + (draft.initialBalanceCents - existing.initialBalanceCents)
         }
+        // 修复：bookId 不能为空字符串，否则服务端 ledger_accounts.book_id 的
+        // NOT NULL + FK 约束会在事务提交阶段抛 ConstraintViolationException，
+        // 被包装为 TransactionSystemException 后被 generic handler 捕获返回 500，
+        // 表现为"同步失败（服务器错误）"。
+        // V5_6 客户端将账号与账本解耦（UI 不再绑定），但服务端 schema 仍保留 FK，
+        // 因此客户端需写入一个有效的 bookId（默认账本）以满足约束。
+        val resolvedBookId = existing?.bookId?.takeIf { it.isNotBlank() }
+            ?: defaultBookId()
         val entity = LedgerAccountEntity(
             id = existing?.id ?: UUID.randomUUID().toString(),
-            bookId = draft.bookId,
+            bookId = resolvedBookId,
             name = draft.name.trim(),
             type = draft.type,
             iconKey = iconKey,
@@ -622,6 +675,10 @@ class LedgerRepository(
             includeInTotal = draft.includeInTotal,
             hidden = existing?.hidden ?: false,
             note = draft.note.trim(),
+            ownerUserId = draft.ownerUserId,
+            bankKey = draft.bankKey,
+            bankName = draft.bankName,
+            cardNumberTail = draft.cardNumberTail,
             sortOrder = sortOrder,
             createdAtMillis = existing?.createdAtMillis ?: now,
             updatedAtMillis = now,
@@ -631,13 +688,20 @@ class LedgerRepository(
         } else {
             dao.updateAccount(entity)
         }
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "accounts", rowId = entity.id))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "accounts", rowId = entity.id))
         syncBridge.afterMutation(this)
     }
 
     suspend fun setAccountHidden(accountId: String, hidden: Boolean) {
         dao.setAccountHidden(accountId, hidden, System.currentTimeMillis())
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "accounts", rowId = accountId))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "accounts", rowId = accountId))
+        syncBridge.afterMutation(this)
+    }
+
+    suspend fun deleteAccount(accountId: String) {
+        val now = System.currentTimeMillis()
+        dao.softDeleteAccount(accountId, now, now)
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "accounts", rowId = accountId))
         syncBridge.afterMutation(this)
     }
 
@@ -721,20 +785,20 @@ class LedgerRepository(
             deletedItemId = UUID.randomUUID().toString(),
             title = title,
         )
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId))
         syncBridge.afterMutation(this)
     }
 
     suspend fun restoreTransaction(transactionId: String) {
         dao.restoreTransaction(transactionId, System.currentTimeMillis())
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId))
         syncBridge.afterMutation(this)
     }
 
     suspend fun permanentlyDeleteTransaction(transactionId: String) {
         dao.hardDeleteTransaction(transactionId)
         dao.deleteDeletedItemByItemId(transactionId)
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId, isDelete = true))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transactionId, isDelete = true))
         syncBridge.afterMutation(this)
     }
 
@@ -751,7 +815,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transaction.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transaction.id))
         }
         syncBridge.afterMutation(this)
     }
@@ -766,7 +830,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transaction.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transaction.id))
         }
         syncBridge.afterMutation(this)
     }
@@ -786,7 +850,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transaction.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "transactions", rowId = transaction.id))
         }
         syncBridge.afterMutation(this)
     }
@@ -814,7 +878,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "budgets", rowId = budgetId))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "budgets", rowId = budgetId))
         } else {
             dao.updateBudget(
                 existing.copy(
@@ -822,7 +886,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "budgets", rowId = existing.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "budgets", rowId = existing.id))
         }
         syncBridge.afterMutation(this)
     }
@@ -831,10 +895,19 @@ class LedgerRepository(
         budget: LedgerBudget,
         categoryId: String,
         amountCents: Long,
-    ) {
+    ): Boolean {
         val now = System.currentTimeMillis()
+        val currentBudget = dao.getBudget(budget.id) ?: return false
         val rows = dao.getCategoryBudgets(budget.id)
         val existing = rows.firstOrNull { it.categoryId == categoryId }
+
+        // FR-18: 预计算分类预算总额，超额则拒绝写入（不再自动调高总预算）
+        val previousAmount = existing?.amountCents ?: 0L
+        val projectedTotal = dao.categoryBudgetTotal(budget.id) - previousAmount + amountCents
+        if (projectedTotal > currentBudget.totalAmountCents) {
+            return false
+        }
+
         if (existing == null) {
             val categoryBudgetId = UUID.randomUUID().toString()
             dao.insertCategoryBudget(
@@ -847,7 +920,7 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "category_budgets", rowId = categoryBudgetId))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "category_budgets", rowId = categoryBudgetId))
         } else {
             dao.updateCategoryBudget(
                 existing.copy(
@@ -855,26 +928,16 @@ class LedgerRepository(
                     updatedAtMillis = now,
                 ),
             )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "category_budgets", rowId = existing.id))
-        }
-        val categoryTotal = dao.categoryBudgetTotal(budget.id)
-        val currentBudget = dao.getBudget(budget.id) ?: return
-        if (categoryTotal > currentBudget.totalAmountCents) {
-            dao.updateBudget(
-                currentBudget.copy(
-                    totalAmountCents = categoryTotal,
-                    updatedAtMillis = now,
-                ),
-            )
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "budgets", rowId = currentBudget.id))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "category_budgets", rowId = existing.id))
         }
         syncBridge.afterMutation(this)
+        return true
     }
 
     suspend fun clearBudget(budgetId: String) {
         dao.deleteCategoryBudgetsByBudgetId(budgetId)
         dao.deleteBudget(budgetId)
-        dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "budgets", rowId = budgetId, isDelete = true))
+        recordChangelog(LedgerSyncChangelogEntity(tableName = "budgets", rowId = budgetId, isDelete = true))
         syncBridge.afterMutation(this)
     }
 
@@ -882,7 +945,7 @@ class LedgerRepository(
         val existing = dao.getCategoryBudgets(budgetId).firstOrNull { it.categoryId == categoryId }
         dao.deleteCategoryBudgetByCategory(budgetId, categoryId)
         if (existing != null) {
-            dao.insertChangelogEntry(LedgerSyncChangelogEntity(tableName = "category_budgets", rowId = existing.id, isDelete = true))
+            recordChangelog(LedgerSyncChangelogEntity(tableName = "category_budgets", rowId = existing.id, isDelete = true))
         }
         syncBridge.afterMutation(this)
     }

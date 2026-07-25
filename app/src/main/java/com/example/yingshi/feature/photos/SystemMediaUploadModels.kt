@@ -31,7 +31,7 @@ data class SystemMediaUploadTaskUiModel(
     val resultPostRoute: PostDetailPlaceholderRoute? = null,
 ) {
     val isTerminal: Boolean
-        get() = state == UploadState.SUCCESS || state == UploadState.FAILURE || state == UploadState.CANCELLED
+        get() = state == UploadState.SUCCESS || state == UploadState.FAILED || state == UploadState.CANCELLED
 
     val canPause: Boolean
         get() = state == UploadState.WAITING || state == UploadState.UPLOADING

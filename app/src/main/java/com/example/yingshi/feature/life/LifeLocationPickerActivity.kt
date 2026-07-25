@@ -105,6 +105,7 @@ class LifeLocationPickerActivity : ComponentActivity() {
         val initialLng = intent.getDoubleExtra(EXTRA_INITIAL_LNG, Double.NaN).takeIf { !it.isNaN() }
         val initialLabel = intent.getStringExtra(EXTRA_INITIAL_LABEL)
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "选择位置"
+        val readOnly = intent.getBooleanExtra(EXTRA_READ_ONLY, false)
 
         setContent {
             YingShiTheme {
@@ -113,6 +114,7 @@ class LifeLocationPickerActivity : ComponentActivity() {
                     initialLng = initialLng,
                     initialLabel = initialLabel,
                     title = title,
+                    readOnly = readOnly,
                     onConfirm = { lat, lng, label ->
                         val data = Intent().apply {
                             putExtra(EXTRA_RESULT_LAT, lat)
@@ -139,6 +141,9 @@ class LifeLocationPickerActivity : ComponentActivity() {
         internal const val EXTRA_RESULT_LAT = "life_location_picker_result_lat"
         internal const val EXTRA_RESULT_LNG = "life_location_picker_result_lng"
         internal const val EXTRA_RESULT_LABEL = "life_location_picker_result_label"
+        // 只读模式: 隐藏搜索框、"重新定位"和"确定"按钮, 只展示地图+地址.
+        // 用于系统媒体 Viewer: 仅查看 EXIF GPS 对应位置, 不可操作.
+        internal const val EXTRA_READ_ONLY = "life_location_picker_read_only"
 
         fun intent(
             context: Context,
@@ -146,12 +151,14 @@ class LifeLocationPickerActivity : ComponentActivity() {
             initialLng: Double? = null,
             initialLabel: String? = null,
             title: String = "选择位置",
+            readOnly: Boolean = false,
         ): Intent {
             return Intent(context, LifeLocationPickerActivity::class.java).apply {
                 initialLat?.let { putExtra(EXTRA_INITIAL_LAT, it) }
                 initialLng?.let { putExtra(EXTRA_INITIAL_LNG, it) }
                 initialLabel?.let { putExtra(EXTRA_INITIAL_LABEL, it) }
                 putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_READ_ONLY, readOnly)
             }
         }
     }
@@ -163,6 +170,7 @@ private fun LifeLocationPickerScreen(
     initialLng: Double?,
     initialLabel: String?,
     title: String,
+    readOnly: Boolean = false,
     onConfirm: (Double, Double, String) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -295,19 +303,22 @@ private fun LifeLocationPickerScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
             }
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("搜索地点") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { /* 触发 Inputtips 已自动 */ }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(24.dp),
-            )
+            // 只读模式隐藏搜索框 (仅查看位置, 无需搜索)
+            if (!readOnly) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("搜索地点") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { /* 触发 Inputtips 已自动 */ }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(24.dp),
+                )
+            }
             // 搜索结果下拉
             if (searchResults.isNotEmpty()) {
                 LazyColumn(
@@ -389,7 +400,7 @@ private fun LifeLocationPickerScreen(
                         Spacer(Modifier.width(8.dp))
                     }
                     Text(
-                        text = addressLabel.ifBlank { "拖动地图选择位置" },
+                        text = addressLabel.ifBlank { if (readOnly) "未知位置" else "拖动地图选择位置" },
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         maxLines = 2,
@@ -397,59 +408,62 @@ private fun LifeLocationPickerScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        onClick = {
-                            if (isLocating) return@TextButton
-                            isLocating = true
-                            scope.launch {
-                                val loc = withContext(Dispatchers.IO) {
-                                    LocationHelper.currentLocation(context)
-                                }
-                                isLocating = false
-                                if (loc != null) {
-                                    // Round 8 第十轮: LocationHelper 已返回 GCJ-02, 直接用
-                                    val gcj02 = LatLng(loc.latitude, loc.longitude)
-                                    selectedLatLng = gcj02
-                                    aMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(gcj02, 16f))
-                                    isGeocoding = true
-                                    triggerReverseGeocode(geocodeSearch, gcj02) { label ->
-                                        addressLabel = label
-                                        isGeocoding = false
+                // 只读模式隐藏"重新定位"和"确定"按钮 (仅查看, 不可操作)
+                if (!readOnly) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = {
+                                if (isLocating) return@TextButton
+                                isLocating = true
+                                scope.launch {
+                                    val loc = withContext(Dispatchers.IO) {
+                                        LocationHelper.currentLocation(context)
+                                    }
+                                    isLocating = false
+                                    if (loc != null) {
+                                        // Round 8 第十轮: LocationHelper 已返回 GCJ-02, 直接用
+                                        val gcj02 = LatLng(loc.latitude, loc.longitude)
+                                        selectedLatLng = gcj02
+                                        aMap?.moveCamera(CameraUpdateFactory.newLatLngZoom(gcj02, 16f))
+                                        isGeocoding = true
+                                        triggerReverseGeocode(geocodeSearch, gcj02) { label ->
+                                            addressLabel = label
+                                            isGeocoding = false
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        enabled = !isLocating,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.MyLocation,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (isLocating) "定位中…" else "重新定位")
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable {
-                            val target = selectedLatLng
-                            if (target != null) {
-                                onConfirm(target.latitude, target.longitude, addressLabel.ifBlank { "未命名位置" })
-                            }
-                        },
-                    ) {
-                        Text(
-                            text = "确定",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 10.dp),
-                        )
+                            },
+                            enabled = !isLocating,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MyLocation,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (isLocating) "定位中…" else "重新定位")
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                val target = selectedLatLng
+                                if (target != null) {
+                                    onConfirm(target.latitude, target.longitude, addressLabel.ifBlank { "未命名位置" })
+                                }
+                            },
+                        ) {
+                            Text(
+                                text = "确定",
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                modifier = Modifier.padding(horizontal = 32.dp, vertical = 10.dp),
+                            )
+                        }
                     }
                 }
             }

@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.yingshi.data.model.UpdatePostBasicInfoPayload
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.remote.auth.BackendAutoLoginManager
+import com.example.yingshi.data.remote.auth.BackendSessionProbe
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.AlbumRepository
 import com.example.yingshi.data.repository.MediaRepository
@@ -64,71 +64,80 @@ class RealGearEditViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            if (!AuthSessionManager.isLoggedIn) {
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
-                    force = false,
-                    reason = "real_gear_edit_refresh",
+            try {
+                if (!AuthSessionManager.isLoggedIn) {
+                    val loginOutcome = BackendSessionProbe.probeSessionState(
+                        force = false,
+                        reason = "real_gear_edit_refresh",
+                    )
+                    if (!loginOutcome.success) {
+                        _uiState.value = RealGearEditUiState(
+                            tokenMissing = true,
+                            errorMessage = loginOutcome.message.ifBlank {
+                                "需要先完成登录，请检查连接设置后重试。"
+                            },
+                        )
+                        return@launch
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isLoading = true,
+                        tokenMissing = false,
+                        errorMessage = null,
+                        statusMessage = null,
+                    )
+                }
+
+                val albumsResult = albumRepository.getAlbums()
+                val detailResult = postRepository.getPostDetail(route.postId)
+                val albums = (albumsResult as? ApiResult.Success)
+                    ?.data
+                    .orEmpty()
+                    .map { it.toAlbumSummaryUiModel() }
+
+                when (detailResult) {
+                    is ApiResult.Success -> {
+                        val draft = detailResult.data.toEditablePostDraft()
+                        val mediaItems = detailResult.data.toManagedPostMediaUiModels()
+                        val coverMediaId = mediaItems.firstOrNull { it.isCover }?.id
+                            ?: mediaItems.firstOrNull()?.id
+                        initialDraft = draft
+                        initialMediaIds = mediaItems.map { it.id }
+                        initialCoverMediaId = coverMediaId
+                        _uiState.value = RealGearEditUiState(
+                            isLoading = false,
+                            albums = albums,
+                            title = draft.title,
+                            summary = draft.summary,
+                            displayTimeMillis = draft.postDisplayTimeMillis,
+                            selectedAlbumIds = draft.albumIds,
+                            participantUserIds = draft.participantUserIds,
+                            mediaItems = mediaItems,
+                            coverMediaId = coverMediaId,
+                            draftLoaded = true,
+                            hasChanges = false,
+                            errorMessage = (albumsResult as? ApiResult.Error)
+                                ?.toBackendUiMessage("读取相册失败，当前无法切换所属相册。"),
+                        )
+                    }
+                    is ApiResult.Error -> {
+                        _uiState.value = RealGearEditUiState(
+                            isLoading = false,
+                            albums = albums,
+                            errorMessage = detailResult.toBackendUiMessage("读取小相册失败。"),
+                        )
+                    }
+                    ApiResult.Loading -> Unit
+                }
+            } catch (e: Throwable) {
+                // 防御性异常捕获：避免任何异常导致 UI 状态不一致进而闪退
+                android.util.Log.e("RealGearEditViewModel", "refresh: failed", e)
+                _uiState.value = RealGearEditUiState(
+                    isLoading = false,
+                    errorMessage = "加载小相册失败：${e.message ?: e.javaClass.simpleName}，请重试。",
                 )
-                if (!loginOutcome.success) {
-                    _uiState.value = RealGearEditUiState(
-                        tokenMissing = true,
-                        errorMessage = loginOutcome.message.ifBlank {
-                            "需要先完成登录，请检查连接设置后重试。"
-                        },
-                    )
-                    return@launch
-                }
-            }
-
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    tokenMissing = false,
-                    errorMessage = null,
-                    statusMessage = null,
-                )
-            }
-
-            val albumsResult = albumRepository.getAlbums()
-            val detailResult = postRepository.getPostDetail(route.postId)
-            val albums = (albumsResult as? ApiResult.Success)
-                ?.data
-                .orEmpty()
-                .map { it.toAlbumSummaryUiModel() }
-
-            when (detailResult) {
-                is ApiResult.Success -> {
-                    val draft = detailResult.data.toEditablePostDraft()
-                    val mediaItems = detailResult.data.toManagedPostMediaUiModels()
-                    val coverMediaId = mediaItems.firstOrNull { it.isCover }?.id
-                        ?: mediaItems.firstOrNull()?.id
-                    initialDraft = draft
-                    initialMediaIds = mediaItems.map { it.id }
-                    initialCoverMediaId = coverMediaId
-                    _uiState.value = RealGearEditUiState(
-                        isLoading = false,
-                        albums = albums,
-                        title = draft.title,
-                        summary = draft.summary,
-                        displayTimeMillis = draft.postDisplayTimeMillis,
-                        selectedAlbumIds = draft.albumIds,
-                        participantUserIds = draft.participantUserIds,
-                        mediaItems = mediaItems,
-                        coverMediaId = coverMediaId,
-                        draftLoaded = true,
-                        hasChanges = false,
-                        errorMessage = (albumsResult as? ApiResult.Error)
-                            ?.toBackendUiMessage("读取相册失败，当前无法切换所属相册。"),
-                    )
-                }
-                is ApiResult.Error -> {
-                    _uiState.value = RealGearEditUiState(
-                        isLoading = false,
-                        albums = albums,
-                        errorMessage = detailResult.toBackendUiMessage("读取小相册失败。"),
-                    )
-                }
-                ApiResult.Loading -> Unit
             }
         }
     }
@@ -479,7 +488,7 @@ class RealMediaManagementViewModel(
     fun refresh() {
         viewModelScope.launch {
             if (!AuthSessionManager.isLoggedIn) {
-                val loginOutcome = BackendAutoLoginManager.loginDefault(
+                val loginOutcome = BackendSessionProbe.probeSessionState(
                     force = false,
                     reason = "real_media_management_refresh",
                 )

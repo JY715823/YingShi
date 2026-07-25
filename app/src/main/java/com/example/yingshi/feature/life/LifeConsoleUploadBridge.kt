@@ -17,10 +17,6 @@ import com.example.yingshi.data.remote.config.BackendDebugConfig
 import com.example.yingshi.data.remote.result.ApiResult
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.life.widget.LifeConsoleWidgetProvider
-import com.example.yingshi.feature.photos.DeviceMediaTimeMetadata
-import com.example.yingshi.feature.photos.DisplayTimeSourceFileModified
-import com.example.yingshi.feature.photos.DisplayTimeSourceImported
-import com.example.yingshi.feature.photos.DisplayTimeSourceOriginal
 import com.example.yingshi.feature.photos.MediaTimePreference
 import com.example.yingshi.feature.photos.SettingsRepository
 import com.example.yingshi.feature.photos.SystemMediaType
@@ -68,6 +64,9 @@ object LifeConsoleUploadBridge {
         // Round 8 第十四轮: 定位策略区分拍照 vs 相册
         // - 拍照上传: 不在这里获取定位, 上传完成后由 ViewModel 异步获取当前 GPS (attachLocationToNewMedia)
         // - 相册上传: 读取每张照片的 EXIF GPS (如果有), 上传时就携带; 没有不强求
+        // P1-1 改造: 把 category（PERSON/MEAL）作为 lifeCategory 传给服务端，使 media 表直接带分类，
+        // 不再依赖 album/post/post_media 三层关联。
+        val normalizedCategory = category.trim().uppercase(Locale.ROOT)
         val uploadedMediaIds = mutableListOf<String>()
         for (uri in uris) {
             val metadata = withContext(Dispatchers.IO) {
@@ -82,15 +81,7 @@ object LifeConsoleUploadBridge {
             val payload = metadata.copy(
                 latitude = exifLocation?.latitude,
                 longitude = exifLocation?.longitude,
-            ).toTokenPayload()
-            // Round 8 第十六轮: 记录最终发送给服务端的 displayTimeMillis, 便于和服务端归档结果对照
-            Log.i(TAG, "uploadMedia: 发送 createUploadToken, fileName=${metadata.fileName}, " +
-                "displayTimeMillis=${metadata.displayTimeMillis}, " +
-                "displayTimeSource=${metadata.displayTimeSource}, " +
-                "capturedAtMillis=${metadata.capturedAtMillis}, " +
-                "importedAtMillis=${metadata.importedAtMillis}, " +
-                "isFromCamera=$isFromCamera, " +
-                "exifLocation=$exifLocation")
+            ).toTokenPayload(normalizedCategory)
             val tokenResult = RepositoryProvider.uploadRepository.createUploadToken(payload)
             val uploadId = when (tokenResult) {
                 is ApiResult.Success -> tokenResult.data.uploadId
@@ -299,10 +290,6 @@ object LifeConsoleUploadBridge {
             resolveImageMetadata(context, uri)
         }
         val nowMillis = System.currentTimeMillis()
-        // Round 8 第十六轮: 加详细日志排查"上传昨天的照片归档到今天"的问题.
-        // 分别记录: MediaStore datetaken, MediaStore DATE_MODIFIED, MediaStore DATE_ADDED, EXIF datetime_original,
-        // 以及最终 resolvedTime 的 displayTimeMillis + displayTimeSource.
-        val rawMediaStoreTimeInfo = queryMediaStoreRawTimeInfo(context, uri)
         val timeMetadata = queryDeviceMediaTimeMetadata(
             context = context,
             uri = uri,
@@ -313,26 +300,6 @@ object LifeConsoleUploadBridge {
             importedAtMillis = nowMillis,
             preference = SettingsRepository.getSettingsState().mediaTimePreference,
         )
-        Log.i(TAG, "resolveUploadMetadata: uri=$uri, fileName=$fileName, mimeType=$mimeType, " +
-            "sizeBytes=$fileSizeBytes, isVideo=$isVideo")
-        Log.i(TAG, "resolveUploadMetadata: MediaStore raw times -> " +
-            "datetaken=${rawMediaStoreTimeInfo.dateTakenMillis?.formatLogTime() ?: "null"}, " +
-            "dateModified=${rawMediaStoreTimeInfo.dateModifiedMillis?.formatLogTime() ?: "null"}, " +
-            "dateAdded=${rawMediaStoreTimeInfo.dateAddedMillis?.formatLogTime() ?: "null"}")
-        Log.i(TAG, "resolveUploadMetadata: timeMetadata -> " +
-            "capturedAtMillis=${timeMetadata.capturedAtMillis?.formatLogTime() ?: "null"}, " +
-            "fileModifiedAtMillis=${timeMetadata.fileModifiedAtMillis?.formatLogTime() ?: "null"}")
-        Log.i(TAG, "resolveUploadMetadata: resolvedTime -> " +
-            "displayTimeMillis=${resolvedTime.displayTimeMillis.formatLogTime()}, " +
-            "displayTimeSource=${resolvedTime.displayTimeSource}, " +
-            "capturedAtMillis=${resolvedTime.capturedAtMillis?.formatLogTime() ?: "null"}, " +
-            "importedAtMillis=${resolvedTime.importedAtMillis.formatLogTime()}")
-        if (resolvedTime.displayTimeSource != DisplayTimeSourceOriginal) {
-            Log.w(TAG, "resolveUploadMetadata: ⚠ displayTimeSource=${resolvedTime.displayTimeSource} " +
-                "不是 ORIGINAL (拍摄时间), 照片可能不会按实际拍摄日期归档. " +
-                "原因可能是: 1) 照片无 EXIF datetime_original (截图/微信导出/编辑过); " +
-                "2) MediaStore datetaken 列为空; 3) ACTION_GET_CONTENT URI 不暴露 datetaken 列.")
-        }
         val sourceItemId = resolveMediaStoreId(context, uri)
         val fingerprint = buildSourceFingerprint(fileName, fileSizeBytes, uri.toString())
         return UploadMetadata(
@@ -350,51 +317,6 @@ object LifeConsoleUploadBridge {
             sourceFingerprint = fingerprint,
             sourceItemId = sourceItemId,
         )
-    }
-
-    /**
-     * Round 8 第十六轮: 查询 MediaStore 三列时间信息 (datetaken / DATE_MODIFIED / DATE_ADDED),
-     * 仅用于日志诊断, 不影响实际时间解析逻辑.
-     */
-    private data class MediaStoreRawTimeInfo(
-        val dateTakenMillis: Long?,
-        val dateModifiedMillis: Long?,
-        val dateAddedMillis: Long?,
-    )
-
-    private fun queryMediaStoreRawTimeInfo(context: Context, uri: Uri): MediaStoreRawTimeInfo {
-        return runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf(
-                    "datetaken",
-                    MediaStore.MediaColumns.DATE_MODIFIED,
-                    MediaStore.MediaColumns.DATE_ADDED,
-                ),
-                null, null, null,
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val dateTaken = cursor.getLongOrNull(cursor.getColumnIndex("datetaken"))
-                    val dateModified = cursor.getLongOrNull(
-                        cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED),
-                    )?.times(1000L)
-                    val dateAdded = cursor.getLongOrNull(
-                        cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED),
-                    )?.times(1000L)
-                    MediaStoreRawTimeInfo(
-                        dateTakenMillis = dateTaken?.takeIf { it > 0L },
-                        dateModifiedMillis = dateModified?.takeIf { it > 0L },
-                        dateAddedMillis = dateAdded?.takeIf { it > 0L },
-                    )
-                } else {
-                    MediaStoreRawTimeInfo(null, null, null)
-                }
-            } ?: MediaStoreRawTimeInfo(null, null, null)
-        }.getOrDefault(MediaStoreRawTimeInfo(null, null, null))
-    }
-
-    private fun Long.formatLogTime(): String {
-        return java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(java.util.Date(this))
     }
 
     private fun queryDisplayName(context: Context, uri: Uri): String? {
@@ -562,7 +484,10 @@ object LifeConsoleUploadBridge {
         val latitude: Double? = null,
         val longitude: Double? = null,
     ) {
-        fun toTokenPayload(): CreateUploadTokenPayload {
+        /**
+         * @param lifeCategory life 模块分类（PERSON/MEAL），由调用方传入，写入 CreateUploadTokenPayload.lifeCategory
+         */
+        fun toTokenPayload(lifeCategory: String): CreateUploadTokenPayload {
             return CreateUploadTokenPayload(
                 fileName = fileName,
                 mimeType = mimeType,
@@ -579,6 +504,7 @@ object LifeConsoleUploadBridge {
                 operationType = "life_console",
                 sourceItemId = sourceItemId,
                 domain = "life",
+                lifeCategory = lifeCategory,
                 latitude = latitude,
                 longitude = longitude,
                 // locationLabel intentionally null — server will reverse-geocode from lat/lng via Amap.

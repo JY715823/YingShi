@@ -484,11 +484,6 @@ internal fun backendMediaOriginalImageRequest(
 
 internal fun sharedPreviewMemoryCacheKey(url: String): String = "media:${stableMediaCacheUrlKey(url)}"
 
-internal fun sharedSizedPreviewMemoryCacheKey(
-    url: String,
-    size: Int,
-): String = "media:${stableMediaCacheUrlKey(url)}:size:$size"
-
 internal fun sharedOriginalMemoryCacheKey(url: String): String = "original:${stableMediaCacheUrlKey(url)}"
 
 internal fun sharedMediaDiskCacheKey(url: String): String = "media:${stableMediaCacheUrlKey(url)}"

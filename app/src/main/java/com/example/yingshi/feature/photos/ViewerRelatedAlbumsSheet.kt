@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.yingshi.data.cache.AppReadCacheStore
 import com.example.yingshi.data.remote.auth.AuthSessionManager
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 
@@ -188,11 +187,6 @@ internal fun buildViewerRelatedPostRoute(
 ): PostDetailPlaceholderRoute {
     if (sourcePostRoute?.postId == postId) {
         return sourcePostRoute
-    }
-    if (RepositoryProvider.currentMode == RepositoryMode.FAKE) {
-        FakeAlbumRepository.getPost(postId)?.let { post ->
-            return FakeAlbumRepository.toPostDetailRoute(post)
-        }
     }
     val fallbackTitle = sourcePostRoute
         ?.takeIf { it.postId == postId }

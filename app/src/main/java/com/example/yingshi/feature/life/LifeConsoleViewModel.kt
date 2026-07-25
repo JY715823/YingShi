@@ -19,6 +19,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -565,13 +567,21 @@ class LifeConsoleViewModel(
     private fun startSyncStaleObserver() {
         syncStaleJob?.cancel()
         syncStaleJob = viewModelScope.launch {
-            SyncVersionTracker.staleState.collect { stale ->
-                if (stale.lifeConsoleStale) {
-                    loadToday()
-                    loadHistory()
-                    SyncVersionTracker.markRefreshed(SyncModule.LIFE_CONSOLE)
+            // P1-3 根因修复: 只订阅 lifeConsoleStale 字段, 不订阅整个 staleState。
+            // 之前订阅整个 staleState, 任何 stale 字段变化 (如 photoFeedStale) 都会触发 collect,
+            // 虽然 if (stale.lifeConsoleStale) 过滤了非 life 的变化, 但 collect 本身会执行,
+            // 且 markRefreshedFresh 重置 lifeConsoleStale 时会再次触发 staleState 变化,
+            // 形成 false→true→false 双次变化, 导致照片流/相册页 StaleBanner 重组 (用户感知为"闪")。
+            SyncVersionTracker.staleState
+                .map { it.lifeConsoleStale }
+                .distinctUntilChanged()
+                .collect { lifeConsoleStale ->
+                    if (lifeConsoleStale) {
+                        loadToday()
+                        loadHistory()
+                        SyncVersionTracker.markRefreshedFresh(SyncModule.LIFE_CONSOLE)
+                    }
                 }
-            }
         }
     }
 

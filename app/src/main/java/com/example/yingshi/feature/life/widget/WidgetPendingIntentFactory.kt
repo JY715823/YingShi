@@ -8,7 +8,6 @@ import android.net.Uri
 import com.example.yingshi.MainActivity
 import com.example.yingshi.app.AppNavigationRequests
 import com.example.yingshi.data.model.RemoteMedia
-import com.example.yingshi.feature.life.LifeMediaQuickViewerActivity
 import com.example.yingshi.feature.life.WidgetMediaEntryActivity
 
 /**
@@ -17,9 +16,6 @@ import com.example.yingshi.feature.life.WidgetMediaEntryActivity
  * 解决 Controller 中 Intent 构建与视图构建耦合的问题。
  */
 internal object WidgetPendingIntentFactory {
-
-    private const val LANE_CONSOLE = "console"
-    private const val LANE_PEOPLE = "people"
 
     fun openMainIntent(
         context: Context,
@@ -69,15 +65,23 @@ internal object WidgetPendingIntentFactory {
         )
     }
 
+    /**
+     * FR-6 Round 2: 点击照片打开查看态。
+     * 目标改为 LifeWidgetOpenDispatchActivity（透明分发），由其完成：
+     * 1. FR-5: saveFrontSlot + refreshWidget（置顶该框）
+     * 2. FR-6: 启动 QuickViewer（携带 slotKey）
+     */
     fun openMediaViewer(
         context: Context,
         media: RemoteMedia,
+        slotKey: LifeConsoleWidgetSlotKey,
         lane: String,
         requestCode: Int,
     ): PendingIntent {
         val resolvedRequestCode = widgetRequestCode(lane, requestCode)
-        val intent = LifeMediaQuickViewerActivity.widgetIntent(context, media).apply {
+        val intent = LifeWidgetOpenDispatchActivity.intent(context, slotKey, media).apply {
             data = Uri.parse("yingshi://widget/$lane/view/$requestCode/${media.mediaId}")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
         }
         return PendingIntent.getActivity(
             context,
@@ -108,6 +112,18 @@ internal object WidgetPendingIntentFactory {
         )
     }
 
+    /**
+     * FR-5: 相框点击置顶 Intent（广播，触发 Controller 的 SLOT_TO_FRONT 分支）。
+     * 用于相框白区/照片区背景点击，将该框切换到前层。
+     */
+    fun toFrontIntent(
+        context: Context,
+        slotKey: LifeConsoleWidgetSlotKey,
+        requestCode: Int,
+    ): PendingIntent {
+        return slotIntent(context, WidgetActions.ACTION_SLOT_TO_FRONT, slotKey, requestCode)
+    }
+
     fun widgetBroadcast(
         context: Context,
         providerClass: Class<out AppWidgetProvider>,
@@ -133,14 +149,14 @@ internal object WidgetPendingIntentFactory {
 
     fun laneFor(slotKey: LifeConsoleWidgetSlotKey): String {
         return if (slotKey.category == LifeConsoleWidgetProvider.CATEGORY_PERSON) {
-            LANE_PEOPLE
+            WidgetActions.LANE_PEOPLE
         } else {
-            LANE_CONSOLE
+            WidgetActions.LANE_CONSOLE
         }
     }
 
     fun providerClassFor(slotKey: LifeConsoleWidgetSlotKey): Class<out AppWidgetProvider> {
-        return if (laneFor(slotKey) == LANE_PEOPLE) {
+        return if (laneFor(slotKey) == WidgetActions.LANE_PEOPLE) {
             LifePeopleWidgetProvider::class.java
         } else {
             LifeConsoleWidgetProvider::class.java
@@ -148,7 +164,7 @@ internal object WidgetPendingIntentFactory {
     }
 
     fun widgetRequestCode(lane: String, requestCode: Int): Int {
-        val laneOffset = if (lane == LANE_PEOPLE) 200_000 else 100_000
+        val laneOffset = if (lane == WidgetActions.LANE_PEOPLE) 200_000 else 100_000
         return laneOffset + (requestCode and 0x0FFFFF)
     }
 }

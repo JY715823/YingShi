@@ -34,8 +34,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.yingshi.data.repository.RepositoryMode
-import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.ui.theme.YingShiTheme
 import com.example.yingshi.ui.theme.YingShiThemeTokens
@@ -84,13 +82,7 @@ internal fun AlbumPostCard(
         post.coverMediaSource,
         post.previewMedia,
     ) {
-        val resolved = if (post.previewMedia.size >= 2 || RepositoryProvider.currentMode == RepositoryMode.REAL) {
-            post.previewMedia
-        } else {
-            FakeAlbumRepository.getPostDetail(FakeAlbumRepository.toPostDetailRoute(post))
-                .mediaItems
-                .map(PostDetailMediaUiModel::toAlbumPostPreviewMediaUiModel)
-        }
+        val resolved = post.previewMedia
         resolved
             .ifEmpty {
                 listOf(

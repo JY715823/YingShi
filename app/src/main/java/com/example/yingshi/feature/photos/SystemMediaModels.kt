@@ -56,9 +56,21 @@ data class SystemMediaItem(
     val videoDurationMillis: Long? = null,
     val uploadedByUserId: String? = null,
     val sizeBytes: Long? = null,
+    val locationLabel: String? = null,
+    // EXIF GPS 解析后的 GCJ-02 坐标, 用于跳转地图只读查看.
+    // locationLabel 有值时此两字段一般非空; 但若逆地理失败, label 为坐标格式时也会有值.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 ) {
     val isImportedToApp: Boolean
         get() = !importedAppMediaId.isNullOrBlank()
+
+    /**
+     * 是否存在可定位的 GPS 坐标 (用于地点胶囊点击是否可跳地图).
+     * 用经纬度而非 label 判断, 因为 label 可能是逆地理失败的坐标兜底文本.
+     */
+    val hasGpsCoordinates: Boolean
+        get() = latitude != null && longitude != null
 }
 
 @Immutable

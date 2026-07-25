@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.example.yingshi.ui.theme.YingShiThemeTokens
 import kotlin.math.min
 
@@ -76,6 +78,15 @@ internal fun SystemMediaViewerCanvas(
     }
     val colors = YingShiThemeTokens.colors
     val density = LocalDensity.current
+    val viewerContext = LocalContext.current
+    // 系统媒体来自本地, 直接加载原图 (Size.ORIGINAL) 而非按 canvas 尺寸采样,
+    // 这样放大查看时不会糊. Coil 内存缓存会自动管理单张图片的回收.
+    val originalImageRequest = remember(item.uri, viewerContext) {
+        ImageRequest.Builder(viewerContext)
+            .data(item.uri)
+            .size(Size.ORIGINAL)
+            .build()
+    }
     var videoRetryVersion by remember(item.id) { mutableStateOf(0) }
     var videoControlsVisible by remember(item.id) { mutableStateOf(true) }
     var videoControlsActivityNonce by remember(item.id) { mutableIntStateOf(0) }
@@ -210,16 +221,14 @@ internal fun SystemMediaViewerCanvas(
             minimumScale = longImageMinimumScale,
         )
         val gestureModifier = if (zoomState != null) {
+            // 双击由外层 viewerSingleTapGesture 统一处理, 这里只处理 pinch/pan.
+            // 此前内层也注册 onDoubleTap 导致同一双击事件触发两次 toggleDoubleTap,
+            // 用户看到"乱跳两下" (先还原再放大). 对标照片流 Viewer: 内层 viewerZoomGesture
+            // 只处理 pinch/pan, 外层 viewerSingleTapGesture 处理 tap/doubleTap.
             Modifier.systemViewerZoomGesture(
                 zoomState = zoomState,
                 contentSize = contentSize,
                 contentTopLeft = contentTopLeft,
-                onDoubleTap = { position, size ->
-                    zoomState.toggleDoubleTap(
-                        tapPosition = position,
-                        containerSize = size,
-                    )
-                },
             )
         } else {
             Modifier
@@ -244,7 +253,7 @@ internal fun SystemMediaViewerCanvas(
                             contentAlignment = Alignment.TopCenter,
                         ) {
                             AsyncImage(
-                                model = item.uri,
+                                model = originalImageRequest,
                                 contentDescription = item.displayName,
                                 modifier = Modifier
                                     .width(canvasWidth)
@@ -255,7 +264,7 @@ internal fun SystemMediaViewerCanvas(
                         }
                     } else {
                         AsyncImage(
-                            model = item.uri,
+                            model = originalImageRequest,
                             contentDescription = item.displayName,
                             modifier = Modifier
                                 .width(canvasWidth)

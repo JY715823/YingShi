@@ -45,7 +45,6 @@ internal fun YingShiBackHandlers(
     selectedDestination: RootDestination,
     photoSelectionShellState: PhotosRootSelectionUiState,
     photosTopDestinationName: String,
-    showQuickAddSheet: Boolean,
     // Route setters
     setPhotoViewerRoute: (Any?) -> Unit,
     setLifeConsoleRouteActive: (Boolean) -> Unit,
@@ -206,8 +205,7 @@ internal fun YingShiBackHandlers(
             !chatViewerRouteActive &&
             !lifeConsoleRouteActive &&
             !isProfileFlowActive &&
-            !photoSelectionShellState.isActive &&
-            !showQuickAddSheet
+            !photoSelectionShellState.isActive
 
     if (rootExitEligible) {
         BackHandler {

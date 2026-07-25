@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 和纸胶带-薄荷（FR-1 装饰） -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_tape_mint" />
+            <corners android:radius="2dp" />
+        </shape>
+    </item>
+    <item>
+        <rotate android:fromDegrees="45" android:toDegrees="45" android:pivotX="50%" android:pivotY="50%">
+            <shape android:shape="rectangle">
+                <size android:width="44dp" android:height="60dp" />
+                <gradient
+                    android:startColor="@color/widget_tape_mint_stripe"
+                    android:centerColor="@color/widget_tape_mint"
+                    android:endColor="@color/widget_tape_mint_stripe"
+                    android:angle="0" />
+            </shape>
+        </rotate>
+    </item>
+</layer-list>

@@ -399,7 +399,7 @@ internal fun enqueueRealUploadTask(
                         val message = "上传已完成，但服务器没有返回媒体编号。"
                         UploadManager.updateUploadTask(
                             taskId = uploadId,
-                            state = UploadState.FAILURE,
+                            state = UploadState.FAILED,
                             progressPercent = 95,
                             statusMessage = "上传失败",
                             errorMessage = message,
@@ -460,7 +460,7 @@ internal fun enqueueRealUploadTask(
                     val message = uploadResult.message.ifBlank { "上传失败，请稍后重试。" }
                     UploadManager.updateUploadTask(
                         taskId = uploadId,
-                        state = UploadState.FAILURE,
+                        state = UploadState.FAILED,
                         progressPercent = 35,
                         statusMessage = "上传失败",
                         errorMessage = message,
@@ -500,7 +500,7 @@ internal fun enqueueRealUploadTask(
             if (UploadManager.uploadTasksState.any { it.taskId == activeTaskId }) {
                 UploadManager.updateUploadTask(
                     taskId = activeTaskId,
-                    state = UploadState.FAILURE,
+                    state = UploadState.FAILED,
                     progressPercent = 0,
                     statusMessage = "上传失败",
                     errorMessage = message,
@@ -674,7 +674,7 @@ internal suspend fun finalizeRealOperationIfReady(
     val operationTasks = UploadManager.uploadTasksState.filter { it.operationId == operationId }
     if (operationTasks.isEmpty()) return
     val request = UploadManager.operationRequestsById[operationId]
-    val hasFailedTasks = operationTasks.any { it.state == UploadState.FAILURE || it.state == UploadState.CANCELLED }
+    val hasFailedTasks = operationTasks.any { it.state == UploadState.FAILED || it.state == UploadState.CANCELLED }
     val allTasksFinished = operationTasks.all { it.isTerminal }
     val allTasksSucceeded = operationTasks.all { it.state == UploadState.SUCCESS }
     val canFinalizePartialCreatePost = request?.operationType == OperationType.CREATE_POST &&
@@ -757,7 +757,7 @@ internal suspend fun finalizeRealOperationIfReady(
             if (canFinalizePartialCreatePost || canFinalizePartialAddToPost) {
                 UploadManager.updateSuccessfulOperationTasks(
                     operationId = operationId,
-                    state = UploadState.FAILURE,
+                    state = UploadState.FAILED,
                     statusMessage = if (canFinalizePartialAddToPost) "加入小相册失败" else "小相册创建失败",
                     errorMessage = result.message.ifBlank {
                         if (canFinalizePartialAddToPost) {
@@ -771,7 +771,7 @@ internal suspend fun finalizeRealOperationIfReady(
             } else {
                 UploadManager.updateOperationTasks(
                     operationId = operationId,
-                    state = UploadState.FAILURE,
+                    state = UploadState.FAILED,
                     statusMessage = when (request?.operationType) {
                         OperationType.ADD_TO_EXISTING_POST -> "加入小相册失败"
                         else -> "小相册创建失败"
@@ -995,13 +995,12 @@ internal fun defaultCreatePostDraft(
     mediaItems: List<SystemMediaItem>,
 ): CreatePostDraft {
     val normalizedItems = normalizeSystemMedia(mediaItems)
-    val firstAlbumId = FakeAlbumRepository.getAlbums().firstOrNull()?.id
     return CreatePostDraft(
         title = "",
         summary = "",
         displayTimeMillis = normalizedItems.maxOfOrNull { it.displayTimeMillis }
             ?: System.currentTimeMillis(),
-        albumIds = firstAlbumId?.let(::listOf).orEmpty(),
+        albumIds = emptyList(),
         coverSourceMediaId = normalizedItems.firstOrNull()?.id,
     )
 }

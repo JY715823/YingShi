@@ -6,10 +6,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -83,7 +84,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.yingshi.data.repository.RepositoryMode
 import com.example.yingshi.data.repository.RepositoryProvider
 import com.example.yingshi.feature.photos.rememberCollaboratorDirectorySnapshot
 import com.example.yingshi.ui.components.YingShiNotice
@@ -93,6 +93,7 @@ import com.example.yingshi.ui.components.yingShiClickable
 import com.example.yingshi.feature.ledger.data.LedgerTransaction
 import com.example.yingshi.feature.ledger.data.LedgerTransactionType
 import com.example.yingshi.feature.ledger.data.LedgerCategoryType
+import com.example.yingshi.feature.ledger.data.LedgerBookTemplateDaily
 import com.example.yingshi.feature.sync.StaleBanner
 import com.example.yingshi.feature.sync.SyncModule
 import com.example.yingshi.feature.sync.SyncVersionTracker
@@ -110,6 +111,7 @@ enum class LedgerRoute {
     ADD,
     BOOKS,
     ASSETS,
+    ACCOUNT_DETAIL,
     STATS,
     BUDGET,
     RECURRING,
@@ -135,15 +137,20 @@ fun LedgerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val syncStaleState by SyncVersionTracker.staleState.collectAsState()
     val collaboratorDirectory = rememberCollaboratorDirectorySnapshot(
-        fallbackToFakeProfile = RepositoryProvider.currentMode != RepositoryMode.REAL,
+        fallbackToFakeProfile = false,
     )
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var route by rememberSaveable { mutableStateOf(LedgerRoute.HOME.name) }
     var editingTransactionId by rememberSaveable { mutableStateOf<String?>(null) }
     var draftOccurredAtMillis by rememberSaveable { mutableStateOf<Long?>(null) }
+    var accountDetailAccountId by rememberSaveable { mutableStateOf<String?>(null) }
+    var transferFromAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     var lastOpenHomeNonce by rememberSaveable { mutableStateOf(0) }
     var lastOpenAddNonce by rememberSaveable { mutableStateOf(0) }
+    var addFromAccountDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    var addReturnRoute by rememberSaveable { mutableStateOf<String?>(null) }
+    var addTransferOnly by rememberSaveable { mutableStateOf(false) }
     var notice by remember { mutableStateOf<YingShiNotice?>(null) }
     var noticeNonce by remember { mutableStateOf(0) }
 
@@ -163,7 +170,7 @@ fun LedgerScreen(
             .collect { currentlyStale ->
                 if (currentlyStale) {
                     viewModel.handleLedgerEntry()
-                    SyncVersionTracker.markRefreshed(SyncModule.LIFE_CONSOLE)
+                    SyncVersionTracker.markRefreshedFresh(SyncModule.LIFE_CONSOLE)
                 }
             }
     }
@@ -195,7 +202,12 @@ fun LedgerScreen(
     BackHandler(enabled = drawerState.isOpen) {
         scope.launch { drawerState.close() }
     }
-    BackHandler(enabled = route != LedgerRoute.HOME.name) {
+    BackHandler(enabled = route == LedgerRoute.ACCOUNT_DETAIL.name) {
+        accountDetailAccountId = null
+        route = LedgerRoute.ASSETS.name
+    }
+    BackHandler(enabled = route != LedgerRoute.HOME.name && route != LedgerRoute.ACCOUNT_DETAIL.name) {
+        transferFromAccountId = null
         route = LedgerRoute.HOME.name
     }
     BackHandler(enabled = route == LedgerRoute.HOME.name && !drawerState.isOpen) {
@@ -204,7 +216,7 @@ fun LedgerScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = route == LedgerRoute.HOME.name,
+        gesturesEnabled = false,
         drawerContent = {
             LedgerDrawer(
                 uiState = uiState,
@@ -225,8 +237,32 @@ fun LedgerScreen(
             AnimatedContent(
                 targetState = LedgerRoute.valueOf(route),
                 transitionSpec = {
-                    fadeIn(animationSpec = tween(160)) togetherWith
-                        fadeOut(animationSpec = tween(110))
+                    val targetOrd = targetState.ordinal
+                    val initialOrd = initialState.ordinal
+                    if (targetOrd > initialOrd) {
+                        // Forward: new slides in from right
+                        slideInHorizontally(
+                            initialOffsetX = { it / 3 },
+                            animationSpec = tween(220),
+                        ) + fadeIn(tween(160)) togetherWith
+                            slideOutHorizontally(
+                                targetOffsetX = { -it / 3 },
+                                animationSpec = tween(220),
+                            ) + fadeOut(tween(160))
+                    } else if (targetOrd < initialOrd) {
+                        // Backward: new slides in from left
+                        slideInHorizontally(
+                            initialOffsetX = { -it / 3 },
+                            animationSpec = tween(220),
+                        ) + fadeIn(tween(160)) togetherWith
+                            slideOutHorizontally(
+                                targetOffsetX = { it / 3 },
+                                animationSpec = tween(220),
+                            ) + fadeOut(tween(160))
+                    } else {
+                        fadeIn(animationSpec = tween(160)) togetherWith
+                            fadeOut(animationSpec = tween(110))
+                    }
                 },
                 label = "ledgerRouteTransition",
             ) { currentRoute ->
@@ -253,7 +289,16 @@ fun LedgerScreen(
                     LedgerRoute.BOOKS -> LedgerBooksScreen(
                         uiState = uiState,
                         onBack = { route = LedgerRoute.HOME.name },
-                        onSaveBook = viewModel::saveBook,
+                        onSaveBook = { bookId, name, coverColor, ownerUserId, onSaved ->
+                            viewModel.saveBook(
+                                bookId = bookId,
+                                name = name,
+                                template = LedgerBookTemplateDaily,
+                                coverColor = coverColor,
+                                ownerUserId = ownerUserId,
+                                onSaved = onSaved,
+                            )
+                        },
                         onSetDefaultBook = viewModel::setDefaultBook,
                         onArchiveBook = { viewModel.setBookArchived(it, true) },
                         onRestoreBook = { viewModel.setBookArchived(it, false) },
@@ -265,14 +310,27 @@ fun LedgerScreen(
                             .distinctBy { it.id }
                             .firstOrNull { it.id == editingTransactionId },
                         initialOccurredAtMillis = draftOccurredAtMillis,
-                        onBack = { route = LedgerRoute.HOME.name },
+                        initialTransferFromAccountId = transferFromAccountId,
+                        onBack = {
+                            val returnTo = addReturnRoute
+                            addFromAccountDetailId = null
+                            addReturnRoute = null
+                            addTransferOnly = false
+                            transferFromAccountId = null
+                            route = returnTo ?: LedgerRoute.HOME.name
+                        },
                         onSelectBook = viewModel::selectBook,
                         onSaveCategory = viewModel::saveCategory,
                         onToggleCategoryHidden = viewModel::setCategoryHidden,
                         onReorderCategories = viewModel::reorderCategories,
                         onSave = { transactionId, type, amount, categoryId, accountId, toAccountId, occurredAt, remark, keepOpen ->
                             if (!keepOpen) {
-                                route = LedgerRoute.HOME.name
+                                val returnTo = addReturnRoute
+                                addFromAccountDetailId = null
+                                addReturnRoute = null
+                                addTransferOnly = false
+                                transferFromAccountId = null
+                                route = returnTo ?: LedgerRoute.HOME.name
                                 editingTransactionId = null
                                 draftOccurredAtMillis = null
                             }
@@ -287,7 +345,14 @@ fun LedgerScreen(
                                 remark = remark,
                                 keepOpen = keepOpen,
                                 onSaved = {
-                                    if (!keepOpen) route = LedgerRoute.HOME.name
+                                    if (!keepOpen) {
+                                        val returnTo = addReturnRoute
+                                        addFromAccountDetailId = null
+                                        addReturnRoute = null
+                                        addTransferOnly = false
+                                        transferFromAccountId = null
+                                        route = returnTo ?: LedgerRoute.HOME.name
+                                    }
                                     editingTransactionId = null
                                     if (!keepOpen) draftOccurredAtMillis = null
                                 },
@@ -309,10 +374,70 @@ fun LedgerScreen(
                             draftOccurredAtMillis = null
                             route = LedgerRoute.ADD.name
                         },
-                        onSaveAccount = viewModel::saveAccount,
+                        onSaveAccount = { draft -> viewModel.saveAccount(draft) },
                         onToggleAccountHidden = viewModel::setAccountHidden,
                         onReorderAccounts = viewModel::reorderAccounts,
+                        onOpenAccountDetail = { accountId ->
+                            accountDetailAccountId = accountId
+                            route = LedgerRoute.ACCOUNT_DETAIL.name
+                        },
+                        onTransferFromAccount = { accountId ->
+                            transferFromAccountId = accountId
+                            editingTransactionId = null
+                            draftOccurredAtMillis = null
+                            route = LedgerRoute.ADD.name
+                        },
                     )
+
+                    LedgerRoute.ACCOUNT_DETAIL -> {
+                        val detailAccount = uiState.allAccounts.firstOrNull { it.id == accountDetailAccountId }
+                        if (detailAccount != null) {
+                            LedgerAccountDetailScreen(
+                                account = detailAccount,
+                                allTransactions = uiState.allTransactions,
+                                allAccounts = uiState.allAccounts,
+                                currencySymbol = uiState.currencySymbol,
+                                onBack = {
+                                    accountDetailAccountId = null
+                                    route = LedgerRoute.ASSETS.name
+                                },
+                                onEditAccount = {
+                                    accountDetailAccountId = null
+                                    route = LedgerRoute.ASSETS.name
+                                },
+                                onDeleteAccount = {
+                                    viewModel.deleteAccount(detailAccount.id)
+                                    accountDetailAccountId = null
+                                    route = LedgerRoute.ASSETS.name
+                                },
+                                onAddTransaction = {
+                                    addFromAccountDetailId = detailAccount.id
+                                    addReturnRoute = LedgerRoute.ACCOUNT_DETAIL.name
+                                    editingTransactionId = null
+                                    draftOccurredAtMillis = null
+                                    route = LedgerRoute.ADD.name
+                                },
+                                onTransfer = { fromAccountId ->
+                                    transferFromAccountId = fromAccountId
+                                    addTransferOnly = true
+                                    addReturnRoute = LedgerRoute.ACCOUNT_DETAIL.name
+                                    editingTransactionId = null
+                                    draftOccurredAtMillis = null
+                                    route = LedgerRoute.ADD.name
+                                },
+                                onSaveAccount = { draft -> viewModel.saveAccount(draft) },
+                                onEditTransaction = {
+                                    editingTransactionId = it.id
+                                    draftOccurredAtMillis = null
+                                    route = LedgerRoute.ADD.name
+                                },
+                            )
+                        } else {
+                            LaunchedEffect(Unit) {
+                                route = LedgerRoute.ASSETS.name
+                            }
+                        }
+                    }
 
                     LedgerRoute.STATS -> LedgerStatsScreen(
                         uiState = uiState,
@@ -435,12 +560,16 @@ fun LedgerScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .statusBarsPadding()
                     .padding(top = 8.dp),
             )
 
             YingShiNoticeHost(
                 notice = notice,
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp),
                 onExpired = {
                     if (notice?.nonce == it) {
                         notice = null
@@ -473,7 +602,7 @@ private fun LedgerHomeScreen(
     val density = LocalDensity.current
     val viewConfiguration = LocalViewConfiguration.current
     var monthPullDistancePx by remember { mutableFloatStateOf(0f) }
-    val monthPullThresholdPx = with(density) { 204.dp.toPx() }
+    val monthPullThresholdPx = with(density) { 120.dp.toPx() }
     val monthPullMaxPx = monthPullThresholdPx * 1.28f
     val monthPullDamping = 0.42f
     val monthPullTouchSlop = viewConfiguration.touchSlop
@@ -515,6 +644,18 @@ private fun LedgerHomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 2.dp,
+                    color = LedgerHeaderGreen,
+                )
+            }
+        } else {
         Column(modifier = Modifier.fillMaxSize()) {
             LedgerHomeHeader(
                 uiState = uiState,
@@ -529,7 +670,7 @@ private fun LedgerHomeScreen(
                 onNavigate = onNavigate,
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
-                    .offset(y = (-14).dp),
+                    .padding(top = 10.dp),
             )
             Box(
                 modifier = Modifier
@@ -650,23 +791,17 @@ private fun LedgerHomeScreen(
                         }
                     }
                 }
-                if (monthPullDistancePx > 0f) {
+                if (monthPullDistancePx != 0f) {
+                    val isPullingDown = monthPullDistancePx > 0f
                     LedgerMonthPullIndicator(
                         pullDistancePx = monthPullDistancePx,
                         thresholdPx = monthPullThresholdPx,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .align(Alignment.TopCenter),
-                    )
-                }
-                if (monthPullDistancePx < 0f) {
-                    LedgerMonthPullIndicator(
-                        pullDistancePx = monthPullDistancePx,
-                        thresholdPx = monthPullThresholdPx,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 92.dp),
+                            .align(if (isPullingDown) Alignment.TopCenter else Alignment.BottomCenter)
+                            .then(
+                                if (!isPullingDown) Modifier.padding(bottom = 92.dp) else Modifier
+                            ),
                     )
                 }
             }
@@ -731,6 +866,7 @@ private fun LedgerHomeScreen(
             },
         )
     }
+    }
 }
 
 @Composable
@@ -791,17 +927,16 @@ private fun LedgerHomeHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier.width(112.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                IconButton(onClick = onOpenDrawer, modifier = Modifier.size(44.dp)) {
-                    Icon(LedgerActionIcons.Menu, contentDescription = "菜单", tint = LedgerHeaderGreen, modifier = Modifier.size(22.dp))
-                }
-            }
+                modifier = Modifier.width(56.dp),
+            )
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(onClick = onBookClick),
+                    .yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(12.dp),
+                        onClick = onBookClick,
+                    ),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -816,7 +951,7 @@ private fun LedgerHomeHeader(
                 Icon(Icons.Default.ArrowDropDown, contentDescription = "切换账本", tint = LedgerHeaderGreen, modifier = Modifier.size(16.dp))
             }
             Box(
-                modifier = Modifier.width(112.dp),
+                modifier = Modifier.width(56.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Surface(
@@ -827,17 +962,7 @@ private fun LedgerHomeHeader(
                     Row(
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        IconButton(onClick = onMoreClick, modifier = Modifier.size(44.dp)) {
-                            Icon(Icons.Default.MoreHoriz, contentDescription = "更多", tint = LedgerHeaderGreen, modifier = Modifier.size(20.dp))
-                        }
-                        Box(
-                            modifier = Modifier
-                                .height(22.dp)
-                                .width(1.dp)
-                                .background(LedgerDivider),
-                        )
                         IconButton(onClick = onCloseLedger, modifier = Modifier.size(44.dp)) { LedgerCloseCircleIcon() }
                     }
                 }
@@ -850,8 +975,12 @@ private fun LedgerHomeHeader(
         ) {
             Column(
                 modifier = Modifier
-                .weight(1.15f)
-                .clickable(onClick = onMonthClick),
+                    .weight(1.15f)
+                    .yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(12.dp),
+                        onClick = onMonthClick,
+                    ),
             ) {
                 Text(
                     text = formatYearLabel(uiState.selectedMonth) + "年",
@@ -933,7 +1062,6 @@ private fun LedgerQuickActionsRow(
         modifier = modifier,
         color = LedgerRaisedSurface,
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
     ) {
         Row(
             modifier = Modifier
@@ -944,13 +1072,15 @@ private fun LedgerQuickActionsRow(
             listOf(
                 Triple("资产", "asset", LedgerRoute.ASSETS),
                 Triple("统计", "stats", LedgerRoute.STATS),
-                Triple("预算", "budget", LedgerRoute.BUDGET),
-                Triple("导入", "import", LedgerRoute.IMPORT),
             ).forEach { (title, iconKey, route) ->
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onNavigate(route) },
+                        .yingShiClickable(
+                            pressedScale = 0.96f,
+                            shape = RoundedCornerShape(12.dp),
+                            onClick = { onNavigate(route) },
+                        ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -993,7 +1123,6 @@ private fun LedgerDayGroupCard(
         modifier = modifier.fillMaxWidth(),
         color = LedgerRaisedSurface,
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, LedgerDivider.copy(alpha = 0.72f)),
     ) {
         Column {
             Row(
@@ -1022,7 +1151,7 @@ private fun LedgerDayGroupCard(
                     Text(
                         text = "收 $currencySymbol${formatAmountValue(income)}",
                         color = LedgerIncomeGreen,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -1038,7 +1167,7 @@ private fun LedgerDayGroupCard(
                     Text(
                         text = "支 $currencySymbol${formatAmountValue(expense)}",
                         color = LedgerExpenseRed,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -1128,9 +1257,9 @@ fun LedgerTransactionListRow(
                 color = when (transaction.type) {
                     LedgerTransactionType.EXPENSE -> LedgerExpenseRed
                     LedgerTransactionType.INCOME -> LedgerIncomeGreen
-                    LedgerTransactionType.TRANSFER -> MaterialTheme.colorScheme.onSurface
+                    LedgerTransactionType.TRANSFER -> LedgerHeaderGreen
                 },
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
             Text(
@@ -1191,7 +1320,11 @@ private fun LedgerMoreSheetAction(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .clickable { onNavigate(route) },
+            .yingShiClickable(
+                pressedScale = 0.96f,
+                shape = RoundedCornerShape(18.dp),
+                onClick = { onNavigate(route) },
+            ),
         color = if (danger) LedgerMemoryWash else LedgerRaisedSurface,
         border = BorderStroke(1.dp, if (danger) LedgerMemoryContainer else LedgerDivider.copy(alpha = 0.72f)),
     ) {
@@ -1256,7 +1389,7 @@ private fun LedgerDrawer(
                             fontWeight = FontWeight.Bold,
                             avatarSize = 16.dp,
                         )
-                        Text("净资产 ${formatAmountValue(uiState.netAssetCents)}", style = MaterialTheme.typography.bodySmall, color = LedgerSubtleText)
+                        Text("净资产 ${formatAmountValue(uiState.scopedNetAssetCents)}", style = MaterialTheme.typography.titleMedium, color = LedgerSubtleText)
                     }
                 }
             }
@@ -1572,7 +1705,12 @@ private fun LedgerImportSummaryCard(
             Surface(
                 modifier = Modifier
                     .clip(RoundedCornerShape(18.dp))
-                    .clickable(enabled = preview.validCount > 0, onClick = onImport),
+                    .yingShiClickable(
+                        enabled = preview.validCount > 0,
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(18.dp),
+                        onClick = onImport,
+                    ),
                 color = if (preview.validCount > 0) LedgerPrimaryAction else LedgerDivider.copy(alpha = 0.42f),
                 border = BorderStroke(1.dp, LedgerGlassStroke.copy(alpha = if (preview.validCount > 0) 0.9f else 0.3f)),
             ) {
@@ -1665,7 +1803,11 @@ private fun LedgerEmptyState(title: String, summary: String, onAdd: (() -> Unit)
             Surface(
                 modifier = Modifier
                     .clip(RoundedCornerShape(18.dp))
-                    .clickable { onAdd() },
+                    .yingShiClickable(
+                        pressedScale = 0.96f,
+                        shape = RoundedCornerShape(18.dp),
+                        onClick = { onAdd() },
+                    ),
                 color = LedgerHeaderGreen,
             ) {
                 Text(

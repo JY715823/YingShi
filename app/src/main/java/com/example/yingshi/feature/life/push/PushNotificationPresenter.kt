@@ -22,6 +22,11 @@ import com.example.yingshi.feature.sync.SyncVersionTracker
 object PushNotificationPresenter {
     private const val TAG = "PushNotificationPresenter"
 
+    // 固定通知 ID：新通知替换旧通知，防止多条通知累积被 MIUI 自动分组
+    // （分组通知不振动、不显示悬浮卡片）
+    private const val LIFE_TRACE_NOTIFICATION_ID = 9001
+    private const val SHARED_UPDATES_NOTIFICATION_ID = 9002
+
     fun show(context: Context, data: Map<String, String>, source: String): Boolean {
         val appContext = context.applicationContext
         val route = data["targetRoute"].orEmpty()
@@ -29,25 +34,36 @@ object PushNotificationPresenter {
         val module = data["module"].orEmpty()
 
         // ── CRITICAL: use Log.e so the message always appears in logcat ──
-        Log.e(TAG, ">>> show() called from=$source module=$module category=$category route=$route")
+        // 打印完整 data 用于排查推送内容问题（特别是 body/reason 字段）
+        Log.e(TAG, ">>> show() called from=$source module=$module category=$category route=$route " +
+            "title=${data["title"]} body=${data["body"]} reason=${data["reason"]} " +
+            "mediaId=${data["mediaId"]} notificationId=${data["notificationId"]} " +
+            "actorUserId=${data["actorUserId"]} occurredAtMillis=${data["occurredAtMillis"]}")
 
         if (!canPostNotifications(appContext)) {
             Log.e(TAG, "BLOCKED: cannot post notifications (permission/channel disabled)")
             return false
         }
         if (!SettingsRepository.isPushEnabled(module, category)) {
-            Log.d(TAG, "Skip from $source: preference disabled module=$module, category=$category")
+            Log.e(TAG, "Skip from $source: preference disabled module=$module, category=$category")
             return false
         }
         if (data.isActorCurrentUser()) {
-            Log.d(TAG, "Skip from $source: actor is current user.")
+            Log.e(TAG, "Skip from $source: actor is current user.")
             return false
         }
 
         // ── Cross-path dedup: per (route + notificationId) ────────────────
         // Different events have different notificationIds, so they pass through
         // even if they share the same route. Only the exact same notification
-        // delivered via both FCM and sync-fallback is deduplicated (2-min window).
+        // delivered via both SSE and FCM is deduplicated (2-min window).
+        //
+        // P1-3 修复: life 路由使用原始 notificationId 做去重 (不再用 route-only key)。
+        // SSE 和 FCM 的 notificationId 相同 (如 "life:bowel_added:timestamp"),
+        // 可以正确去重同一事件的 SSE+FCM 重复推送。
+        // 通知中心的轮询回退已由 NotificationFallbackNotifier 完全跳过 life 路由,
+        // 不存在通知中心 notificationId 与 SSE 不同导致 dedup 失效的问题。
+        // 之前用 route-only key 会导致同一 route 的不同事件 (如两次大便) 被误拦截。
         val rawNotificationId = data["notificationId"].orEmpty()
         if (route.isNotBlank() && !PushNotificationDeduper.claimRouteNotification(appContext, route, rawNotificationId)) {
             Log.e(TAG, "BLOCKED: duplicate notification route=$route notifId=$rawNotificationId source=$source")
@@ -89,9 +105,10 @@ object PushNotificationPresenter {
         // Instead, we use the standard heads-up recipe:
         //   1. Channel IMPORTANCE_HIGH (set in PushNotificationChannels)
         //   2. setPriority(PRIORITY_HIGH) + setCategory(CATEGORY_MESSAGE)
-        //   3. setVibrate() on the builder — MIUI requires explicit vibration
-        //      on the builder, not just the channel, to trigger heads-up
-        //      (QQ/WeChat do the same on Android)
+        //   3. setDefaults(DEFAULT_ALL) + setVibrate() — MIUI requires explicit
+        //      defaults flag on the builder to trigger vibration + heads-up.
+        //      Without setDefaults(), MIUI ignores the channel's vibration
+        //      settings entirely.
         //
         // When screen is on → heads-up banner. When screen is off → notification
         // appears on lock screen / ambient display.
@@ -102,7 +119,9 @@ object PushNotificationPresenter {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVibrate(longArrayOf(0L, 180L, 80L, 180L))
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(contentPI)
             .build()
@@ -118,10 +137,30 @@ object PushNotificationPresenter {
         val postId = route.substringAfter("photos:small-album:", missingDelimiterValue = "").takeIf { it.isNotBlank() }
         val autoOpenComment = category.equals("comment", ignoreCase = true)
 
-        val isLifeRoute = route == "life:trace" || route == "life:bowel"
+        // 大便通知：点击后只取消通知，不跳转任何页面
+        // 之前 BUG: 大便通知携带 mediaId（来自 latestMediaId），但大便模块没有媒体，
+        // LifePushDispatchActivity.resolveMediaWithSlot 按 mediaId 反查 slot 失败，
+        // fallback 到 category match 返回人物/吃饭的最新媒体，造成"跳转到错误页面"
+        if (route == "life:bowel") {
+            val dismissIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
+                action = NotificationDismissReceiver.ACTION_DISMISS
+                putExtra(NotificationDismissReceiver.EXTRA_NOTIFICATION_ID, data.stableNotificationIntId(context))
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                (data["occurredAtMillis"]?.toLongOrNull() ?: System.currentTimeMillis()).hashCode(),
+                dismissIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        val isLifeRoute = route == "life:trace"
 
         val intent = if (isLifeRoute) {
-            LifePushDispatchActivity.intent(context, route, category)
+            // life 推送可能携带 mediaId 字段（服务端在 addMedia/deleteMedia 时填充），
+            // 用于精准跳转到对应媒体的查看态，而不是总跳到第一张
+            val lifeMediaId = data["mediaId"]?.takeIf { it.isNotBlank() }
+            LifePushDispatchActivity.intent(context, route, category, lifeMediaId)
         } else {
             val action = when {
                 route.startsWith("photos:small-album:") -> AppNavigationRequests.ACTION_OPEN_SMALL_ALBUM
@@ -185,10 +224,13 @@ object PushNotificationPresenter {
     }
 
     private fun Map<String, String>.stableNotificationIntId(context: Context): Int {
-        this["notificationId"]?.takeIf { it.isNotBlank() }?.let { return it.hashCode() }
-        this["operationId"]?.takeIf { it.isNotBlank() }?.let { return "operation:$it:${this["category"].orEmpty()}".hashCode() }
-        this["groupId"]?.takeIf { it.isNotBlank() }?.let { return "group:$it:${this["category"].orEmpty()}".hashCode() }
-        return (this["occurredAtMillis"]?.toLongOrNull() ?: System.currentTimeMillis()).hashCode()
+        val route = this["targetRoute"].orEmpty()
+        // life trace / bowel 使用固定 ID，新通知替换旧通知
+        if (route == "life:trace" || route == "life:bowel") {
+            return LIFE_TRACE_NOTIFICATION_ID
+        }
+        // 其他通知也使用固定 ID，防止累积分组
+        return SHARED_UPDATES_NOTIFICATION_ID
     }
 
     private fun Map<String, String>.isActorCurrentUser(): Boolean {
